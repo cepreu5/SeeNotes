@@ -42,7 +42,7 @@ body:not(.app-ready) #kb-fab {
 }
 
 /* A note modal blocks creating another note; hide the global add button. */
-body:has(#content-modal.visible) #add-note-fab {
+body:has(.note-window.visible) #add-note-fab {
     display: none !important;
 }
 
@@ -830,7 +830,7 @@ code {
 }
 
 .note-content a,
-#modal-body a {
+:is(#modal-body, .nw-modal-body) a {
     color: #007bff;
     text-decoration: none;
     display: inline-block;
@@ -1344,8 +1344,8 @@ code {
 }
 
 /* Гарантираме, че съдържанието е над псевдо-елемента */
-#modal-body,
-#modal-board-name,
+:is(#modal-body, .nw-modal-body),
+:is(#modal-board-name, .nw-modal-board-name),
 .modal-header-btn,
 .modal-resize-handle {
     position: relative;
@@ -1386,7 +1386,7 @@ code {
     /* Let content define width */
 }
 
-#modal-body {
+:is(#modal-body, .nw-modal-body) {
     padding-top: 1px;
     padding-right: 10px;
     overflow-y: auto;
@@ -1395,28 +1395,28 @@ code {
     flex-grow: 1;
 }
 
-#modal-body.no-bg-image {
+:is(#modal-body, .nw-modal-body).no-bg-image {
     padding: 0 0;
     /* Keeps vertical 0, but content-box handles side padding */
 }
 
 /* Custom scrollbar for modal content */
-#modal-body::-webkit-scrollbar {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar {
     width: 10px;
 }
 
-#modal-body::-webkit-scrollbar-track {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-track {
     background: #c8a64b;
     /* Dark yellow background for the track */
 }
 
-#modal-body::-webkit-scrollbar-thumb {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb {
     background: #555;
     /* Darker handle for contrast */
     border-radius: 5px;
 }
 
-#modal-body::-webkit-scrollbar-thumb:hover {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb:hover {
     background: #333;
     /* Even darker on hover */
 }
@@ -1437,7 +1437,7 @@ code {
 }
 
 /* New style for board name in modal header */
-#modal-board-name {
+:is(#modal-board-name, .nw-modal-board-name) {
     position: absolute;
     top: 15px;
     /* Moved 5px up */
@@ -1464,7 +1464,7 @@ code {
     box-sizing: border-box;
 }
 
-#copy-modal-btn svg {
+:is(#copy-modal-btn, .nw-copy-modal-btn) svg {
     width: 16px;
     height: 16px;
     stroke: #333;
@@ -1479,11 +1479,11 @@ code {
 /* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
 /* Бутон за затваряне (X) е на right: 15px */
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
-#prev-note-btn {
+:is(#prev-note-btn, .nw-prev-note-btn) {
     right: 235px;
 }
 
-#next-note-btn {
+:is(#next-note-btn, .nw-next-note-btn) {
     right: 193px;
 }
 
@@ -1495,22 +1495,22 @@ code {
     }
 }
 
-#delete-modal-btn {
+:is(#delete-modal-btn, .nw-delete-modal-btn) {
     right: 57px;
     /* 57px (delete) + 32px (width) + 10px (gap) */
 }
 
-#copy-modal-btn {
+:is(#copy-modal-btn, .nw-copy-modal-btn) {
     right: 99px;
 }
 
-#calculate-modal-btn {
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) {
     right: 151px;
     /* 151px (calculate) + 32px (width) + 10px (gap) */
 }
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
-#calculate-modal-btn svg {
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) svg {
     pointer-events: none;
     /* Иконата не "поглъща" клика */
 }
@@ -3633,8 +3633,8 @@ body.selection-locked .note.active-selection-note .note-content {
 
 /* ▦ table fields: the content editor becomes text pieces + read-only table fields in place.
    The note textarea stays underneath (hidden) as the source of truth. */
-.is-table-split > #note-edit-textarea,
-.is-table-split > #note-edit-textarea-backdrop {
+.is-table-split > :is(#note-edit-textarea, .nw-note-edit-textarea),
+.is-table-split > :is(#note-edit-textarea-backdrop, .nw-note-edit-textarea-backdrop) {
     visibility: hidden;
 }
 
@@ -3784,8 +3784,8 @@ body.selection-locked .note.active-selection-note .note-content {
     padding-top: 100px;
 }
 
-/* Adjustments for #modal-board-name when in toolbar */
-.modal-header-toolbar #modal-board-name {
+/* Adjustments for :is(#modal-board-name, .nw-modal-board-name) when in toolbar */
+.modal-header-toolbar :is(#modal-board-name, .nw-modal-board-name) {
     position: static !important;
     grid-column: 1;
     grid-row: 1;
@@ -3921,7 +3921,7 @@ body.selection-locked .note.active-selection-note .note-content {
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-#copy-modal-btn svg {
+:is(#copy-modal-btn, .nw-copy-modal-btn) svg {
     width: 24px !important;
     height: 24px !important;
     stroke-width: 2 !important;
@@ -4124,4 +4124,88 @@ body.selection-locked .note.active-selection-note .note-content {
         opacity: 1;
         color: color-mix(in srgb, currentColor 52%, transparent);
     }
+}
+
+/* --- Several open notes (b1.82) ---
+   Every note window is a clone of #content-modal-template inside #note-windows-layer. The layer is
+   one stacking context at the old modal's level, so the windows' own z-index (10050 and up, last
+   pressed in front) never reaches the rest of the page. The windows do not block the page: the
+   list and the boards stay usable, so a second note opens from the same places as the first. */
+#note-windows-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    pointer-events: none;
+}
+#note-windows-layer:empty {
+    display: none;
+}
+.note-window.modal-overlay,
+.note-window.modal-overlay.visible {
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    pointer-events: none;
+    display: block;
+}
+.note-window.modal-overlay .modal-content-box {
+    position: absolute;
+    pointer-events: none;
+}
+.note-window.modal-overlay.visible .modal-content-box {
+    pointer-events: auto;
+}
+.note-window.note-window-moving .modal-content-box {
+    transition: none;
+    user-select: none;
+}
+/* The quiet trace after a background sync took the new text in, and the question when it could not. */
+.note-window-sync-trace {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    transform: translateX(-50%);
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 10002;
+    opacity: 1;
+    transition: opacity 0.6s ease;
+}
+.note-window-sync-trace.is-fading {
+    opacity: 0;
+}
+.note-window-sync-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin: 0 0 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    color: #222;
+    font-size: 13px;
+    position: relative;
+    z-index: 10002;
+}
+.note-window-sync-banner span {
+    flex: 1 1 160px;
+}
+.note-window-sync-banner button {
+    font: inherit;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    background: #fff;
+    color: #222;
+    cursor: pointer;
+}
+#close-all-notes-btn {
+    width: 100%;
+    margin-top: 10px;
 }

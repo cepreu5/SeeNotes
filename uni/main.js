@@ -1085,6 +1085,7 @@ async function runGoogleDriveSync(forceFullSync = false) {
                         }
                     }
                     let dataToPut = data;
+                    const noteWindowSyncNotes = [];
                     if (isNote && useIndexedDb && (lastSyncTimestamp || dbExists)) {
                         const nonConflicting = [];
                         for (let serverNote of data) {
@@ -1094,52 +1095,19 @@ async function runGoogleDriveSync(forceFullSync = false) {
                                 const localDm = parseInt(localNote.datemod, 10) || 0;
                                 const isDirty = lastSyncTimestamp ? (localDm > lastSyncTimestamp) : isDifferent;
 
-                                // Modal Safety: If this note is currently open in the modal, 
-                                // we treat it as a conflict ONLY if the user has unsaved changes in the modal.
-                                const modalBodyElem = document.getElementById('modal-body');
-                                const modalGdid = modalBodyElem?.dataset.gdid;
-                                const modalNoteId = modalBodyElem?.dataset.id;
-                                const isOpenInModal = (serverNote.gdid && String(serverNote.gdid) === String(modalGdid)) || (serverNote.id && String(serverNote.id) === String(modalNoteId));
-
-                                let hasUnsavedChangesInModal = false;
-                                if (isOpenInModal && modalBodyElem) {
-                                    const textarea = modalBodyElem.querySelector('textarea');
-                                    const titleArea = modalBodyElem.querySelector('#note-edit-title-textarea');
-                                    if (textarea) {
-                                        let currentText = textarea.value;
-                                        if (titleArea) currentText = titleArea.value + '|' + currentText;
-                                        hasUnsavedChangesInModal = (currentText !== localNote.notetxt);
-                                    }
-                                }
-
-                                const isConflict = isDifferent && (isDirty || (isOpenInModal && hasUnsavedChangesInModal));
-
-                                /*
-                                console.log(`[Sync-Debug] Note: ${serverNote.gdid || serverNote.id}`);
-                                console.log(` - Server dm: ${serverNote.datemod}`);
-                                console.log(` - Local dm: ${localNote.datemod}`);
-                                console.log(` - Last sync base: ${lastSyncTimestamp || 'None'}`);
-                                console.log(` - isDifferent: ${isDifferent}, isDirty: ${isDirty}, isOpenInModal: ${isOpenInModal}, hasUnsavedChanges: ${hasUnsavedChangesInModal}`);
-                                */
+                                // Note windows: the one showing this note decides for itself after the
+                                // update (refreshNoteWindowsAfterSync) - without the user's changes it takes
+                                // the new text quietly, with unsaved changes it is not touched and asks.
+                                const isOpenInModal = !!findNoteWindow(serverNote.id, serverNote.gdid);
+                                const isConflict = isDifferent && isDirty;
 
                                 if (isConflict) {
-                                    console.log(`[Sync-Conflict!] Buffering for manual resolution: ${serverNote.gdid}${isOpenInModal ? " (Open in Modal with Changes)" : ""}`);
+                                    console.log(`[Sync-Conflict!] Buffering for manual resolution: ${serverNote.gdid}`);
                                     notesForConflictCheck.push({ serverNote, localNote });
                                     continue;
-                                } else if (isDifferent && !isDirty && isOpenInModal && !hasUnsavedChangesInModal) {
-                                    // Special Case: Open in modal but no changes -> Auto-refresh the modal content
-                                    console.log(`[Sync-Update] Auto-refreshing open note: ${serverNote.gdid}`);
-                                    // We need to refresh the modal after sync finishes or immediately
-                                    setTimeout(() => {
-                                        const activeModalBody = document.getElementById('modal-body');
-                                        const activeGdid = activeModalBody?.dataset.gdid;
-                                        if (activeGdid && String(activeGdid) === String(serverNote.gdid)) {
-                                            // Refresh content if still open
-                                            showToast(_('noteUpdatedFromServer') || 'Note updated from server', 3000);
-                                            // Trigger a refresh of the modal if possible
-                                            // For now, it will be updated in allNotesData, but UI might need a nudge
-                                        }
-                                    }, 500);
+                                } else if (isDifferent && isOpenInModal) {
+                                    console.log(`[Sync-Update] Open note changed elsewhere: ${serverNote.gdid}`);
+                                    noteWindowSyncNotes.push(serverNote);
                                 } else if (isDifferent && !isDirty) {
                                     console.log(`[Sync-Update] Server version is newer: ${serverNote.gdid}`);
                                 }
@@ -1170,6 +1138,7 @@ async function runGoogleDriveSync(forceFullSync = false) {
                                 allNotesData.push(newNote);
                             }
                         });
+                        refreshNoteWindowsAfterSync(noteWindowSyncNotes);
                     }
 
                     console.log(`[Sync] Updated ${filename}:`, dataToPut.length, "items.");
@@ -5875,13 +5844,9 @@ function initApp() {
             clearTimeout(titleTimeout);
         }
     });
+    initNoteWindows(); // the note windows wire themselves (wireNoteWindow)
     contentModal = document.getElementById('content-modal');
     modalBody = document.getElementById('modal-body');
-    new MutationObserver(() => {
-        if (!contentModal.classList.contains('visible')) {
-            setExpandedModalFloatingControls(false);
-        }
-    }).observe(contentModal, { attributes: true, attributeFilter: ['class'] });
 
     copyBtn = document.getElementById('copy-modal-btn');
     scrollTopBtn = document.getElementById("scrollTopBtn");
@@ -6401,101 +6366,6 @@ function initApp() {
         }
     });
 
-    // --- Calculator Button ---
-    const calculateBtn = document.getElementById('calculate-modal-btn');
-    let longPressTimer;
-    let isLongPress = false;
-
-    // Обработка на click събитие
-    calculateBtn.addEventListener('click', (e) => {
-        if (isLongPress) {
-            isLongPress = false;
-            return;
-        }
-        if (e.ctrlKey) {
-            // Ctrl+клик - извикваме с true
-            handleCalculateClick(true);
-        } else {
-            // Обикновен клик
-            handleCalculateClick(false);
-        }
-    });
-
-    // Обработка на long press
-    const startPress = (e) => {
-        isLongPress = false;
-        longPressTimer = setTimeout(() => {
-            isLongPress = true;
-            handleCalculateClick(true);
-        }, 500); // 500ms за long press
-    };
-
-    const endPress = () => {
-        clearTimeout(longPressTimer);
-    };
-
-    calculateBtn.addEventListener('mousedown', startPress);
-    calculateBtn.addEventListener('mouseup', endPress);
-    calculateBtn.addEventListener('mouseleave', endPress);
-    calculateBtn.addEventListener('touchstart', startPress, { passive: true });
-    calculateBtn.addEventListener('touchend', endPress);
-    // --- КОРЕКЦИЯ: Преместваме бутоните в хедъра на модала ---
-    const modalHeader = contentModal.querySelector('.modal-header-controls');
-    const modalCloseBtn = contentModal.querySelector('.modal-close');
-    if (modalHeader && modalCloseBtn) {
-        // Вмъкваме бутоните преди бутона за затваряне
-        modalHeader.insertBefore(calculateBtn, modalCloseBtn);
-        modalHeader.insertBefore(copyBtn, modalCloseBtn);
-    }
-    // --- Край на корекцията ---
-    copyBtn.innerHTML = copyIconSvg;
-    const pasteModalBtn = document.getElementById('paste-modal-btn');
-    if (pasteModalBtn) pasteModalBtn.style.display = 'none';
-    copyBtn.addEventListener('click', () => {
-        if (!navigator.clipboard) return;
-        const selection = window.getSelection();
-        let textToCopy = '';
-        // Проверяваме дали има маркиран текст и дали той се намира в модалния прозорец
-        if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
-            const range = selection.getRangeAt(0);
-            // Уверяваме се, че селекцията е започнала вътре в modalBody
-            if (modalBody.contains(range.commonAncestorContainer)) {
-                textToCopy = selection.toString();
-            }
-        }
-        // Ако няма избран текст, копираме цялото съдържание на бележката
-        if (textToCopy === '') {
-            textToCopy = currentModalContent?.trim() || '';
-        }
-        if (textToCopy) {
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                copyBtn.innerHTML = '&#10003;'; // Показваме отметка за успех
-                setTimeout(() => { copyBtn.innerHTML = copyIconSvg; }, 5000);
-            }).catch(err => {
-                showToast(_('errorCopyFailed'));
-            });
-        }
-    });
-
-    pasteModalBtn?.addEventListener('click', async () => {
-        const textarea = getActiveModalEditor();
-        if (!textarea) return;
-
-        try {
-            if (!navigator.clipboard?.readText) throw new Error('Clipboard access is unavailable');
-            const clipboardText = await navigator.clipboard.readText();
-            const selectionStart = textarea.selectionStart;
-            const selectionEnd = textarea.selectionEnd;
-            textarea.setRangeText(clipboardText, selectionStart, selectionEnd, 'end');
-            textarea.focus();
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            scrollCaretIntoView(textarea);
-        } catch (error) {
-            console.warn('Failed to paste from clipboard:', error);
-            showToast((typeof _ === 'function' && _('errorClipboardRead')) || 'Неуспешно четене от клипборда.');
-        }
-    });
-
     // Event listener for submit button in folder ID popup
     document.getElementById('submitFolderIdBtn').addEventListener('click', handleSubmitFolderId);
     document.getElementById('folderIdInput').addEventListener('keydown', (event) => {
@@ -6505,11 +6375,9 @@ function initApp() {
     });
 
     document.querySelectorAll('.modal-close').forEach(btn => {
+        if (btn.closest('.note-window')) return; // the note windows have their own (wireNoteWindow)
         btn.addEventListener('click', async (e) => {
             const modal = e.currentTarget.closest('.modal-overlay');
-            if (modal && modal.id === 'content-modal') {
-                if (!(await checkUnsavedChanges())) return;
-            }
             if (modal) modal.classList.remove('visible');
             if (modal && modal.id === 'settings-modal') {
                 window.kbAssistant.terminateGuide();
@@ -6541,6 +6409,7 @@ function initApp() {
     });
 
     document.querySelectorAll('.modal-overlay').forEach(modal => {
+        if (modal.classList.contains('note-window')) return; // a note window does not cover the page
         let isMouseDownInside = false;
 
         modal.addEventListener('mousedown', (e) => {
@@ -6556,9 +6425,6 @@ function initApp() {
         modal.addEventListener('click', async (e) => {
             // Затваряме само ако и натискането, и отпускането са били върху овърлея
             if (e.target === modal && !isMouseDownInside) {
-                if (modal.id === 'content-modal') {
-                    if (!(await checkUnsavedChanges())) return;
-                }
                 modal.classList.remove('visible');
                 if (modal.id === 'settings-modal') {
                     if (window.kbAssistant) window.kbAssistant.terminateGuide();
@@ -6577,11 +6443,6 @@ function initApp() {
             }
         });
     });
-    // Prevent clicks inside the content modal from propagating to the underlying notes
-    contentModal.addEventListener('click', (e) => {
-        e.stopPropagation();
-    });
-
     // Apply initial font size settings from localStorage
     const initialNoteFontSize = localStorage.getItem('noteFontSize') || 16;
     document.documentElement.style.setProperty('--note-font-size', `${initialNoteFontSize}px`);
@@ -6590,99 +6451,7 @@ function initApp() {
     document.body.classList.toggle('hide-datemod', shouldHideDatemod);
     const initialModalFontSize = localStorage.getItem('modalFontSize') || 16;
     modalBody.style.fontSize = `${initialModalFontSize}px`;
-    // Add a listener to reset the modal font size when it's closed,
-    // as it might be changed by other parts of the app (like formatText).
-    contentModal.addEventListener('transitionend', () => {
-        if (!contentModal.classList.contains('visible')) {
-            modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
-        }
-    });
 
-    // --- Modal Resizing Logic ---
-    const modalContentBox = contentModal.querySelector('.modal-content-box');
-    const resizeHandle = contentModal.querySelector('.modal-resize-handle');
-    let startX, startY, startWidth, startHeight, isIndividualResize = false, individualResizeTimer = null;
-    function doDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Обикновеното движение преди long-press запазва глобалния resize режим.
-        if (e.type === 'touchmove' && individualResizeTimer) {
-            clearTimeout(individualResizeTimer);
-            individualResizeTimer = null;
-        }
-        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
-        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
-        const newWidth = Math.round(startWidth + currentX - startX);
-        const newHeight = Math.round(startHeight + currentY - startY);
-        modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
-        modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
-        modalContentBox.style.maxWidth = '100vw';
-        modalContentBox.style.maxHeight = 'none';
-    }
-
-    function stopDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        document.documentElement.removeEventListener('mousemove', doDrag, false);
-        document.documentElement.removeEventListener('mouseup', stopDrag, false);
-        document.documentElement.removeEventListener('touchmove', doDrag, false);
-        document.documentElement.removeEventListener('touchend', stopDrag, false);
-        clearTimeout(individualResizeTimer);
-        individualResizeTimer = null;
-        if (isIndividualResize) {
-            const modalBodyElem = document.getElementById('modal-body');
-            if (modalBodyElem) {
-                modalBodyElem.dataset.editorSize = JSON.stringify({
-                    width: Math.round(modalContentBox.getBoundingClientRect().width),
-                    height: Math.round(modalContentBox.getBoundingClientRect().height)
-                });
-                updateModalUiStateSaveUI();
-            }
-        } else {
-            localStorage.setItem('modalWidth', modalContentBox.style.width);
-            localStorage.setItem('modalHeight', modalContentBox.style.height);
-        }
-        isIndividualResize = false;
-        resizeHandle.classList.remove('individual-resize-active');
-    }
-    function startDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        startX = e.touches ? e.touches[0].clientX : e.clientX;
-        startY = e.touches ? e.touches[0].clientY : e.clientY;
-        isIndividualResize = !!e.ctrlKey;
-        clearTimeout(individualResizeTimer);
-        if (e.type === 'touchstart') {
-            // Задръж дръжката преди влачене, за да запишеш размера само за тази бележка.
-            individualResizeTimer = setTimeout(() => {
-                isIndividualResize = true;
-                resizeHandle.classList.add('individual-resize-active');
-                if (navigator.vibrate) navigator.vibrate(40);
-                if (typeof showToast === 'function') showToast('Индивидуален размер', 1200);
-            }, 450);
-        }
-        startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
-        startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
-        // Attach listeners for both mouse and touch
-        document.documentElement.addEventListener('mousemove', doDrag, false);
-        document.documentElement.addEventListener('mouseup', stopDrag, false);
-        document.documentElement.addEventListener('touchmove', doDrag, false);
-        document.documentElement.addEventListener('touchend', stopDrag, false);
-    }
-
-    // Attach start event for both mouse and touch
-    resizeHandle.addEventListener('mousedown', startDrag);
-    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
-    // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
-    resizeHandle.title = _('resizeHandleTooltip') || 'Drag: global size · Ctrl+drag / hold on mobile: this note only';
-    resizeHandle.setAttribute('aria-label', resizeHandle.title);
-    resizeHandle.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M8 21h13V8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
-            <path d="M12 21h9v-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
-            <circle cx="8" cy="16" r="1.5" fill="currentColor" />
-            <circle cx="13" cy="16" r="1.5" fill="currentColor" />
-            <circle cx="8" cy="11" r="1.5" fill="currentColor" />
-        </svg>`;
     // Load saved searches and settings from localStorage
     lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
     savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
@@ -10015,7 +9784,753 @@ function observeModalFooterDateVisibility(footerToolbar) {
     setTimeout(scheduleUpdate, 450);
 }
 
+// --- Several open notes (b1.82) ---------------------------------------------------------------
+// Every note opens in a window of its own: a clone of #content-modal-template in #note-windows-layer.
+// The rest of the code keeps talking to "the" modal (contentModal, modalBody, copyBtn,
+// currentModalContent, #content-modal, #modal-body, #note-edit-textarea ...). Only the active window
+// carries those ids and globals; every other window keeps its ids as data-mwid + .nw-<id> and its
+// globals in win.state, and gets them back when it becomes active again (a press or a focus inside
+// it, or showModal). So one window never writes into another.
+const NOTE_WINDOW_Z_BASE = 10050; // inside #note-windows-layer: never reaches the rest of the page
+const NOTE_WINDOW_CASCADE = 28;
+const NOTE_WINDOW_CYCLE = 6;
+const NOTE_WINDOW_NARROW = 768; // px: below it the cascade only goes down, no side offset
+const NOTE_WINDOW_GEOMETRY_KEY = 'noteWindowGeometry';
+const NOTE_WINDOW_GEOMETRY_MAX = 300;
+let noteWindows = []; // every window in the DOM: the open ones plus at most one idle (closed) one
+let activeNoteWindow = null;
+let noteWindowZ = NOTE_WINDOW_Z_BASE - 1;
+let noteWindowNavInPlace = false; // < / > in a window: the neighbour note opens in the same window
+
+function stashNoteWindowIds(win) {
+    [win.el, ...win.el.querySelectorAll('[id]')].forEach(el => {
+        if (!el.id) return;
+        el.dataset.mwid = el.id;
+        if (el !== win.el) el.classList.add('nw-' + el.id);
+        el.removeAttribute('id');
+    });
+}
+
+function restoreNoteWindowIds(win) {
+    [win.el, ...win.el.querySelectorAll('[data-mwid]')].forEach(el => {
+        if (!el.dataset.mwid) return;
+        el.id = el.dataset.mwid;
+        delete el.dataset.mwid;
+    });
+}
+
+function activateNoteWindow(win, front = true) {
+    if (!win) return;
+    if (activeNoteWindow !== win) {
+        const prev = activeNoteWindow;
+        if (prev) {
+            prev.state.currentModalContent = currentModalContent;
+            prev.state.sticky = { formats: noteStickyFormats, key: noteStickyNoteKey, colors: noteStickyColors };
+            stashNoteWindowIds(prev);
+            prev.el.classList.remove('note-window-active');
+        }
+        restoreNoteWindowIds(win);
+        activeNoteWindow = win;
+        contentModal = win.el;
+        modalBody = win.body;
+        copyBtn = win.copyBtn;
+        currentModalContent = win.state.currentModalContent || '';
+        const sticky = win.state.sticky;
+        noteStickyFormats = sticky ? sticky.formats : new Set();
+        noteStickyNoteKey = sticky ? sticky.key : null;
+        noteStickyColors = sticky ? sticky.colors : { 4: null, 5: null };
+        win.el.classList.add('note-window-active');
+        if (win.open) setExpandedModalFloatingControls(win.body.dataset.isExpanded === 'true');
+    }
+    if (front) raiseNoteWindow(win);
+}
+
+function raiseNoteWindow(win) {
+    if (Number(win.el.style.zIndex) === noteWindowZ && noteWindowZ >= NOTE_WINDOW_Z_BASE) return;
+    if (noteWindowZ > NOTE_WINDOW_Z_BASE + 5000) {
+        // Keep the numbers small: renumber in the current order.
+        noteWindowZ = NOTE_WINDOW_Z_BASE - 1;
+        noteWindows.filter(w => w !== win)
+            .sort((a, b) => (Number(a.el.style.zIndex) || 0) - (Number(b.el.style.zIndex) || 0))
+            .forEach(w => { w.el.style.zIndex = String(++noteWindowZ); });
+    }
+    win.el.style.zIndex = String(++noteWindowZ);
+}
+
+// Runs fn with win as "the" modal (ids and globals), then hands them back. Only the synchronous
+// part of fn sees win.
+function withNoteWindow(win, fn) {
+    const prev = activeNoteWindow;
+    if (!win || win === prev) return fn();
+    activateNoteWindow(win, false);
+    try {
+        return fn();
+    } finally {
+        if (prev && noteWindows.includes(prev) && activeNoteWindow === win) activateNoteWindow(prev, false);
+    }
+}
+
+function getOpenNoteWindows() {
+    return noteWindows.filter(w => w.open);
+}
+
+function getTopNoteWindow(list = getOpenNoteWindows()) {
+    return list.reduce((top, w) => (!top || (Number(w.el.style.zIndex) || 0) > (Number(top.el.style.zIndex) || 0)) ? w : top, null);
+}
+
+function findNoteWindow(id, gdid) {
+    const sid = (id === undefined || id === null) ? '' : String(id);
+    const sgdid = (gdid === undefined || gdid === null) ? '' : String(gdid);
+    if (!sid && !sgdid) return null;
+    return getOpenNoteWindows().find(w => (sgdid && w.body.dataset.gdid === sgdid) || (sid && w.body.dataset.id === sid)) || null;
+}
+
+function getNoteWindowRaw(win) {
+    return win === activeNoteWindow ? currentModalContent : (win.state.currentModalContent || '');
+}
+
+function getNoteWindowGeometryKey(id, gdid) {
+    if (id !== undefined && id !== null && String(id) !== '') return 'i:' + id;
+    if (gdid !== undefined && gdid !== null && String(gdid) !== '') return 'g:' + gdid;
+    return '';
+}
+
+function readNoteWindowGeometryAll() {
+    try {
+        const all = JSON.parse(localStorage.getItem(NOTE_WINDOW_GEOMETRY_KEY) || '{}');
+        return (all && typeof all === 'object') ? all : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function readNoteWindowGeometry(key) {
+    if (!key) return null;
+    const g = readNoteWindowGeometryAll()[key];
+    return (g && Number(g.w) > 0 && Number(g.h) > 0) ? g : null;
+}
+
+// Each window remembers its own size and place, per note (by id); new notes get the standard size.
+function writeNoteWindowGeometry(win) {
+    if (!win || win.body.dataset.isExpanded === 'true') return;
+    const key = getNoteWindowGeometryKey(win.body.dataset.id, win.body.dataset.gdid);
+    if (!key) return;
+    const all = readNoteWindowGeometryAll();
+    all[key] = {
+        w: Math.round(win.box.offsetWidth),
+        h: Math.round(win.box.offsetHeight),
+        x: Math.round(parseFloat(win.box.style.left) || 0),
+        y: Math.round(parseFloat(win.box.style.top) || 0),
+        t: Date.now()
+    };
+    const keys = Object.keys(all);
+    if (keys.length > NOTE_WINDOW_GEOMETRY_MAX) {
+        keys.sort((a, b) => (all[a].t || 0) - (all[b].t || 0))
+            .slice(0, keys.length - NOTE_WINDOW_GEOMETRY_MAX)
+            .forEach(k => { delete all[k]; });
+    }
+    try { localStorage.setItem(NOTE_WINDOW_GEOMETRY_KEY, JSON.stringify(all)); } catch (e) { /* storage full: this session only */ }
+}
+
+function clampNoteWindowAxis(pos, size, room) {
+    const max = room - size;
+    if (max < 0) return Math.round(max / 2); // bigger than the screen: centred, like the old modal
+    return Math.round(Math.min(Math.max(pos, 0), max));
+}
+
+// Where a window opens: where this note was last left, else centred plus the cascade (28px a step,
+// 6 steps, then round again). On a narrow screen the cascade only goes down.
+function placeNoteWindow(win, key, isExpanded) {
+    const box = win.box;
+    if (isExpanded) {
+        box.style.left = '10px';
+        box.style.top = '10px';
+        return;
+    }
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w = box.offsetWidth, h = box.offsetHeight;
+    const geom = readNoteWindowGeometry(key);
+    let x, y;
+    if (geom && Number.isFinite(Number(geom.x)) && Number.isFinite(Number(geom.y))) {
+        x = Number(geom.x);
+        y = Number(geom.y);
+        win.slot = -1;
+    } else {
+        const used = new Set(getOpenNoteWindows().filter(o => o !== win).map(o => o.slot));
+        let slot = 0;
+        while (slot < NOTE_WINDOW_CYCLE && used.has(slot)) slot++;
+        if (slot >= NOTE_WINDOW_CYCLE) slot = getOpenNoteWindows().filter(o => o !== win).length % NOTE_WINDOW_CYCLE;
+        win.slot = slot;
+        const narrow = vw < NOTE_WINDOW_NARROW;
+        x = (vw - w) / 2 + (narrow ? 0 : slot * NOTE_WINDOW_CASCADE);
+        y = (vh - h) / 2 + slot * NOTE_WINDOW_CASCADE;
+    }
+    box.style.left = clampNoteWindowAxis(x, w, vw) + 'px';
+    box.style.top = clampNoteWindowAxis(y, h, vh) + 'px';
+}
+
+// The expand button: the full-size view starts at the corner; back to normal puts it where it was.
+function syncNoteWindowExpandedPlace(win, isExpanded) {
+    if (!win) return;
+    if (isExpanded) {
+        win.placeBeforeExpand = { left: win.box.style.left, top: win.box.style.top };
+        win.box.style.left = '10px';
+        win.box.style.top = '10px';
+    } else if (win.placeBeforeExpand) {
+        win.box.style.left = win.placeBeforeExpand.left;
+        win.box.style.top = win.placeBeforeExpand.top;
+        win.placeBeforeExpand = null;
+    } else {
+        placeNoteWindow(win, getNoteWindowGeometryKey(win.body.dataset.id, win.body.dataset.gdid), false);
+    }
+}
+
+// The one place that decides where showModal draws:
+// - a re-render (save, eye preview, background sync) names its window and never opens another;
+// - a note that is already open: its window comes to the front (and only takes the new content when
+//   it has nothing of the user's in it), no second copy;
+// - < / > replace the note in the same window;
+// - anything else goes to the idle window or a new one.
+function pickNoteWindowForShow(options) {
+    const opts = (options && typeof options === 'object') ? options : {};
+    if (opts.noteWindow) {
+        const win = opts.noteWindow;
+        if (!noteWindows.includes(win) || !win.open) return null;
+        const shownId = win.body.dataset.id || '', shownGdid = win.body.dataset.gdid || '';
+        const sameNote = (shownGdid && String(opts.gdid || '') === shownGdid) || (shownId && String(opts.id || '') === shownId);
+        if ((shownId || shownGdid) && !sameNote) return null; // the window shows another note by now
+        return { win, fresh: false, background: win !== activeNoteWindow };
+    }
+    const match = findNoteWindow(opts.id, opts.gdid);
+    const navInPlace = noteWindowNavInPlace;
+    noteWindowNavInPlace = false;
+    if (match) {
+        const body = match.body;
+        // The user's work in it (editing, the eye preview, a draft): it only comes to the front.
+        // (disableNoteEditing takes the edit toolbar away but leaves the fields to the re-render.)
+        const busy = !!match.box.querySelector('.modal-edit-toolbar') || body.dataset.isPreview === 'true' || !!body.dataset.draftText;
+        const differs = typeof opts.raw === 'string' && (opts.raw !== getNoteWindowRaw(match)
+            || String(opts.format || '') !== String(body.dataset.format || ''));
+        if (busy || !differs) {
+            activateNoteWindow(match, true);
+            return null;
+        }
+        return { win: match, fresh: false, background: false };
+    }
+    if (navInPlace && activeNoteWindow && activeNoteWindow.open) return { win: activeNoteWindow, fresh: false, background: false };
+    if (activeNoteWindow && !activeNoteWindow.open && noteWindows.includes(activeNoteWindow)) {
+        activeNoteWindow.state = {};
+        return { win: activeNoteWindow, fresh: true, background: false };
+    }
+    const win = createNoteWindow();
+    return win ? { win, fresh: true, background: false } : null;
+}
+
 function showModal(options, noteElement = null) {
+    const pick = pickNoteWindowForShow(options);
+    if (!pick) return;
+    if (pick.background) {
+        withNoteWindow(pick.win, () => renderNoteWindow(options, noteElement, pick.win, false));
+        return;
+    }
+    activateNoteWindow(pick.win, true);
+    renderNoteWindow(options, noteElement, pick.win, pick.fresh);
+}
+
+function createNoteWindow() {
+    const tpl = document.getElementById('content-modal-template');
+    const layer = document.getElementById('note-windows-layer');
+    if (!tpl || !layer) return null;
+    const el = tpl.cloneNode(true);
+    el.removeAttribute('id');
+    el.style.display = '';
+    el.dataset.mwid = 'content-modal';
+    layer.appendChild(el);
+    const pick = (mwid) => el.querySelector(`[data-mwid="${mwid}"]`);
+    const win = {
+        el,
+        box: el.querySelector('.modal-content-box'),
+        body: pick('modal-body'),
+        copyBtn: pick('copy-modal-btn'),
+        state: {},
+        open: false,
+        slot: -1
+    };
+    noteWindows.push(win);
+    wireNoteWindow(win);
+    return win;
+}
+
+function onNoteWindowClosed(win) {
+    win.el.querySelector('.note-window-sync-banner')?.remove();
+    const others = getOpenNoteWindows().filter(w => w !== win);
+    if (!others.length) {
+        // The last one stays in the DOM as the idle window: "the" modal always exists.
+        if (activeNoteWindow !== win) activateNoteWindow(win, false);
+        setExpandedModalFloatingControls(false);
+        noteWindows.filter(w => w !== win && !w.open).forEach(w => w.el.remove());
+        noteWindows = noteWindows.filter(w => w === win || w.open);
+        return;
+    }
+    if (activeNoteWindow === win) activateNoteWindow(getTopNoteWindow(others), false);
+    noteWindows = noteWindows.filter(w => w !== win);
+    setTimeout(() => { if (!win.open && activeNoteWindow !== win) win.el.remove(); }, 450);
+}
+
+// "Close all notes" in the boards menu: one question for all the windows with unsaved changes.
+async function closeAllNoteWindows() {
+    const open = getOpenNoteWindows();
+    if (!open.length) return;
+    const dirty = open.filter(w => withNoteWindow(w, () => !!getNoteUnsavedKind()));
+    if (dirty.length) {
+        const msg = (_('closeAllNotesConfirm') || 'Unsaved changes in {count} notes. Save them before closing?').replace('{count}', dirty.length);
+        const answer = await showConfirmation(msg, { showCancel: true });
+        if (answer === 'cancel') return;
+        if (answer === true) {
+            dirty.forEach(w => {
+                if (!w.open) return;
+                withNoteWindow(w, () => {
+                    if (getNoteUnsavedKind() === 'ui') enableNoteEditing(w.body);
+                    saveEditedNote(true);
+                });
+            });
+        }
+    }
+    getOpenNoteWindows().forEach(w => w.el.classList.remove('visible'));
+}
+window.closeAllNoteWindows = closeAllNoteWindows;
+
+// Background sync took a newer version of a note in. A window without the user's changes takes it
+// quietly and shows a quiet "updated" trace; a window with unsaved changes is not touched: it says
+// the note was changed elsewhere and asks. No changes of the user's - no question, ever.
+function refreshNoteWindowsAfterSync(changedNotes) {
+    (changedNotes || []).forEach(note => {
+        const win = findNoteWindow(note.id, note.gdid);
+        if (!win) return;
+        const kind = withNoteWindow(win, () => getNoteUnsavedKind());
+        if (kind === 'edit') showNoteWindowChangedElsewhere(win, note);
+        else refreshNoteWindowContent(win, note, true);
+    });
+}
+
+function refreshNoteWindowContent(win, note, withTrace) {
+    if (!win.open) return;
+    const isExpanded = win.body.dataset.isExpanded === 'true';
+    let editorSize = null;
+    try { editorSize = win.body.dataset.editorSize ? JSON.parse(win.body.dataset.editorSize) : null; } catch (e) { editorSize = null; }
+    withNoteWindow(win, () => {
+        if (win.body.querySelector('textarea') || win.body.dataset.isPreview === 'true') disableNoteEditing(win.body);
+    });
+    showModal({
+        raw: note.notetxt || '',
+        format: note.text_span,
+        titleFormat: note.title_span,
+        color: getNoteColorCss(note.color),
+        boardId: note.boardid,
+        id: note.id,
+        gdid: note.gdid,
+        datemod: note.datemod,
+        originalNote: note,
+        uiState: { ...getNoteUiState(note.uiState), isExpanded, ...(editorSize ? { editorSize } : {}) },
+        noteWindow: win
+    }, document.querySelector(`.note[data-g="${note.gdid}"]`) || document.querySelector(`.note[data-i="${note.id}"]`));
+    win.el.querySelector('.note-window-sync-banner')?.remove();
+    if (withTrace) showNoteWindowSyncTrace(win);
+}
+
+function showNoteWindowSyncTrace(win) {
+    win.box.querySelector('.note-window-sync-trace')?.remove();
+    const trace = document.createElement('div');
+    trace.className = 'note-window-sync-trace';
+    trace.textContent = _('noteWindowUpdated') || 'updated';
+    win.box.appendChild(trace);
+    setTimeout(() => trace.classList.add('is-fading'), 2200);
+    setTimeout(() => trace.remove(), 3000);
+}
+
+function showNoteWindowChangedElsewhere(win, note) {
+    win.body.parentNode.querySelector('.note-window-sync-banner')?.remove();
+    const banner = document.createElement('div');
+    banner.className = 'note-window-sync-banner';
+    const text = document.createElement('span');
+    text.textContent = _('noteChangedElsewhere') || 'This note was changed elsewhere.';
+    const takeBtn = document.createElement('button');
+    takeBtn.type = 'button';
+    takeBtn.className = 'note-window-sync-take';
+    takeBtn.textContent = _('noteChangedElsewhereTake') || 'Load the new version';
+    const keepBtn = document.createElement('button');
+    keepBtn.type = 'button';
+    keepBtn.className = 'note-window-sync-keep';
+    keepBtn.textContent = _('noteChangedElsewhereKeep') || 'Keep mine';
+    banner.append(text, takeBtn, keepBtn);
+    takeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fresh = allNotesData.find(n => (n.gdid && String(n.gdid) === String(note.gdid)) || (n.id && String(n.id) === String(note.id))) || note;
+        refreshNoteWindowContent(win, fresh, false);
+    });
+    keepBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // My save goes over the new version: it becomes the base, so the save does not merge or ask again.
+        win.body.dataset.baseDatemod = String(note.datemod || Date.now());
+        win.body.dataset.baseNote = JSON.stringify(note);
+        banner.remove();
+    });
+    win.body.parentNode.insertBefore(banner, win.body);
+}
+
+// Every listener a window needs, on its own elements (cloneNode copies none).
+function wireNoteWindow(win) {
+    const { el, box, body } = win;
+    const pick = (mwid) => el.querySelector(`[data-mwid="${mwid}"]`);
+    // A press or a focus anywhere in a window makes it the active one, before any of its own handlers.
+    const activate = () => { if (noteWindows.includes(win)) activateNoteWindow(win, true); };
+    el.addEventListener('pointerdown', activate, true);
+    el.addEventListener('mousedown', activate, true);
+    el.addEventListener('touchstart', activate, { capture: true, passive: true });
+    el.addEventListener('focusin', activate, true);
+    el.addEventListener('click', (e) => {
+        if (win.suppressClick) {
+            win.suppressClick = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        activate();
+    }, true);
+    // Clicks inside a window must not reach the notes underneath.
+    el.addEventListener('click', (e) => e.stopPropagation());
+
+    new MutationObserver(() => {
+        if (el.classList.contains('visible')) return;
+        if (activeNoteWindow === win) setExpandedModalFloatingControls(false);
+        if (!win.open) return;
+        win.open = false;
+        onNoteWindowClosed(win);
+    }).observe(el, { attributes: true, attributeFilter: ['class'] });
+
+    // --- Calculator button: click, Ctrl+click and a long press ---
+    const calculateBtn = pick('calculate-modal-btn');
+    if (calculateBtn) {
+        let longPressTimer;
+        let isLongPress = false;
+        calculateBtn.addEventListener('click', (e) => {
+            if (isLongPress) {
+                isLongPress = false;
+                return;
+            }
+            handleCalculateClick(!!e.ctrlKey);
+        });
+        const startPress = () => {
+            isLongPress = false;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true;
+                handleCalculateClick(true);
+            }, 500);
+        };
+        const endPress = () => clearTimeout(longPressTimer);
+        calculateBtn.addEventListener('mousedown', startPress);
+        calculateBtn.addEventListener('mouseup', endPress);
+        calculateBtn.addEventListener('mouseleave', endPress);
+        calculateBtn.addEventListener('touchstart', startPress, { passive: true });
+        calculateBtn.addEventListener('touchend', endPress);
+    }
+
+    // --- Copy: the selection inside this window, else the whole note ---
+    const copyButton = win.copyBtn;
+    if (copyButton) {
+        copyButton.innerHTML = copyIconSvg;
+        copyButton.addEventListener('click', () => {
+            if (!navigator.clipboard) return;
+            const selection = window.getSelection();
+            let textToCopy = '';
+            if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+                const range = selection.getRangeAt(0);
+                if (body.contains(range.commonAncestorContainer)) textToCopy = selection.toString();
+            }
+            if (textToCopy === '') textToCopy = getNoteWindowRaw(win)?.trim() || '';
+            if (textToCopy) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    copyButton.innerHTML = '&#10003;';
+                    setTimeout(() => { copyButton.innerHTML = copyIconSvg; }, 5000);
+                }).catch(() => {
+                    showToast(_('errorCopyFailed'));
+                });
+            }
+        });
+    }
+
+    const pasteModalBtn = pick('paste-modal-btn');
+    if (pasteModalBtn) {
+        pasteModalBtn.style.display = 'none';
+        pasteModalBtn.addEventListener('click', async () => {
+            const textarea = getActiveModalEditor();
+            if (!textarea) return;
+            try {
+                if (!navigator.clipboard?.readText) throw new Error('Clipboard access is unavailable');
+                const clipboardText = await navigator.clipboard.readText();
+                textarea.setRangeText(clipboardText, textarea.selectionStart, textarea.selectionEnd, 'end');
+                textarea.focus();
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                scrollCaretIntoView(textarea);
+            } catch (error) {
+                console.warn('Failed to paste from clipboard:', error);
+                showToast((typeof _ === 'function' && _('errorClipboardRead')) || 'Неуспешно четене от клипборда.');
+            }
+        });
+    }
+
+    const closeBtn = el.querySelector('.modal-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', async () => {
+            if (!(await checkUnsavedChanges())) return;
+            el.classList.remove('visible');
+            if (win.copyBtn) win.copyBtn.style.display = 'flex';
+            if (pasteModalBtn) pasteModalBtn.style.display = 'none';
+            el.classList.remove('popup-mode');
+        });
+    }
+
+    ['bullet', 'numbered'].forEach(kind => {
+        pick(kind + '-list-btn')?.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const activeTextarea = document.activeElement;
+            if (activeTextarea && (isNoteEditBodyField(activeTextarea) || activeTextarea.id === 'note-edit-title-textarea')) {
+                toggleListFormat(activeTextarea, kind);
+            }
+        });
+    });
+
+    body.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+    // formatText and the demo note change the font size: back to the setting once the window is closed.
+    el.addEventListener('transitionend', () => {
+        if (!el.classList.contains('visible')) body.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+    });
+
+    wireNoteWindowResize(win, el.querySelector('.modal-resize-handle'));
+    wireNoteWindowMove(win);
+}
+
+// The resize handle: a drag sizes this window and this note only (it no longer changes the size new
+// notes open with). Ctrl+drag / a hold on a touch screen also stores the size in the note itself.
+function wireNoteWindowResize(win, resizeHandle) {
+    if (!resizeHandle) return;
+    const modalContentBox = win.box;
+    let startX, startY, startWidth, startHeight, isIndividualResize = false, individualResizeTimer = null;
+    function doDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Обикновеното движение преди long-press запазва обикновения resize режим.
+        if (e.type === 'touchmove' && individualResizeTimer) {
+            clearTimeout(individualResizeTimer);
+            individualResizeTimer = null;
+        }
+        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+        const newWidth = Math.round(startWidth + currentX - startX);
+        const newHeight = Math.round(startHeight + currentY - startY);
+        modalContentBox.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px'; // Limited by screen width
+        modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
+        modalContentBox.style.maxWidth = '100vw';
+        modalContentBox.style.maxHeight = 'none';
+    }
+    function stopDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        document.documentElement.removeEventListener('mousemove', doDrag, false);
+        document.documentElement.removeEventListener('mouseup', stopDrag, false);
+        document.documentElement.removeEventListener('touchmove', doDrag, false);
+        document.documentElement.removeEventListener('touchend', stopDrag, false);
+        clearTimeout(individualResizeTimer);
+        individualResizeTimer = null;
+        if (isIndividualResize) {
+            win.body.dataset.editorSize = JSON.stringify({
+                width: Math.round(modalContentBox.getBoundingClientRect().width),
+                height: Math.round(modalContentBox.getBoundingClientRect().height)
+            });
+            withNoteWindow(win, () => updateModalUiStateSaveUI());
+        }
+        writeNoteWindowGeometry(win);
+        isIndividualResize = false;
+        resizeHandle.classList.remove('individual-resize-active');
+    }
+    function startDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        isIndividualResize = !!e.ctrlKey;
+        clearTimeout(individualResizeTimer);
+        if (e.type === 'touchstart') {
+            // Задръж дръжката преди влачене, за да запишеш размера и в самата бележка.
+            individualResizeTimer = setTimeout(() => {
+                isIndividualResize = true;
+                resizeHandle.classList.add('individual-resize-active');
+                if (navigator.vibrate) navigator.vibrate(40);
+                if (typeof showToast === 'function') showToast('Индивидуален размер', 1200);
+            }, 450);
+        }
+        startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
+        startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
+        document.documentElement.addEventListener('mousemove', doDrag, false);
+        document.documentElement.addEventListener('mouseup', stopDrag, false);
+        document.documentElement.addEventListener('touchmove', doDrag, false);
+        document.documentElement.addEventListener('touchend', stopDrag, false);
+    }
+    resizeHandle.addEventListener('mousedown', startDrag);
+    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
+    resizeHandle.title = _('resizeHandleTooltip') || 'Drag: size of this note · Ctrl+drag / hold on mobile: keep the size in the note';
+    resizeHandle.setAttribute('aria-label', resizeHandle.title);
+    resizeHandle.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 21h13V8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            <path d="M12 21h9v-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            <circle cx="8" cy="16" r="1.5" fill="currentColor" />
+            <circle cx="13" cy="16" r="1.5" fill="currentColor" />
+            <circle cx="8" cy="11" r="1.5" fill="currentColor" />
+        </svg>`;
+}
+
+// Moving a window: drag its header band (the empty strip or the board name; a drag that moved does
+// not count as a click on the board name). Buttons keep their clicks.
+function wireNoteWindowMove(win) {
+    const box = win.box;
+    let start = null;
+    const point = (e) => (e.touches && e.touches[0]) ? e.touches[0] : e;
+    const inHeaderBand = (e) => {
+        const t = e.target;
+        if (!t || !t.closest) return false;
+        if (win.body.dataset.isExpanded === 'true') return false;
+        if (t.closest('button, a, input, textarea, select, .modal-header-btn, .modal-edit-toolbar, #color-palette-dropdown, .nw-color-palette-dropdown')) return false;
+        if (t.closest('#modal-board-name, .nw-modal-board-name')) return true;
+        if (t !== box) return false;
+        const header = box.querySelector('.modal-header-toolbar');
+        const band = Math.max(header ? header.offsetHeight : 0, 40);
+        return point(e).clientY - box.getBoundingClientRect().top <= band;
+    };
+    const onMove = (e) => {
+        if (!start) return;
+        const p = point(e);
+        const dx = p.clientX - start.x, dy = p.clientY - start.y;
+        if (!start.moving) {
+            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+            start.moving = true;
+            win.el.classList.add('note-window-moving');
+        }
+        if (e.cancelable) e.preventDefault();
+        const vw = window.innerWidth, vh = window.innerHeight;
+        // Keep a piece of the header on the screen, so the window can always be taken back.
+        const left = Math.min(Math.max(start.left + dx, 60 - box.offsetWidth), vw - 60);
+        const top = Math.min(Math.max(start.top + dy, 0), vh - 40);
+        box.style.left = Math.round(left) + 'px';
+        box.style.top = Math.round(top) + 'px';
+    };
+    const onEnd = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onEnd);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onEnd);
+        document.removeEventListener('touchcancel', onEnd);
+        if (start && start.moving) {
+            win.el.classList.remove('note-window-moving');
+            win.suppressClick = true;
+            setTimeout(() => { win.suppressClick = false; }, 0);
+            win.slot = -1;
+            writeNoteWindowGeometry(win);
+        }
+        start = null;
+    };
+    const onStart = (e) => {
+        if (e.type === 'mousedown' && e.button !== 0) return;
+        if (!inHeaderBand(e)) return;
+        const p = point(e);
+        start = { x: p.clientX, y: p.clientY, left: parseFloat(box.style.left) || box.offsetLeft, top: parseFloat(box.style.top) || box.offsetTop, moving: false };
+        if (e.type === 'mousedown' && e.target === box) e.preventDefault(); // no text selection from the strip
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
+        document.addEventListener('touchcancel', onEnd);
+    };
+    box.addEventListener('mousedown', onStart);
+    box.addEventListener('touchstart', onStart, { passive: true });
+}
+
+// The first window exists from the start (idle), so #content-modal, #modal-body and the globals are
+// always there, as they were with the single modal.
+function initNoteWindows() {
+    if (noteWindows.length) return;
+    const win = createNoteWindow();
+    if (win) activateNoteWindow(win, true);
+}
+
+// Back to the app (the tab visible again, a return from the bfcache, the window focused): the open
+// notes are checked on Google Drive and a newer version is taken in exactly like the background
+// sync does it (refreshNoteWindowsAfterSync) - no page reload, no timer, only the open notes.
+let noteWindowsDriveCheck = null;
+let noteWindowsDriveCheckAt = 0;
+function checkOpenNoteWindowsOnDrive() {
+    if (document.visibilityState === 'hidden') return;
+    if (!useGoogleDb || isOffline) return;
+    // focus and visibilitychange arrive together: one check for both
+    if (noteWindowsDriveCheck || Date.now() - noteWindowsDriveCheckAt < 1500) return;
+    const targets = getOpenNoteWindows()
+        .map(w => ({ id: w.body.dataset.id || '', gdid: w.body.dataset.gdid || '' }))
+        .filter(t => t.gdid && t.gdid !== t.id && t.id !== 'promo'); // a temporary gdid is not on Drive yet
+    if (!targets.length) return;
+    noteWindowsDriveCheckAt = Date.now();
+    noteWindowsDriveCheck = (async () => {
+        const fetched = await Promise.all(targets.map(async t => {
+            try {
+                const raw = await fetchGDriveFileContent(t.gdid);
+                if (!raw) return null;
+                const data = JSON.parse(raw);
+                const sNote = Array.isArray(data) ? data[0] : data;
+                return (sNote && typeof sNote === 'object') ? { t, sNote } : null;
+            } catch (e) {
+                console.warn('[NoteWindows] Drive check failed:', t.gdid, e);
+                return null;
+            }
+        }));
+        const changed = [];
+        fetched.forEach(item => {
+            if (!item) return;
+            const { t, sNote } = item;
+            if (!sNote.gdid) sNote.gdid = t.gdid;
+            const local = allNotesData.find(n => (n.gdid && String(n.gdid) === String(t.gdid)) || (t.id && n.id && String(n.id) === String(t.id)));
+            const known = local || {};
+            const differs = (sNote.notetxt || '') !== (known.notetxt || '') || (sNote.text_span || '') !== (known.text_span || '')
+                || (sNote.title_span || '') !== (known.title_span || '') || sNote.color !== known.color;
+            const newer = (parseInt(sNote.datemod, 10) || 0) > (parseInt(known.datemod, 10) || 0);
+            if (!differs || !newer) return; // same text, or the local copy is the newer one (not uploaded yet)
+            if (local) Object.assign(local, sNote);
+            else allNotesData.push(sNote);
+            changed.push(local || sNote);
+        });
+        if (!changed.length) return;
+        if (useIndexedDb) {
+            try { await bulkPutDB(NOTE_STORE_NAME, changed, true); } catch (e) { console.warn('[NoteWindows] DB update failed:', e); }
+        }
+        refreshNoteWindowsAfterSync(changed);
+        for (const note of changed) {
+            const noteEl = document.querySelector(`.note[data-g="${note.gdid}"]`) || document.querySelector(`.note[data-i="${note.id}"]`);
+            if (!noteEl) continue;
+            try {
+                const updatedEl = await createNoteElement(note);
+                if (updatedEl) {
+                    updatedEl.style.display = noteEl.style.display; // createNoteElement hands the card back hidden
+                    noteEl.replaceWith(updatedEl);
+                }
+            } catch (e) { console.warn('[NoteWindows] Card refresh failed:', e); }
+        }
+    })().finally(() => { noteWindowsDriveCheck = null; });
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkOpenNoteWindowsOnDrive();
+});
+window.addEventListener('pageshow', () => checkOpenNoteWindowsOnDrive());
+window.addEventListener('focus', () => checkOpenNoteWindowsOnDrive());
+
+// Draws a note into its window (showModal picks the window; it is the active one meanwhile).
+function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, fresh = false) {
     let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
     const updateGDrive = useGoogleDb && !isOffline;
     if (typeof options === 'string') {
@@ -10053,8 +10568,13 @@ function showModal(options, noteElement = null) {
         applyExpandedModalSize(modalContentBox, false);
     } else {
         const editorSize = getValidEditorSize(uiState);
-        // Индивидуалният нормален размер има предимство пред глобалния.
-        if (editorSize) {
+        const windowGeometry = readNoteWindowGeometry(getNoteWindowGeometryKey(noteId, noteGdid));
+        // Размерът, с който тази бележка е оставена последно, после индивидуалният, после стандартният.
+        if (windowGeometry) {
+            modalContentBox.style.width = windowGeometry.w + 'px';
+            modalContentBox.style.height = windowGeometry.h + 'px';
+            applyExpandedModalSize(modalContentBox, false);
+        } else if (editorSize) {
             modalContentBox.style.width = editorSize.width + 'px';
             modalContentBox.style.height = editorSize.height + 'px';
             applyExpandedModalSize(modalContentBox, false);
@@ -10075,6 +10595,9 @@ function showModal(options, noteElement = null) {
         }
     }
     void modalContentBox.offsetHeight;
+    if (win && fresh) placeNoteWindow(win, getNoteWindowGeometryKey(noteId, noteGdid), isExpanded);
+    else if (win && isExpanded) syncNoteWindowExpandedPlace(win, true);
+    if (win) win.open = true;
     modalContentBox.style.transition = '';
     setExpandedModalFloatingControls(isExpanded);
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
@@ -10261,7 +10784,11 @@ function showModal(options, noteElement = null) {
                 applyExpandedModalSize(modalContentBox, true);
             } else {
                 const editorSize = getValidEditorSize(uiState);
-                if (editorSize) {
+                const windowGeometry = readNoteWindowGeometry(getNoteWindowGeometryKey(modalBody.dataset.id, modalBody.dataset.gdid));
+                if (windowGeometry) {
+                    modalContentBox.style.width = windowGeometry.w + 'px';
+                    modalContentBox.style.height = windowGeometry.h + 'px';
+                } else if (editorSize) {
                     modalContentBox.style.width = editorSize.width + 'px';
                     modalContentBox.style.height = editorSize.height + 'px';
                 } else {
@@ -10270,6 +10797,7 @@ function showModal(options, noteElement = null) {
                 }
                 applyExpandedModalSize(modalContentBox, false);
             }
+            syncNoteWindowExpandedPlace(activeNoteWindow, nextIsExpanded);
             updateModalExpandButton(nextIsExpanded);
             setExpandedModalFloatingControls(nextIsExpanded);
             updateModalUiStateSaveUI();
@@ -10635,8 +11163,9 @@ function showModal(options, noteElement = null) {
     }
     // Използваме requestAnimationFrame, за да гарантираме, че браузърът е приложил началните стилове (scale 0.7)
     // преди да добавим класа visible, за да се възпроизведе анимацията.
+    const shownModal = win ? win.el : contentModal;
     requestAnimationFrame(() => {
-        contentModal.classList.add('visible');
+        if (!win || win.open) shownModal.classList.add('visible');
     });
 
     // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
@@ -10802,8 +11331,9 @@ function showModal(options, noteElement = null) {
         const navigate = (direction) => {
             const newIndex = currentIndex + direction;
             if (newIndex >= 0 && newIndex < visibleNotes.length) {
-                // Симулираме клик върху съседната бележка, за да се отвори в модала
-                visibleNotes[newIndex].click();
+                // Симулираме клик върху съседната бележка: тя се отваря в същия прозорец
+                noteWindowNavInPlace = true;
+                try { visibleNotes[newIndex].click(); } finally { noteWindowNavInPlace = false; }
             }
         };
 
@@ -11509,6 +12039,21 @@ function showAllBoardsModal(onSelectCallback = null) {
             }
         }
     });
+    // Several notes open: one button closes them all (one question for all the unsaved ones).
+    if (!onSelectCallback && getOpenNoteWindows().length) {
+        const closeAllBtn = document.createElement('button');
+        closeAllBtn.type = 'button';
+        closeAllBtn.id = 'close-all-notes-btn';
+        closeAllBtn.className = 'zoom-btn';
+        closeAllBtn.textContent = _('closeAllNotes') || 'Close all notes';
+        closeAllBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            boardsModal.classList.remove('visible');
+            await closeAllNoteWindows();
+        });
+        modalContent.appendChild(closeAllBtn);
+    }
     const boardsModalBody = document.getElementById('boards-menu-modal-body');
     boardsModalBody.innerHTML = '';
     boardsModalBody.appendChild(modalContent);
@@ -11580,6 +12125,7 @@ function formatTime(timestamp) {
 }
 // Add an event listener to the modal's close button to reset button visibility
 document.querySelectorAll('.modal-close').forEach(btn => {
+    if (btn.closest('.note-window')) return; // the note windows reset themselves (wireNoteWindow)
     btn.addEventListener('click', () => {
         copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
         const pasteModalBtn = document.getElementById('paste-modal-btn');
@@ -18299,25 +18845,15 @@ document.addEventListener('keydown', (e) => {
         }
     }
 }, true);
-document.getElementById('bullet-list-btn')?.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    const activeTextarea = document.activeElement;
-    if (activeTextarea && (isNoteEditBodyField(activeTextarea) || activeTextarea.id === 'note-edit-title-textarea')) {
-        toggleListFormat(activeTextarea, 'bullet');
-    }
-});
-document.getElementById('numbered-list-btn')?.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    const activeTextarea = document.activeElement;
-    if (activeTextarea && (isNoteEditBodyField(activeTextarea) || activeTextarea.id === 'note-edit-title-textarea')) {
-        toggleListFormat(activeTextarea, 'numbered');
-    }
-});
-
 // --- Escape key to close modals ---
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-        const visibleModal = document.querySelector('.modal-overlay.visible');
+        let visibleModal = document.querySelector('.modal-overlay.visible');
+        // Several note windows: Escape closes the one in front.
+        if (visibleModal && visibleModal.classList.contains('note-window')) {
+            const front = (activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : getTopNoteWindow();
+            if (front) visibleModal = front.el;
+        }
         if (visibleModal) {
             const closeBtn = visibleModal.querySelector('.modal-close');
             if (closeBtn) {
@@ -20523,35 +21059,29 @@ function noteEditOpenedState(modalBodyElem, includeTitle, maskedLinks, noteObj) 
         modalBodyElem.dataset.initialEditTitleText, modalBodyElem.dataset.initialTitleFormat, includeTitle, maskedLinks);
 }
 
-async function checkUnsavedChanges(isClosingModal = true) {
+// What closing the active note window would lose, without asking: '' (nothing), 'ui' (only the
+// expanded state / the note's own size) or 'edit' (the text, its formats or the colour).
+function getNoteUnsavedKind() {
     const modalBodyElem = document.getElementById('modal-body');
-    if (!modalBodyElem) return true;
+    if (!modalBodyElem) return '';
     const textarea = document.getElementById('note-edit-textarea');
     const titleTextarea = document.getElementById('note-edit-title-textarea');
     const saveBtn = document.getElementById('note-save-btn');
     const isEditingOrPreviewing = (textarea || titleTextarea) || (saveBtn && saveBtn.style.display !== 'none');
     const hasUiStateChanged = hasModalUiStateChanges();
-    if (!isEditingOrPreviewing && !hasUiStateChanged) return true;
-    if (!isEditingOrPreviewing && hasUiStateChanged) {
-        const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
-        if (confirmed) {
-            enableNoteEditing(modalBodyElem);
-            await saveEditedNote();
-            return false;
-        }
-        return true;
-    }
+    if (!isEditingOrPreviewing && !hasUiStateChanged) return '';
+    if (!isEditingOrPreviewing && hasUiStateChanged) return 'ui';
     const isNewNote = modalBodyElem.dataset.isNewNote === 'true';
     const newBodyTextRaw = textarea ? textarea.value : (modalBodyElem.dataset.draftText || "");
     const newTitleTextRaw = titleTextarea ? titleTextarea.value : (modalBodyElem.dataset.draftTitle || "");
     if (isNewNote) {
         const isNewNoteWithContent = (newBodyTextRaw.trim() !== "" || newTitleTextRaw.trim() !== "");
-        if (!isNewNoteWithContent) return true;
+        if (!isNewNoteWithContent) return '';
     } else {
         const noteGdid = modalBodyElem.dataset.gdid;
         const noteId = modalBodyElem.dataset.id;
         const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
-        if (!noteObj) return true;
+        if (!noteObj) return '';
         const isPreview = modalBodyElem.dataset.isPreview === 'true';
         const formatStr = isPreview ? (modalBodyElem.dataset.previewDraftFormat || "") : (modalBodyElem.dataset.format || "");
         const titleFormatStr = isPreview ? (modalBodyElem.dataset.previewDraftTitleFormat || "") : (modalBodyElem.dataset.titleFormat || "");
@@ -20577,21 +21107,31 @@ async function checkUnsavedChanges(isClosingModal = true) {
         const initialColor = (noteObj.color !== undefined) ? noteObj.color : 0;
         const currentColor = getModalColorValue(modalBodyElem, initialColor);
         const hasColorChanged = currentColor !== initialColor;
-        if (!hasEditorChanged && !hasColorChanged && !hasUiStateChanged) return true;
+        if (!hasEditorChanged && !hasColorChanged && !hasUiStateChanged) return '';
     }
+    return 'edit';
+}
+
+async function checkUnsavedChanges(isClosingModal = true) {
+    const kind = getNoteUnsavedKind();
+    if (!kind) return true;
+    const win = activeNoteWindow;
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
+    // The question may have taken a while: the answer belongs to the window that asked.
+    if (win && noteWindows.includes(win)) activateNoteWindow(win, false);
     if (confirmed) {
+        if (kind === 'ui') enableNoteEditing(document.getElementById('modal-body'));
         await saveEditedNote();
         return false;
-    } else {
-        return true;
     }
+    return true;
 }
 
 // Unified Save Logic
 function saveEditedNote(forceClose = false) {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return;
+    const saveWindow = activeNoteWindow; // the refresh after the save goes to this window, wherever the user is by then
     const closeAfterSave = forceClose || (localStorage.getItem('closeAfterSave') === 'true');
     if (closeAfterSave) {
         const contentModal = document.getElementById('content-modal');
@@ -20676,7 +21216,8 @@ function saveEditedNote(forceClose = false) {
                 gdid: modalGdid,
                 maskedLinks: maskedLinks,
                 datemod: modalNoteObj ? modalNoteObj.datemod : undefined,
-                uiState: currentUiState
+                uiState: currentUiState,
+                noteWindow: saveWindow
             }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
             // Запазваме dataset-а за saveEditedNote (може да е нужен след preview)
             const newMbe = document.getElementById('modal-body');
@@ -20958,7 +21499,8 @@ function saveEditedNote(forceClose = false) {
                     gdid: noteObj.gdid,
                     datemod: noteObj.datemod,
                     originalNote: noteObj,
-                    uiState: noteObj.uiState
+                    uiState: noteObj.uiState,
+                    noteWindow: saveWindow
                 }, document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`));
             }
         }
@@ -21135,7 +21677,8 @@ function previewEditedNote() {
             gdid: noteGdid,
             maskedLinks: maskedLinks,
             uiState: currentUiState,
-            isNewNote: modalBodyElem.dataset.isNewNote === 'true'
+            isNewNote: modalBodyElem.dataset.isNewNote === 'true',
+            noteWindow: activeNoteWindow
         }, modalNoteObj ? (document.querySelector(`.note[data-g="${modalNoteObj.gdid}"]`) || document.querySelector(`.note[data-i="${modalNoteObj.id}"]`)) : null);
         const previewModalBox = document.querySelector('#content-modal .modal-content-box');
         if (previewModalBox && noteColorStr) {
@@ -23149,3 +23692,6 @@ async function cleanupOrphanedImages() {
 
 // Задаваме периодична проверка за осиротели изображения
 // setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
+
+// The first (idle) note window, so #content-modal and #modal-body exist from the start.
+initNoteWindows();

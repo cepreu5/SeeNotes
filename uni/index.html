@@ -310,16 +310,18 @@
         </div>
     </div>
 
-    <div id="content-modal" class="modal-overlay">
+    <!-- Note window template (b1.82): every open note is a clone of it inside #note-windows-layer.
+         Inner ids live in data-mwid + .nw-<id>; only the active window carries them as real ids. -->
+    <div id="content-modal-template" class="modal-overlay note-window" data-mwid="content-modal" style="display: none;">
         <div class="modal-content-box">
             <div class="modal-header-toolbar">
-                <div id="modal-board-name"></div>
+                <div data-mwid="modal-board-name" class="nw-modal-board-name"></div>
                 <div class="modal-header-buttons">
-                    <button id="prev-note-btn" class="modal-nav-btn" data-key-title="prevNoteTooltip"
+                    <button data-mwid="prev-note-btn" class="modal-nav-btn nw-prev-note-btn" data-key-title="prevNoteTooltip"
                         title="Previous note">&lt;</button>
-                    <button id="next-note-btn" class="modal-nav-btn" data-key-title="nextNoteTooltip"
+                    <button data-mwid="next-note-btn" class="modal-nav-btn nw-next-note-btn" data-key-title="nextNoteTooltip"
                         title="Next note">&gt;</button>
-                    <button id="bullet-list-btn" class="modal-nav-btn" data-key-title="bulletListTooltip"
+                    <button data-mwid="bullet-list-btn" class="modal-nav-btn nw-bullet-list-btn" data-key-title="bulletListTooltip"
                         title="Bulleted list" style="display: none;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -331,7 +333,7 @@
                             <line x1="3" y1="18" x2="3.01" y2="18"></line>
                         </svg>
                     </button>
-                    <button id="numbered-list-btn" class="modal-nav-btn" data-key-title="numberedListTooltip"
+                    <button data-mwid="numbered-list-btn" class="modal-nav-btn nw-numbered-list-btn" data-key-title="numberedListTooltip"
                         title="Numbered list" style="display: none;">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -343,7 +345,7 @@
                             <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path>
                         </svg>
                     </button>
-                    <button id="calculate-modal-btn" data-key-title="calculateTooltip" title="Calculate expression">
+                    <button data-mwid="calculate-modal-btn" class="nw-calculate-modal-btn" data-key-title="calculateTooltip" title="Calculate expression">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -357,8 +359,8 @@
                             <line x1="16" y1="17" x2="16" y2="17.01" />
                         </svg>
                     </button>
-                    <button id="copy-modal-btn" data-key-title="copyTooltip" title="Copy content"></button>
-                    <button id="paste-modal-btn" data-key-title="pasteFromClipboardTooltip" title="Paste from clipboard"
+                    <button data-mwid="copy-modal-btn" class="nw-copy-modal-btn" data-key-title="copyTooltip" title="Copy content"></button>
+                    <button data-mwid="paste-modal-btn" class="nw-paste-modal-btn" data-key-title="pasteFromClipboardTooltip" title="Paste from clipboard"
                         style="display: none;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -368,7 +370,7 @@
                             <path d="m18 9 4 4-4 4"></path>
                         </svg>
                     </button>
-                    <button id="delete-modal-btn" data-key-title="deleteNoteTooltip" title="Delete note">
+                    <button data-mwid="delete-modal-btn" class="nw-delete-modal-btn" data-key-title="deleteNoteTooltip" title="Delete note">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                             stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -379,15 +381,16 @@
                             <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
                         </svg>
                     </button>
-                    <button id="modal-expand-btn" class="modal-header-btn" data-key-title="modalExpandTooltip"
+                    <button data-mwid="modal-expand-btn" class="modal-header-btn nw-modal-expand-btn" data-key-title="modalExpandTooltip"
                         title="Expand modal">&#9650;</button>
                     <button class="modal-close" data-key-title="closeButton" title="Close">&times;</button>
                 </div>
             </div>
-            <div id="modal-body"></div>
+            <div data-mwid="modal-body" class="nw-modal-body"></div>
             <div class="modal-resize-handle"></div>
         </div>
     </div>
+    <div id="note-windows-layer"></div>
 
     <!-- Нов, отделен модал за менюто с бордове -->
     <div id="boards-menu-modal" class="modal-overlay">
