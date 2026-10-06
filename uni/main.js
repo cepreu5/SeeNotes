@@ -12103,8 +12103,11 @@ function showAllBoardsModal(onSelectCallback = null) {
             }
         }
     });
-    // Several notes open: one button closes them all (one question for all the unsaved ones).
-    if (!onSelectCallback && getOpenNoteWindows().length) {
+    // One square closes all the open notes (one question for all the unsaved ones). It is ALWAYS in the
+    // menu (b1.84): it used to be drawn only while a note window was open, so right after a reload -- when
+    // every window is gone -- the menu showed no such button at all. With nothing open it is dimmed and
+    // the click just closes the menu (closeAllNoteWindows returns at once on an empty list).
+    if (!onSelectCallback) {
         // A square of the grid, as wide as Reorder / Fullscreen (b1.83)
         const closeAllBtn = document.createElement('span');
         closeAllBtn.id = 'close-all-notes-btn';
@@ -12122,6 +12125,11 @@ function showAllBoardsModal(onSelectCallback = null) {
         closeAllBtn.textContent = '×';
         closeAllBtn.title = _('closeAllNotes') || 'Close all notes';
         closeAllBtn.setAttribute('aria-label', closeAllBtn.title);
+        if (!getOpenNoteWindows().length) {
+            closeAllBtn.style.backgroundColor = '#90A4AE';
+            closeAllBtn.style.opacity = '0.65';
+            closeAllBtn.dataset.noOpenNotes = 'true';
+        }
         closeAllBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
