@@ -10096,9 +10096,19 @@ async function closeAllNoteWindows() {
             });
         }
     }
-    getOpenNoteWindows().forEach(w => w.el.classList.remove('visible'));
+    getOpenNoteWindows().forEach(closeNoteWindow);
 }
 window.closeAllNoteWindows = closeAllNoteWindows;
+
+// A window opened a moment ago gets 'visible' only in the next frame: closing it then must not let it appear.
+function closeNoteWindow(win) {
+    if (win.el.classList.contains('visible')) {
+        win.el.classList.remove('visible');
+    } else if (win.open) {
+        win.open = false;
+        onNoteWindowClosed(win);
+    }
+}
 
 // Background sync took a newer version of a note in. A window without the user's changes takes it
 // quietly and shows a quiet "updated" trace; a window with unsaved changes is not touched: it says
@@ -10200,8 +10210,13 @@ function wireNoteWindow(win) {
     // Clicks inside a window must not reach the notes underneath.
     el.addEventListener('click', (e) => e.stopPropagation());
 
+    // Closed = 'visible' taken away (by the X, Escape, a save that closes, any old code path).
+    let wasVisible = false;
     new MutationObserver(() => {
-        if (el.classList.contains('visible')) return;
+        const visible = el.classList.contains('visible');
+        const closed = wasVisible && !visible;
+        wasVisible = visible;
+        if (!closed) return;
         if (activeNoteWindow === win) setExpandedModalFloatingControls(false);
         if (!win.open) return;
         win.open = false;
