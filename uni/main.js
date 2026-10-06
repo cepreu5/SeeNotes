@@ -14713,6 +14713,12 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
+// Разделителна клетка на Markdown таблица: двоеточия и тирета. Интервалите вътре в клетката
+// (| : --- | --- : |) не я променят, затова се махат преди проверката.
+function isMarkdownTableSeparatorCell(cell) {
+    return /^:?-+:?$/.test(cell.replace(/\s+/g, ''));
+}
+
 function parseAllMarkdownTables(text) {
     if (!text || !text.includes('|')) return [];
     let maskedText = text.replace(/\{\{([\s\S]*?)\}\}/g, m => m.replace(/[^\r\n]/g, ' '));
@@ -14734,7 +14740,7 @@ function parseAllMarkdownTables(text) {
         let sepIdx = -1;
         for (let j = i; j < tableLinesInfo.length; j++) {
             const cells = tableLinesInfo[j].line.split('|').map(cell => cell.trim()).filter(Boolean);
-            if (cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell))) {
+            if (cells.length > 0 && cells.every(isMarkdownTableSeparatorCell)) {
                 sepIdx = j;
                 break;
             }
@@ -18987,7 +18993,7 @@ function collectAlignableMarkdownTables(text) {
     });
     const isSeparator = (maskedLine) => {
         const cells = maskedLine.split('|').map(cell => cell.trim()).filter(Boolean);
-        return cells.length > 0 && cells.every(cell => /^:?-{1,}:?$/.test(cell));
+        return cells.length > 0 && cells.every(isMarkdownTableSeparatorCell);
     };
     // Like the preview parser, a row may lack its leading and/or trailing |; openLead/openTrail
     // mark that, and the first/last cell then starts/ends at the row's first/last visible character.
@@ -19047,7 +19053,10 @@ function collectAlignableMarkdownTables(text) {
                 }
                 const last = lines[runEnd];
                 // Column count as the preview draws it: shorter rows are padded with empty cells.
-                const columns = Math.max(...rows.map(row => row.cells.length));
+                // The separator row is not counted (the preview draws the header and the data rows
+                // only), so a divider with a surplus cell (| - | :-: | - |) cannot add a column that
+                // every row then gets padded with.
+                const columns = Math.max(...rows.filter(row => !row.isSeparator).map(row => row.cells.length));
                 tables.push({ rows, columns, start: lines[sep - 1].offset, end: last.offset + last.raw.length });
             }
         }
