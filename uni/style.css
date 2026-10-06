@@ -3789,9 +3789,13 @@ body.selection-locked .note.active-selection-note .note-content {
     position: static !important;
     grid-column: 1;
     grid-row: 1;
-    max-width: none;
+    /* Only the name itself is clickable: it is as wide as its text (cut with … when long). The rest of
+       the strip lets the press through to the box (pointer-events: none on the toolbar), which drags
+       the window and does nothing on a click (b1.83). */
+    justify-self: start;
+    width: fit-content;
+    max-width: 100%;
     min-width: 0;
-    flex: 1 1 auto;
     pointer-events: auto;
     font-size: 1.1em;
     overflow: hidden;
@@ -4205,7 +4209,23 @@ body.selection-locked .note.active-selection-note .note-content {
     color: #222;
     cursor: pointer;
 }
+/* "Close all notes": one more square in the boards menu grid, next to Reorder / Fullscreen. */
 #close-all-notes-btn {
-    width: 100%;
-    margin-top: 10px;
+    font-size: 1.5em;
+    line-height: 1;
+}
+/* Single note mode (b1.83): the shade under the top note window, as the one modal had it before b1.82.
+   It sits inside #note-windows-layer right below the top window (main.js places it), so it takes
+   every press meant for the list, the boards or any other note window; a press on it closes the note. */
+#single-note-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+#single-note-overlay.visible {
+    display: block;
 }

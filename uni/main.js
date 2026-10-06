@@ -9855,6 +9855,49 @@ function raiseNoteWindow(win) {
             .forEach(w => { w.el.style.zIndex = String(++noteWindowZ); });
     }
     win.el.style.zIndex = String(++noteWindowZ);
+    updateSingleNoteOverlay();
+}
+
+// Single note mode (setting, b1.83): a shade right under the top open window, inside the layer,
+// takes every press meant for the page or another window. A press on it closes the note like the X.
+// Like defaultNoteBg it lives in local storage; the profile carries it because 'singleNoteMode' is in
+// appSettingsKeys: only a profile save writes it (the checkbox does not), loading a profile applies it.
+function isSingleNoteMode() {
+    return localStorage.getItem('singleNoteMode') === 'true';
+}
+
+// After a profile load: the checkbox and the shade follow the loaded value at once.
+function applySingleNoteModeSetting() {
+    const checkbox = document.getElementById('single-note-mode-checkbox');
+    if (checkbox) checkbox.checked = isSingleNoteMode();
+    updateSingleNoteOverlay();
+}
+
+function updateSingleNoteOverlay() {
+    const layer = document.getElementById('note-windows-layer');
+    if (!layer) return;
+    let overlay = document.getElementById('single-note-overlay');
+    const top = isSingleNoteMode() ? getTopNoteWindow() : null;
+    if (!top) {
+        overlay?.classList.remove('visible');
+        return;
+    }
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'single-note-overlay';
+        overlay.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const win = getTopNoteWindow();
+            if (!win) return;
+            activateNoteWindow(win, true);
+            win.el.querySelector('.modal-close')?.click();
+        });
+    }
+    // Same z-index as the top window and right before it in the layer: above every other window, below it.
+    overlay.style.zIndex = top.el.style.zIndex || String(NOTE_WINDOW_Z_BASE);
+    if (overlay.parentNode !== layer || overlay.nextSibling !== top.el) layer.insertBefore(overlay, top.el);
+    overlay.classList.add('visible');
 }
 
 // Runs fn with win as "the" modal (ids and globals), then hands them back. Only the synchronous
@@ -10070,10 +10113,12 @@ function onNoteWindowClosed(win) {
         setExpandedModalFloatingControls(false);
         noteWindows.filter(w => w !== win && !w.open).forEach(w => w.el.remove());
         noteWindows = noteWindows.filter(w => w === win || w.open);
+        updateSingleNoteOverlay();
         return;
     }
     if (activeNoteWindow === win) activateNoteWindow(getTopNoteWindow(others), false);
     noteWindows = noteWindows.filter(w => w !== win);
+    updateSingleNoteOverlay();
     setTimeout(() => { if (!win.open && activeNoteWindow !== win) win.el.remove(); }, 450);
 }
 
@@ -10613,6 +10658,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     if (win && fresh) placeNoteWindow(win, getNoteWindowGeometryKey(noteId, noteGdid), isExpanded);
     else if (win && isExpanded) syncNoteWindowExpandedPlace(win, true);
     if (win) win.open = true;
+    updateSingleNoteOverlay();
     modalContentBox.style.transition = '';
     setExpandedModalFloatingControls(isExpanded);
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
@@ -10655,8 +10701,11 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
                 // Clean old event listeners
                 const newEl = modalBoardNameEl.cloneNode(true);
                 modalBoardNameEl.parentNode.replaceChild(newEl, modalBoardNameEl);
-                newEl.addEventListener('click', () => {
-                    document.getElementById('content-modal').classList.remove('visible');
+                const boardNameWin = win || activeNoteWindow;
+                newEl.addEventListener('click', async () => {
+                    // Same way as the X: ask about unsaved changes first, then close this window (b1.83)
+                    if (!(await checkUnsavedChanges())) return;
+                    if (boardNameWin) closeNoteWindow(boardNameWin);
                     const boardBtn = document.querySelector(`.board-filter-link[data-boardid="${board.gdid}"]`);
                     if (boardBtn) {
                         boardBtn.click();
@@ -12056,11 +12105,23 @@ function showAllBoardsModal(onSelectCallback = null) {
     });
     // Several notes open: one button closes them all (one question for all the unsaved ones).
     if (!onSelectCallback && getOpenNoteWindows().length) {
-        const closeAllBtn = document.createElement('button');
-        closeAllBtn.type = 'button';
+        // A square of the grid, as wide as Reorder / Fullscreen (b1.83)
+        const closeAllBtn = document.createElement('span');
         closeAllBtn.id = 'close-all-notes-btn';
-        closeAllBtn.className = 'zoom-btn';
-        closeAllBtn.textContent = _('closeAllNotes') || 'Close all notes';
+        closeAllBtn.classList.add('board-filter-link');
+        closeAllBtn.dataset.boardid = 'close-all-notes';
+        closeAllBtn.style.backgroundColor = '#546E7A';
+        closeAllBtn.style.color = '#fff';
+        closeAllBtn.style.cursor = 'pointer';
+        closeAllBtn.style.display = 'flex';
+        closeAllBtn.style.alignItems = 'center';
+        closeAllBtn.style.justifyContent = 'center';
+        closeAllBtn.style.width = `${modalUtilWidth}px`;
+        closeAllBtn.style.minWidth = '30px';
+        closeAllBtn.style.padding = '0';
+        closeAllBtn.textContent = '×';
+        closeAllBtn.title = _('closeAllNotes') || 'Close all notes';
+        closeAllBtn.setAttribute('aria-label', closeAllBtn.title);
         closeAllBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -13431,7 +13492,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 const PENDING_LANG_SYNC_KEY = 'pending_language_sync';
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
-    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'showFirstLine', 'showNewBoard', 'oneTapLink',
+    'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'singleNoteMode', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
@@ -13843,6 +13904,7 @@ async function loadSettingsFromGDrive(silent = false) {
                     }
                 }
             });
+            applySingleNoteModeSetting();
             // Току-що сменен език: профилът се обновява на заден план, стартът не го чака
             if (pendingLang) saveSettingsToGDrive(true).catch(e => console.warn('Background profile sync after language change failed:', e));
             initHeaderFullscreen();
@@ -13932,7 +13994,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const noteFontSizeInput = document.getElementById('note-font-size-input');
     const modalFontSizeInput = document.getElementById('modal-font-size-input');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
-    const showFirstLineCheckbox = document.getElementById('show-first-line-checkbox');
+    const singleNoteModeCheckbox = document.getElementById('single-note-mode-checkbox');
     const showNewBoardCheckbox = document.getElementById('show-new-board-checkbox');
     const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
     const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
@@ -14525,12 +14587,13 @@ async function createSettingsUI(boardsData, boardParseError) {
         document.body.classList.toggle('hide-datemod', !isChecked);
         showToast(_('settingSaved'), 2000);
     });
-    if (showFirstLineCheckbox) {
-        showFirstLineCheckbox.checked = localStorage.getItem('showFirstLine') === 'true'; // Default to false
-        showFirstLineCheckbox.addEventListener('change', async () => {
-            localStorage.setItem('showFirstLine', showFirstLineCheckbox.checked.toString());
+    // Single note: a shade under the open note blocks the rest of the page (as up to b1.81)
+    if (singleNoteModeCheckbox) {
+        singleNoteModeCheckbox.checked = isSingleNoteMode(); // Default to false
+        singleNoteModeCheckbox.addEventListener('change', () => {
+            localStorage.setItem('singleNoteMode', singleNoteModeCheckbox.checked.toString());
+            updateSingleNoteOverlay();
             showToast(_('settingSaved'), 2000);
-            await renderUI({ boardParseError: false });
         });
     }
     // Show 'New' Board Checkbox
@@ -16772,7 +16835,6 @@ async function createNoteElement(noteContent) {
     let previewTitleSourceText = '';
     let adjustPreviewBodyToRenderedTitle = false;
     let isBorderlessTableNote = false;
-    const showFullFirstLinePreview = localStorage.getItem('showFirstLine') === 'true';
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
@@ -16794,8 +16856,8 @@ async function createNoteElement(noteContent) {
             const symBold = (localStorage.getItem('mdBold') || '**').trim();
             const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             noteTitle = previewTitleSourceText.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
-            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
-            adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
+            displayContent = getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
+            adjustPreviewBodyToRenderedTitle = true;
         } else {
             const lines = fileContent.split('\n');
             for (const line of lines) {
@@ -16808,8 +16870,8 @@ async function createNoteElement(noteContent) {
                     break;
                 }
             }
-            displayContent = showFullFirstLinePreview ? fileContent : getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
-            adjustPreviewBodyToRenderedTitle = !showFullFirstLinePreview;
+            displayContent = getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
+            adjustPreviewBodyToRenderedTitle = true;
         }
     }
     if (!noteTitle && !isHiddenNote && !isBorderlessTableNote) { noteTitle = '...'; }
