@@ -15296,6 +15296,10 @@ async function toggleNoteCheckbox(hit) {
     const isModal = host.id === 'modal-body';
     const findNote = (gdid, id) => allNotesData.find(n => (gdid && n.gdid && String(n.gdid) === String(gdid)) || (id && n.id !== undefined && String(n.id) === String(id)));
     let noteObj;
+    if (isModal && host.dataset.isPreview === 'true' && host.dataset.draftText !== undefined && !host.querySelector('textarea')) {
+        toggleDraftPreviewCheckbox(host, input);
+        return;
+    }
     if (isModal) {
         // Редакция или преглед на чернова: текстът на модала не е записаната бележка.
         const saveBtn = document.getElementById('note-save-btn');
@@ -15325,6 +15329,48 @@ async function toggleNoteCheckbox(hit) {
     const pos = start + box.index;
     noteObj[field] = raw.slice(0, pos) + NOTE_CHECKBOX_TOGGLE[box.mark] + raw.slice(pos + box.mark.length);
     await saveNoteCheckboxChange(noteObj);
+}
+
+// Преглед на чернова (бутонът "око" в редактора): модалът показва postEdit(черновата), а не записаната
+// бележка. Отметката се търси по същия път като в модала (findNoteCheckboxes върху [data-cb-src-*] от
+// currentModalContent) и се обръща на същия пореден номер в черновата (dataset.draftTitle + '|' +
+// dataset.draftText, когато прегледът е със заглавие). В бележката не се пише нищо до запазване.
+function toggleDraftPreviewCheckbox(host, input) {
+    const shownText = String(currentModalContent || '');
+    const start = parseInt(host.dataset.cbSrcStart, 10);
+    const end = parseInt(host.dataset.cbSrcEnd, 10);
+    if (!(start >= 0) || !(end >= start) || end > shownText.length) return;
+    const boxes = findNoteCheckboxes(shownText.substring(start, end));
+    const k = parseInt(input.dataset.cb, 10);
+    const box = boxes[k];
+    if (!box || box.checked !== input.hasAttribute('checked')) return;
+    const shown = Array.from(host.querySelectorAll('input.nmd-cb')).filter(el => el.closest('[data-cb-src-end]') === host);
+    if (shown.length !== boxes.length) return;
+    const joined = host.dataset.previewDraftJoined === 'true';
+    const title = host.dataset.draftTitle || '';
+    const draft = joined ? title + '|' + host.dataset.draftText : host.dataset.draftText;
+    const draftBoxes = findNoteCheckboxes(draft);
+    const d = draftBoxes[k];
+    // Черновата и прегледът трябва да са съгласни, иначе не пипаме нищо (никога грешен ред).
+    if (draftBoxes.length !== boxes.length || !d || d.checked !== box.checked) return;
+    // [ ]<->[x] и ☐<->☑ не сменят дължината, затова форматите на черновата остават същите.
+    const flipped = draft.slice(0, d.index) + NOTE_CHECKBOX_TOGGLE[d.mark] + draft.slice(d.index + d.mark.length);
+    if (joined) {
+        host.dataset.draftTitle = flipped.slice(0, title.length);
+        host.dataset.draftText = flipped.slice(title.length + 1);
+    } else {
+        host.dataset.draftText = flipped;
+    }
+    const textarea = document.getElementById('note-edit-textarea');
+    if (textarea) textarea.value = host.dataset.draftText;
+    const pos = start + box.index;
+    currentModalContent = shownText.slice(0, pos) + NOTE_CHECKBOX_TOGGLE[box.mark] + shownText.slice(pos + box.mark.length);
+    const scrollTop = host.scrollTop;
+    const html = getFormattedNoteHtml(currentModalContent, host.dataset.format, host.dataset.titleFormat, true);
+    host.innerHTML = html;
+    host.dataset.renderedHtml = html;
+    setNoteCheckboxSource(host, 0, currentModalContent.length);
+    host.scrollTop = scrollTop;
 }
 
 // Записът след смяна на отметка: обектът, картата, модала (ако показва тази бележка) и източниците
@@ -17902,6 +17948,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         delete modalBodyElem.dataset.previewDraftTitleFormat;
         delete modalBodyElem.dataset.previewDraftMaskedLinks;
         delete modalBodyElem.dataset.previewHasTitle;
+        delete modalBodyElem.dataset.previewDraftJoined;
     }
     if (modalBodyElem.dataset.draftText !== undefined) {
         bodyText = modalBodyElem.dataset.draftText;
@@ -20547,6 +20594,8 @@ function saveEditedNote(forceClose = false) {
         const isPreview = modalBodyElem.dataset.isPreview === 'true';
         const formatStr = isPreview ? (modalBodyElem.dataset.previewDraftFormat || "") : (modalBodyElem.dataset.format || "");
         const titleFormatStr = isPreview ? (modalBodyElem.dataset.previewDraftTitleFormat || "") : (modalBodyElem.dataset.titleFormat || "");
+        // Чете се преди disableNoteEditing - то трие previewHasTitle (иначе запис от прегледа губи заглавието).
+        const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
 
         if (!closeAfterSave) {
             disableNoteEditing(modalBodyElem);
@@ -20569,7 +20618,6 @@ function saveEditedNote(forceClose = false) {
         const maskedSource = isPreview ? modalBodyElem.dataset.previewDraftMaskedLinks : modalBodyElem.dataset.maskedLinks;
         const maskedLinks = maskedSource ? JSON.parse(maskedSource) : [];
         let processedText, finalFormat, finalTitleFormat;
-        const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
         if ((isHiddenNote || ((titleTextarea || hasPreviewTitle) && titleText !== "")) && (titleTextarea || hasPreviewTitle)) {
             // Handle hidden note OR normal note with split content
             const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
@@ -21081,6 +21129,8 @@ function previewEditedNote() {
             newModalBodyElem.dataset.previewDraftMaskedLinks = JSON.stringify(maskedLinks);
             if (modalBodyElem.dataset.isNewNote !== undefined) newModalBodyElem.dataset.isNewNote = modalBodyElem.dataset.isNewNote;
             if (titleTextarea) newModalBodyElem.dataset.previewHasTitle = 'true';
+            // processedText е заглавие + '|' + тяло: отметките в прегледа се броят върху същото съединяване.
+            newModalBodyElem.dataset.previewDraftJoined = (titleTextarea && (isHiddenNote || titleText !== "")) ? 'true' : 'false';
             if (modalBodyElem.dataset.initialEditText !== undefined) newModalBodyElem.dataset.initialEditText = modalBodyElem.dataset.initialEditText;
             if (modalBodyElem.dataset.initialEditTitleText !== undefined) newModalBodyElem.dataset.initialEditTitleText = modalBodyElem.dataset.initialEditTitleText;
             if (modalBodyElem.dataset.initialFormat !== undefined) newModalBodyElem.dataset.initialFormat = modalBodyElem.dataset.initialFormat;
@@ -21141,6 +21191,7 @@ function disableNoteEditing(modalBodyElem) {
     delete modalBodyElem.dataset.previewDraftTitleFormat;
     delete modalBodyElem.dataset.previewDraftMaskedLinks;
     delete modalBodyElem.dataset.previewHasTitle;
+    delete modalBodyElem.dataset.previewDraftJoined;
     const saveBtn = document.getElementById('note-save-btn');
     if (saveBtn) saveBtn.style.display = 'none';
     const previewBtn = document.getElementById('note-preview-btn');
