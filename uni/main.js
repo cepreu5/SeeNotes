@@ -17986,12 +17986,6 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         modalBodyElem.dataset.maskedLinks = JSON.stringify(result.maskedLinks || []);
         modalBodyElem.dataset.format = stringifyFormatsArray(result.formats);
     }
-    if (modalBodyElem.dataset.initialEditText === undefined) {
-        modalBodyElem.dataset.initialEditText = bodyText;
-        modalBodyElem.dataset.initialEditTitleText = titleText;
-        modalBodyElem.dataset.initialFormat = modalBodyElem.dataset.format || '';
-        modalBodyElem.dataset.initialTitleFormat = modalBodyElem.dataset.titleFormat || '';
-    }
     modalBodyElem.innerHTML = '';
     // Sticky formats (Ctrl+B... without a selection) stay on until pressed again; another note starts without them.
     const stickyKey = getNoteStickyKey();
@@ -18160,6 +18154,16 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (numberedBtn) numberedBtn.style.display = 'flex';
     const pasteModalBtn = document.getElementById('paste-modal-btn');
     if (pasteModalBtn) pasteModalBtn.style.display = 'flex';
+
+    // Какво показва редакторът в момента на отваряне. Отварянето подравнява таблиците (plan 9), така
+    // че текстът тук се различава от записания, без потребителят да е пипал нищо. Затова отметката за
+    // „има ли промени“ при затваряне (checkUnsavedChanges) се сверява и с това състояние.
+    if (modalBodyElem.dataset.initialEditText === undefined) {
+        modalBodyElem.dataset.initialEditText = bodyTextarea ? bodyTextarea.value : bodyText;
+        modalBodyElem.dataset.initialEditTitleText = titleTextarea ? titleTextarea.value : titleText;
+        modalBodyElem.dataset.initialFormat = modalBodyElem.dataset.format || '';
+        modalBodyElem.dataset.initialTitleFormat = modalBodyElem.dataset.titleFormat || '';
+    }
 }
 function toggleListFormat(textarea, listType) {
     const start = textarea.selectionStart;
@@ -20493,6 +20497,32 @@ async function resolveLoadedConflicts(duplicates) {
     if (wasVisible && loader) loader.style.display = 'flex';
 }
 
+// Текстът и форматите, както биха се записали (postEdit) от дадено състояние на редактора.
+// includeTitle: заглавието се съединява с тялото през '|', както е в записа.
+function postEditNoteState(bodyText, bodyFormatStr, titleText, titleFormatStr, includeTitle, maskedLinks) {
+    if (includeTitle) {
+        const titleRes = postEdit(titleText || "", parseFormatsString(titleFormatStr || ""), maskedLinks);
+        const bodyRes = postEdit(bodyText || "", parseFormatsString(bodyFormatStr || ""), maskedLinks);
+        return {
+            text: titleRes.text + '|' + bodyRes.text,
+            format: stringifyFormatsArray(bodyRes.formats),
+            titleFormat: stringifyFormatsArray(titleRes.formats)
+        };
+    }
+    const res = postEdit(bodyText || "", parseFormatsString(bodyFormatStr || ""), maskedLinks);
+    return { text: res.text, format: stringifyFormatsArray(res.formats), titleFormat: titleFormatStr || '' };
+}
+
+// Състоянието на редактора при отваряне (след подравняването на таблиците). Липсва ли отметка —
+// бележка, отворена без enableNoteEditing — падаме на записаното, както преди.
+function noteEditOpenedState(modalBodyElem, includeTitle, maskedLinks, noteObj) {
+    if (modalBodyElem.dataset.initialEditText === undefined) {
+        return { text: noteObj.notetxt || '', format: noteObj.text_span || '', titleFormat: noteObj.title_span || '' };
+    }
+    return postEditNoteState(modalBodyElem.dataset.initialEditText, modalBodyElem.dataset.initialFormat,
+        modalBodyElem.dataset.initialEditTitleText, modalBodyElem.dataset.initialTitleFormat, includeTitle, maskedLinks);
+}
+
 async function checkUnsavedChanges(isClosingModal = true) {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return true;
@@ -20528,30 +20558,26 @@ async function checkUnsavedChanges(isClosingModal = true) {
         const maskedSource = isPreview ? modalBodyElem.dataset.previewDraftMaskedLinks : modalBodyElem.dataset.maskedLinks;
         const maskedLinks = maskedSource ? JSON.parse(maskedSource) : [];
         const isHiddenNote = noteObj.pass === true;
-        let processedText = newBodyTextRaw;
-        let finalFormat = formatStr;
-        let finalTitleFormat = titleFormatStr;
         const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
-        if ((isHiddenNote || (titleTextarea && newTitleTextRaw !== "") || (modalBodyElem.dataset.draftTitle && modalBodyElem.dataset.draftTitle !== "")) && (titleTextarea || hasPreviewTitle)) {
-            const titleRes = postEdit(newTitleTextRaw, parseFormatsString(titleFormatStr), maskedLinks);
-            finalTitleFormat = stringifyFormatsArray(titleRes.formats);
-            const bodyRes = postEdit(newBodyTextRaw, parseFormatsString(formatStr), maskedLinks);
-            finalFormat = stringifyFormatsArray(bodyRes.formats);
-            processedText = titleRes.text + '|' + bodyRes.text;
-        } else {
-            const res = postEdit(newBodyTextRaw, parseFormatsString(formatStr), maskedLinks);
-            processedText = res.text;
-            finalFormat = stringifyFormatsArray(res.formats);
-        }
+        const includeTitle = (isHiddenNote || (titleTextarea && newTitleTextRaw !== "") || (modalBodyElem.dataset.draftTitle && modalBodyElem.dataset.draftTitle !== "")) && (titleTextarea || hasPreviewTitle);
+        const editedState = postEditNoteState(newBodyTextRaw, formatStr, newTitleTextRaw, titleFormatStr, includeTitle, maskedLinks);
+        const processedText = editedState.text;
+        const finalFormat = editedState.format;
+        const finalTitleFormat = editedState.titleFormat;
         const originalContent = noteObj.notetxt || "";
         const originalFormat = noteObj.text_span || "";
         const originalTitleFormat = noteObj.title_span || "";
+        // Промяна има само ако редакторът се различава и от записаното, и от състоянието при отваряне:
+        // така отворена и затворена бележка с таблица (подравнена при отваряне) не пита за запис, а
+        // връщането на таблицата в компактния ѝ вид пак не пита (текстът съвпада със записания).
+        const openedState = noteEditOpenedState(modalBodyElem, includeTitle, maskedLinks, noteObj);
+        const storedState = { text: originalContent, format: originalFormat, titleFormat: originalTitleFormat };
+        const sameNoteState = (a, b) => a.text === b.text && a.format === b.format && a.titleFormat === b.titleFormat;
+        const hasEditorChanged = !sameNoteState(editedState, storedState) && !sameNoteState(editedState, openedState);
         const initialColor = (noteObj.color !== undefined) ? noteObj.color : 0;
         const currentColor = getModalColorValue(modalBodyElem, initialColor);
-        const hasTextChanged = processedText !== originalContent;
-        const hasFormatChanged = finalFormat !== originalFormat || finalTitleFormat !== originalTitleFormat;
         const hasColorChanged = currentColor !== initialColor;
-        if (!hasTextChanged && !hasFormatChanged && !hasColorChanged && !hasUiStateChanged) return true;
+        if (!hasEditorChanged && !hasColorChanged && !hasUiStateChanged) return true;
     }
     const confirmed = await showConfirmation(_('confirmSaveChanges') || "Save changes?");
     if (confirmed) {
