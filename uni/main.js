@@ -14768,8 +14768,21 @@ function parseAllMarkdownTables(text) {
                 return padded;
             });
             const isBorderless = headerRow[0] === '%%' || (headerRow[0] === '' && headerRow.length > 1);
+            // Подравняване по колони от реда-разделител (същото правило като getMarkdownTableEdits):
+            // ':' отпред - ляво, ':' отзад - дясно, двете - център; без двоеточие - null.
+            const sepCells = parseRow(rawLines[tableLinesInfo[sepIdx].index]);
+            const alignments = Array.from({ length: columnCount }, (_, c) => {
+                const value = c < sepCells.length ? sepCells[c] : '';
+                const left = value.startsWith(':');
+                const right = value.length > 1 && value.endsWith(':');
+                if (left && right) return 'center';
+                if (right) return 'right';
+                if (left) return 'left';
+                return null;
+            });
             tables.push({
                 borderless: isBorderless,
+                alignments,
                 rows: paddedRows,
                 rowLineIndexes: [tableLinesInfo[sepIdx - 1].index, ...tableLinesInfo.slice(sepIdx + 1, lastValidIdx + 1).map(item => item.index)],
                 startIndex,
@@ -14823,7 +14836,10 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
             return row.map((cell, c) => {
                 const cellText = String(cell || '');
                 const html = starts[c] !== undefined ? renderPart(cellText, starts[c]) : processNoteContent(cellText, true);
-                return `<${tag}>${html}</${tag}>`;
+                // Подравняване само при двоеточие в разделителя - иначе HTML-ът е същият като преди.
+                const align = table.alignments ? table.alignments[c] : null;
+                const attr = align ? ` style="text-align: ${align};"` : '';
+                return `<${tag}${attr}>${html}</${tag}>`;
             }).join('');
         };
         if (table.borderless) {
