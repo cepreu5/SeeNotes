@@ -15113,47 +15113,82 @@ function matchNoteCheckboxLine(line) {
 
 // Отметките в текста, който се подава на getFormattedNoteHtml, в реда на показване:
 // [{ index, mark, checked }]. Кодовите блокове не съдържат отметки; '|' дели заглавие от тяло.
+// Началата на клетките в един ред на Markdown таблица: същото делене като parseRow в
+// parseAllMarkdownTables (маха се водещата и евентуално една задна черта, после се дели по '|'),
+// но с отместване в реда - за да се знае къде точно започва съдържанието на всяка клетка.
+function noteTableCellStarts(line) {
+    let s = 0, e = line.length;
+    while (s < e && /\s/.test(line[s])) s++;
+    while (e > s && /\s/.test(line[e - 1])) e--;
+    let base = s, body = line.slice(s, e);
+    if (body.startsWith('|')) { body = body.slice(1); base += 1; }
+    if (body.endsWith('|')) body = body.slice(0, -1);
+    const out = [];
+    let seg = 0;
+    for (let k = 0; k <= body.length; k++) {
+        if (k === body.length || body[k] === '|') {
+            let a = seg;
+            while (a < k && /\s/.test(body[a])) a++;
+            out.push(base + a);
+            seg = k + 1;
+        }
+    }
+    return out;
+}
+
+// Отметките в текста, който се подава на getFormattedNoteHtml, в реда на показване:
+// [{ index, mark, checked }]. Кодовите блокове не съдържат отметки; '|' дели заглавие от тяло.
+// В ред на Markdown таблица отметката се брои в началото на всяка клетка (там началото на реда е
+// началото на клетката), за да съвпадат броят и редът с renderNoteCheckboxes.
 function findNoteCheckboxes(text) {
     const out = [];
     if (!text) return out;
     const masked = text.replace(/\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g, m => m.replace(/[^\n]/g, CODE_BLOCK_PLACEHOLDER));
-    const scan = (from, to) => {
-        let pos = from;
-        for (const line of masked.slice(from, to).split('\n')) {
-            const m = matchNoteCheckboxLine(line);
-            if (m) out.push({ index: pos + m.start, mark: m.mark, checked: m.checked });
-            pos += line.length + 1;
-        }
-    };
+    const maskedLines = masked.split('\n');
+    const lineStarts = [];
+    let pos = 0;
+    for (const line of maskedLines) { lineStarts.push(pos); pos += line.length + 1; }
+    const inTable = new Set();
+    const tables = (typeof parseAllMarkdownTables === 'function') ? parseAllMarkdownTables(text.replace(/\r\n/g, '\n')) : [];
+    for (const t of tables) for (let i = t.startIndex; i <= t.endIndex; i++) inTable.add(i);
     const pipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(text) : text.indexOf('|');
-    if (pipe !== -1) { scan(0, pipe); scan(pipe + 1, text.length); } else scan(0, text.length);
+    for (let i = 0; i < maskedLines.length; i++) {
+        const line = maskedLines[i];
+        const from = lineStarts[i], to = from + line.length;
+        if (inTable.has(i)) {
+            for (const off of noteTableCellStarts(line)) {
+                const m = matchNoteCheckboxLine(line.slice(off));
+                if (m) out.push({ index: from + off + m.start, mark: m.mark, checked: m.checked });
+            }
+            continue;
+        }
+        const spans = (pipe > from && pipe < to) ? [[from, pipe], [pipe + 1, to]] : [[from, to]];
+        for (const [a, b] of spans) {
+            const m = matchNoteCheckboxLine(masked.slice(a, b));
+            if (m) out.push({ index: a + m.start, mark: m.mark, checked: m.checked });
+        }
+    }
     return out;
 }
 
 // Върху готовия HTML: всяка отметка в началото на ред става <input type="checkbox">. Суровите
 // знаци остават в скрит span, за да брои getPreciseCharIndex същите символи като в текста.
 // Отметнатият ред е само приглушен (.nmd-cb-done), без задраскване.
+// Върху готовия HTML: всяка отметка в началото на ред (или на клетка в таблица) става
+// <input type="checkbox">. Суровите знаци остават в скрит span, за да брои getPreciseCharIndex
+// същите символи като в текста. Отметнатият ред е само приглушен (.nmd-cb-done), без задраскване.
 function renderNoteCheckboxes(html) {
     if (!html || !/\[[ xXхХ]\]|☐|☑/.test(html)) return html;
     const tpl = document.createElement('template');
     tpl.innerHTML = html;
-    const lines = [[]];
     const SKIP = '.code-block, code, pre, table, .md-heading, button, textarea, input';
-    const walk = (node) => {
-        for (const child of Array.from(node.childNodes)) {
-            if (child.nodeType === Node.TEXT_NODE) { lines[lines.length - 1].push(child); continue; }
-            if (child.nodeType !== Node.ELEMENT_NODE) continue;
-            if (child.tagName === 'BR') { lines.push([]); continue; }
-            if (child.matches(SKIP)) { lines[lines.length - 1].push(null); continue; }
-            walk(child);
-        }
-    };
-    walk(tpl.content);
     let ordinal = 0;
-    for (const nodes of lines) {
+
+    // Отметката в началото на подадения ред от текстови възли (един ред на прегледа или една клетка).
+    const renderMarkInNodes = (nodes) => {
         const plain = nodes.map(n => n ? n.data : CODE_BLOCK_PLACEHOLDER).join('');
         const m = matchNoteCheckboxLine(plain);
-        if (!m) continue;
+        if (!m) return;
         const cb = ordinal++;
         let pos = 0, at = -1;
         for (let i = 0; i < nodes.length; i++) {
@@ -15162,7 +15197,7 @@ function renderNoteCheckboxes(html) {
             if (m.start < pos + len) break;
             pos += len;
         }
-        if (at === -1) continue; // знаците на отметката са разделени между тагове - остават текст
+        if (at === -1) return; // знаците на отметката са разделени между тагове - остават текст
         const node = nodes[at];
         const markNode = node.splitText(m.start - pos);
         const rest = markNode.splitText(m.mark.length);
@@ -15189,7 +15224,45 @@ function renderNoteCheckboxes(html) {
                 done.appendChild(n);
             });
         }
-    }
+    };
+
+    // Текстовите възли на един елемент (клетка) в реда на показване; пропуснатото (код) е едно "нищо".
+    const collectNodes = (root, out) => {
+        for (const child of Array.from(root.childNodes)) {
+            if (child.nodeType === Node.TEXT_NODE) { out.push(child); continue; }
+            if (child.nodeType !== Node.ELEMENT_NODE) continue;
+            if (child.tagName === 'BR') continue;
+            if (child.matches(SKIP)) { out.push(null); continue; }
+            collectNodes(child, out);
+        }
+    };
+
+    let lineNodes = [];
+    const flushLine = () => { if (lineNodes.length) renderMarkInNodes(lineNodes); lineNodes = []; };
+    const walk = (node) => {
+        for (const child of Array.from(node.childNodes)) {
+            if (child.nodeType === Node.TEXT_NODE) { lineNodes.push(child); continue; }
+            if (child.nodeType !== Node.ELEMENT_NODE) continue;
+            if (child.tagName === 'BR') { flushLine(); continue; }
+            if (child.tagName === 'TABLE') {
+                // Номерата трябва да вървят в същия ред като в findNoteCheckboxes: клетките се броят
+                // на мястото на таблицата в текста, не накрая.
+                flushLine();
+                for (const row of Array.from(child.querySelectorAll('tr'))) {
+                    for (const cell of Array.from(row.children)) {
+                        const nodes = [];
+                        collectNodes(cell, nodes);
+                        if (nodes.length) renderMarkInNodes(nodes);
+                    }
+                }
+                continue;
+            }
+            if (child.matches(SKIP)) { lineNodes.push(null); continue; }
+            walk(child);
+        }
+    };
+    walk(tpl.content);
+    flushLine();
     return tpl.innerHTML;
 }
 
