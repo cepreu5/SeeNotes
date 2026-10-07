@@ -507,7 +507,7 @@
     "assistantTitle": "Assistant",
     "assistantLoading": "Loading...",
     "assistantLoadFailed": "The assistant could not be loaded. Please try again later.",
-    "resizeHandleTooltip": "Drag: size of this note · Ctrl+drag/hold+drag: keep the size in the note itself",
+    "resizeHandleTooltip": "Drag: changes the size of the note · Ctrl + drag / hold on the phone: size for this note only",
     "syncSuspendedTooltip": "Sync suspended. Click to connect.",
     "advancedSettingsEnabled": "Advanced settings enabled",
     "advancedSettingsDisabled": "Advanced settings hidden",

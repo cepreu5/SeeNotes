@@ -9658,6 +9658,17 @@ function getValidEditorSize(uiState) {
     return { width: Math.round(size.width), height: Math.round(size.height) };
 }
 
+// Мястото и размерът на прозореца живеят в самата бележка (uiState.windowPosition и
+// uiState.editorSize) и пътуват с нея между устройства; localStorage не пази геометрия по бележки.
+// Записват се само с обикновения запис на бележката: местене/преоразмеряване я прави „с промени“.
+function getValidWindowPosition(uiState) {
+    const pos = getNoteUiState(uiState).windowPosition;
+    if (!pos || typeof pos !== 'object') return null;
+    const x = Number(pos.x), y = Number(pos.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x: Math.round(x), y: Math.round(y) };
+}
+
 function applyExpandedModalSize(modalContentBox, isExpanded) {
     if (isExpanded) {
         modalContentBox.style.width = 'calc(100vw - 20px)';
@@ -9702,7 +9713,29 @@ function hasModalUiStateChanges() {
     const savedEditorSize = getValidEditorSize(savedUiState);
     const editorSize = getModalEditorSize();
     const editorSizeChanged = JSON.stringify(editorSize) !== JSON.stringify(savedEditorSize);
-    return isExpandedChanged || editorSizeChanged;
+    // Преместен прозорец също е промяна (спрямо мястото при отваряне): затварянето пита за запис,
+    // а записът носи uiState.windowPosition. Размерът е в dataset.editorSize (rememberNoteWindowGeometry).
+    return isExpandedChanged || editorSizeChanged || !!getMovedNoteWindowPosition(modalBodyElem);
+}
+
+// Мястото на прозореца, ако е преместен спрямо отварянето (dataset.baseGeometry), иначе null.
+// Разпънатият изглед не се брои - той стои в ъгъла и мястото му не се пази.
+function getMovedNoteWindowPosition(modalBodyElem) {
+    if (!modalBodyElem || modalBodyElem.dataset.isExpanded === 'true' || !modalBodyElem.dataset.baseGeometry) return null;
+    const box = modalBodyElem.closest('.modal-content-box');
+    if (!box) return null;
+    let base;
+    try { base = JSON.parse(modalBodyElem.dataset.baseGeometry); } catch (e) { return null; }
+    const pos = { x: Math.round(parseFloat(box.style.left) || 0), y: Math.round(parseFloat(box.style.top) || 0) };
+    return (base && base.x === pos.x && base.y === pos.y) ? null : pos;
+}
+
+// Отметката „както е при отварянето“ за мястото: при отваряне, в края на enableNoteEditing (ако
+// още няма) и след запис.
+function setNoteWindowBaseGeometry(modalBodyElem) {
+    const box = modalBodyElem && modalBodyElem.closest('.modal-content-box');
+    if (!box || modalBodyElem.dataset.isExpanded === 'true') { if (modalBodyElem) delete modalBodyElem.dataset.baseGeometry; return; }
+    modalBodyElem.dataset.baseGeometry = JSON.stringify({ x: Math.round(parseFloat(box.style.left) || 0), y: Math.round(parseFloat(box.style.top) || 0) });
 }
 
 function updateModalUiStateSaveUI() {
@@ -9795,8 +9828,7 @@ const NOTE_WINDOW_Z_BASE = 10050; // inside #note-windows-layer: never reaches t
 const NOTE_WINDOW_CASCADE = 28;
 const NOTE_WINDOW_CYCLE = 6;
 const NOTE_WINDOW_NARROW = 768; // px: below it the cascade only goes down, no side offset
-const NOTE_WINDOW_GEOMETRY_KEY = 'noteWindowGeometry';
-const NOTE_WINDOW_GEOMETRY_MAX = 300;
+const NOTE_WINDOW_MARGIN = 10; // px around a window that is bigger than the screen (as the expanded view)
 let noteWindows = []; // every window in the DOM: the open ones plus at most one idle (closed) one
 let activeNoteWindow = null;
 let noteWindowZ = NOTE_WINDOW_Z_BASE - 1;
@@ -9933,47 +9965,52 @@ function getNoteWindowRaw(win) {
     return win === activeNoteWindow ? currentModalContent : (win.state.currentModalContent || '');
 }
 
-function getNoteWindowGeometryKey(id, gdid) {
-    if (id !== undefined && id !== null && String(id) !== '') return 'i:' + id;
-    if (gdid !== undefined && gdid !== null && String(gdid) !== '') return 'g:' + gdid;
-    return '';
+function findNoteForWindow(win) {
+    const gdid = win.body.dataset.gdid, id = win.body.dataset.id;
+    return allNotesData.find(n => (n.gdid && String(n.gdid) === String(gdid)) || (n.id && String(n.id) === String(id))) || null;
 }
 
-function readNoteWindowGeometryAll() {
-    try {
-        const all = JSON.parse(localStorage.getItem(NOTE_WINDOW_GEOMETRY_KEY) || '{}');
-        return (all && typeof all === 'object') ? all : {};
-    } catch (e) {
-        return {};
+// The size a window opens with: the note's own (uiState.editorSize), else the global modalWidth/
+// modalHeight, else 400x300. A size bigger than this screen (minus the margins) is shown shrunk to
+// it, but the shrunk value is never written back - the note keeps the size for the screen it was set
+// on, as with the place. win.geomSize is what was applied, so a move alone does not change it.
+function applyNoteWindowSize(win, box, uiState) {
+    const size = getValidEditorSize(uiState);
+    let w, h;
+    if (size) {
+        w = size.width; h = size.height;
+    } else {
+        const sw = localStorage.getItem('modalWidth'), sh = localStorage.getItem('modalHeight');
+        w = sw && sh ? sw : '400px';
+        h = sw && sh ? sh : '300px';
+    }
+    let clamped = false;
+    if (size) {
+        const maxW = window.innerWidth - 2 * NOTE_WINDOW_MARGIN, maxH = window.innerHeight - 2 * NOTE_WINDOW_MARGIN;
+        if (maxW > 0 && w > maxW) { w = maxW; clamped = true; }
+        if (maxH > 0 && h > maxH) { h = maxH; clamped = true; }
+    }
+    box.style.width = typeof w === 'number' ? w + 'px' : w;
+    box.style.height = typeof h === 'number' ? h + 'px' : h;
+    if (win) {
+        win.geomSize = { width: Math.round(box.offsetWidth), height: Math.round(box.offsetHeight) };
+        win.geomClamped = clamped;
     }
 }
 
-function readNoteWindowGeometry(key) {
-    if (!key) return null;
-    const g = readNoteWindowGeometryAll()[key];
-    return (g && Number(g.w) > 0 && Number(g.h) > 0) ? g : null;
-}
-
-// Each window remembers its own size and place, per note (by id); new notes get the standard size.
-function writeNoteWindowGeometry(win) {
+// A move or a resize changes only the window: the size goes to dataset.editorSize (as the note's own
+// size), the place is read from the box against dataset.baseGeometry. Nothing is written here, on
+// close or on page hide; the note is "changed", closing asks, and the regular save
+// (saveEditedNote) stores uiState.windowPosition and uiState.editorSize with the content.
+function rememberNoteWindowGeometry(win) {
     if (!win || win.body.dataset.isExpanded === 'true') return;
-    const key = getNoteWindowGeometryKey(win.body.dataset.id, win.body.dataset.gdid);
-    if (!key) return;
-    const all = readNoteWindowGeometryAll();
-    all[key] = {
-        w: Math.round(win.box.offsetWidth),
-        h: Math.round(win.box.offsetHeight),
-        x: Math.round(parseFloat(win.box.style.left) || 0),
-        y: Math.round(parseFloat(win.box.style.top) || 0),
-        t: Date.now()
-    };
-    const keys = Object.keys(all);
-    if (keys.length > NOTE_WINDOW_GEOMETRY_MAX) {
-        keys.sort((a, b) => (all[a].t || 0) - (all[b].t || 0))
-            .slice(0, keys.length - NOTE_WINDOW_GEOMETRY_MAX)
-            .forEach(k => { delete all[k]; });
+    const cur = { width: Math.round(win.box.offsetWidth), height: Math.round(win.box.offsetHeight) };
+    if (!win.geomSize || win.geomSize.width !== cur.width || win.geomSize.height !== cur.height) {
+        win.geomSize = cur;
+        win.geomClamped = false;
+        win.body.dataset.editorSize = JSON.stringify(cur);
     }
-    try { localStorage.setItem(NOTE_WINDOW_GEOMETRY_KEY, JSON.stringify(all)); } catch (e) { /* storage full: this session only */ }
+    withNoteWindow(win, () => updateModalUiStateSaveUI());
 }
 
 function clampNoteWindowAxis(pos, size, room) {
@@ -9982,9 +10019,17 @@ function clampNoteWindowAxis(pos, size, room) {
     return Math.round(Math.min(Math.max(pos, 0), max));
 }
 
-// Where a window opens: where this note was last left, else centred plus the cascade (28px a step,
-// 6 steps, then round again). On a narrow screen the cascade only goes down.
-function placeNoteWindow(win, key, isExpanded) {
+// Запомненото място се ползва само ако прозорецът стои изцяло на екрана; иначе - стандартното.
+function windowPositionFits(pos, w, h, vw, vh) {
+    const TOL = 1; // толеранс за закръгляне
+    return pos.x >= -TOL && pos.y >= -TOL && pos.x + w <= vw + TOL && pos.y + h <= vh + TOL;
+}
+
+// Where a window opens: where this note was last left (uiState.windowPosition) if it fits whole on
+// this screen, else centred plus the cascade (28px a step, 6 steps, then round again). On a narrow
+// screen the cascade only goes down. A remembered place that does not fit is neither clamped nor
+// overwritten - it stays for the screen it was set on.
+function placeNoteWindow(win, isExpanded, note) {
     const box = win.box;
     if (isExpanded) {
         box.style.left = '10px';
@@ -9993,22 +10038,23 @@ function placeNoteWindow(win, key, isExpanded) {
     }
     const vw = window.innerWidth, vh = window.innerHeight;
     const w = box.offsetWidth, h = box.offsetHeight;
-    const geom = readNoteWindowGeometry(key);
-    let x, y;
-    if (geom && Number.isFinite(Number(geom.x)) && Number.isFinite(Number(geom.y))) {
-        x = Number(geom.x);
-        y = Number(geom.y);
+    // showModal подава бележката: нов прозорец още няма data-id/gdid в този момент.
+    if (note === undefined) note = findNoteForWindow(win);
+    const pos = note ? getValidWindowPosition(note.uiState) : null;
+    if (pos && windowPositionFits(pos, w, h, vw, vh)) {
         win.slot = -1;
-    } else {
-        const used = new Set(getOpenNoteWindows().filter(o => o !== win).map(o => o.slot));
-        let slot = 0;
-        while (slot < NOTE_WINDOW_CYCLE && used.has(slot)) slot++;
-        if (slot >= NOTE_WINDOW_CYCLE) slot = getOpenNoteWindows().filter(o => o !== win).length % NOTE_WINDOW_CYCLE;
-        win.slot = slot;
-        const narrow = vw < NOTE_WINDOW_NARROW;
-        x = (vw - w) / 2 + (narrow ? 0 : slot * NOTE_WINDOW_CASCADE);
-        y = (vh - h) / 2 + slot * NOTE_WINDOW_CASCADE;
+        box.style.left = pos.x + 'px';
+        box.style.top = pos.y + 'px';
+        return;
     }
+    const used = new Set(getOpenNoteWindows().filter(o => o !== win).map(o => o.slot));
+    let slot = 0;
+    while (slot < NOTE_WINDOW_CYCLE && used.has(slot)) slot++;
+    if (slot >= NOTE_WINDOW_CYCLE) slot = getOpenNoteWindows().filter(o => o !== win).length % NOTE_WINDOW_CYCLE;
+    win.slot = slot;
+    const narrow = vw < NOTE_WINDOW_NARROW;
+    const x = (vw - w) / 2 + (narrow ? 0 : slot * NOTE_WINDOW_CASCADE);
+    const y = (vh - h) / 2 + slot * NOTE_WINDOW_CASCADE;
     box.style.left = clampNoteWindowAxis(x, w, vw) + 'px';
     box.style.top = clampNoteWindowAxis(y, h, vh) + 'px';
 }
@@ -10025,7 +10071,7 @@ function syncNoteWindowExpandedPlace(win, isExpanded) {
         win.box.style.top = win.placeBeforeExpand.top;
         win.placeBeforeExpand = null;
     } else {
-        placeNoteWindow(win, getNoteWindowGeometryKey(win.body.dataset.id, win.body.dataset.gdid), false);
+        placeNoteWindow(win, false);
     }
 }
 
@@ -10372,7 +10418,8 @@ function wireNoteWindow(win) {
 }
 
 // The resize handle: a drag sizes this window and this note only (it no longer changes the size new
-// notes open with). Ctrl+drag / a hold on a touch screen also stores the size in the note itself.
+// notes open with). The size becomes the note's own (dataset.editorSize) and is stored in it
+// (uiState.editorSize) with the next save - closing asks, as for any change.
 function wireNoteWindowResize(win, resizeHandle) {
     if (!resizeHandle) return;
     const modalContentBox = win.box;
@@ -10403,14 +10450,9 @@ function wireNoteWindowResize(win, resizeHandle) {
         document.documentElement.removeEventListener('touchend', stopDrag, false);
         clearTimeout(individualResizeTimer);
         individualResizeTimer = null;
-        if (isIndividualResize) {
-            win.body.dataset.editorSize = JSON.stringify({
-                width: Math.round(modalContentBox.getBoundingClientRect().width),
-                height: Math.round(modalContentBox.getBoundingClientRect().height)
-            });
-            withNoteWindow(win, () => updateModalUiStateSaveUI());
-        }
-        writeNoteWindowGeometry(win);
+        // Any new size (Ctrl/hold or not) becomes the note's own (dataset.editorSize): a change,
+        // stored with the next save. Ctrl/hold no longer decides that - it only lights the handle.
+        rememberNoteWindowGeometry(win);
         isIndividualResize = false;
         resizeHandle.classList.remove('individual-resize-active');
     }
@@ -10439,8 +10481,14 @@ function wireNoteWindowResize(win, resizeHandle) {
     }
     resizeHandle.addEventListener('mousedown', startDrag);
     resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
-    resizeHandle.title = _('resizeHandleTooltip') || 'Drag: size of this note · Ctrl+drag / hold on mobile: keep the size in the note';
-    resizeHandle.setAttribute('aria-label', resizeHandle.title);
+    // The window can be cloned before the translations are in (or the language changes later): the
+    // tooltip is read again whenever the pointer comes over the handle.
+    const setResizeHandleTooltip = () => {
+        resizeHandle.title = _('resizeHandleTooltip') || 'Drag: changes the size of the note · Ctrl + drag / hold on the phone: size for this note only';
+        resizeHandle.setAttribute('aria-label', resizeHandle.title);
+    };
+    setResizeHandleTooltip();
+    resizeHandle.addEventListener('pointerenter', setResizeHandleTooltip);
     resizeHandle.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M8 21h13V8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
             <path d="M12 21h9v-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
@@ -10495,7 +10543,7 @@ function wireNoteWindowMove(win) {
             win.suppressClick = true;
             setTimeout(() => { win.suppressClick = false; }, 0);
             win.slot = -1;
-            writeNoteWindowGeometry(win);
+            rememberNoteWindowGeometry(win);
         }
         start = null;
     };
@@ -10551,7 +10599,7 @@ function checkOpenNoteWindowsOnDrive() {
                 return null;
             }
         }));
-        const changed = [];
+        const changed = [], quiet = [];
         fetched.forEach(item => {
             if (!item) return;
             const { t, sNote } = item;
@@ -10561,11 +10609,23 @@ function checkOpenNoteWindowsOnDrive() {
             const differs = (sNote.notetxt || '') !== (known.notetxt || '') || (sNote.text_span || '') !== (known.text_span || '')
                 || (sNote.title_span || '') !== (known.title_span || '') || sNote.color !== known.color;
             const newer = (parseInt(sNote.datemod, 10) || 0) > (parseInt(known.datemod, 10) || 0);
+            // Само uiState (място/размер от друго устройство, datemod не е пипан): приема се тихо -
+            // без покана, без пре-рендер на отвореното съдържание и на картата.
+            if (!differs && local && (Number(sNote.version) || 0) > (Number(local.version) || 0)
+                && JSON.stringify(getNoteUiState(sNote.uiState)) !== JSON.stringify(getNoteUiState(local.uiState))) {
+                local.uiState = sNote.uiState;
+                local.version = sNote.version;
+                quiet.push(local);
+                return;
+            }
             if (!differs || !newer) return; // same text, or the local copy is the newer one (not uploaded yet)
             if (local) Object.assign(local, sNote);
             else allNotesData.push(sNote);
             changed.push(local || sNote);
         });
+        if (quiet.length && useIndexedDb) {
+            try { await bulkPutDB(NOTE_STORE_NAME, quiet, true); } catch (e) { console.warn('[NoteWindows] DB update failed:', e); }
+        }
         if (!changed.length) return;
         if (useIndexedDb) {
             try { await bulkPutDB(NOTE_STORE_NAME, changed, true); } catch (e) { console.warn('[NoteWindows] DB update failed:', e); }
@@ -10628,35 +10688,12 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         modalContentBox.style.height = typeof options.height === 'number' ? options.height + 'px' : options.height;
         applyExpandedModalSize(modalContentBox, false);
     } else {
-        const editorSize = getValidEditorSize(uiState);
-        const windowGeometry = readNoteWindowGeometry(getNoteWindowGeometryKey(noteId, noteGdid));
-        // Размерът, с който тази бележка е оставена последно, после индивидуалният, после стандартният.
-        if (windowGeometry) {
-            modalContentBox.style.width = windowGeometry.w + 'px';
-            modalContentBox.style.height = windowGeometry.h + 'px';
-            applyExpandedModalSize(modalContentBox, false);
-        } else if (editorSize) {
-            modalContentBox.style.width = editorSize.width + 'px';
-            modalContentBox.style.height = editorSize.height + 'px';
-            applyExpandedModalSize(modalContentBox, false);
-        } else {
-            // Прилагаме запазените глобални размери, ако съществуват
-            const savedWidth = localStorage.getItem('modalWidth');
-            const savedHeight = localStorage.getItem('modalHeight');
-            if (savedWidth && savedHeight) {
-                modalContentBox.style.width = savedWidth;
-                modalContentBox.style.height = savedHeight;
-                applyExpandedModalSize(modalContentBox, false);
-            } else {
-                // Задаваме размер по подразбиране 400x300px, ако няма запазен размер
-                modalContentBox.style.width = '400px';
-                modalContentBox.style.height = '300px';
-                applyExpandedModalSize(modalContentBox, false);
-            }
-        }
+        // Размерът на бележката (uiState.editorSize), после глобалният, после 400x300.
+        applyExpandedModalSize(modalContentBox, false);
+        applyNoteWindowSize(win, modalContentBox, uiState);
     }
     void modalContentBox.offsetHeight;
-    if (win && fresh) placeNoteWindow(win, getNoteWindowGeometryKey(noteId, noteGdid), isExpanded);
+    if (win && fresh) placeNoteWindow(win, isExpanded, noteForUiState || null);
     else if (win && isExpanded) syncNoteWindowExpandedPlace(win, true);
     if (win) win.open = true;
     updateSingleNoteOverlay();
@@ -10781,6 +10818,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     modalBody.dataset.id = noteId || '';
     modalBody.dataset.gdid = noteGdid || '';
     modalBody.dataset.isExpanded = isExpanded ? 'true' : 'false';
+    // Мястото при отваряне - спрямо него местенето е промяна. Опресняване на същата бележка го пази.
+    if (fresh || !isMatchingNote || modalBody.dataset.baseGeometry === undefined) setNoteWindowBaseGeometry(modalBody);
     const initialEditorSize = getValidEditorSize(uiState);
     if (initialEditorSize) modalBody.dataset.editorSize = JSON.stringify(initialEditorSize);
     else delete modalBody.dataset.editorSize;
@@ -10848,21 +10887,14 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
             if (nextIsExpanded) {
                 applyExpandedModalSize(modalContentBox, true);
             } else {
-                const editorSize = getValidEditorSize(uiState);
-                const windowGeometry = readNoteWindowGeometry(getNoteWindowGeometryKey(modalBody.dataset.id, modalBody.dataset.gdid));
-                if (windowGeometry) {
-                    modalContentBox.style.width = windowGeometry.w + 'px';
-                    modalContentBox.style.height = windowGeometry.h + 'px';
-                } else if (editorSize) {
-                    modalContentBox.style.width = editorSize.width + 'px';
-                    modalContentBox.style.height = editorSize.height + 'px';
-                } else {
-                    modalContentBox.style.width = localStorage.getItem('modalWidth') || '400px';
-                    modalContentBox.style.height = localStorage.getItem('modalHeight') || '300px';
-                }
+                // Размерът може да е записан тихо след отварянето: от бележката, иначе от uiState при отваряне.
+                const noteNow = activeNoteWindow ? findNoteForWindow(activeNoteWindow) : null;
                 applyExpandedModalSize(modalContentBox, false);
+                applyNoteWindowSize(activeNoteWindow, modalContentBox, noteNow ? noteNow.uiState : uiState);
             }
             syncNoteWindowExpandedPlace(activeNoteWindow, nextIsExpanded);
+            // Отворена разпъната: отметката за мястото се взема при първото свиване.
+            if (!nextIsExpanded && modalBody.dataset.baseGeometry === undefined) setNoteWindowBaseGeometry(modalBody);
             updateModalExpandButton(nextIsExpanded);
             setExpandedModalFloatingControls(nextIsExpanded);
             updateModalUiStateSaveUI();
@@ -18840,6 +18872,8 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         modalBodyElem.dataset.initialEditTitleText = titleTextarea ? titleTextarea.value : titleText;
         modalBodyElem.dataset.initialFormat = modalBodyElem.dataset.format || '';
         modalBodyElem.dataset.initialTitleFormat = modalBodyElem.dataset.titleFormat || '';
+        // Геометрията влиза в отметката; вече взета при отварянето - остава (местене преди редакция пак е промяна).
+        if (modalBodyElem.dataset.baseGeometry === undefined) setNoteWindowBaseGeometry(modalBodyElem);
     }
 }
 function toggleListFormat(textarea, listType) {
@@ -21303,13 +21337,26 @@ function saveEditedNote(forceClose = false) {
         const isHiddenNote = modalNoteObj && modalNoteObj.pass === true;
         const isNewNote = (!modalNoteObj && !modalGdid) || modalBodyElem.dataset.isNewNote === 'true';
         const isExpanded = modalBodyElem.dataset.isExpanded === 'true';
-        const editorSize = getModalEditorSize();
+        const storedUiState = { ...getNoteUiState(modalNoteObj?.uiState) };
+        const movedPosition = getMovedNoteWindowPosition(modalBodyElem);
+        let editorSize = getModalEditorSize();
+        // Преместен прозорец без собствен размер: бележката взема и текущия (не е свит - няма записан).
+        if (movedPosition && !editorSize && saveWindow && saveWindow.box) {
+            editorSize = { width: Math.round(saveWindow.box.offsetWidth), height: Math.round(saveWindow.box.offsetHeight) };
+        }
+        const windowPosition = movedPosition || getValidWindowPosition(storedUiState);
         const currentUiState = {
-            ...getNoteUiState(modalNoteObj?.uiState),
+            ...storedUiState,
             isExpanded,
-            ...(editorSize ? { editorSize } : {})
+            ...(editorSize ? { editorSize } : {}),
+            ...(windowPosition ? { windowPosition } : {})
         };
+        // Сравнява се със записаното преди присвояването по-долу (то подменя uiState в паметта).
+        const hasWindowGeometryChanged = !!movedPosition
+            || JSON.stringify(editorSize) !== JSON.stringify(getValidEditorSize(storedUiState))
+            || isExpanded !== (storedUiState.isExpanded === true);
         if (!editorSize && currentUiState.editorSize) delete currentUiState.editorSize;
+        if (movedPosition) setNoteWindowBaseGeometry(modalBodyElem);
         if (modalNoteObj) modalNoteObj.uiState = currentUiState;
         // Retrieve masked links from dataset if they exist
         const maskedSource = isPreview ? modalBodyElem.dataset.previewDraftMaskedLinks : modalBodyElem.dataset.maskedLinks;
@@ -21485,7 +21532,7 @@ function saveEditedNote(forceClose = false) {
         const previousIsExpanded = getNoteUiState(noteObj?.uiState).isExpanded === true;
         const previousEditorSize = getValidEditorSize(noteObj?.uiState);
         const hasEditorSizeChanged = JSON.stringify(editorSize) !== JSON.stringify(previousEditorSize);
-        const hasChanges = isNewNote || hasDrafts || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color || isExpanded !== previousIsExpanded || hasEditorSizeChanged);
+        const hasChanges = isNewNote || hasDrafts || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color || isExpanded !== previousIsExpanded || hasEditorSizeChanged || hasWindowGeometryChanged);
 
         if (hasChanges) {
             // --- Apply Changes ---
@@ -21503,6 +21550,7 @@ function saveEditedNote(forceClose = false) {
                 const savedUiState = getNoteUiState(noteObj.uiState);
                 noteObj.uiState = { ...savedUiState, isExpanded };
                 if (editorSize) noteObj.uiState.editorSize = editorSize;
+                if (windowPosition) noteObj.uiState.windowPosition = windowPosition;
             }
 
             // --- Sync with timer ---
