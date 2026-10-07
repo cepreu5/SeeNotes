@@ -11829,12 +11829,13 @@ function boardMenuUtilRank(id) {
     if (id === 'fullscreen') return 1;
     return 2;
 }
-// Close all notes: two overlapping windows, the x in the upper one (CX, 2026-10-07). The front window is
-// filled with the button's own colour, so it covers the part of the x and of the back window it overlaps.
+// Close all notes: two overlapping windows of the SAME size, the x in the upper (front) one (CX, 2026-10-07).
+// The front window is drawn last and filled with the button's own colour, so it hides the part of the back
+// window it covers; the x sits in the middle of the front window.
 const closeAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="2.5" y="2.5" width="15" height="15" rx="2.4" fill="none" stroke="currentColor" stroke-width="2.2" />
-    <path d="M5.3 5.3l6 6M11.3 5.3l-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-    <rect class="close-all-icon-front" x="12" y="12" width="9.5" height="9.5" rx="2" fill="#546E7A" stroke="currentColor" stroke-width="2.2" />
+    <rect x="1.6" y="7.6" width="14.8" height="14.8" rx="2.6" fill="none" stroke="currentColor" stroke-width="2.2" />
+    <rect class="close-all-icon-front" x="7.6" y="1.6" width="14.8" height="14.8" rx="2.6" fill="#546E7A" stroke="currentColor" stroke-width="2.2" />
+    <path d="M11.4 5.4l7.2 7.2M18.6 5.4l-7.2 7.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
 </svg>`;
 // The square is dimmed while no note window is open: with nothing to close it only shuts the menu. Every
 // place that shows the square (the header strip and the menu that clones it) is refreshed from here.
@@ -13374,8 +13375,8 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     allButtonLinks.push(fullscreenLink);
 
     // --- БУТОН „ЗАТВОРИ ВСИЧКИ БЕЛЕЖКИ" (след Цял екран) ---
-    // Две застъпващи се квадратчета с „x" в горното. Един въпрос за всички незаписани бележки; докато
-    // няма отворена бележка, квадратчето е притъмнено и кликът само затваря менюто.
+    // Две застъпващи се квадратчета с еднакъв размер и „x" в горното (предното). Един въпрос за всички
+    // незаписани бележки; докато няма отворена бележка, квадратчето е притъмнено и кликът само затваря менюто.
     const closeAllLink = document.createElement('span');
     closeAllLink.id = 'close-all-notes-btn';
     closeAllLink.classList.add('board-filter-link', 'close-all-notes-btn');
