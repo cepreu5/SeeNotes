@@ -9874,6 +9874,7 @@ function applySingleNoteModeSetting() {
 }
 
 function updateSingleNoteOverlay() {
+    updateCloseAllNotesButtons();
     const layer = document.getElementById('note-windows-layer');
     if (!layer) return;
     let overlay = document.getElementById('single-note-overlay');
@@ -11818,6 +11819,37 @@ function toggleModalSearch(modalContentBox, modalBody) {
 const fullscreenExpandIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`;
 const fullscreenCompressIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4m0 6l7-7M3 21l7-7"></path></svg>`;
 
+// The squares of the board menu that are not boards: Reorder, Fullscreen and Close-all-notes.
+function isBoardMenuUtilId(id) {
+    return id === 'reorder' || id === 'fullscreen' || id === 'close-all-notes';
+}
+// Left to right: Reorder, Fullscreen, Close-all-notes.
+function boardMenuUtilRank(id) {
+    if (id === 'reorder') return 0;
+    if (id === 'fullscreen') return 1;
+    return 2;
+}
+// Close all notes: two overlapping windows, the x in the upper one (CX, 2026-10-07). The front window is
+// filled with the button's own colour, so it covers the part of the x and of the back window it overlaps.
+const closeAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="2.5" y="2.5" width="15" height="15" rx="2.4" fill="none" stroke="currentColor" stroke-width="2.2" />
+    <path d="M5.3 5.3l6 6M11.3 5.3l-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+    <rect class="close-all-icon-front" x="12" y="12" width="9.5" height="9.5" rx="2" fill="#546E7A" stroke="currentColor" stroke-width="2.2" />
+</svg>`;
+// The square is dimmed while no note window is open: with nothing to close it only shuts the menu. Every
+// place that shows the square (the header strip and the menu that clones it) is refreshed from here.
+function updateCloseAllNotesButtons() {
+    const hasOpen = getOpenNoteWindows().length > 0;
+    document.querySelectorAll('.close-all-notes-btn').forEach(btn => {
+        const bg = hasOpen ? '#546E7A' : '#90A4AE';
+        btn.style.backgroundColor = bg;
+        btn.style.opacity = hasOpen ? '1' : '0.65';
+        const front = btn.querySelector('.close-all-icon-front');
+        if (front) front.setAttribute('fill', bg);
+        if (hasOpen) delete btn.dataset.noOpenNotes; else btn.dataset.noOpenNotes = 'true';
+    });
+}
+
 function toggleHeaderFullscreen() {
     const header = document.querySelector('header');
     if (!header) return;
@@ -12064,8 +12096,12 @@ function showAllBoardsModal(onSelectCallback = null) {
     const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
     const modalUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 10) / 2));
     headerButtons.forEach(button => {
+        // Pick-a-board mode (a note's "Move to board"): the close-all square has no place there.
+        if (onSelectCallback && button.dataset.boardid === 'close-all-notes') return;
         const clone = button.cloneNode(true);
-        const isUtil = (button.dataset.boardid === 'reorder' || button.dataset.boardid === 'fullscreen');
+        // Only the header's own square keeps the id; the clone must not duplicate it.
+        if (button.dataset.boardid === 'close-all-notes') clone.removeAttribute('id');
+        const isUtil = isBoardMenuUtilId(button.dataset.boardid);
         if (!isUtil) {
             clone.style.width = `${maxWidthForButtons}px`;
         } else {
@@ -12087,6 +12123,15 @@ function showAllBoardsModal(onSelectCallback = null) {
                 return;
             }
 
+            if (boardId === 'close-all-notes') {
+                // Closes the menu, then runs the header's own square: one question for the unsaved notes,
+                // the same in both places.
+                boardsModal.classList.remove('visible');
+                const headerCloseAll = headerMenuContainer.querySelector('[data-boardid="close-all-notes"]');
+                if (headerCloseAll && headerCloseAll.click) headerCloseAll.click();
+                return;
+            }
+
             if (onSelectCallback) {
                 onSelectCallback(boardId);
                 boardsModal.classList.remove('visible');
@@ -12103,41 +12148,9 @@ function showAllBoardsModal(onSelectCallback = null) {
             }
         }
     });
-    // One square closes all the open notes (one question for all the unsaved ones). It is ALWAYS in the
-    // menu (b1.84): it used to be drawn only while a note window was open, so right after a reload -- when
-    // every window is gone -- the menu showed no such button at all. With nothing open it is dimmed and
-    // the click just closes the menu (closeAllNoteWindows returns at once on an empty list).
-    if (!onSelectCallback) {
-        // A square of the grid, as wide as Reorder / Fullscreen (b1.83)
-        const closeAllBtn = document.createElement('span');
-        closeAllBtn.id = 'close-all-notes-btn';
-        closeAllBtn.classList.add('board-filter-link');
-        closeAllBtn.dataset.boardid = 'close-all-notes';
-        closeAllBtn.style.backgroundColor = '#546E7A';
-        closeAllBtn.style.color = '#fff';
-        closeAllBtn.style.cursor = 'pointer';
-        closeAllBtn.style.display = 'flex';
-        closeAllBtn.style.alignItems = 'center';
-        closeAllBtn.style.justifyContent = 'center';
-        closeAllBtn.style.width = `${modalUtilWidth}px`;
-        closeAllBtn.style.minWidth = '30px';
-        closeAllBtn.style.padding = '0';
-        closeAllBtn.textContent = '×';
-        closeAllBtn.title = _('closeAllNotes') || 'Close all notes';
-        closeAllBtn.setAttribute('aria-label', closeAllBtn.title);
-        if (!getOpenNoteWindows().length) {
-            closeAllBtn.style.backgroundColor = '#90A4AE';
-            closeAllBtn.style.opacity = '0.65';
-            closeAllBtn.dataset.noOpenNotes = 'true';
-        }
-        closeAllBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            boardsModal.classList.remove('visible');
-            await closeAllNoteWindows();
-        });
-        modalContent.appendChild(closeAllBtn);
-    }
+    // The close-all square is one of the menu's own squares (createBoardsUI, b1.85), so the clone
+    // above already carries it. Only its dim state is refreshed, for the state at this moment.
+    updateCloseAllNotesButtons();
     const boardsModalBody = document.getElementById('boards-menu-modal-body');
     boardsModalBody.innerHTML = '';
     boardsModalBody.appendChild(modalContent);
@@ -12211,7 +12224,14 @@ function formatTime(timestamp) {
 document.querySelectorAll('.modal-close').forEach(btn => {
     if (btn.closest('.note-window')) return; // the note windows reset themselves (wireNoteWindow)
     btn.addEventListener('click', () => {
-        copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
+        // This reset belongs to the note modal alone, and its own close button is wired in wireNoteWindow
+        // (the note windows reset themselves). What reaches this listener is the close button of the OTHER
+        // overlays -- the boards menu, the new-board dialog, the settings. They must not touch the note
+        // modal: clearing the inline left/top of its box dropped the active note window into the top-left
+        // corner of the workspace (CX, 2026-10-07).
+        const owner = btn.closest('.modal-overlay, .settings-modal, .modal');
+        if (!owner || owner.id !== 'content-modal') return;
+        copyBtn.style.display = 'flex'; // Restore copy button visibility when the note modal is closed
         const pasteModalBtn = document.getElementById('paste-modal-btn');
         if (pasteModalBtn) pasteModalBtn.style.display = 'none';
         contentModal.classList.remove('popup-mode'); // Reset popup mode on close
@@ -12685,7 +12705,7 @@ function orderBoardEntriesByVisibleMenu(entries) {
     const usedKeys = new Set();
 
     document.querySelectorAll('.board-menu-container .board-filter-link').forEach(link => {
-        if (link.dataset.boardid === 'reorder') return;
+        if (isBoardMenuUtilId(link.dataset.boardid)) return; // Reorder / Fullscreen / Close-all are not boards
         if (getComputedStyle(link).display === 'none') return;
         const boardId = link.dataset.boardid;
         const board = boardsData.find(b => String(b.gdid || b.id) === String(boardId));
@@ -13353,6 +13373,30 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     });
     allButtonLinks.push(fullscreenLink);
 
+    // --- БУТОН „ЗАТВОРИ ВСИЧКИ БЕЛЕЖКИ" (след Цял екран) ---
+    // Две застъпващи се квадратчета с „x" в горното. Един въпрос за всички незаписани бележки; докато
+    // няма отворена бележка, квадратчето е притъмнено и кликът само затваря менюто.
+    const closeAllLink = document.createElement('span');
+    closeAllLink.id = 'close-all-notes-btn';
+    closeAllLink.classList.add('board-filter-link', 'close-all-notes-btn');
+    closeAllLink.dataset.boardid = 'close-all-notes';
+    closeAllLink.style.backgroundColor = '#546E7A';
+    closeAllLink.style.color = '#fff';
+    closeAllLink.style.cursor = 'pointer';
+    closeAllLink.style.display = 'flex';
+    closeAllLink.style.alignItems = 'center';
+    closeAllLink.style.justifyContent = 'center';
+    closeAllLink.innerHTML = closeAllNotesIconSvg;
+    closeAllLink.title = _('closeAllNotes') || 'Close all notes';
+    closeAllLink.setAttribute('aria-label', closeAllLink.title);
+    closeAllLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeAllNoteWindows();
+    });
+    allButtonLinks.push(closeAllLink);
+    updateCloseAllNotesButtons();
+
     try {
         const raw = localStorage.getItem('boardMenuOrder');
         if (raw) {
@@ -13365,15 +13409,16 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
                         const boardId = link.dataset.boardid;
                         if (boardId === 'reorder') return 'system:reorder';
                         if (boardId === 'fullscreen') return 'system:fullscreen';
+                        if (boardId === 'close-all-notes') return 'system:close-all-notes';
                         const board = boardsData.find(b => String(b.gdid || b.id) === String(boardId));
                         if (board && board.title) return String(board.title);
                         return `system:${boardId}`;
                     };
                     allButtonLinks.sort((a, b) => {
-                        const isUtilA = (a.dataset.boardid === 'reorder' || a.dataset.boardid === 'fullscreen');
-                        const isUtilB = (b.dataset.boardid === 'reorder' || b.dataset.boardid === 'fullscreen');
+                        const isUtilA = isBoardMenuUtilId(a.dataset.boardid);
+                        const isUtilB = isBoardMenuUtilId(b.dataset.boardid);
                         if (isUtilA && isUtilB) {
-                            return (a.dataset.boardid === 'reorder') ? -1 : 1;
+                            return boardMenuUtilRank(a.dataset.boardid) - boardMenuUtilRank(b.dataset.boardid);
                         }
                         if (isUtilA) return 1;
                         if (isUtilB) return -1;
@@ -13395,7 +13440,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     tempContainer.style.display = 'inline-block';
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
-        const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
+        const isUtil = isBoardMenuUtilId(link.dataset.boardid);
         const isSearchResults = link.dataset.boardid === 'search-results';
         if (!isUtil) {
             link.style.width = 'auto';
@@ -13416,7 +13461,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     maxWidthForButtons = Math.min(maxWidthForButtons, 200);
     const headerUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 5) / 2));
     allButtonLinks.forEach(link => {
-        const isUtil = (link.dataset.boardid === 'reorder' || link.dataset.boardid === 'fullscreen');
+        const isUtil = isBoardMenuUtilId(link.dataset.boardid);
         const isSearchResults = link.dataset.boardid === 'search-results';
         if (!isUtil) {
             link.style.width = `${maxWidthForButtons}px`;
