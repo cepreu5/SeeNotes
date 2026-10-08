@@ -9771,6 +9771,17 @@ function setNoteWindowBaseGeometry(modalBodyElem) {
     modalBodyElem.dataset.baseGeometry = JSON.stringify({ x: Math.round(parseFloat(box.style.left) || 0), y: Math.round(parseFloat(box.style.top) || 0) });
 }
 
+// Размерът, с който прозорецът стои в момента (собствен или стандартен). Записва се заедно с
+// преместеното място: иначе при отваряне преценката "събира ли се мястото цяло на екрана" може да
+// го отхвърли и бележката да падне на стандартното място, тоест местенето да се загуби.
+function getNoteWindowCurrentSize(modalBodyElem) {
+    const box = modalBodyElem && modalBodyElem.closest('.modal-content-box');
+    if (!box) return null;
+    const width = Math.round(box.offsetWidth), height = Math.round(box.offsetHeight);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    return { width, height };
+}
+
 function updateModalUiStateSaveUI() {
     const modalBodyElem = document.getElementById('modal-body');
     const modalContentBox = document.querySelector('#content-modal .modal-content-box');
@@ -21379,17 +21390,20 @@ function saveEditedNote(forceClose = false) {
         const movedPosition = getMovedNoteWindowPosition(modalBodyElem);
         const editorSize = getModalEditorSize();
         const windowPosition = movedPosition || getValidWindowPosition(storedUiState);
+        // Размерът пътува с мястото (правило на CX, 2026-10-08 00:51): собственият размер, ако има
+        // такъв, иначе този, с който прозорецът стои в момента - дори да е стандартният. Разпънатият
+        // изглед не се брои: мястото му не се пази, а размерът е екранът.
+        const savedSize = editorSize || (!isExpanded && windowPosition ? getNoteWindowCurrentSize(modalBodyElem) : null);
         const currentUiState = {
             ...storedUiState,
             exp: isExpanded,
-            ...noteUiSizeKey(editorSize),
+            ...noteUiSizeKey(savedSize),
             ...noteUiPosKey(windowPosition)
         };
         // Сравнява се със записаното преди присвояването по-долу (то подменя uiState в паметта).
         const hasWindowGeometryChanged = !!movedPosition
             || JSON.stringify(editorSize) !== JSON.stringify(getValidEditorSize(storedUiState))
             || isExpanded !== getNoteExpanded(storedUiState);
-        if (!editorSize && currentUiState.size) delete currentUiState.size;
         if (movedPosition) setNoteWindowBaseGeometry(modalBodyElem);
         if (modalNoteObj) modalNoteObj.uiState = currentUiState;
         // Retrieve masked links from dataset if they exist
@@ -21475,7 +21489,8 @@ function saveEditedNote(forceClose = false) {
                 "type": 0,
                 "version": 243
             };
-            if (isExpanded || editorSize) newNote.uiState = { exp: isExpanded, ...noteUiSizeKey(editorSize) };
+            const newNoteSize = editorSize || (!isExpanded && windowPosition ? getNoteWindowCurrentSize(modalBodyElem) : null);
+            if (isExpanded || newNoteSize) newNote.uiState = { exp: isExpanded, ...noteUiSizeKey(newNoteSize), ...noteUiPosKey(windowPosition) };
 
             // Add to Global Data (with duplicate check)
             const existingIdx = allNotesData.findIndex(n => (n.id && String(n.id) === String(newNote.id)));
