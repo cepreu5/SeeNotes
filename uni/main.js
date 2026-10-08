@@ -9704,10 +9704,13 @@ function normalizeNoteUiStateInMemory(noteObj) {
 
 function applyExpandedModalSize(modalContentBox, isExpanded) {
     if (isExpanded) {
-        modalContentBox.style.width = 'calc(100vw - 20px)';
-        modalContentBox.style.height = 'calc(100vh - 20px)';
-        modalContentBox.style.maxWidth = 'calc(100vw - 20px)';
-        modalContentBox.style.maxHeight = 'calc(100vh - 20px)';
+        // Целият екран, без рамка (b1.91): 100% от овърлея, който е fixed inset 0, значи точно
+        // екранът. 100vh не се ползва - той включва лентите на телефона и долният ръб на
+        // бележката остава под тях.
+        modalContentBox.style.width = '100%';
+        modalContentBox.style.height = '100%';
+        modalContentBox.style.maxWidth = '100%';
+        modalContentBox.style.maxHeight = '100%';
         return;
     }
     modalContentBox.style.maxWidth = '100vw';
@@ -10078,8 +10081,8 @@ function windowPositionFits(pos, w, h, vw, vh) {
 function placeNoteWindow(win, isExpanded, note) {
     const box = win.box;
     if (isExpanded) {
-        box.style.left = '10px';
-        box.style.top = '10px';
+        box.style.left = '0px';
+        box.style.top = '0px';
         return;
     }
     const vw = window.innerWidth, vh = window.innerHeight;
@@ -10105,13 +10108,14 @@ function placeNoteWindow(win, isExpanded, note) {
     box.style.top = clampNoteWindowAxis(y, h, vh) + 'px';
 }
 
-// The expand button: the full-size view starts at the corner; back to normal puts it where it was.
+// The expand button: the full-size view fills the screen from the top-left corner (no frame); back to
+// normal puts it where it was.
 function syncNoteWindowExpandedPlace(win, isExpanded) {
     if (!win) return;
     if (isExpanded) {
         win.placeBeforeExpand = { left: win.box.style.left, top: win.box.style.top };
-        win.box.style.left = '10px';
-        win.box.style.top = '10px';
+        win.box.style.left = '0px';
+        win.box.style.top = '0px';
     } else if (win.placeBeforeExpand) {
         win.box.style.left = win.placeBeforeExpand.left;
         win.box.style.top = win.placeBeforeExpand.top;
