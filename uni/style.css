@@ -228,29 +228,9 @@ header h1 {
     outline: none;
 }
 
-.note-save-icon {
-    position: fixed;
-    /* Fixed to viewport as modal scrolls */
-    bottom: 20px;
-    right: 20px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    background-color: rgba(255, 255, 255, 0.8);
-    border-radius: 50%;
-    padding: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    z-index: 1001;
-    /* Ensure above modal content */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: transform 0.2s;
-}
 
-.note-save-icon:hover {
-    transform: scale(1.1);
-}
+
+
 
 /* Hide native clear button */
 #search-box::-webkit-search-cancel-button {
@@ -358,15 +338,7 @@ header h1 {
 }
 
 /* Стил за самата икона за зареждане в бутона */
-.board-loading-icon {
-    display: none;
-    /* Скрита по подразбиране */
-    width: 16px;
-    height: 16px;
-    margin-left: 8px;
-    /* Разстояние от текста */
-    vertical-align: middle;
-}
+
 
 /* Клас, който се добавя, за да се покаже иконата и да се стартира анимацията */
 .button-loading {
@@ -613,11 +585,7 @@ main {
 }
 
 /* Временен клас, докато се генерира фона */
-.note.note-item.loading-bg {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
-}
+
 
 .note-background-canvas {
     position: absolute;
@@ -704,27 +672,15 @@ code {
     scrollbar-width: thin;
 }
 
-.modal-body-content .md-table-wrapper {
-    scrollbar-color: #555 #c8a64b;
-    scrollbar-width: thin;
-}
 
-.modal-body-content .md-table-wrapper::-webkit-scrollbar {
-    height: 10px;
-}
 
-.modal-body-content .md-table-wrapper::-webkit-scrollbar-track {
-    background: #c8a64b;
-}
 
-.modal-body-content .md-table-wrapper::-webkit-scrollbar-thumb {
-    background: #555;
-    border-radius: 5px;
-}
 
-.modal-body-content .md-table-wrapper::-webkit-scrollbar-thumb:hover {
-    background: #333;
-}
+
+
+
+
+
 
 .md-table-render {
     width: 100%;
@@ -1644,13 +1600,7 @@ code {
     }
 }
 
-.note .board-menu-header {
-    background-color: #a9cce3;
-    color: #1f3b52;
-    padding: 10px 12px;
-    margin: -10px -10px 10px -10px;
-    border-radius: 8px 8px 0 0;
-}
+
 
 .scrolling-menu-wrapper {
     display: grid;
@@ -1704,36 +1654,13 @@ code {
     border-radius: 4px;
 }
 
-.board-menu-button {
-    background-color: #d0e0ed;
-    border: 1px solid #a9cce3;
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    margin-left: 20px;
-    margin-right: 10px;
-    visibility: hidden;
-    /* Hidden by default */
-}
 
-.board-menu-button svg {
-    width: 24px;
-    height: 24px;
-    stroke-width: 2;
-}
 
-.board-menu-button.visible {
-    visibility: visible;
-}
 
-.board-menu-button:hover {
-    background-color: #bdd9ef;
-}
+
+
+
+
 
 .board-filter-link {
     position: relative;
@@ -1811,20 +1738,10 @@ code {
 }
 
 /* Prevent text selection in board menu items */
-.board-filter-link,
-.popup-menu {
-    -webkit-user-select: none;
-    user-select: none;
-}
+.board-filter-link
 
 /* Restore lift effect for active items in dropdown menu */
-.popup-menu .board-filter-link.active {
-    transform: translateY(-5px);
-    /* Re-apply strong bottom shadow to create "floating" look, otherwise it looks sunken/pressed */
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4),
-        inset 0 2px 5px rgba(255, 255, 255, 0.3);
-    z-index: 20;
-}
+
 
 .modal-body .board-filter-link {
     display: inline-block;
@@ -1951,29 +1868,13 @@ code {
 }
 
 /* Style for the icon inside the button */
-.board-icon-in-button svg {
-    width: 18px;
-    height: 18px;
-    stroke: #333;
-    /* A slightly softer black */
-    vertical-align: middle;
-    margin-left: 8px;
-}
 
-.calendar-filter-btn {
-    background-color: darkblue;
-    color: white;
-}
 
-.calendar-filter-btn:hover {
-    background-color: #0000b3;
-    color: white;
-}
 
-.calendar-filter-btn.selected-board {
-    background-color: #000066;
-    color: white;
-}
+
+
+
+
 
 .reminder-filter-btn {
     background-color: red;
@@ -2044,7 +1945,7 @@ code {
     /* Board menu at the bottom */
 }
 
-@media (max-width: 768px) {
+
 
     /* Reorder elements for mobile view (up to 768px) */
     /* Title is already order 1 from the rule above */
@@ -2058,12 +1959,10 @@ code {
     }
 
     /* Buttons move up */
-    .boards-note {
-        order: 4;
-    }
+    
 
-    /* .boards-note is already order 4 from the rule above */
-}
+    
+
 
 /*#search-container {
         padding: 1em 0 0.5em;
@@ -2077,7 +1976,7 @@ code {
 }
 
 /* Responsive layout for settings modal on small screens */
-@media (max-width: 480px) {
+
     .zoom-control-wrapper {
         flex-direction: column;
         align-items: flex-start;
@@ -2131,10 +2030,8 @@ code {
     }
 
     /* Превключва грида за сортиране в една колона на тесни екрани */
-    .sort-criteria-grid {
-        grid-template-columns: 1fr;
-    }
-}
+    
+
 
 /* Toast Notification */
 .toast-notification {
@@ -2287,20 +2184,7 @@ code {
 
 
 
-.boards-note-footer {
-    padding-top: 5px;
-    margin-top: auto;
-    border-top: 1px solid gray;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    /* Align items to both ends */
-    font-size: 0.8em;
-    color: #666;
-    min-height: 18px;
-    padding-right: 10px;
-    /* Add some padding on the right */
-}
+
 
 .slider-container {
     display: flex;
@@ -2399,12 +2283,7 @@ code {
 }
 
 /* Специфичен стил, за да се подредят етикетът и бутонът за избор на папка вертикално */
-.sync-wrapper {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    /* Добавя разстояние между етикета и бутона */
-}
+
 
 /* Renamed from #zoom-modal to #settings-modal */
 #settings-modal .modal-content-box {
@@ -3070,25 +2949,9 @@ code {
 
 
 
-.search-mode-btn {
-    position: absolute;
-    left: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
 
-.search-mode-btn svg {
-    width: 20px;
-    height: 20px;
-    stroke: #555;
-}
+
+
 
 .settings-icon-label {
     display: flex;
@@ -3206,15 +3069,6 @@ code {
     margin-left: auto;
 }
 
-.lang-btn {
-    background: none;
-    border: 1px solid #747474;
-    color: #333;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 0.9em;
-}
-
 /* Стилове за главния language switcher извън login-box */
 #lang-switcher-main {
     display: flex;
@@ -3228,32 +3082,6 @@ code {
     display: flex;
     justify-content: center;
     margin-bottom: 15px;
-}
-
-.lang-btn {
-    background: none;
-    border: 1px solid #747474;
-    color: #333;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 0.9em;
-}
-
-.lang-btn:first-child {
-    border-top-left-radius: 4px;
-    border-bottom-left-radius: 4px;
-}
-
-.lang-btn:last-child {
-    border-top-right-radius: 4px;
-    border-bottom-right-radius: 4px;
-    border-left: none;
-}
-
-.lang-btn.active {
-    background-color: #4285F4;
-    color: white;
-    border-color: #4285F4;
 }
 
 #trialBtn {
@@ -3272,11 +3100,7 @@ code {
     background-color: #45a049;
 }
 
-.version-text {
-    font-size: 0.6em;
-    font-weight: bold;
-    white-space: nowrap;
-}
+
 
 /* Login container to center content */
 #login-container {
@@ -3322,24 +3146,12 @@ body.selection-locked .note.active-selection-note .note-content {
     margin-bottom: 2px;
 }
 
-.note-header-board-link {
-    display: none;
-    /* Hidden by default */
-    margin-right: 8px;
-    font-weight: bold;
-    text-decoration: underline;
-    cursor: pointer;
-    color: #333;
-}
+
 
 /* Show only when in global view mode */
-.global-view-mode .note-header-board-link {
-    display: block;
-}
 
-.note-header-board-link:hover {
-    color: #000;
-}
+
+
 
 /* Modal Note Footer (inside toolbar) */
 .modal-note-footer {
@@ -3447,16 +3259,9 @@ body.selection-locked .note.active-selection-note .note-content {
     transform: scale(1.1);
 }
 
-.floatingchat-container-mobi {
-    width: 60px !important;
-}
 
-.floatingchat-container-wrap-mobi {
-    width: 60px !important;
-    bottom: -8px !important;
-    left: -15px !important;
-    right: auto !important;
-}
+
+
 
 /* --- RESPONSIVE MODAL TOOLBARS --- */
 .modal-header-toolbar {
@@ -3613,13 +3418,9 @@ body.selection-locked .note.active-selection-note .note-content {
     text-decoration: line-through;
 }
 
-.modal-edit-toolbar-btn.is-list {
-    font-size: 18px;
-}
 
-.modal-edit-toolbar-btn.is-caret {
-    font-size: 21px;
-}
+
+
 
 .modal-edit-toolbar-btn.is-table {
     font-size: 18px;

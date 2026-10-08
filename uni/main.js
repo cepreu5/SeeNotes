@@ -1768,29 +1768,6 @@ async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) 
     return finalResults;
 }
 
-async function getFileID(folderId, fileName) {
-    if (isOffline) return null;
-    try {
-        const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}'`);
-        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`;
-
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) return null;
-        let tokenData = JSON.parse(storedTokenString);
-
-        let resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
-        if (resp.status === 401) {
-            const refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
-            }
-        }
-        if (!resp.ok) return null;
-        const result = await resp.json();
-        return result.files?.[0]?.id || null;
-    } catch (e) { return null; }
-}
 async function updateLocalFile(gdid, content) {
     if (!gdid) return false;
     try {
@@ -9128,11 +9105,6 @@ async function showGdrivePreview(fileId, isVideo = false) {
     }
 }
 
-async function showLocalPreview(folderName, fileName, mode) {
-    const fileHandle = await (await dirHandle.getDirectoryHandle(folderName, { create: false })).getFileHandle(fileName);
-    const file = await fileHandle.getFile();
-    showImageVideoOverlay(URL.createObjectURL(file), file.type.startsWith('video'));
-}
 /**
  * Показва преглед на изображение/видео в рамките на самата бележка.
  * @param {HTMLElement} noteElement - DOM елементът на бележката.
