@@ -10016,8 +10016,10 @@ function findNoteForWindow(win) {
 
 // The size a window opens with: `size` - the note's own ({width, height}, from uiState.size), else
 // the global modalWidth/modalHeight (set by a plain handle drag), else 400x300. An own size bigger
-// than this screen (minus the margins) is shown shrunk to it, but the shrunk value is never written
-// back. win.geomSize is what was applied, so a move alone does not change it.
+// than this screen is shown shrunk to the screen minus the margin, but the shrunk value is never
+// written back; a size that fits the screen is kept as it is (a note stretched exactly to the
+// screen width used to be shrunk and left a gap on the right). win.geomSize is what was applied, so
+// a move alone does not change it.
 function applyNoteWindowSize(win, box, size) {
     let w, h;
     if (size) {
@@ -10029,9 +10031,12 @@ function applyNoteWindowSize(win, box, size) {
     }
     let clamped = false;
     if (size) {
-        const maxW = window.innerWidth - 2 * NOTE_WINDOW_MARGIN, maxH = window.innerHeight - 2 * NOTE_WINDOW_MARGIN;
-        if (maxW > 0 && w > maxW) { w = maxW; clamped = true; }
-        if (maxH > 0 && h > maxH) { h = maxH; clamped = true; }
+        // Only a size that does not fit the screen itself is shrunk (to the screen minus the
+        // margin); a size that fits the screen is kept whole.
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const maxW = vw - 2 * NOTE_WINDOW_MARGIN, maxH = vh - 2 * NOTE_WINDOW_MARGIN;
+        if (maxW > 0 && w > vw) { w = maxW; clamped = true; }
+        if (maxH > 0 && h > vh) { h = maxH; clamped = true; }
     }
     box.style.width = typeof w === 'number' ? w + 'px' : w;
     box.style.height = typeof h === 'number' ? h + 'px' : h;
