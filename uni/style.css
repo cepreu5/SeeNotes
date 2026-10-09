@@ -1920,7 +1920,44 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1220px) {
+/* b1.95: таблет и десктоп 900-1220px — хедърът остава в ЕДИН ред (преди: колона от 4 реда и ~212px).
+   Търсачката се свива, за да се събере редом бутоните, вместо да се пренася на втори ред. */
+@media (min-width: 900px) and (max-width: 1220px) {
+    header {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    header > div:first-child {
+        order: 1;
+    }
+
+    /* Title */
+
+    #search-wrapper {
+        order: 2;
+        min-width: 0;
+        flex: 1 1 150px;
+        max-width: 400px;
+    }
+
+    /* Search Box — свиваем */
+
+    #header-buttons {
+        order: 3;
+    }
+
+    /* Buttons */
+
+    .boards-note {
+        order: 4;
+    }
+
+    /* Board menu — собствен ред под горния ред */
+}
+
+/* Под 900px (телефони, тесни портретни екрани) остава колоната, както досега. */
+@media (max-width: 899px) {
     header {
         flex-direction: column;
         align-items: center;
