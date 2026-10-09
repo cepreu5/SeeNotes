@@ -1092,8 +1092,9 @@
             return data.files && data.files.length > 0 ? data.files[0].id : null;
         }
 
-        // --- Дублирани бордове: всички board.txt в Drive (и в кошчето), групирани по title ---
-        // Само четене: една пагинирана заявка за списъка, после съдържанието на всеки board.txt.
+        // --- Дублирани бордове: board.txt в работната папка (и в кошчето), групирани по title ---
+        // Само четене: една заявка за id на папката, една пагинирана заявка за списъка (само директните
+        // файлове на папката), после съдържанието на всеки board.txt. Копия в други папки не се броят.
         // Групира се по точния низ на title (без trim и без промяна на главни/малки букви).
         // Речникът на този административен инструмент е вътрешен за страницата и
         // не се дели с речниците на приложението (uni/lang/i18n-*.json).
@@ -1101,17 +1102,16 @@
             bg: {
                 dupBoardsTitle: "Дублирани бордове",
                 dupBoardsBtn: "Дублирани бордове",
-                dupBoardsScanning: "Търсене на board.txt в Drive...",
+                dupBoardsScanning: "Търсене на board.txt в работната папка „{folder}“...",
                 dupBoardsReading: "Прочетени {done} от {total} board.txt...",
-                dupBoardsRead: "Прочетени {count} board.txt в Drive (включително кошчето).",
+                dupBoardsRead: "Прочетени {count} board.txt в работната папка „{folder}“ (включително кошчето).",
                 dupBoardsSummary: "Намерени {boards} борда; {titles} заглавия се повтарят ({dups} борда):",
-                dupBoardsClean: "Няма дублирани заглавия. Проверени {count} board.txt в Drive.",
+                dupBoardsClean: "Няма дублирани заглавия. Проверени {count} board.txt в работната папка „{folder}“.",
                 dupBoardsGroupCount: "{count} борда",
                 dupBoardsGroupTrashOne: "единият е в кошчето",
                 dupBoardsGroupTrashSome: "{count} от тях са в кошчето",
                 dupBoardsColCreated: "Създаден",
                 dupBoardsColGdid: "gdid",
-                dupBoardsColFolder: "Папка",
                 dupBoardsTrashTag: "кошче",
                 dupBoardsEmptyTitle: "(празно заглавие)",
                 dupBoardsProblems: "{count} board.txt не можаха да се прочетат и не са включени в проверката:",
@@ -1121,22 +1121,22 @@
                 dupBoardsReasonHttp: "грешка {status} при четене",
                 dupBoardsReasonNetwork: "мрежова грешка",
                 dupBoardsListError: "Грешка при търсене на board.txt в Drive: {error}",
-                dupBoardsNoAuth: "Липсва оторизация. Отворете Настройки от приложението."
+                dupBoardsNoAuth: "Липсва оторизация. Отворете Настройки от приложението.",
+                dupBoardsFolderNotFound: "Работната папка „{folder}“ не е намерена в Drive. Проверката не е направена."
             },
             en: {
                 dupBoardsTitle: "Duplicate boards",
                 dupBoardsBtn: "Duplicate boards",
-                dupBoardsScanning: "Searching Drive for board.txt...",
+                dupBoardsScanning: "Searching the working folder \"{folder}\" for board.txt...",
                 dupBoardsReading: "Read {done} of {total} board.txt...",
-                dupBoardsRead: "Read {count} board.txt in Drive (including the trash).",
+                dupBoardsRead: "Read {count} board.txt in the working folder \"{folder}\" (including the trash).",
                 dupBoardsSummary: "Found {boards} boards; {titles} titles are repeated ({dups} boards):",
-                dupBoardsClean: "No duplicate titles. Checked {count} board.txt in Drive.",
+                dupBoardsClean: "No duplicate titles. Checked {count} board.txt in the working folder \"{folder}\".",
                 dupBoardsGroupCount: "{count} boards",
                 dupBoardsGroupTrashOne: "one of them is in the trash",
                 dupBoardsGroupTrashSome: "{count} of them are in the trash",
                 dupBoardsColCreated: "Created",
                 dupBoardsColGdid: "gdid",
-                dupBoardsColFolder: "Folder",
                 dupBoardsTrashTag: "trash",
                 dupBoardsEmptyTitle: "(empty title)",
                 dupBoardsProblems: "{count} board.txt could not be read and are not part of the check:",
@@ -1146,7 +1146,8 @@
                 dupBoardsReasonHttp: "error {status} while reading",
                 dupBoardsReasonNetwork: "network error",
                 dupBoardsListError: "Error searching Drive for board.txt: {error}",
-                dupBoardsNoAuth: "Not authorised. Open Settings from the app."
+                dupBoardsNoAuth: "Not authorised. Open Settings from the app.",
+                dupBoardsFolderNotFound: "The working folder \"{folder}\" was not found in Drive. The check was not run."
             }
         };
         let setI18n = null;
@@ -1178,13 +1179,43 @@
             return detail ? `${res.status} ${detail}` : `${res.status}`;
         }
 
-        async function findDuplicateBoards(onProgress) {
+        // Работната папка: activeFolder от folders.json (AppDataFolder), после active_folder_name, накрая CX-Notes.
+        function workingFolderName() {
+            try {
+                const parsed = JSON.parse(sessionStorage.getItem('full_folders_json') || '{}');
+                if (parsed && typeof parsed.activeFolder === 'string' && parsed.activeFolder.trim()) return parsed.activeFolder;
+            } catch (e) { }
+            const stored = localStorage.getItem('active_folder_name');
+            return stored && stored !== 'AppDataFolder' ? stored : 'CX-Notes';
+        }
+
+        const driveQ = (v) => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+        async function findWorkingFolderId(DRIVE, name) {
+            const q = encodeURIComponent(`name='${driveQ(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+            let res;
+            try {
+                res = await driveFetch(`${DRIVE}?q=${q}&fields=files(id,name)&pageSize=10`);
+            } catch (e) {
+                throw new Error(st('dupBoardsListError', { error: e && e.message ? e.message : e }));
+            }
+            if (!res.ok) throw new Error(st('dupBoardsListError', { error: await driveErrorText(res) }));
+            let data;
+            try { data = await res.json(); } catch (e) { throw new Error(st('dupBoardsListError', { error: st('dupBoardsReasonJson') })); }
+            const hit = (data.files || []).find(f => f && f.id && (!f.name || f.name === name));
+            if (!hit) throw new Error(st('dupBoardsFolderNotFound', { folder: name }));
+            return hit.id;
+        }
+
+        async function findDuplicateBoards(folderName, onProgress) {
             const DRIVE = 'https://www.googleapis.com/drive/v3/files';
-            // 1) Една заявка (с пагинация) за всички board.txt, включително кошчето.
+            // 0) Името на работната папка -> id. Без папка няма проверка (не се пада към целия Drive).
+            const folderId = await findWorkingFolderId(DRIVE, folderName);
+            // 1) Една заявка (с пагинация) за board.txt направо в папката, включително кошчето.
             const listed = [];
             let pageToken = null;
             do {
-                const q = encodeURIComponent("name='board.txt'");
+                const q = encodeURIComponent(`'${driveQ(folderId)}' in parents and name='board.txt'`);
                 let res;
                 try {
                     res = await driveFetch(`${DRIVE}?q=${q}&fields=nextPageToken,files(id,name,parents,trashed,createdTime)&pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
@@ -1194,7 +1225,7 @@
                 if (!res.ok) throw new Error(st('dupBoardsListError', { error: await driveErrorText(res) }));
                 let data;
                 try { data = await res.json(); } catch (e) { throw new Error(st('dupBoardsListError', { error: st('dupBoardsReasonJson') })); }
-                (data.files || []).forEach(f => { if (f && f.id && (!f.name || f.name === 'board.txt')) listed.push(f); });
+                (data.files || []).forEach(f => { if (f && f.id && (!f.name || f.name === 'board.txt') && (!f.parents || f.parents.includes(folderId))) listed.push(f); });
                 pageToken = data.nextPageToken;
             } while (pageToken);
             // 2) Съдържанието на всеки board.txt - само заради title.
@@ -1211,7 +1242,7 @@
                         let board;
                         try { board = JSON.parse(text); } catch (e) { problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonJson') }); return; }
                         if (!board || typeof board.title !== 'string') { problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonNoTitle') }); return; }
-                        boards.push({ gdid: f.id, title: board.title, createdTime: f.createdTime || '', trashed: !!f.trashed, parentId: (f.parents || [])[0] || '' });
+                        boards.push({ gdid: f.id, title: board.title, createdTime: f.createdTime || '', trashed: !!f.trashed });
                     } catch (e) {
                         problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonNetwork') });
                     } finally {
@@ -1230,18 +1261,8 @@
                 title,
                 boards: list.sort((a, b) => String(a.createdTime).localeCompare(String(b.createdTime)) || a.gdid.localeCompare(b.gdid))
             })).sort((a, b) => b.boards.length - a.boards.length || a.title.localeCompare(b.title));
-            // 4) Имената на папките - само за бордовете в групите.
-            const folderNames = new Map();
-            const parentIds = [...new Set(groups.flatMap(g => g.boards.map(b => b.parentId)).filter(Boolean))];
-            await Promise.all(parentIds.map(async (pid) => {
-                try {
-                    const res = await driveFetch(`${DRIVE}/${pid}?fields=name`);
-                    if (res.ok) folderNames.set(pid, (await res.json()).name || pid);
-                } catch (e) { }
-            }));
-            groups.forEach(g => g.boards.forEach(b => { b.folder = folderNames.get(b.parentId) || b.parentId || '—'; }));
             problems.sort((a, b) => a.gdid.localeCompare(b.gdid));
-            return { scanned: listed.length, boards: boards.length, groups, problems };
+            return { folder: folderName, scanned: listed.length, boards: boards.length, groups, problems };
         }
 
         function renderDuplicateBoards(box, result) {
@@ -1266,7 +1287,7 @@
                     const wrap = el('div', 'dup-boards-wrap');
                     const table = el('table', 'dup-boards-table');
                     const hr = el('tr');
-                    ['dupBoardsColCreated', 'dupBoardsColGdid', 'dupBoardsColFolder'].forEach(k => hr.appendChild(el('th', '', st(k))));
+                    ['dupBoardsColCreated', 'dupBoardsColGdid'].forEach(k => hr.appendChild(el('th', '', st(k))));
                     table.appendChild(el('thead')).appendChild(hr);
                     const tbody = el('tbody');
                     g.boards.forEach(b => {
@@ -1278,7 +1299,6 @@
                         if (b.trashed) idCell.appendChild(el('span', 'dup-boards-tag trash', st('dupBoardsTrashTag')));
                         idCell.appendChild(document.createTextNode(b.gdid));
                         tr.appendChild(idCell);
-                        tr.appendChild(el('td', '', b.folder));
                         tbody.appendChild(tr);
                     });
                     table.appendChild(tbody);
@@ -1327,11 +1347,12 @@
                     await loadSetI18n();
                     const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
                     if (!stored) { setStatus(st('dupBoardsNoAuth'), 'error'); return; }
-                    setStatus(st('dupBoardsScanning'));
-                    const result = await findDuplicateBoards((done, total) => setStatus(st('dupBoardsReading', { done, total })));
+                    const folder = workingFolderName();
+                    setStatus(st('dupBoardsScanning', { folder }));
+                    const result = await findDuplicateBoards(folder, (done, total) => setStatus(st('dupBoardsReading', { done, total })));
                     renderDuplicateBoards(box, result);
-                    if (result.groups.length) setStatus(st('dupBoardsRead', { count: result.scanned }));
-                    else setStatus(st('dupBoardsClean', { count: result.scanned }), 'clean');
+                    if (result.groups.length) setStatus(st('dupBoardsRead', { count: result.scanned, folder }));
+                    else setStatus(st('dupBoardsClean', { count: result.scanned, folder }), 'clean');
                 } catch (e) {
                     console.warn('Duplicate boards scan failed:', e);
                     setStatus(e && e.message ? e.message : String(e), 'error');
