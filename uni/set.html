@@ -292,6 +292,84 @@
             border-top-color: #fff;
             animation: simple-spin 0.8s linear infinite;
         }
+
+        .board-notes-panel {
+            width: 100%;
+            max-width: 520px;
+            box-sizing: border-box;
+            background: #fff;
+            border: 1px solid #e0b4b0;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .board-notes-panel label,
+        .board-notes-head {
+            font-size: 0.8em;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #c0392b;
+            margin: 0;
+        }
+
+        .board-notes-panel p {
+            margin: 0;
+        }
+
+        .board-notes-panel input {
+            font-family: 'Courier New', Courier, monospace;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 1em;
+        }
+
+        #del-board-notes-confirm {
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .board-notes-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .board-notes-btn {
+            border: 1px solid #ccc;
+            background: #fff;
+            color: #333;
+            padding: 8px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .board-notes-danger {
+            background: #c0392b;
+            border-color: #c0392b;
+            color: #fff;
+        }
+
+        .board-notes-btn:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .board-notes-status:empty {
+            display: none;
+        }
+
+        .board-notes-status.error {
+            color: #c0392b;
+        }
     </style>
 </head>
 
@@ -309,9 +387,31 @@
                 <button id="del-folders-file-btn" class="save-btn"
                     style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий
                     folders.json</button>
+                <button id="del-board-notes-btn" class="save-btn"
+                    style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий
+                    бележки на борд</button>
                 <button id="del-all-appdata-btn" class="save-btn"
                     style="background-color: #000; color: #ff0000; border: 2px solid #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);">!!!
                     ИЗТРИЙ ВСИЧКО ЗА ЧИСТО СТАРТИРАНЕ !!!</button>
+            </div>
+            <div id="del-board-notes-panel" class="board-notes-panel" style="display:none;">
+                <label for="del-board-notes-gdid">gdid на борда</label>
+                <input id="del-board-notes-gdid" type="text" autocomplete="off" spellcheck="false">
+                <div class="board-notes-actions">
+                    <button id="del-board-notes-cancel" type="button" class="board-notes-btn">Отказ</button>
+                    <button id="del-board-notes-next" type="button" class="board-notes-btn board-notes-danger">Продължи</button>
+                </div>
+                <div id="del-board-notes-confirm" style="display:none;">
+                    <p class="board-notes-head">Потвърждение</p>
+                    <p>Борд <strong id="del-board-notes-title"></strong> <small>(gdid <span id="del-board-notes-id"></span>)</small></p>
+                    <p>Намерени <strong id="del-board-notes-count">0</strong> бележки с този boardid в папката <strong id="del-board-notes-folder"></strong>.</p>
+                    <p>Прикачените файлове (Images, Sound, Video, Other) <strong>остават</strong> за ръчно триене.</p>
+                    <div class="board-notes-actions">
+                        <button id="del-board-notes-cancel2" type="button" class="board-notes-btn">Отказ</button>
+                        <button id="del-board-notes-go" type="button" class="board-notes-btn board-notes-danger">Изтрий</button>
+                    </div>
+                </div>
+                <p id="del-board-notes-status" class="board-notes-status"></p>
             </div>
         </div>
 
@@ -551,7 +651,168 @@
             document.getElementById('del-settings-file-btn').addEventListener('click', () => deleteGDFile('settings.json'));
             document.getElementById('del-folders-file-btn').addEventListener('click', () => deleteGDFile('folders.json'));
             document.getElementById('del-all-appdata-btn').addEventListener('click', deleteAllAppData);
+            initDeleteBoardNotes();
         });
+
+        // --- Изтриване на бележките (note.txt) на един борд по неговия gdid ---
+        // Пипа само облака: board.txt и прикачените файлове не се трият,
+        // локалната база (IndexedDB / localStorage) не се променя.
+        async function driveFetch(url, options = {}) {
+            const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            if (!stored) throw new Error("Липсва оторизация.");
+            let t = JSON.parse(stored).access_token;
+            const send = () => fetch(url, { ...options, headers: { ...(options.headers || {}), 'Authorization': `Bearer ${t}` } });
+            let res = await send();
+            if ((res.status === 401 || res.status === 403) && window.opener && typeof window.opener.refreshAuthToken === 'function') {
+                const refreshed = await window.opener.refreshAuthToken(false);
+                if (refreshed && refreshed.pass && refreshed.tokenData) {
+                    t = refreshed.tokenData.access_token;
+                    res = await send();
+                }
+            }
+            return res;
+        }
+
+        async function findBoardNotes(gdid, onProgress) {
+            const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+            const metaRes = await driveFetch(`${DRIVE}/${gdid}?fields=id,name,parents,trashed`);
+            if (!metaRes.ok) throw new Error(`Бордът с gdid ${gdid} не е намерен (${metaRes.status}).`);
+            const meta = await metaRes.json();
+            if (meta.name !== 'board.txt') throw new Error(`Файлът с gdid ${gdid} не е board.txt (${meta.name}).`);
+            if (meta.trashed) throw new Error(`Бордът с gdid ${gdid} е в кошчето.`);
+            const parentId = (meta.parents || [])[0];
+            if (!parentId) throw new Error("Не е намерена папката на борда.");
+            let title = '';
+            const boardRes = await driveFetch(`${DRIVE}/${gdid}?alt=media`);
+            if (boardRes.ok) {
+                try { title = JSON.parse(await boardRes.text()).title || ''; } catch (e) { }
+            }
+            let folderName = parentId;
+            const folderRes = await driveFetch(`${DRIVE}/${parentId}?fields=name`);
+            if (folderRes.ok) folderName = (await folderRes.json()).name || parentId;
+            let candidates = [];
+            let pageToken = null;
+            do {
+                const q = encodeURIComponent(`'${parentId}' in parents and name='note.txt' and trashed=false`);
+                const res = await driveFetch(`${DRIVE}?q=${q}&fields=nextPageToken,files(id,name)&pageSize=1000${pageToken ? `&pageToken=${pageToken}` : ''}`);
+                if (!res.ok) throw new Error(`Грешка при четене на бележките: ${res.status}`);
+                const data = await res.json();
+                candidates = candidates.concat(data.files || []);
+                pageToken = data.nextPageToken;
+            } while (pageToken);
+            candidates = candidates.filter(f => f.name === 'note.txt' && f.id !== gdid);
+            const matched = [];
+            let read = 0;
+            let unreadable = 0;
+            for (let i = 0; i < candidates.length; i += 20) {
+                await Promise.all(candidates.slice(i, i + 20).map(async (file) => {
+                    try {
+                        const res = await driveFetch(`${DRIVE}/${file.id}?alt=media`);
+                        if (!res.ok) { unreadable++; return; }
+                        const note = JSON.parse(await res.text());
+                        if (note && String(note.boardid) === gdid) matched.push(file.id);
+                    } catch (e) {
+                        unreadable++;
+                    } finally {
+                        read++;
+                    }
+                }));
+                if (onProgress) onProgress(read, candidates.length);
+            }
+            return { title, folderName, noteIds: matched, scanned: candidates.length, unreadable };
+        }
+
+        function initDeleteBoardNotes() {
+            const $ = (id) => document.getElementById(id);
+            const panel = $('del-board-notes-panel');
+            const input = $('del-board-notes-gdid');
+            const nextBtn = $('del-board-notes-next');
+            const goBtn = $('del-board-notes-go');
+            const confirmBox = $('del-board-notes-confirm');
+            const status = $('del-board-notes-status');
+            let found = null;
+            const setStatus = (text, isError = false) => {
+                status.textContent = text;
+                status.classList.toggle('error', isError);
+            };
+            const reset = () => {
+                found = null;
+                confirmBox.style.display = 'none';
+                nextBtn.disabled = false;
+                input.disabled = false;
+            };
+            const close = () => {
+                reset();
+                input.value = '';
+                setStatus('');
+                panel.style.display = 'none';
+            };
+            $('del-board-notes-btn').addEventListener('click', () => {
+                if (panel.style.display !== 'none') return close();
+                panel.style.display = 'flex';
+                input.focus();
+            });
+            $('del-board-notes-cancel').addEventListener('click', close);
+            $('del-board-notes-cancel2').addEventListener('click', close);
+            input.addEventListener('input', () => { if (found) { reset(); setStatus(''); } });
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') nextBtn.click(); });
+            nextBtn.addEventListener('click', async () => {
+                const gdid = input.value.trim();
+                reset();
+                if (!/^[A-Za-z0-9_-]{10,}$/.test(gdid)) {
+                    setStatus("Въведете валиден gdid на борд (ID на файла board.txt в Drive).", true);
+                    return;
+                }
+                nextBtn.disabled = true;
+                input.disabled = true;
+                setStatus("Търсене на бележките...");
+                try {
+                    const result = await findBoardNotes(gdid, (done, total) => setStatus(`Проверени ${done} от ${total} бележки...`));
+                    found = { gdid, ...result };
+                    $('del-board-notes-title').textContent = result.title || '(без заглавие)';
+                    $('del-board-notes-id').textContent = gdid;
+                    $('del-board-notes-count').textContent = result.noteIds.length;
+                    $('del-board-notes-folder').textContent = result.folderName;
+                    goBtn.textContent = `Изтрий ${result.noteIds.length} бележки`;
+                    goBtn.disabled = result.noteIds.length === 0;
+                    confirmBox.style.display = 'flex';
+                    const skipped = result.unreadable === 1 ? ' 1 файл не можа да се прочете и не се трие.' : (result.unreadable ? ` ${result.unreadable} файла не можаха да се прочетат и не се трият.` : '');
+                    setStatus(result.noteIds.length === 0
+                        ? `Няма бележки с този boardid (проверени ${result.scanned}). Нищо няма да бъде изтрито.${skipped}`
+                        : `Проверени ${result.scanned} бележки в папката.${skipped}`, result.noteIds.length === 0);
+                } catch (e) {
+                    setStatus(e.message, true);
+                }
+                nextBtn.disabled = false;
+                input.disabled = false;
+            });
+            goBtn.addEventListener('click', async () => {
+                if (!found || found.noteIds.length === 0) return;
+                const ids = found.noteIds.slice();
+                goBtn.disabled = true;
+                $('del-board-notes-cancel2').disabled = true;
+                let deleted = 0;
+                let failed = 0;
+                for (let i = 0; i < ids.length; i += 10) {
+                    await Promise.all(ids.slice(i, i + 10).map(async (id) => {
+                        try {
+                            const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}`, { method: 'DELETE' });
+                            if (res.ok || res.status === 404) deleted++;
+                            else failed++;
+                        } catch (e) {
+                            failed++;
+                        }
+                    }));
+                    setStatus(`Изтриване... ${deleted + failed} от ${ids.length}`);
+                }
+                found = null;
+                confirmBox.style.display = 'none';
+                $('del-board-notes-cancel2').disabled = false;
+                nextBtn.disabled = false;
+                input.disabled = false;
+                setStatus(`Готово: ${deleted} изтрити, ${failed} грешки.`, failed > 0);
+            });
+        }
         async function findInAppDataInternal(name, parentId = 'appDataFolder') {
             const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
             if (!stored) return null;

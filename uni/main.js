@@ -17669,6 +17669,63 @@ async function toggleNotePinned(noteGdid, noteId) {
     showToast(wasPinned ? (_('noteUnpinned') || 'Note unpinned') : (_('notePinned') || 'Note pinned'), 2000);
     return true;
 }
+// Два борда с еднакво заглавие: търсенето по заглавие (стартов борд 'Main')
+// взима първия срещнат, т.е. произволен. Не трием и не преименуваме нищо сами —
+// казваме еднократно кой борд се зарежда и предлагаме преименуване на другия.
+const warnedDuplicateBoardTitles = new Set();
+function warnDuplicateBoardTitles(loadedBoardId) {
+    if (!Array.isArray(boardsData) || boardsData.length < 2) return;
+    const groups = new Map();
+    boardsData.forEach(b => {
+        const key = (b && b.title ? String(b.title) : '').trim().toLowerCase();
+        if (!key) return;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(b);
+    });
+    const boardKey = b => String(b.gdid || b.id);
+    for (const boards of groups.values()) {
+        if (boards.length < 2) continue;
+        const signature = boards.map(boardKey).sort().join('|');
+        if (warnedDuplicateBoardTitles.has(signature)) continue;
+        warnedDuplicateBoardTitles.add(signature);
+        const current = boards.find(b => boardKey(b) === String(loadedBoardId));
+        const loaded = current || boards[0];
+        const other = boards.find(b => b !== loaded);
+        const countNotes = id => (allNotesData || []).filter(n => String(n.boardid) === id).length;
+        const describe = b => `${boardKey(b)} (${countNotes(boardKey(b))})`;
+        const msg = (current
+            ? (_('duplicateBoardTitleLoaded') || 'There are {count} boards named "{title}": {list}. Loading the board with gdid {loaded}. Rename the other board so they can be told apart?')
+            : (_('duplicateBoardTitleByName') || 'There are {count} boards named "{title}": {list}. When a board is chosen by this name, the board with gdid {loaded} is used. Rename the other board so they can be told apart?'))
+            .replace('{count}', boards.length)
+            .replace('{title}', String(loaded.title).trim())
+            .replace('{list}', boards.map(describe).join(', '))
+            .replace('{loaded}', describe(loaded));
+        console.warn('[DuplicateBoards] Duplicate board title "' + loaded.title + '":', boards.map(describe), 'loaded:', boardKey(loaded));
+        let tries = 0;
+        const ask = async () => {
+            const popup = document.getElementById('folderIdPromptPopup');
+            if (!popup) return;
+            // Не прекъсваме друг диалог (напр. първоначалната настройка) — пробваме пак по-късно.
+            if (popup.classList.contains('show')) {
+                if (++tries < 20) setTimeout(ask, 3000);
+                return;
+            }
+            const answer = await showConfirmation(msg);
+            if (answer !== true || !other) return;
+            await showNewBoardModal();
+            const editSelect = document.getElementById('board-edit-select');
+            if (editSelect) {
+                editSelect.value = boardKey(other);
+                if (editSelect.value === boardKey(other) && typeof editSelect.onchange === 'function') editSelect.onchange();
+            }
+            const titleInput = document.getElementById('new-board-title');
+            if (titleInput) titleInput.focus();
+        };
+        setTimeout(ask, 1500);
+        return;
+    }
+}
+
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // Екранът за смяна на акаунт е показан - бележките от чуждата база не се рисуват
     if (accountSwitchNoticeShown) return;
@@ -17719,6 +17776,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             }
         }
     }
+    warnDuplicateBoardTitles(currentBoardFilter);
     if (boardsData.length > 0 || boardParseError) {
         const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
         allNotesData.forEach(note => {

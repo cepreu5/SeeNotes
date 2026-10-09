@@ -345,6 +345,8 @@
     "migratingData": "Copying data...",
     "migrationSuccess": "Data copied successfully.",
     "copySkippedCXNotesHasData": "CX Notes already contains notes. Nothing was copied; the existing data is kept.",
+    "duplicateBoardTitleLoaded": "There are {count} boards named \"{title}\": {list}. Loading the board with gdid {loaded}. Rename the other board so they can be told apart?",
+    "duplicateBoardTitleByName": "There are {count} boards named \"{title}\": {list}. When a board is chosen by this name, the board with gdid {loaded} is used. Rename the other board so they can be told apart?",
     "migrationError": "Error copying data.",
     "errorNoBoards": "Please create a board first before adding notes.",
     "selectFolderOption": "Select folder...",
