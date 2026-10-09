@@ -370,6 +370,140 @@
         .board-notes-status.error {
             color: #c0392b;
         }
+        .dup-boards-container {
+            margin-top: 22px;
+            padding: 20px 24px;
+            border-top: 3px double #3a6ff0;
+            border-radius: 0 0 12px 12px;
+            background: #fff;
+            text-align: left;
+        }
+
+        .dup-boards-container h3 {
+            margin: 0 0 10px;
+            font-size: 1.05em;
+        }
+
+        .dup-boards-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .dup-boards-btn {
+            background: #3a6ff0;
+            border-color: #3a6ff0;
+            color: #fff;
+        }
+
+        .dup-boards-status {
+            color: #5d6068;
+            font-size: 0.85em;
+        }
+
+        .dup-boards-status.error {
+            color: #c0392b;
+            font-weight: 600;
+        }
+
+        .dup-boards-status.clean {
+            color: #1f9d6a;
+            font-weight: 600;
+        }
+
+        .dup-boards-sum {
+            margin: 12px 0 6px;
+            font-size: 0.9em;
+        }
+
+        .dup-boards-group {
+            border: 1px solid #e6e3dc;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .dup-boards-group-head {
+            background: #f2f0ea;
+            padding: 7px 11px;
+            font-weight: bold;
+            font-size: 0.9em;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .dup-boards-title {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .dup-boards-wrap {
+            overflow-x: auto;
+        }
+
+        .dup-boards-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85em;
+        }
+
+        .dup-boards-table th {
+            text-align: left;
+            font-size: 0.8em;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #8b8e95;
+            padding: 6px 11px;
+            border-bottom: 1px solid #e6e3dc;
+        }
+
+        .dup-boards-table td {
+            padding: 6px 11px;
+            border-bottom: 1px solid #e6e3dc;
+            vertical-align: top;
+        }
+
+        .dup-boards-table tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .dup-boards-table td.mono {
+            font-family: 'Courier New', Courier, monospace;
+            overflow-wrap: anywhere;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .dup-boards-tag {
+            display: inline-block;
+            font-size: 0.8em;
+            font-weight: 600;
+            border-radius: 999px;
+            padding: 1px 8px;
+            background: #f2f0ea;
+            color: #5d6068;
+            border: 1px solid #e6e3dc;
+            margin-right: 6px;
+        }
+
+        .dup-boards-tag.trash {
+            background: #fbefd9;
+            color: #8a5a00;
+            border-color: #e8c98f;
+        }
+
+        .dup-boards-problems {
+            margin: 10px 0 0;
+            color: #c0392b;
+            font-size: 0.85em;
+        }
+
+        .dup-boards-problems ul {
+            margin: 4px 0 0;
+            padding-left: 20px;
+        }
     </style>
 </head>
 
@@ -414,6 +548,14 @@
                 </div>
                 <p id="del-board-notes-status" class="board-notes-status"></p>
             </div>
+        </div>
+        <div id="dup-boards-container" class="dup-boards-container">
+            <h3 data-i18n="dupBoardsTitle">Дублирани бордове</h3>
+            <div class="dup-boards-row">
+                <button id="dup-boards-btn" type="button" class="board-notes-btn dup-boards-btn" data-i18n="dupBoardsBtn">Дублирани бордове</button>
+                <span id="dup-boards-status" class="dup-boards-status"></span>
+            </div>
+            <div id="dup-boards-result"></div>
         </div>
 
         <div class="save-container">
@@ -653,6 +795,7 @@
             document.getElementById('del-folders-file-btn').addEventListener('click', () => deleteGDFile('folders.json'));
             document.getElementById('del-all-appdata-btn').addEventListener('click', deleteAllAppData);
             initDeleteBoardNotes();
+            initDuplicateBoards();
         });
 
         // --- Изтриване на бележките (note.txt) на един борд по неговия gdid ---
@@ -947,6 +1090,206 @@
             });
             const data = await res.json();
             return data.files && data.files.length > 0 ? data.files[0].id : null;
+        }
+
+        // --- Дублирани бордове: всички board.txt в Drive (и в кошчето), групирани по title ---
+        // Само четене: една пагинирана заявка за списъка, после съдържанието на всеки board.txt.
+        // Групира се по точния низ на title (без trim и без промяна на главни/малки букви).
+        let setI18n = null;
+        async function loadSetI18n() {
+            if (setI18n) return setI18n;
+            const lang = localStorage.getItem('language') || (navigator.language && navigator.language.startsWith('bg') ? 'bg' : 'en');
+            for (const l of [lang, 'bg']) {
+                try {
+                    const res = await fetch(`lang/i18n-${l}.json`, { credentials: 'omit' });
+                    if (res.ok) { setI18n = await res.json(); return setI18n; }
+                } catch (e) { }
+            }
+            setI18n = {};
+            return setI18n;
+        }
+        function st(key, vars = {}) {
+            const text = (setI18n && typeof setI18n[key] === 'string') ? setI18n[key] : key;
+            return text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+        }
+
+        function formatDriveTime(iso) {
+            const d = new Date(iso);
+            if (!iso || isNaN(d.getTime())) return '—';
+            const p = (n) => String(n).padStart(2, '0');
+            return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+
+        async function driveErrorText(res) {
+            let detail = '';
+            try {
+                const body = await res.json();
+                detail = (body && body.error && (body.error.message || (typeof body.error === 'string' ? body.error : ''))) || '';
+            } catch (e) { }
+            return detail ? `${res.status} ${detail}` : `${res.status}`;
+        }
+
+        async function findDuplicateBoards(onProgress) {
+            const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+            // 1) Една заявка (с пагинация) за всички board.txt, включително кошчето.
+            const listed = [];
+            let pageToken = null;
+            do {
+                const q = encodeURIComponent("name='board.txt'");
+                let res;
+                try {
+                    res = await driveFetch(`${DRIVE}?q=${q}&fields=nextPageToken,files(id,name,parents,trashed,createdTime)&pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+                } catch (e) {
+                    throw new Error(st('dupBoardsListError', { error: e && e.message ? e.message : e }));
+                }
+                if (!res.ok) throw new Error(st('dupBoardsListError', { error: await driveErrorText(res) }));
+                let data;
+                try { data = await res.json(); } catch (e) { throw new Error(st('dupBoardsListError', { error: st('dupBoardsReasonJson') })); }
+                (data.files || []).forEach(f => { if (f && f.id && (!f.name || f.name === 'board.txt')) listed.push(f); });
+                pageToken = data.nextPageToken;
+            } while (pageToken);
+            // 2) Съдържанието на всеки board.txt - само заради title.
+            const boards = [];
+            const problems = [];
+            let read = 0;
+            for (let i = 0; i < listed.length; i += 20) {
+                await Promise.all(listed.slice(i, i + 20).map(async (f) => {
+                    try {
+                        const res = await driveFetch(`${DRIVE}/${f.id}?alt=media`);
+                        if (!res.ok) { problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonHttp', { status: res.status }) }); return; }
+                        const text = await res.text();
+                        if (!text.trim()) { problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonEmpty') }); return; }
+                        let board;
+                        try { board = JSON.parse(text); } catch (e) { problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonJson') }); return; }
+                        if (!board || typeof board.title !== 'string') { problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonNoTitle') }); return; }
+                        boards.push({ gdid: f.id, title: board.title, createdTime: f.createdTime || '', trashed: !!f.trashed, parentId: (f.parents || [])[0] || '' });
+                    } catch (e) {
+                        problems.push({ gdid: f.id, trashed: !!f.trashed, reason: st('dupBoardsReasonNetwork') });
+                    } finally {
+                        read++;
+                    }
+                }));
+                if (onProgress) onProgress(read, listed.length);
+            }
+            // 3) Групи по точния title, само тези с повече от един борд.
+            const byTitle = new Map();
+            boards.forEach(b => {
+                if (!byTitle.has(b.title)) byTitle.set(b.title, []);
+                byTitle.get(b.title).push(b);
+            });
+            const groups = [...byTitle.entries()].filter(([, list]) => list.length > 1).map(([title, list]) => ({
+                title,
+                boards: list.sort((a, b) => String(a.createdTime).localeCompare(String(b.createdTime)) || a.gdid.localeCompare(b.gdid))
+            })).sort((a, b) => b.boards.length - a.boards.length || a.title.localeCompare(b.title));
+            // 4) Имената на папките - само за бордовете в групите.
+            const folderNames = new Map();
+            const parentIds = [...new Set(groups.flatMap(g => g.boards.map(b => b.parentId)).filter(Boolean))];
+            await Promise.all(parentIds.map(async (pid) => {
+                try {
+                    const res = await driveFetch(`${DRIVE}/${pid}?fields=name`);
+                    if (res.ok) folderNames.set(pid, (await res.json()).name || pid);
+                } catch (e) { }
+            }));
+            groups.forEach(g => g.boards.forEach(b => { b.folder = folderNames.get(b.parentId) || b.parentId || '—'; }));
+            problems.sort((a, b) => a.gdid.localeCompare(b.gdid));
+            return { scanned: listed.length, boards: boards.length, groups, problems };
+        }
+
+        function renderDuplicateBoards(box, result) {
+            box.textContent = '';
+            const el = (tag, cls, text) => {
+                const e = document.createElement(tag);
+                if (cls) e.className = cls;
+                if (text !== undefined) e.textContent = text;
+                return e;
+            };
+            if (result.groups.length) {
+                const dups = result.groups.reduce((n, g) => n + g.boards.length, 0);
+                box.appendChild(el('p', 'dup-boards-sum', st('dupBoardsSummary', { boards: result.boards, titles: result.groups.length, dups })));
+                result.groups.forEach(g => {
+                    const group = el('div', 'dup-boards-group');
+                    const head = el('div', 'dup-boards-group-head');
+                    head.appendChild(el('span', 'dup-boards-title', g.title === '' ? st('dupBoardsEmptyTitle') : g.title));
+                    head.appendChild(el('span', 'dup-boards-tag', st('dupBoardsGroupCount', { count: g.boards.length })));
+                    const inTrash = g.boards.filter(b => b.trashed).length;
+                    if (inTrash) head.appendChild(el('span', 'dup-boards-tag trash', inTrash === 1 ? st('dupBoardsGroupTrashOne') : st('dupBoardsGroupTrashSome', { count: inTrash })));
+                    group.appendChild(head);
+                    const wrap = el('div', 'dup-boards-wrap');
+                    const table = el('table', 'dup-boards-table');
+                    const hr = el('tr');
+                    ['dupBoardsColCreated', 'dupBoardsColGdid', 'dupBoardsColFolder'].forEach(k => hr.appendChild(el('th', '', st(k))));
+                    table.appendChild(el('thead')).appendChild(hr);
+                    const tbody = el('tbody');
+                    g.boards.forEach(b => {
+                        const tr = el('tr');
+                        tr.dataset.gdid = b.gdid;
+                        if (b.trashed) tr.classList.add('trashed');
+                        tr.appendChild(el('td', 'mono', formatDriveTime(b.createdTime)));
+                        const idCell = el('td', 'mono');
+                        if (b.trashed) idCell.appendChild(el('span', 'dup-boards-tag trash', st('dupBoardsTrashTag')));
+                        idCell.appendChild(document.createTextNode(b.gdid));
+                        tr.appendChild(idCell);
+                        tr.appendChild(el('td', '', b.folder));
+                        tbody.appendChild(tr);
+                    });
+                    table.appendChild(tbody);
+                    wrap.appendChild(table);
+                    group.appendChild(wrap);
+                    box.appendChild(group);
+                });
+            }
+            if (result.problems.length) {
+                const p = el('div', 'dup-boards-problems');
+                p.appendChild(el('span', '', st('dupBoardsProblems', { count: result.problems.length })));
+                const ul = el('ul');
+                result.problems.forEach(x => {
+                    const li = el('li');
+                    li.dataset.gdid = x.gdid;
+                    if (x.trashed) li.appendChild(el('span', 'dup-boards-tag trash', st('dupBoardsTrashTag')));
+                    li.appendChild(document.createTextNode(`${x.gdid} - ${x.reason}`));
+                    ul.appendChild(li);
+                });
+                p.appendChild(ul);
+                box.appendChild(p);
+            }
+        }
+
+        function initDuplicateBoards() {
+            const btn = document.getElementById('dup-boards-btn');
+            const status = document.getElementById('dup-boards-status');
+            const box = document.getElementById('dup-boards-result');
+            if (!btn) return;
+            const setStatus = (text, kind = '') => {
+                status.textContent = text;
+                status.classList.toggle('error', kind === 'error');
+                status.classList.toggle('clean', kind === 'clean');
+            };
+            loadSetI18n().then(() => {
+                document.querySelectorAll('#dup-boards-container [data-i18n]').forEach(e => {
+                    const v = setI18n[e.dataset.i18n];
+                    if (typeof v === 'string') e.textContent = v;
+                });
+            });
+            btn.addEventListener('click', async () => {
+                if (btn.disabled) return;
+                btn.disabled = true;
+                box.textContent = '';
+                try {
+                    await loadSetI18n();
+                    const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                    if (!stored) { setStatus(st('dupBoardsNoAuth'), 'error'); return; }
+                    setStatus(st('dupBoardsScanning'));
+                    const result = await findDuplicateBoards((done, total) => setStatus(st('dupBoardsReading', { done, total })));
+                    renderDuplicateBoards(box, result);
+                    if (result.groups.length) setStatus(st('dupBoardsRead', { count: result.scanned }));
+                    else setStatus(st('dupBoardsClean', { count: result.scanned }), 'clean');
+                } catch (e) {
+                    console.warn('Duplicate boards scan failed:', e);
+                    setStatus(e && e.message ? e.message : String(e), 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
         }
 
         async function deleteAllAppData() {
