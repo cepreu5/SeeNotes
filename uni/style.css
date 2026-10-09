@@ -1939,6 +1939,9 @@ code {
         min-width: 0;
         flex: 1 1 150px;
         max-width: 400px;
+        /* b1.96: гарантирано >=10px отстояние до заглавието и до бутоните, и когато полето се свие */
+        margin-left: 12px;
+        margin-right: 12px;
     }
 
     /* Search Box — свиваем */
@@ -1961,6 +1964,14 @@ code {
     header {
         flex-direction: column;
         align-items: center;
+    }
+
+    /* b1.96: полето за търсене пази >=10px до ръбовете на хедъра и в колона */
+    #search-wrapper {
+        width: calc(100% - 20px);
+        max-width: 400px;
+        margin-left: 10px;
+        margin-right: 10px;
     }
 
     /* Order for tablets (769px - 1030px) */
