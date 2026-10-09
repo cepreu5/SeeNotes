@@ -1095,17 +1095,66 @@
         // --- Дублирани бордове: всички board.txt в Drive (и в кошчето), групирани по title ---
         // Само четене: една пагинирана заявка за списъка, после съдържанието на всеки board.txt.
         // Групира се по точния низ на title (без trim и без промяна на главни/малки букви).
+        // Речникът на този административен инструмент е вътрешен за страницата и
+        // не се дели с речниците на приложението (uni/lang/i18n-*.json).
+        const SET_I18N = {
+            bg: {
+                dupBoardsTitle: "Дублирани бордове",
+                dupBoardsBtn: "Дублирани бордове",
+                dupBoardsScanning: "Търсене на board.txt в Drive...",
+                dupBoardsReading: "Прочетени {done} от {total} board.txt...",
+                dupBoardsRead: "Прочетени {count} board.txt в Drive (включително кошчето).",
+                dupBoardsSummary: "Намерени {boards} борда; {titles} заглавия се повтарят ({dups} борда):",
+                dupBoardsClean: "Няма дублирани заглавия. Проверени {count} board.txt в Drive.",
+                dupBoardsGroupCount: "{count} борда",
+                dupBoardsGroupTrashOne: "единият е в кошчето",
+                dupBoardsGroupTrashSome: "{count} от тях са в кошчето",
+                dupBoardsColCreated: "Създаден",
+                dupBoardsColGdid: "gdid",
+                dupBoardsColFolder: "Папка",
+                dupBoardsTrashTag: "кошче",
+                dupBoardsEmptyTitle: "(празно заглавие)",
+                dupBoardsProblems: "{count} board.txt не можаха да се прочетат и не са включени в проверката:",
+                dupBoardsReasonEmpty: "празен файл",
+                dupBoardsReasonJson: "невалиден JSON",
+                dupBoardsReasonNoTitle: "няма title",
+                dupBoardsReasonHttp: "грешка {status} при четене",
+                dupBoardsReasonNetwork: "мрежова грешка",
+                dupBoardsListError: "Грешка при търсене на board.txt в Drive: {error}",
+                dupBoardsNoAuth: "Липсва оторизация. Отворете Настройки от приложението."
+            },
+            en: {
+                dupBoardsTitle: "Duplicate boards",
+                dupBoardsBtn: "Duplicate boards",
+                dupBoardsScanning: "Searching Drive for board.txt...",
+                dupBoardsReading: "Read {done} of {total} board.txt...",
+                dupBoardsRead: "Read {count} board.txt in Drive (including the trash).",
+                dupBoardsSummary: "Found {boards} boards; {titles} titles are repeated ({dups} boards):",
+                dupBoardsClean: "No duplicate titles. Checked {count} board.txt in Drive.",
+                dupBoardsGroupCount: "{count} boards",
+                dupBoardsGroupTrashOne: "one of them is in the trash",
+                dupBoardsGroupTrashSome: "{count} of them are in the trash",
+                dupBoardsColCreated: "Created",
+                dupBoardsColGdid: "gdid",
+                dupBoardsColFolder: "Folder",
+                dupBoardsTrashTag: "trash",
+                dupBoardsEmptyTitle: "(empty title)",
+                dupBoardsProblems: "{count} board.txt could not be read and are not part of the check:",
+                dupBoardsReasonEmpty: "empty file",
+                dupBoardsReasonJson: "invalid JSON",
+                dupBoardsReasonNoTitle: "no title",
+                dupBoardsReasonHttp: "error {status} while reading",
+                dupBoardsReasonNetwork: "network error",
+                dupBoardsListError: "Error searching Drive for board.txt: {error}",
+                dupBoardsNoAuth: "Not authorised. Open Settings from the app."
+            }
+        };
         let setI18n = null;
         async function loadSetI18n() {
             if (setI18n) return setI18n;
             const lang = localStorage.getItem('language') || (navigator.language && navigator.language.startsWith('bg') ? 'bg' : 'en');
-            for (const l of [lang, 'bg']) {
-                try {
-                    const res = await fetch(`lang/i18n-${l}.json`, { credentials: 'omit' });
-                    if (res.ok) { setI18n = await res.json(); return setI18n; }
-                } catch (e) { }
-            }
-            setI18n = {};
+            // Българският е подложка: липсващ ключ в избрания език пада към българския текст.
+            setI18n = Object.assign({}, SET_I18N.bg, SET_I18N[lang] || {});
             return setI18n;
         }
         function st(key, vars = {}) {
