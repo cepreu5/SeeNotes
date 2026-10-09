@@ -60,20 +60,10 @@ async function resolveAppVersion() {
     return version;
 }
 
-// Надписите са в собствени елементи, за да не се дублират при повторно извикване.
+// Надписът с версията живее само в Настройки, в собствен елемент, за да не се дублира при повторно извикване.
 function renderVersionLabels() {
-    const appTitleEl = document.getElementById('app-title');
-    if (appTitleEl) {
-        let label = appTitleEl.querySelector('.app-version-label');
-        if (!label) {
-            label = document.createElement('span');
-            label.className = 'app-version-label';
-            label.style.cssText = 'font-size: 0.4em; opacity: 0.7; font-weight: normal; vertical-align: middle; margin-left: 8px;';
-            appTitleEl.appendChild(label);
-        }
-        label.textContent = version || '';
-        label.style.display = version ? '' : 'none';
-    }
+    // Версията НЕ се показва в хедъра (CX, 2026-10-09): на таблет в landscape той е висок,
+    // а надписът не носи нищо за работата. Остава само в заглавието на Настройки.
     const settingsTitle = document.querySelector('#settings-modal .modal-content-box h3');
     if (settingsTitle) {
         let label = settingsTitle.querySelector('.app-version-label');
