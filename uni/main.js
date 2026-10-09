@@ -2849,8 +2849,11 @@ async function writeFolderConfigToAppData(config) {
 }
 
 /**
- * Проверява дали е необходимо първоначално съзнаване на папка
- * Проверява ПЪРВО AppDataFolder (source of truth), ПОСЛЕ localStorage (кеш)
+ * Проверява дали е необходимо първоначално създаване на папка.
+ * Гледа САМО localStorage (кеш) — Drive не се пита тук. Затова на чисто ново
+ * устройство/профил функцията казва "да" дори когато папката в Drive я има;
+ * истинската проверка (AppDataFolder конфиг + търсене по име) е в
+ * completeInitialFolderSetup().
  */
 function needsInitialFolderSetup() {
     if (localStorage.getItem('initial_setup_complete') === 'true') return false;
@@ -3052,6 +3055,58 @@ async function showInitialDataFolderModal() {
 // =====================================================================
 
 /**
+ * Търси папка по име с втора проба. Едно неуспешно запитване към Drive
+ * (току-що изтекъл токен, единичен мрежов отказ) не бива да води до извод
+ * "папката не съществува" — заради това излизаше екранът за първо стартиране.
+ */
+async function findExistingFolderId(name) {
+    try {
+        const first = await getFolderIDByName(name);
+        if (first) return first;
+    } catch (e) {
+        console.warn('[findExistingFolderId] First attempt for "' + name + '" failed:', e);
+    }
+    try {
+        const refresh = await refreshAuthToken(false);
+        if (refresh && refresh.pass) delete cachedFolderIdsByName[name];
+    } catch (e) {
+        console.warn('[findExistingFolderId] Token refresh failed:', e);
+    }
+    try {
+        return await getFolderIDByName(name);
+    } catch (e) {
+        console.warn('[findExistingFolderId] Second attempt for "' + name + '" failed:', e);
+        return null;
+    }
+}
+
+/**
+ * Връща true само ако сме сигурни, че в папката НЯМА нито един board.txt.
+ * При грешка или неуспешна проверка връща false: когато не можем да
+ * потвърдим, че папката е празна, в нея не се копира.
+ */
+async function isFolderConfirmedEmpty(folderId) {
+    if (!folderId || folderId === 'appDataFolder') return false;
+    try {
+        const existing = await findGDFileByName(folderId, 'board.txt');
+        if (existing && existing.length > 0) return false;
+        // findGDFileByName връща null и при празна папка, и при грешка.
+        // Затова проверяваме изрично, че папката съществува и е достъпна.
+        const tokenData = getStoredTokenData();
+        if (!tokenData || !tokenData.access_token) return false;
+        const resp = await fetch('https://www.googleapis.com/drive/v3/files/' + folderId + '?fields=id,trashed', {
+            headers: { 'Authorization': 'Bearer ' + tokenData.access_token }
+        });
+        if (!resp.ok) return false;
+        const data = await resp.json();
+        return !data.trashed;
+    } catch (e) {
+        console.warn('[isFolderConfirmedEmpty] Error:', e);
+        return false;
+    }
+}
+
+/**
  * Завършва първоначалното съзнаване на папката
  */
 async function completeInitialFolderSetup() {
@@ -3094,12 +3149,7 @@ async function completeInitialFolderSetup() {
         }
         console.warn('[Initial Setup] Folder from AppDataFolder config not found in Drive (deleted?). Falling through to name search...');
     }
-    let existingCxNotesId = null;
-    try {
-        existingCxNotesId = await getFolderIDByName('CX-Notes');
-    } catch (e) {
-        console.warn('[Initial Setup] Error checking for existing CX-Notes folder:', e);
-    }
+    let existingCxNotesId = await findExistingFolderId('CX-Notes');
     if (existingCxNotesId) {
         console.log('[Initial Setup] Found existing CX-Notes folder:', existingCxNotesId);
         sessionStorage.removeItem('_folder_not_found_reload');
@@ -3147,12 +3197,22 @@ async function completeInitialFolderSetup() {
         } catch (e) {
             console.warn('[Initial Setup] Error searching for multinotes_data:', e);
         }
-        let targetFolderId = await getFolderIDByName('CX-Notes');
+        let targetFolderId = await findExistingFolderId('CX-Notes');
         if (!targetFolderId) {
             targetFolderId = await createNewGDriveFolder('CX-Notes');
         }
         let migrationDone = false;
-        if (multinotesId && targetFolderId) {
+        // ЗАЩИТА: никога не копираме в CX-Notes, ако там вече има данни (board.txt).
+        // Ако не успеем да потвърдим, че папката е празна, също не копираме.
+        // Прикачените файлове и самите бордове не се пипат.
+        const targetFolderEmpty = await isFolderConfirmedEmpty(targetFolderId);
+        if (!targetFolderEmpty) {
+            console.warn('[Initial Setup] Copy from multinotes_data skipped: CX-Notes already has data (or could not be verified empty). Existing data is kept as it is.');
+            if (typeof showToast === 'function') {
+                showToast(_('copySkippedCXNotesHasData') || 'CX Notes already contains notes. Nothing was copied; the existing data is kept.', 9000);
+            }
+        }
+        if (targetFolderEmpty && multinotesId && targetFolderId) {
             try {
                 const fetchResult = await fetchAllData(multinotesId, false);
                 if (fetchResult && !fetchResult.error) {
@@ -3216,7 +3276,7 @@ async function completeInitialFolderSetup() {
         return;
     } else {
         if (loaderText) loaderText.textContent = _('creatingFolder') || 'Creating CX-Notes folder...';
-        let newFolderId = await getFolderIDByName('CX-Notes');
+        let newFolderId = await findExistingFolderId('CX-Notes');
         if (!newFolderId) {
             newFolderId = await createNewGDriveFolder('CX-Notes');
         }
@@ -7730,20 +7790,18 @@ async function handleFirstRunSetup() {
             if (!targetFolderId) {
                 targetFolderId = await createNewGDriveFolder('CX-Notes');
             }
-            const result = await fetchAllData(multinotesId, false);
-            if (result && !result.error && targetFolderId) {
-                // Изчистваме съществуващите бордове в CX-Notes, за да избегнем дубликати
-                try {
-                    const existingBoards = await findGDFileByName(targetFolderId, 'board.txt');
-                    if (existingBoards && existingBoards.length > 0) {
-                        console.log(`[FirstRun] Deleting ${existingBoards.length} existing board(s) in CX-Notes before copy...`);
-                        for (const b of existingBoards) {
-                            await deleteGDriveFile(b.id);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[FirstRun] Error cleaning existing boards:', e);
+            // ЗАЩИТА: не копираме върху съществуващи данни и не трием нищо в CX-Notes.
+            // Ако там вече има board.txt (или не можем да потвърдим, че папката е празна),
+            // копирането се пропуска и съществуващите данни остават както са.
+            const targetFolderEmpty = await isFolderConfirmedEmpty(targetFolderId);
+            const result = targetFolderEmpty ? await fetchAllData(multinotesId, false) : null;
+            if (!targetFolderEmpty) {
+                console.warn('[FirstRun] Copy skipped: CX-Notes already has data (or could not be verified empty).');
+                if (typeof showToast === 'function') {
+                    showToast(_('copySkippedCXNotesHasData') || 'CX Notes already contains notes. Nothing was copied; the existing data is kept.', 9000);
                 }
+                userChoice = 'fresh';
+            } else if (result && !result.error && targetFolderId) {
                 const migrationSuccess = await migrateDataToNewFolder(targetFolderId);
                 if (migrationSuccess) {
                     cachedMainFolderId = targetFolderId;

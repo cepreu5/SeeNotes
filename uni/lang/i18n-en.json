@@ -344,6 +344,7 @@
     "confirmMigration": "The new folder is empty. Do you want to copy information from the current database into it?",
     "migratingData": "Copying data...",
     "migrationSuccess": "Data copied successfully.",
+    "copySkippedCXNotesHasData": "CX Notes already contains notes. Nothing was copied; the existing data is kept.",
     "migrationError": "Error copying data.",
     "errorNoBoards": "Please create a board first before adding notes.",
     "selectFolderOption": "Select folder...",
