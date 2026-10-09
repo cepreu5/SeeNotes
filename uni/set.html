@@ -656,8 +656,86 @@
         });
 
         // --- Изтриване на бележките (note.txt) на един борд по неговия gdid ---
-        // Пипа само облака: board.txt и прикачените файлове не се трият,
-        // локалната база (IndexedDB / localStorage) не се променя.
+        // Бележките се търсят в локалната база NotesDB (store notes, boardid === gdid), плюс една
+        // ids-only проверка в Drive за бележки, които ги няма в базата. Трият се и от Drive, и от
+        // базата; board.txt и прикачените файлове не се пипат, localStorage не се променя.
+        const NOTES_DB_NAME = 'NotesDB';
+        const NOTES_STORE = 'notes';
+
+        // Отваря NotesDB само ако вече съществува - никога не създава база. null = няма база / store.
+        async function openNotesDb() {
+            if (!window.indexedDB) return null;
+            try {
+                if (typeof indexedDB.databases === 'function') {
+                    const list = await indexedDB.databases();
+                    if (!list.some(d => d.name === NOTES_DB_NAME)) return null;
+                }
+            } catch (e) { }
+            const db = await new Promise((resolve) => {
+                let req;
+                try { req = indexedDB.open(NOTES_DB_NAME); } catch (e) { resolve(null); return; }
+                // Нова (празна) база: прекъсваме, за да не остане създадена.
+                req.onupgradeneeded = (e) => { try { e.target.transaction.abort(); } catch (err) { } };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); resolve(null); };
+                req.onblocked = () => resolve(null);
+            });
+            if (db && !db.objectStoreNames.contains(NOTES_STORE)) { db.close(); return null; }
+            return db;
+        }
+
+        // Записите от store notes с този boardid ({ gdid, status }) и ключовете на всички записи в
+        // базата (бележка, която е в базата с друг boardid, не е на този борд и не се сваля от Drive).
+        async function readBoardNotesFromDb(gdid) {
+            const empty = { notes: [], allIds: new Set() };
+            const db = await openNotesDb();
+            if (!db) return empty;
+            try {
+                return await new Promise((resolve, reject) => {
+                    const notes = [];
+                    const allIds = new Set();
+                    const req = db.transaction(NOTES_STORE, 'readonly').objectStore(NOTES_STORE).openCursor();
+                    req.onsuccess = () => {
+                        const cur = req.result;
+                        if (!cur) { resolve({ notes, allIds }); return; }
+                        const n = cur.value;
+                        const key = String((n && n.gdid) || cur.primaryKey);
+                        allIds.add(key);
+                        if (n && String(n.boardid) === String(gdid)) notes.push({ gdid: key, status: n.status });
+                        cur.continue();
+                    };
+                    req.onerror = () => reject(req.error);
+                });
+            } catch (e) {
+                console.warn('NotesDB read failed:', e);
+                return empty;
+            } finally {
+                db.close();
+            }
+        }
+
+        // Трие записите (ключ = gdid) от store notes. Връща колко от тях наистина бяха в базата.
+        async function deleteNotesFromDb(ids) {
+            const db = await openNotesDb();
+            if (!db) return 0;
+            try {
+                return await new Promise((resolve, reject) => {
+                    let removed = 0;
+                    const tx = db.transaction(NOTES_STORE, 'readwrite');
+                    const store = tx.objectStore(NOTES_STORE);
+                    ids.forEach(id => {
+                        const c = store.count(id);
+                        c.onsuccess = () => { if (c.result > 0) { removed++; store.delete(id); } };
+                    });
+                    tx.oncomplete = () => resolve(removed);
+                    tx.onerror = () => reject(tx.error);
+                    tx.onabort = () => reject(tx.error);
+                });
+            } finally {
+                db.close();
+            }
+        }
+
         async function driveFetch(url, options = {}) {
             const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
             if (!stored) throw new Error("Липсва оторизация.");
@@ -693,9 +771,21 @@
             let folderName = parentId;
             const folderRes = await driveFetch(`${DRIVE}/${parentId}?fields=name`);
             if (folderRes.ok) folderName = (await folderRes.json()).name || parentId;
-            let candidates = [];
-            // Търсим и в кошчето на Drive: щом бордът е изтрит, бележките му
-            // също са с trashed=true и иначе изобщо не се виждат.
+            // 1) Локалната база: бележките на борда, без да се сваля нищо от Drive.
+            const local = await readBoardNotesFromDb(gdid);
+            const localIds = new Set();
+            const matched = [];
+            const trashedSet = new Set();
+            local.notes.forEach(n => {
+                if (!n.gdid || n.gdid === gdid || localIds.has(n.gdid)) return;
+                localIds.add(n.gdid);
+                matched.push(n.gdid);
+                if (n.status === 1) trashedSet.add(n.gdid);
+            });
+            const fromDb = matched.length;
+            // 2) Проверка за пълнота: само id-тата на note.txt в папката (и в кошчето на Drive);
+            //    съдържанието се чете само за бележки, които изобщо ги няма в базата.
+            const listedTrashed = new Map();
             for (const trashedFlag of ['false', 'true']) {
                 let pageToken = null;
                 do {
@@ -703,27 +793,29 @@
                     const res = await driveFetch(`${DRIVE}?q=${q}&fields=nextPageToken,files(id,name,trashed)&pageSize=1000${pageToken ? `&pageToken=${pageToken}` : ''}`);
                     if (!res.ok) throw new Error(`Грешка при четене на бележките: ${res.status}`);
                     const data = await res.json();
-                    candidates = candidates.concat(data.files || []);
+                    (data.files || []).forEach(f => {
+                        if (!f.id || f.id === gdid || (f.name && f.name !== 'note.txt')) return;
+                        listedTrashed.set(f.id, (listedTrashed.get(f.id) || false) || f.trashed === true || trashedFlag === 'true');
+                    });
                     pageToken = data.nextPageToken;
                 } while (pageToken);
             }
-            const seenIds = new Set();
-            candidates = candidates.filter(f => {
-                if (f.name !== 'note.txt' || f.id === gdid || seenIds.has(f.id)) return false;
-                seenIds.add(f.id);
-                return true;
-            });
-            const matched = [];
-            const trashedIds = [];
+            listedTrashed.forEach((isTrashed, id) => { if (isTrashed && localIds.has(id)) trashedSet.add(id); });
+            const candidates = [...listedTrashed.keys()].filter(id => !localIds.has(id) && !local.allIds.has(id));
+            let driveOnly = 0;
             let read = 0;
             let unreadable = 0;
             for (let i = 0; i < candidates.length; i += 20) {
-                await Promise.all(candidates.slice(i, i + 20).map(async (file) => {
+                await Promise.all(candidates.slice(i, i + 20).map(async (id) => {
                     try {
-                        const res = await driveFetch(`${DRIVE}/${file.id}?alt=media`);
+                        const res = await driveFetch(`${DRIVE}/${id}?alt=media`);
                         if (!res.ok) { unreadable++; return; }
                         const note = JSON.parse(await res.text());
-                        if (note && String(note.boardid) === gdid) { matched.push(file.id); if (file.trashed) trashedIds.push(file.id); }
+                        if (note && String(note.boardid) === gdid) {
+                            matched.push(id);
+                            driveOnly++;
+                            if (listedTrashed.get(id)) trashedSet.add(id);
+                        }
                     } catch (e) {
                         unreadable++;
                     } finally {
@@ -732,7 +824,8 @@
                 }));
                 if (onProgress) onProgress(read, candidates.length);
             }
-            return { title, folderName, noteIds: matched, trashedIds, boardTrashed, scanned: candidates.length, unreadable };
+            const trashedIds = matched.filter(id => trashedSet.has(id));
+            return { title, folderName, noteIds: matched, trashedIds, boardTrashed, scanned: listedTrashed.size, unreadable, fromDb, driveOnly };
         }
 
         function initDeleteBoardNotes() {
@@ -779,9 +872,9 @@
                 }
                 nextBtn.disabled = true;
                 input.disabled = true;
-                setStatus("Търсене на бележките...");
+                setStatus("Търсене на бележките в локалната база...");
                 try {
-                    const result = await findBoardNotes(gdid, (done, total) => setStatus(`Проверени ${done} от ${total} бележки...`));
+                    const result = await findBoardNotes(gdid, (done, total) => setStatus(`Проверени в Drive ${done} от ${total} бележки, които не са в базата...`));
                     found = { gdid, ...result };
                     $('del-board-notes-title').textContent = result.title || '(без заглавие)';
                     $('del-board-notes-id').textContent = gdid;
@@ -799,7 +892,7 @@
                     const skipped = result.unreadable === 1 ? ' 1 файл не можа да се прочете и не се трие.' : (result.unreadable ? ` ${result.unreadable} файла не можаха да се прочетат и не се трият.` : '');
                     setStatus(result.noteIds.length === 0
                         ? `Няма бележки с този boardid (проверени ${result.scanned}, включително кошчето). Нищо няма да бъде изтрито.${skipped}`
-                        : `Проверени ${result.scanned} бележки в папката.${skipped}`, result.noteIds.length === 0);
+                        : `Намерени ${result.fromDb} бележки в базата.${result.driveOnly > 0 ? ` В Drive има още ${result.driveOnly} бележки, които не са в базата - те също ще бъдат изтрити.` : ''}${skipped}`, result.noteIds.length === 0);
                 } catch (e) {
                     setStatus(e.message, true);
                 }
@@ -813,6 +906,8 @@
                 $('del-board-notes-cancel2').disabled = true;
                 let deleted = 0;
                 let failed = 0;
+                let dbDeleted = 0;
+                let dbError = '';
                 for (let i = 0; i < ids.length; i += 10) {
                     await Promise.all(ids.slice(i, i + 10).map(async (id) => {
                         try {
@@ -825,12 +920,21 @@
                     }));
                     setStatus(`Изтриване... ${deleted + failed} от ${ids.length}`);
                 }
+                // От базата се трият всички, и тези с грешка в Drive.
+                try {
+                    dbDeleted = await deleteNotesFromDb(ids);
+                } catch (e) {
+                    dbError = ` Грешка при изтриване от базата: ${e && e.message ? e.message : e}.`;
+                }
+                try {
+                    if (window.opener && typeof window.opener.forgetDeletedNotes === 'function') window.opener.forgetDeletedNotes(ids);
+                } catch (e) { console.warn('forgetDeletedNotes failed:', e); }
                 found = null;
                 confirmBox.style.display = 'none';
                 $('del-board-notes-cancel2').disabled = false;
                 nextBtn.disabled = false;
                 input.disabled = false;
-                setStatus(`Готово: ${deleted} изтрити, ${failed} грешки.`, failed > 0);
+                setStatus(`Готово: ${deleted} изтрити в Drive, ${dbDeleted} изтрити от базата, ${failed} грешки.${dbError}`, failed > 0 || !!dbError);
             });
         }
         async function findInAppDataInternal(name, parentId = 'appDataFolder') {
