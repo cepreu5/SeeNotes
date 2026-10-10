@@ -3652,7 +3652,8 @@ body.selection-locked .note.active-selection-note .note-content {
     white-space: nowrap;
 }
 
-/* Ред „дата / час / повторение / до“ в модала на бележка с дата (b2.10). Цветовете са
+/* Ред „час / повторение / до“ в модала на бележка с дата (b2.10). От b2.12 е лента точно под
+   долната лента - последният елемент в кутията, подравнен като бутоните вдясно. Цветовете са
    полупрозрачни, за да стоят върху всеки цвят на бележката. */
 .note-cal-row {
     --note-cal-chip-bg: rgba(0, 0, 0, 0.06);
@@ -3661,12 +3662,18 @@ body.selection-locked .note.active-selection-note .note-content {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
-    margin-top: auto;
-    padding: 6px 0;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    margin-top: 0;
+    padding: 0 10px 10px 0;
     font-size: 0.85em;
     position: relative;
     z-index: 10001;
+    pointer-events: auto;
 }
 
 .note-cal-row[hidden],
@@ -3674,8 +3681,9 @@ body.selection-locked .note.active-selection-note .note-content {
     display: none !important;
 }
 
-.note-cal-row + .modal-footer-toolbar {
-    margin-top: 0;
+/* Лентата отгоре дава долния си отстъп на реда, за да стоят двете като една. */
+.modal-footer-toolbar:has(+ .note-cal-row:not([hidden])) {
+    padding-bottom: 6px;
 }
 
 .note-cal-chip {
@@ -3748,6 +3756,15 @@ body.selection-locked .note.active-selection-note .note-content {
 
     .modal-footer-toolbar .modal-search-bar {
         width: 100%;
+    }
+
+    .note-cal-row {
+        gap: 4px;
+        padding-right: 5px;
+    }
+
+    .note-cal-chip {
+        padding: 2px 6px;
     }
 }
 

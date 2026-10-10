@@ -484,6 +484,8 @@ function getNoteHeaderDateTimestamp(noteData) {
     const isAutoCalendarTimer = timerDate && timerDate.getHours() === 0 && timerDate.getMinutes() === 0 && timerDate.getSeconds() === 33;
 
     if (timer && !isAutoCalendarTimer) return timer;
+    const calDateTime = getNoteCalDateTimeTimestamp(noteData);
+    if (calDateTime) return calDateTime;
     if (Number(noteData?.calendarDate) > 0) return Number(noteData.calendarDate);
     if (Number(noteData?.datemod) > 0) return Number(noteData.datemod);
     return Number(noteData?.date) || 0;
@@ -9828,14 +9830,15 @@ function applyNoteCalDraft(uiState, draft) {
     return u;
 }
 
-// Редът „дата / час / повторение / до“ над долната лента на модала. Показва се само при зададена дата;
-// без дата се скрива, но черновата и стойностите в бележката остават.
-function buildNoteCalRow(modalBodyElem, onRemoveDate) {
+// Редът „час / повторение / до“ под долната лента на модала (b2.12). Показва се само при зададена дата;
+// без дата се скрива, но черновата и стойностите в бележката остават. Датата се задава и маха само
+// от бутона с календар в лентата.
+function buildNoteCalRow(modalBodyElem) {
     const row = document.createElement('div');
     row.className = 'note-cal-row';
-    // <label>: щракване по надписа отива в полето. Датата е <span> - иначе би натиснало ✕.
-    const chip = (labelKey, fallback, tag = 'label') => {
-        const el = document.createElement(tag);
+    // <label>: щракване по надписа отива в полето.
+    const chip = (labelKey, fallback) => {
+        const el = document.createElement('label');
         el.className = 'note-cal-chip';
         const lbl = document.createElement('span');
         lbl.className = 'note-cal-lbl';
@@ -9853,12 +9856,6 @@ function buildNoteCalRow(modalBodyElem, onRemoveDate) {
         b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onClick(); });
         return b;
     };
-
-    const dateChip = chip('noteCalDate', 'date', 'span');
-    dateChip.classList.add('note-cal-date');
-    const dateText = document.createElement('span');
-    dateText.className = 'note-cal-date-text';
-    dateChip.append(dateText, clearBtn('removeFromCalendar', 'Remove from calendar', onRemoveDate));
 
     const timeChip = chip('noteCalTime', 'time');
     timeChip.classList.add('note-cal-time');
@@ -9889,12 +9886,11 @@ function buildNoteCalRow(modalBodyElem, onRemoveDate) {
     const untilClear = clearBtn('noteCalClearUntil', 'No end date', () => { untilInput.value = ''; commit(); });
     untilChip.append(untilInput, untilClear);
 
-    row.append(dateChip, timeChip, repeatChip, untilChip);
+    row.append(timeChip, repeatChip, untilChip);
 
     const sync = () => {
         const calDate = parseInt(modalBodyElem.dataset.calendarDate, 10) || 0;
         row.hidden = !(calDate > 0);
-        dateText.textContent = calDate > 0 ? formatDate(calDate) : '';
         const draft = getModalCalDraft(modalBodyElem);
         timeInput.value = draft.time;
         timeClear.hidden = !draft.time;
@@ -11698,6 +11694,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         } else if (currentNoteObj.calendarDate) {
             const dateText = formatDate(currentNoteObj.calendarDate);
             if (dateText) dateSpan.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+            // Зададеният час (uiState.cTime) - без да се пише timer, който би я сложил в „Напомняния“.
+            const calDateTime = getNoteCalDateTimeTimestamp(currentNoteObj);
+            const timeText = calDateTime ? formatTime(calDateTime) : '';
+            if (dateText && timeText) timeSpan.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
         } else if (currentNoteObj.datemod) {
             const dateText = formatDate(currentNoteObj.datemod);
             if (dateText) {
@@ -11844,10 +11844,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         calendarBtn.className = 'modal-footer-btn';
         calendarBtn.innerHTML = hasCalendarDate ? noCalendarIconSvg : calendarIconSvg;
         calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
-        // Ред „дата / час / повторение / до“ - само при зададена дата; ✕ на датата прави същото като бутона.
+        // Ред „час / повторение / до“ - само при зададена дата, последен в кутията, под долната лента.
         const calRowBody = modalBody;
-        const calRow = buildNoteCalRow(calRowBody, () => calendarBtn.click());
-        modalContentBox.insertBefore(calRow, footerToolbar);
+        const calRow = buildNoteCalRow(calRowBody);
+        footerToolbar.after(calRow);
         calendarBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const currentCalendarDateVal = modalBody.dataset.calendarDate;
@@ -12577,17 +12577,37 @@ function formatDateTime(timestamp) {
     }
 }
 
+// Часът по настройката на устройството (12/24 ч, b2.12); при грешка - 'HH:MM'.
+let timeFormatter = null;
 function formatTime(timestamp) {
     if (!timestamp) return '';
     try {
         const parsedValue = !isNaN(timestamp) && !isNaN(parseFloat(timestamp)) ? Number(timestamp) : timestamp;
         const date = new Date(parsedValue);
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
+        if (Number.isNaN(date.getTime())) return '';
+        try {
+            if (!timeFormatter) timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+            return timeFormatter.format(date);
+        } catch (e) {
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
     } catch (e) {
         return ''; // Fallback
     }
+}
+
+// Календарната дата с часа от uiState.cTime ('HH:MM') като timestamp; без час - 0.
+function getNoteCalDateTimeTimestamp(noteData) {
+    const calDate = Number(noteData?.calendarDate) || 0;
+    const time = calDate > 0 ? getNoteCalTime(noteData.uiState) : '';
+    if (!time) return 0;
+    const d = new Date(calDate);
+    if (Number.isNaN(d.getTime())) return 0;
+    const [h, m] = time.split(':').map(Number);
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
 }
 // Add an event listener to the modal's close button to reset button visibility
 document.querySelectorAll('.modal-close').forEach(btn => {
@@ -18234,6 +18254,10 @@ async function createNoteElement(noteContent) {
         const dateText = formatDate(extraData.calendarDate);
         if (dateText) {
             headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+            // Зададеният час (uiState.cTime); timer не се пише - той прави бележката напомняне.
+            const calDateTime = getNoteCalDateTimeTimestamp(extraData);
+            const timeText = calDateTime ? formatTime(calDateTime) : '';
+            if (timeText) headerTime.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
         }
     } else if (extraData.datemod) { // Always create the element
         const dateText = formatDate(extraData.datemod);
