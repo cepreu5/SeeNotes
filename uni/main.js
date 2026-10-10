@@ -19115,26 +19115,44 @@ function toggleListFormat(textarea, listType) {
         return /^\d+\.\s/.test(line.trim());
     });
 
+    // Each line keeps its text ('rest'); only the marker in front of it changes.
+    const edits = [];
+    let at = lineStart;
     const newLines = selectedLines.map((line, idx) => {
-        if (isRemoving) {
-            if (isBullet) {
-                const escapedBullet = bulletSym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                return line.replace(new RegExp(`^\\s*${escapedBullet}\\s*`), '');
-            }
-            return line.replace(/^\s*\d+\.\s*/, '');
-        } else {
-            const currentMarker = isBullet ? `${bulletSym} ` : `${idx + 1}. `;
-            const escapedBullet = bulletSym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const bulletRegex = isBullet ? new RegExp(`^\\s*${escapedBullet}\\s*`) : /^\s*\d+\.\s*/;
-            return currentMarker + line.replace(bulletRegex, '');
-        }
+        const escapedBullet = bulletSym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const markerRegex = isBullet ? new RegExp(`^\\s*${escapedBullet}\\s*`) : /^\s*\d+\.\s*/;
+        const rest = line.replace(markerRegex, '');
+        const marker = isRemoving ? '' : (isBullet ? `${bulletSym} ` : `${idx + 1}. `);
+        edits.push({ s: at, oldLen: line.length - rest.length, newLen: marker.length });
+        at += line.length + 1;
+        return marker + rest;
     });
     const replacement = newLines.join('\n');
-    // textarea.setRangeText(replacement, lineStart, lineEnd, 'select');
-    textarea.setRangeText(replacement, lineStart, lineEnd, 'end');
-    textarea.dispatchEvent(new Event('input', {
-        bubbles: true
-    }));
+    const ctx = getNoteEditContext(textarea);
+    if (!ctx || !ctx.modalBody) {
+        textarea.setRangeText(replacement, lineStart, lineEnd, 'end');
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+    }
+    // The formats move with the text after each marker: a range starting at a line start (or in
+    // its old marker) starts after the new marker, so the marker and its space never get a format
+    // and the formatted characters stay the same (handleEditInput would guess one shift at the caret).
+    const mapPos = (p, isEnd) => {
+        let acc = 0;
+        for (const ed of edits) {
+            const S = ctx.off + ed.s;
+            if (isEnd ? p <= S : p < S) return p + acc;
+            if (p < S + ed.oldLen) return S + ed.newLen + acc;
+            acc += ed.newLen - ed.oldLen;
+        }
+        return p + acc;
+    };
+    const formats = readNoteEditFormats(ctx.modalBody, ctx.key)
+        .map(f => ({ ...f, start: mapPos(f.start, false), end: mapPos(f.end, true) }))
+        .filter(f => f.end > f.start);
+    noteEditReplace(textarea, lineStart, lineEnd, replacement, lineStart + replacement.length);
+    writeNoteEditFormats(ctx.modalBody, ctx.key, formats);
+    refreshNoteEditBackdrops(ctx);
 }
 
 function getPreciseCharIndex(container, range) {
