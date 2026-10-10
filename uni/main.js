@@ -182,6 +182,9 @@ const SCOPES_BASE = 'https://www.googleapis.com/auth/drive.file https://www.goog
 const SCOPES_READONLY = 'https://www.googleapis.com/auth/drive.readonly';
 const SCOPES_FULL = 'https://www.googleapis.com/auth/drive';
 let SCOPES = SCOPES_BASE; // По подразбиране - минимални scopes
+// Календарът „CX Notes“ (b2.07): иска се при нужда през requestAdditionalScopes, не влиза в SCOPES_BASE/SCOPES_FULL.
+// С него приложението вижда и пише само в календари, които само е създало (calendars.insert/get, без calendarList).
+const CALENDAR_APP_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
 
 // --- Глобални флагове за инициализация на папката ---
 let folderSetupMode = null; // 'import_migrate' | 'create_empty' | 'advanced_existing' | null
@@ -5341,6 +5344,7 @@ async function startApp(isExplicitLogin = false) {
         initDraggableButtons();
         await mainLogic();
         handleShareTarget();
+        verifyGcalOnStart(); // Календарът „CX Notes“: тиха проверка на заден план
     } catch (err) {
         console.error("Error in startApp:", err);
         // Fallback for network errors during mainLogic
@@ -13745,6 +13749,7 @@ const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'singleNoteMode', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg',
+    'gcalNotes', 'gcalCalendarId', 'gcalState',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
@@ -13784,6 +13789,240 @@ async function findGDFileByName(folderId, fileName) {
         console.error("findGDFileByName error:", e);
         return null;
     }
+}
+
+// --- Запис в Google Календар (CX Notes), етап 1 (b2.07) ------------------------------
+// gcalNotes ('true'/'false') е ключът в Настройки, gcalCalendarId помни кой е календарът „CX Notes“,
+// gcalState е 'ok' | 'deleted'. И трите са в appSettingsKeys, значи профилът ги носи (като defaultNoteBg).
+// ID-то се пази и във файла calendar.json до settings.json — за другото устройство, когато профилната
+// секция е различна. С обхвата calendar.app.created календарите не могат да се изброят, затова нищо не се
+// търси по име: локалният ключ → calendar.json → (при включен ключ) нов календар, веднъж.
+// В този етап НЯМА събития: само обхватът, календарът и състоянието му.
+const GCAL_API_BASE = 'https://www.googleapis.com/calendar/v3';
+const GCAL_CALENDAR_SUMMARY = 'CX Notes';
+const GCAL_DRIVE_FILE = 'calendar.json';
+
+function getGcalTimeZone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
+}
+
+// Формата на заявките е в чисти помощници: тестовете ги викат с подменен fetch
+function buildGcalGetCalendarRequest(accessToken, calendarId) {
+    return {
+        url: `${GCAL_API_BASE}/calendars/${encodeURIComponent(calendarId)}`,
+        init: { method: 'GET', headers: { 'Authorization': `Bearer ${accessToken}` } }
+    };
+}
+function buildGcalCreateCalendarRequest(accessToken, timeZone) {
+    return {
+        url: `${GCAL_API_BASE}/calendars`,
+        init: {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary: GCAL_CALENDAR_SUMMARY, timeZone: timeZone || getGcalTimeZone() })
+        }
+    };
+}
+
+function getGcalAccessToken() {
+    if (authToken && authToken.access_token) return authToken.access_token;
+    try {
+        const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        return stored ? (JSON.parse(stored).access_token || null) : null;
+    } catch (e) { return null; }
+}
+
+// 'has' | 'lacks' | 'unknown' — дали текущият токен вече носи обхвата за календара
+function getGcalTokenScopeState() {
+    const scope = authToken && authToken.scope;
+    if (!scope) return 'unknown';
+    return scope.split(' ').includes(CALENDAR_APP_SCOPE) ? 'has' : 'lacks';
+}
+
+// Заявка към Calendar API; при 401 токенът се опреснява веднъж, както при Drive заявките
+async function gcalApiFetch(buildRequest) {
+    let req = buildRequest(getGcalAccessToken());
+    let resp = await fetch(req.url, req.init);
+    if (resp.status === 401 && typeof refreshAuthToken === 'function') {
+        const refresh = await refreshAuthToken(false);
+        if (refresh && refresh.pass) {
+            req = buildRequest(refresh.tokenData.access_token);
+            resp = await fetch(req.url, req.init);
+        }
+    }
+    return resp;
+}
+
+// calendar.json в папката на settings.json: {"id":"<calendarId>"}
+async function readGcalIdFromDrive() {
+    if (isOffline) return null;
+    try {
+        const folderId = await getAppSettingsFolderId();
+        if (!folderId) return null;
+        const files = await findGDFileByName(folderId, GCAL_DRIVE_FILE);
+        if (!files || files.length === 0) return null;
+        const content = await fetchGDriveFileContent(files[0].id);
+        if (!content) return null;
+        const id = JSON.parse(content).id;
+        return typeof id === 'string' && id ? id : null;
+    } catch (e) {
+        console.warn('[gcal] calendar.json read failed:', e);
+        return null;
+    }
+}
+async function writeGcalIdToDrive(calendarId) {
+    if (isOffline) return false;
+    try {
+        const folderId = await getAppSettingsFolderId();
+        if (!folderId) return false;
+        const content = JSON.stringify({ id: calendarId || null });
+        const files = await findGDFileByName(folderId, GCAL_DRIVE_FILE);
+        if (files && files.length > 0) {
+            await updateGDriveFile(files[0].id, content);
+            for (let i = 1; i < files.length; i++) {
+                deleteGDriveFile(files[i].id).catch(e => console.warn('[gcal] Error deleting duplicate calendar.json:', e));
+            }
+        } else {
+            await createGDriveFile(folderId, GCAL_DRIVE_FILE, content);
+        }
+        return true;
+    } catch (e) {
+        console.warn('[gcal] calendar.json write failed:', e);
+        return false;
+    }
+}
+
+// Календарът е изтрит в Google: ключът се изключва и нищо не се създава пак само
+function forgetGcalCalendar() {
+    localStorage.removeItem('gcalCalendarId');
+    localStorage.setItem('gcalNotes', 'false');
+    localStorage.setItem('gcalState', 'deleted');
+}
+
+let _gcalEnsurePromise = null;
+// {ok, calendarId, reason}; reason: 'no-auth' | 'scope-denied' | 'calendar-deleted' | 'network' | 'http-<код>'
+// quiet (при старт): requestAdditionalScopes се вика само ако токенът явно няма обхвата
+async function ensureGcalCalendar(options = {}) {
+    if (_gcalEnsurePromise) return _gcalEnsurePromise; // две извиквания наведнъж не създават два календара
+    _gcalEnsurePromise = ensureGcalCalendarOnce(options).finally(() => { _gcalEnsurePromise = null; });
+    return _gcalEnsurePromise;
+}
+async function ensureGcalCalendarOnce({ quiet = false } = {}) {
+    if (!getGcalAccessToken()) return { ok: false, calendarId: null, reason: 'no-auth' };
+    const needScope = !quiet || getGcalTokenScopeState() === 'lacks';
+    if (needScope && !(await requestAdditionalScopes(CALENDAR_APP_SCOPE))) {
+        localStorage.setItem('gcalNotes', 'false');
+        return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-denied' };
+    }
+    let calendarId = localStorage.getItem('gcalCalendarId') || null;
+    let idFromDrive = false;
+    if (!calendarId) {
+        calendarId = await readGcalIdFromDrive();
+        idFromDrive = !!calendarId;
+    }
+    if (calendarId) {
+        let resp;
+        try {
+            resp = await gcalApiFetch(token => buildGcalGetCalendarRequest(token, calendarId));
+        } catch (e) {
+            console.warn('[gcal] calendars.get failed:', e);
+            return { ok: false, calendarId, reason: 'network' };
+        }
+        if (resp.ok) {
+            localStorage.setItem('gcalCalendarId', calendarId);
+            localStorage.setItem('gcalState', 'ok');
+            return { ok: true, calendarId, reason: null };
+        }
+        if (resp.status === 404 || resp.status === 410) {
+            forgetGcalCalendar();
+            // Файлът се чисти само ако още сочи изтрития календар (друго устройство може да е записало нов)
+            const driveId = idFromDrive ? calendarId : await readGcalIdFromDrive();
+            if (driveId === calendarId) await writeGcalIdToDrive(null);
+            return { ok: false, calendarId: null, reason: 'calendar-deleted' };
+        }
+        return { ok: false, calendarId, reason: `http-${resp.status}` };
+    }
+    // Няма ID нито локално, нито в Drive: нов календар „CX Notes“
+    let resp;
+    try {
+        resp = await gcalApiFetch(token => buildGcalCreateCalendarRequest(token, getGcalTimeZone()));
+    } catch (e) {
+        console.warn('[gcal] calendars.insert failed:', e);
+        return { ok: false, calendarId: null, reason: 'network' };
+    }
+    if (!resp.ok) return { ok: false, calendarId: null, reason: `http-${resp.status}` };
+    let created = null;
+    try { created = await resp.json(); } catch (e) { created = null; }
+    if (!created || !created.id) return { ok: false, calendarId: null, reason: 'http-' + resp.status };
+    localStorage.setItem('gcalCalendarId', created.id);
+    localStorage.setItem('gcalState', 'ok');
+    await writeGcalIdToDrive(created.id);
+    return { ok: true, calendarId: created.id, reason: null };
+}
+
+// Редът под ключа: подсказка, „свързан“ или „изтрит“ — един ред, ключът е в data-key за смяната на езика
+function getGcalStatusKey() {
+    const on = localStorage.getItem('gcalNotes') === 'true';
+    const state = localStorage.getItem('gcalState');
+    if (!on && state === 'deleted') return 'gcalStatusDeleted';
+    if (on && state === 'ok' && localStorage.getItem('gcalCalendarId')) return 'gcalStatusOk';
+    return 'gcalNotesHint';
+}
+function applyGcalNotesSetting() {
+    const checkbox = document.getElementById('gcal-notes-checkbox');
+    if (checkbox) checkbox.checked = localStorage.getItem('gcalNotes') === 'true';
+    const line = document.getElementById('gcal-notes-status');
+    if (line) {
+        const key = getGcalStatusKey();
+        line.setAttribute('data-key', key);
+        line.innerHTML = _(key);
+    }
+}
+function initGcalNotesCheckbox() {
+    const checkbox = document.getElementById('gcal-notes-checkbox');
+    if (!checkbox || checkbox.dataset.gcalBound) return;
+    checkbox.dataset.gcalBound = '1';
+    applyGcalNotesSetting();
+    checkbox.addEventListener('change', async () => {
+        if (!checkbox.checked) {
+            // Изключване: нищо в Google не се трие, календарът остава
+            localStorage.setItem('gcalNotes', 'false');
+            applyGcalNotesSetting();
+            showToast(_('settingSaved'), 2000);
+            return;
+        }
+        localStorage.setItem('gcalNotes', 'true');
+        if (localStorage.getItem('gcalState') === 'deleted') localStorage.removeItem('gcalState');
+        checkbox.disabled = true;
+        let result;
+        try {
+            result = await ensureGcalCalendar();
+        } catch (e) {
+            console.warn('[gcal] ensureGcalCalendar failed:', e);
+            result = { ok: false, calendarId: null, reason: 'network' };
+        } finally {
+            checkbox.disabled = false;
+        }
+        if (!result.ok && result.reason !== 'calendar-deleted') {
+            // Без половин състояние: ключът се връща в изключено
+            localStorage.setItem('gcalNotes', 'false');
+            if (result.reason === 'scope-denied') showToast(_('gcalScopeDenied'), 4000);
+            else if (result.reason === 'network') showToast(_('offlineModeMessage'), 3000);
+            else console.warn('[gcal] calendar not available:', result.reason);
+        }
+        applyGcalNotesSetting();
+    });
+}
+
+// При старт: тиха проверка, само ако ключът е включен; грешка не спира старта и не пипа ключа
+function verifyGcalOnStart() {
+    if (localStorage.getItem('gcalNotes') !== 'true' || isOffline) return;
+    ensureGcalCalendar({ quiet: true })
+        .then(result => {
+            if (!result.ok) console.warn('[gcal] start check:', result.reason);
+            applyGcalNotesSetting();
+        })
+        .catch(e => console.warn('[gcal] start check failed:', e));
 }
 
 async function syncGlobalFoldersJson() {
@@ -14156,6 +14395,7 @@ async function loadSettingsFromGDrive(silent = false) {
                 }
             });
             applySingleNoteModeSetting();
+            applyGcalNotesSetting();
             // Току-що сменен език: профилът се обновява на заден план, стартът не го чака
             if (pendingLang) saveSettingsToGDrive(true).catch(e => console.warn('Background profile sync after language change failed:', e));
             initHeaderFullscreen();
@@ -14847,6 +15087,8 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
         });
     }
+    // Запис в Google Календар (b2.07): включването иска обхвата и създава/проверява календара „CX Notes“
+    initGcalNotesCheckbox();
     // Show 'New' Board Checkbox
     if (showNewBoardCheckbox) {
         showNewBoardCheckbox.checked = localStorage.getItem('showNewBoard') === 'true'; // Default to false
