@@ -4250,6 +4250,7 @@ async function moveNoteToTrash(noteGdid, noteId) {
         renderWeeklyCalendarView(currentWeeklyViewDate);
     }
     updateReloadButtonState();
+    scheduleGcalSync(); // бележка в кошчето → събитието се трие
     return true;
 }
 /**
@@ -4287,6 +4288,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
     }
     const midx = allNotesData.findIndex(n => (noteGdid ? n.gdid === noteGdid : n.id == noteId));
     if (midx !== -1) allNotesData.splice(midx, 1);
+    scheduleGcalSync(); // изтрита бележка → събитието се трие (изпразването на кошчето дава една сверка)
     const noteEl = document.querySelector(`.note[data-g="${actualGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
     if (noteEl) noteEl.remove();
@@ -4537,6 +4539,7 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         updateBoardCounterUI('trash');
         filterNotesByBoard(currentBoardFilter, false);
         updateReloadButtonState();
+        scheduleGcalSync(); // възстановена от кошчето → събитието се връща
         return true;
     }
     return false;
@@ -14250,6 +14253,16 @@ function applyGcalNotesSetting() {
             line.innerHTML += '<span style="display:block;margin-top:2px;font-size:0.85em;opacity:.75;word-break:break-word;">' +
                 _('gcalStatusGoogleDetail') + ' ' + escapeHtml(text) + '</span>';
         }
+        // Обхождането след включване: брояч и лента в същия ред (етап 3)
+        const progress = isGcalNotesOn() && typeof _gcalSyncProgress !== 'undefined' ? _gcalSyncProgress : null;
+        if (progress && progress.total > 0) {
+            const pct = Math.round(100 * Math.min(progress.done, progress.total) / progress.total);
+            line.innerHTML += '<span class="gcal-sync-progress"><span class="gcal-sync-progress-text">' +
+                escapeHtml((_(progress.skipped > 0 ? 'gcalSyncProgressSkipped' : 'gcalSyncProgress') || '')
+                    .replace('{done}', progress.done).replace('{total}', progress.total).replace('{skipped}', progress.skipped || 0)) +
+                '</span><span class="gcal-sync-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + progress.total +
+                '" aria-valuenow="' + progress.done + '"><span style="width:' + pct + '%"></span></span></span>';
+        }
     }
 }
 function getGcalLastErrorDetail() {
@@ -14287,6 +14300,8 @@ function initGcalNotesCheckbox() {
             checkbox.disabled = false;
         }
         reportGcalResult(result);
+        // Включен ключ: всички бележки с дата получават събития (обхождането се помни, ако прекъсне)
+        if (result.ok) syncGcalEvents({ backfill: true }).catch(e => console.warn('[gcal] backfill failed:', e));
     });
 }
 
@@ -14314,7 +14329,7 @@ function armGcalConsentOnFirstClick() {
         if (!isGcalNotesOn()) return;
         if (getGcalTokenScopeState() === 'has') { logGcalScopeDecision('first click', 'skip consent (token has the scope)'); return; }
         ensureGcalCalendar({ where: 'first click' })
-            .then(reportGcalResult)
+            .then(result => { reportGcalResult(result); if (result.ok) scheduleGcalSync(0); })
             .catch(e => console.warn('[gcal] consent on first click failed:', e));
     };
     document.addEventListener('click', _gcalConsentListener, { capture: true, once: true });
@@ -14333,8 +14348,492 @@ function verifyGcalOnStart() {
             if (result.reason === 'scope-needed') armGcalConsentOnFirstClick();
             else if (!result.ok) console.warn('[gcal] start check:', result.reason);
             applyGcalNotesSetting();
+            if (result.ok) scheduleGcalSync(); // сверката при отваряне
         })
         .catch(e => console.warn('[gcal] start check failed:', e));
+}
+
+// --- Събитията в календара „CX Notes“, етап 3 (b2.11) ---------------------------------
+// Огледало в една посока: бележката е мястото на истината, промени в Google не се връщат.
+// Сверката (syncGcalEvents) обхожда allNotesData и я сравнява с локалния индекс gcalEventIndex:
+// {cal, f: {<папка>: {<cxNotesId>: {e: <id на събитието>, h: <отпечатък на тялото>}}}}.
+// Всяко събитие носи в extendedProperties.private белега cxNotesId (gdid на бележката), папката
+// (cxNotesFolder) и cxNotesHash. Без индекс (друго устройство, загубен EvId, нов календар) връзката се
+// възстановява с едно обхождане на календара по папката — затова няма дублирани събития, а
+// прекъснато обхождане продължава оттам, където е спряло (индексът се пише след всяко събитие).
+// В бележката: uiState.EvId (id на събитието) и uiState.SynAt (кога е писано в Google, ms).
+// Бележката се пише в Drive само когато EvId се смени; datemod не се пипа.
+// Сверката тръгва при старт (след проверката на календара) и ~2 с след запис/триене; никога при
+// изключен ключ. Мрежова грешка не пипа бележката — събитието се наваксва при следващата сверка.
+const GCAL_EVENT_INDEX_KEY = 'gcalEventIndex';
+const GCAL_BACKFILL_KEY = 'gcalBackfill'; // '1' докато обхождането след включване не е стигнало до края
+const GCAL_SYNC_DELAY_MS = 2000;
+const GCAL_EVENT_MINUTES = 30;            // събитие с час: край = начало + 30 мин
+const GCAL_TIMED_REMINDER_MINUTES = 30;   // етап 4 ще ги направи настройки
+const GCAL_ALL_DAY_REMINDER_HOUR = 9;
+const GCAL_TITLE_MAX = 120;
+const GCAL_DESCRIPTION_MAX = 8000;
+const GCAL_EVENT_FORMAT = 1;              // смяна на формата на тялото → всички събития се обновяват
+// Цветовете на събитията в Google (colors.get → event)
+const GCAL_EVENT_COLORS = {
+    '1': '#a4bdfc', '2': '#7ae7bf', '3': '#dbadff', '4': '#ff887c', '5': '#fbd75b', '6': '#ffb878',
+    '7': '#46d6db', '8': '#e1e1e1', '9': '#5484ed', '10': '#51b749', '11': '#dc2127'
+};
+const RRULE_FREQ = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' };
+
+// Белегът на бележката: gdid, щом е истински (временният gdid е равен на id и се сменя при първия запис)
+function getGcalNoteKey(note) {
+    if (!note || note.guideDemo) return null;
+    const gdid = note.gdid === undefined || note.gdid === null ? '' : String(note.gdid);
+    if (!gdid || gdid === String(note.id)) return null;
+    return gdid;
+}
+
+// Папката по име (същото на всяко устройство): събитията на друга папка не се трият оттук
+function getGcalFolderKey() {
+    const name = typeof activeFolderName !== 'undefined' && activeFolderName ? String(activeFolderName) : '';
+    return (name || localStorage.getItem('active_folder_name') || 'default').toLowerCase().slice(0, 200);
+}
+
+function isGcalNoteWanted(note) {
+    return !!note && Number(note.calendarDate) > 0 && note.status !== 1 && !!getGcalNoteKey(note);
+}
+
+// Стара дата (CX, 2026-10-10): последната поява е преди днес — денят без повторение, или „до“ при
+// повторение; повторение без край не е старо
+function isGcalNoteOldDate(note, now = new Date()) {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const repeat = getNoteCalRepeat(note.uiState);
+    if (repeat) {
+        if (!repeat.u) return false;
+        const [y, mo, d] = repeat.u.split('-').map(Number);
+        return new Date(y, mo - 1, d).getTime() < today;
+    }
+    const day = new Date(Number(note.calendarDate));
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime() < today;
+}
+
+// Обхождането не качва стари дати: бележка със стара дата и още без събитие се прескача, освен ако е
+// записана днес (обикновеният запис / редакция на бележка с минала дата пише събитието както досега).
+// Без състояние — същото решение на всяко устройство, затова другото не качва прескочените.
+function isGcalNoteSkippedOld(note, now = new Date()) {
+    if (!isGcalNoteOldDate(note, now)) return false;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    return (Number(note.datemod) || 0) < today;
+}
+
+// Текстът на бележката: заглавието преди „|“ е първи ред
+function getGcalNotePlainText(note) {
+    const txt = String((note && note.notetxt) || '');
+    const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
+    return pIdx !== -1 ? txt.slice(0, pIdx) + '\n' + txt.slice(pIdx + 1) : txt;
+}
+
+// Първият непразен ред (до 120 знака); празна бележка → „Бележка от CX Notes“
+function buildGcalEventTitle(text) {
+    const line = String(text || '').split(/\r?\n/).map(l => l.trim()).find(Boolean) || '';
+    if (!line) return _('gcalEventDefaultTitle') || 'Note from CX Notes';
+    return line.length > GCAL_TITLE_MAX ? line.slice(0, GCAL_TITLE_MAX - 1).trimEnd() + '…' : line;
+}
+
+// Най-близкият цвят на Google до фона на бележката; бележка без цвят → без цвят
+function getGcalEventColorId(color) {
+    if (color === undefined || color === null || color === '') return null;
+    const css = String(getNoteColorCss(color, '') || '');
+    const m = /^#?([0-9a-f]{6})$/i.exec(css.trim());
+    if (!m) return null;
+    const rgb = hex => [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+    const [r, g, b] = rgb(m[1]);
+    let best = null, bestDist = Infinity;
+    Object.keys(GCAL_EVENT_COLORS).forEach(id => {
+        const [r2, g2, b2] = rgb(GCAL_EVENT_COLORS[id].slice(1));
+        const dist = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2;
+        if (dist < bestDist) { bestDist = dist; best = id; }
+    });
+    return best;
+}
+
+function gcalPad2(n) { return String(n).padStart(2, '0'); }
+function gcalYmd(d) { return `${d.getFullYear()}-${gcalPad2(d.getMonth() + 1)}-${gcalPad2(d.getDate())}`; }
+function gcalLocalDateTime(d) { return `${gcalYmd(d)}T${gcalPad2(d.getHours())}:${gcalPad2(d.getMinutes())}:00`; }
+
+// RRULE: целодневно UNTIL=YYYYMMDD; с час — краят на деня „до“ в UTC (RFC 5545 при начало с часова зона).
+// Крайна дата преди началото → без повторение (само самото събитие).
+function buildGcalRecurrence(repeat, startDate, allDay) {
+    if (!repeat || !RRULE_FREQ[repeat.f]) return null;
+    let rule = `RRULE:FREQ=${RRULE_FREQ[repeat.f]}`;
+    if (repeat.u) {
+        const [y, mo, d] = repeat.u.split('-').map(Number);
+        const until = new Date(y, mo - 1, d);
+        const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        if (until < startDay) return null;
+        if (allDay) rule += `;UNTIL=${repeat.u.replace(/-/g, '')}`;
+        else rule += `;UNTIL=${new Date(y, mo - 1, d, 23, 59, 59).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`;
+    }
+    return [rule];
+}
+
+// Напомняне: 30 мин преди събитие с час. Целодневно: Google приема само минути ≥ 0 преди полунощ на
+// деня (отрицателни → 400), затова 9:00 е най-близкото възможно — предния ден в 9:00 (900 мин).
+function getGcalReminderMinutes(allDay) {
+    return allDay ? (24 - GCAL_ALL_DAY_REMINDER_HOUR) * 60 : GCAL_TIMED_REMINDER_MINUTES;
+}
+
+// FNV-1a, 32 бита: отпечатък на тялото, по който сверката разбира, че събитието трябва да се обнови
+function gcalHash(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0');
+}
+
+// Тялото на събитието от бележката (без заявка): {body, hash}
+function buildGcalEventBody(note, folderKey = getGcalFolderKey(), timeZone = getGcalTimeZone()) {
+    const day = new Date(Number(note.calendarDate));
+    const time = getNoteCalTime(note.uiState);
+    const repeat = getNoteCalRepeat(note.uiState);
+    const allDay = !time;
+    // Скрита бележка (с парола): текстът ѝ не излиза в Google
+    const text = note.pass ? '' : getGcalNotePlainText(note);
+    const body = { summary: buildGcalEventTitle(text), description: text.slice(0, GCAL_DESCRIPTION_MAX) };
+    let start = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    if (allDay) {
+        const next = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+        body.start = { date: gcalYmd(start) };
+        body.end = { date: gcalYmd(next) };
+    } else {
+        const [hh, mm] = time.split(':').map(Number);
+        start = new Date(start.getFullYear(), start.getMonth(), start.getDate(), hh, mm);
+        const end = new Date(start.getTime());
+        end.setMinutes(end.getMinutes() + GCAL_EVENT_MINUTES);
+        body.start = { dateTime: gcalLocalDateTime(start), timeZone };
+        body.end = { dateTime: gcalLocalDateTime(end), timeZone };
+    }
+    const recurrence = buildGcalRecurrence(repeat, start, allDay);
+    if (recurrence) body.recurrence = recurrence;
+    body.reminders = { useDefault: false, overrides: [{ method: 'popup', minutes: getGcalReminderMinutes(allDay) }] };
+    const colorId = getGcalEventColorId(note.color);
+    if (colorId) body.colorId = colorId;
+    const key = getGcalNoteKey(note);
+    const hash = gcalHash(JSON.stringify([GCAL_EVENT_FORMAT, key, folderKey, body]));
+    body.extendedProperties = { private: { cxNotesId: key, cxNotesFolder: folderKey, cxNotesHash: hash } };
+    return { body, hash };
+}
+
+function gcalEventsUrl(calendarId, eventId) {
+    return `${GCAL_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events` + (eventId ? `/${encodeURIComponent(eventId)}` : '');
+}
+function buildGcalInsertEventRequest(accessToken, calendarId, body) {
+    return {
+        url: gcalEventsUrl(calendarId),
+        init: { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    };
+}
+function buildGcalUpdateEventRequest(accessToken, calendarId, eventId, body) {
+    return {
+        url: gcalEventsUrl(calendarId, eventId),
+        init: { method: 'PUT', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    };
+}
+function buildGcalDeleteEventRequest(accessToken, calendarId, eventId) {
+    return { url: gcalEventsUrl(calendarId, eventId), init: { method: 'DELETE', headers: { 'Authorization': `Bearer ${accessToken}` } } };
+}
+// Събитията на папката, страница по страница (само id и белезите)
+function buildGcalListEventsRequest(accessToken, calendarId, folderKey, pageToken) {
+    const params = new URLSearchParams({
+        privateExtendedProperty: `cxNotesFolder=${folderKey}`,
+        maxResults: '2500',
+        showDeleted: 'false',
+        fields: 'items(id,status,extendedProperties),nextPageToken'
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    return { url: `${gcalEventsUrl(calendarId)}?${params.toString()}`, init: { method: 'GET', headers: { 'Authorization': `Bearer ${accessToken}` } } };
+}
+
+function loadGcalEventIndex(calendarId) {
+    let idx = null;
+    try { idx = JSON.parse(localStorage.getItem(GCAL_EVENT_INDEX_KEY) || 'null'); } catch (e) { idx = null; }
+    // Друг календар (изтрит и създаден наново) → старите id не важат
+    if (!idx || typeof idx !== 'object' || idx.cal !== calendarId || !idx.f || typeof idx.f !== 'object') idx = { cal: calendarId, f: {} };
+    return idx;
+}
+function saveGcalEventIndex(idx) {
+    try { localStorage.setItem(GCAL_EVENT_INDEX_KEY, JSON.stringify(idx)); } catch (e) { console.warn('[gcal] index save failed:', e); }
+}
+
+// EvId / SynAt в бележката: IndexedDB винаги; Drive и локалната папка — само при смяна на EvId
+async function persistGcalNoteLink(note, evIdChanged) {
+    try {
+        if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') await bulkPutDB(NOTE_STORE_NAME, note, true);
+        if (!evIdChanged) return;
+        const gdid = String(note.gdid || '');
+        if (useGoogleDb && !isOffline && gdid && !gdid.startsWith('L')) await updateGDriveFile(gdid, JSON.stringify(note));
+        if (localStorage.getItem('updateLocalFolder') === 'true' && gdid && typeof updateLocalFile === 'function') {
+            await updateLocalFile(gdid, JSON.stringify(note));
+        }
+    } catch (e) {
+        console.warn('[gcal] note link save failed:', e);
+    }
+}
+function setGcalNoteLink(note, eventId) {
+    const u = { ...getNoteUiState(note.uiState) };
+    const changed = (u.EvId || null) !== (eventId || null);
+    if (eventId) { u.EvId = eventId; u.SynAt = Date.now(); } else { delete u.EvId; delete u.SynAt; }
+    note.uiState = u;
+    return changed;
+}
+
+// Без заявки, ако ключът е изключен, няма календар, токен или обхват
+function canSyncGcalEvents() {
+    return isGcalNotesOn() && !isOffline && !!getGcalAccessToken() && localStorage.getItem('gcalState') === 'ok' &&
+        !!localStorage.getItem('gcalCalendarId') && getGcalTokenScopeState() !== 'lacks';
+}
+
+let _gcalSyncTimer = null;
+let _gcalSyncPromise = null;
+let _gcalSyncAgain = false;
+let _gcalSyncProgress = null; // {done, total} по време на обхождането след включване
+
+// След запис / триене: сверка след ~2 с (поредица промени дава една сверка)
+function scheduleGcalSync(delay = GCAL_SYNC_DELAY_MS) {
+    if (!canSyncGcalEvents()) return;
+    clearTimeout(_gcalSyncTimer);
+    _gcalSyncTimer = setTimeout(() => {
+        _gcalSyncTimer = null;
+        syncGcalEvents().catch(e => console.warn('[gcal] sync failed:', e));
+    }, delay);
+}
+
+// Една сверка наведнъж; поискана по време на друга → още една след нея
+function syncGcalEvents(options = {}) {
+    if (options.backfill) localStorage.setItem(GCAL_BACKFILL_KEY, '1');
+    if (_gcalSyncPromise) { _gcalSyncAgain = true; return _gcalSyncPromise; }
+    _gcalSyncPromise = (async () => {
+        let result;
+        do {
+            _gcalSyncAgain = false;
+            result = await syncGcalEventsOnce();
+        } while (_gcalSyncAgain && result.ok);
+        return result;
+    })().finally(() => { _gcalSyncPromise = null; });
+    return _gcalSyncPromise;
+}
+
+// Всички събития на папката: Map cxNotesId → [{id, h}] или {fail: resp|'network'}
+async function listGcalFolderEvents(calendarId, folderKey) {
+    const map = new Map();
+    let pageToken = null;
+    for (let page = 0; page < 100; page++) {
+        let resp;
+        try {
+            resp = await gcalApiFetch(token => buildGcalListEventsRequest(token, calendarId, folderKey, pageToken));
+        } catch (e) {
+            console.warn('[gcal] events.list failed:', e);
+            return { fail: 'network' };
+        }
+        if (!resp.ok) return { fail: resp };
+        let data = null;
+        try { data = await resp.json(); } catch (e) { data = null; }
+        const items = data && Array.isArray(data.items) ? data.items : [];
+        items.forEach(ev => {
+            const p = ev && ev.extendedProperties && ev.extendedProperties.private;
+            if (!ev || !ev.id || ev.status === 'cancelled' || !p || !p.cxNotesId) return;
+            if (!map.has(p.cxNotesId)) map.set(p.cxNotesId, []);
+            map.get(p.cxNotesId).push({ id: ev.id, h: p.cxNotesHash || '' });
+        });
+        pageToken = data && data.nextPageToken;
+        if (!pageToken) return { map };
+    }
+    return { map };
+}
+
+// Календарът е изтрит в Google по време на сверка: като при проверката — ключът се изключва
+async function onGcalCalendarGone(calendarId) {
+    forgetGcalCalendar();
+    localStorage.removeItem(GCAL_EVENT_INDEX_KEY);
+    localStorage.removeItem(GCAL_BACKFILL_KEY);
+    try {
+        if ((await readGcalIdFromDrive()) === calendarId) await writeGcalIdToDrive(null);
+    } catch (e) { console.warn('[gcal] calendar.json cleanup failed:', e); }
+    showToast(_('gcalStatusDeleted'), 5000);
+}
+
+// Не-ok отговор, който спира сверката: 401/403 остават в реда под ключа; квота/5xx — само в конзолата
+async function onGcalSyncHttpFailure(resp, calendarId) {
+    const failure = await gcalHttpFailure(resp, calendarId);
+    const transient = resp.status === 429 || resp.status >= 500 || (failure.detail &&
+        ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded'].includes(failure.detail.reason));
+    if (!transient && (resp.status === 401 || resp.status === 403)) {
+        localStorage.setItem('gcalLastError', failure.reason);
+        if (failure.detail) localStorage.setItem('gcalLastErrorDetail', JSON.stringify(failure.detail));
+        else localStorage.removeItem('gcalLastErrorDetail');
+    }
+    console.warn(`[gcal] sync stopped: ${failure.reason}`);
+    return { ok: false, reason: transient ? 'transient' : failure.reason };
+}
+
+function setGcalSyncProgress(progress) {
+    _gcalSyncProgress = progress;
+    applyGcalNotesSetting();
+}
+
+async function syncGcalEventsOnce() {
+    if (!canSyncGcalEvents()) return { ok: false, reason: 'off' };
+    const calendarId = localStorage.getItem('gcalCalendarId');
+    const folderKey = getGcalFolderKey();
+    const timeZone = getGcalTimeZone();
+    const index = loadGcalEventIndex(calendarId);
+    // Първа сверка за тази папка и календар (ключът е включен по подразбиране от b2.08 и мнозина няма
+    // да го включват наново) също е обхождане: лента, прескочени стари дати, тост накрая
+    const firstRun = !index.f[folderKey];
+    const backfill = localStorage.getItem(GCAL_BACKFILL_KEY) === '1' || firstRun;
+    if (backfill) localStorage.setItem(GCAL_BACKFILL_KEY, '1');
+    const known = index.f[folderKey] || (index.f[folderKey] = {});
+    const notesLoaded = Array.isArray(allNotesData) && allNotesData.length > 0;
+
+    const wanted = new Map();
+    const present = new Set(); // бележки в паметта (и без дата): EvId-то им се чисти при триене
+    (allNotesData || []).forEach(note => {
+        const key = getGcalNoteKey(note);
+        if (!key) return;
+        present.add(key);
+        if (isGcalNoteWanted(note)) wanted.set(key, { note, ...buildGcalEventBody(note, folderKey, timeZone) });
+    });
+
+    // Индексът не познава бележка (или EvId в нея е друг) → едно обхождане на календара възстановява връзката
+    // Прескочена стара бележка без EvId не пуска обхождане (иначе всяка сверка би обхождала календара)
+    const extraDeletes = [];
+    const now = new Date();
+    const needList = firstRun || [...wanted].some(([key, w]) => {
+        const evId = getNoteUiState(w.note.uiState).EvId;
+        if (evId) return !known[key] || evId !== known[key].e;
+        return !known[key] && !isGcalNoteSkippedOld(w.note, now);
+    });
+    if (needList) {
+        const listed = await listGcalFolderEvents(calendarId, folderKey);
+        if (listed.fail === 'network') return { ok: false, reason: 'network' };
+        if (listed.fail) {
+            if (listed.fail.status === 404 || listed.fail.status === 410) { await onGcalCalendarGone(calendarId); return { ok: false, reason: 'calendar-deleted' }; }
+            return onGcalSyncHttpFailure(listed.fail, calendarId);
+        }
+        Object.keys(known).forEach(key => { if (!listed.map.has(key)) delete known[key]; });
+        listed.map.forEach((events, key) => {
+            // Предпочита събитието, което бележката помни; останалите със същия белег са дубликати
+            const evId = wanted.has(key) ? getNoteUiState(wanted.get(key).note.uiState).EvId : null;
+            const keep = events.find(ev => ev.id === evId) || events.find(ev => known[key] && ev.id === known[key].e) || events[0];
+            known[key] = { e: keep.id, h: keep.h };
+            events.forEach(ev => { if (ev.id !== keep.id) extraDeletes.push({ key: null, eventId: ev.id }); });
+        });
+        saveGcalEventIndex(index);
+    }
+
+    const ops = [];
+    let skippedOld = 0;
+    wanted.forEach((w, key) => {
+        const cur = known[key];
+        if (!cur && isGcalNoteSkippedOld(w.note, now)) {
+            skippedOld++;
+            // EvId към събитие, което вече го няма в Google: чисти се, иначе всяка сверка би обхождала
+            if (getNoteUiState(w.note.uiState).EvId) ops.push({ type: 'link', key, w, eventId: null });
+            return;
+        }
+        if (!cur) ops.push({ type: 'insert', key, w });
+        else if (cur.h !== w.hash) ops.push({ type: 'update', key, w, eventId: cur.e });
+        else if (getNoteUiState(w.note.uiState).EvId !== cur.e) ops.push({ type: 'link', key, w, eventId: cur.e });
+    });
+    // Бележките още не са заредени → нищо не се трие
+    if (notesLoaded) {
+        Object.keys(known).forEach(key => { if (!wanted.has(key)) ops.push({ type: 'delete', key, eventId: known[key].e }); });
+        extraDeletes.forEach(d => ops.push({ type: 'delete', key: d.key, eventId: d.eventId }));
+    }
+
+    const requests = ops.filter(op => op.type !== 'link').length;
+    const showProgress = backfill && requests > 0;
+    let done = 0;
+    if (showProgress) setGcalSyncProgress({ done, total: requests, skipped: skippedOld });
+    const findNote = key => (allNotesData || []).find(n => getGcalNoteKey(n) === key);
+    let stop = null;
+    try {
+        for (const op of ops) {
+            if (!canSyncGcalEvents()) { stop = { ok: false, reason: 'off' }; break; } // изключен по време на сверката
+            if (op.type === 'link') {
+                await persistGcalNoteLink(op.w.note, setGcalNoteLink(op.w.note, op.eventId));
+                continue;
+            }
+            let resp;
+            try {
+                if (op.type === 'delete') {
+                    resp = await gcalApiFetch(token => buildGcalDeleteEventRequest(token, calendarId, op.eventId));
+                } else if (op.type === 'update') {
+                    resp = await gcalApiFetch(token => buildGcalUpdateEventRequest(token, calendarId, op.eventId, op.w.body));
+                    // Събитието е изтрито в Google → ново
+                    if (resp.status === 404 || resp.status === 410) op.type = 'insert';
+                }
+                if (op.type === 'insert') resp = await gcalApiFetch(token => buildGcalInsertEventRequest(token, calendarId, op.w.body));
+            } catch (e) {
+                console.warn(`[gcal] events.${op.type} failed:`, e);
+                stop = { ok: false, reason: 'network' };
+                break;
+            }
+            if (op.type === 'delete') {
+                // 404/410: вече го няма — същият резултат
+                if (resp.ok || resp.status === 404 || resp.status === 410) {
+                    if (op.key) {
+                        delete known[op.key];
+                        const note = present.has(op.key) ? findNote(op.key) : null;
+                        if (note && getNoteUiState(note.uiState).EvId) await persistGcalNoteLink(note, setGcalNoteLink(note, null));
+                    }
+                } else {
+                    stop = await onGcalSyncHttpFailure(resp, calendarId);
+                    break;
+                }
+            } else if (resp.ok) {
+                let ev = null;
+                try { ev = await resp.json(); } catch (e) { ev = null; }
+                const eventId = (ev && ev.id) || op.eventId;
+                if (eventId) {
+                    known[op.key] = { e: eventId, h: op.w.hash };
+                    await persistGcalNoteLink(op.w.note, setGcalNoteLink(op.w.note, eventId));
+                }
+            } else if (op.type === 'insert' && (resp.status === 404 || resp.status === 410)) {
+                await onGcalCalendarGone(calendarId);
+                stop = { ok: false, reason: 'calendar-deleted' };
+                break;
+            } else if (resp.status === 400) {
+                // Това събитие Google не го приема: следващите продължават, опит пак при следваща промяна
+                console.warn(`[gcal] events.${op.type} rejected for ${op.key}:`, await readGcalErrorDetail(resp));
+            } else {
+                stop = await onGcalSyncHttpFailure(resp, calendarId);
+                break;
+            }
+            if (stop) break;
+            if (localStorage.getItem('gcalCalendarId') === calendarId) saveGcalEventIndex(index);
+            done++;
+            if (showProgress) setGcalSyncProgress({ done, total: requests, skipped: skippedOld });
+        }
+    } finally {
+        if (showProgress) setGcalSyncProgress(null);
+    }
+    if (stop) {
+        applyGcalNotesSetting();
+        return { ...stop, done, skipped: skippedOld };
+    }
+    if (requests > 0 || needList) {
+        localStorage.removeItem('gcalLastError');
+        localStorage.removeItem('gcalLastErrorDetail');
+        localStorage.removeItem('gcalScopeStale');
+        applyGcalNotesSetting();
+    }
+    // Стигнато до края: обхождането след включване е завършено
+    if (backfill) {
+        saveGcalEventIndex(index);
+        localStorage.removeItem(GCAL_BACKFILL_KEY);
+        const written = ops.filter(op => op.type === 'insert' || op.type === 'update').length;
+        if (written > 0 || skippedOld > 0) {
+            const msg = skippedOld > 0 ? (_('gcalSyncDoneSkipped') || '').replace('{skipped}', skippedOld) : (_('gcalSyncDone') || '');
+            showToast(msg.replace('{count}', written), 5000);
+        }
+    }
+    return { ok: true, reason: null, done, skipped: skippedOld };
 }
 
 async function syncGlobalFoldersJson() {
@@ -22462,6 +22961,7 @@ function saveEditedNote(forceClose = false) {
 
             showToast(_(msgKey).replace('{boardName}', boardTitle));
             updateReloadButtonState();
+            scheduleGcalSync(); // събитието в Google Календар (етап 3)
         }
 
         // If modal was not closed, refresh its content to show the saved state
@@ -22586,6 +23086,7 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
     else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
 
     showToast(_(msgKey).replace('{boardName}', boardTitle));
+    scheduleGcalSync(); // събитието в Google Календар (етап 3)
 
     const monthCal = document.getElementById('calendar-container');
     const weekCal = document.getElementById('weekly-calendar-container');

@@ -4157,3 +4157,29 @@ body.selection-locked .note.active-selection-note .note-content {
 #single-note-overlay.visible {
     display: block;
 }
+
+/* Обхождането след включване на Google Календар (b2.11): брояч и лента в реда под ключа.
+   Лентата е в currentColor — следва цвета на текста в настройките, светли и тъмни. */
+.gcal-sync-progress {
+    display: block;
+    margin-top: 4px;
+}
+.gcal-sync-progress-text {
+    display: block;
+    font-variant-numeric: tabular-nums;
+}
+.gcal-sync-progress-bar {
+    display: block;
+    position: relative;
+    height: 4px;
+    margin-top: 3px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: rgba(127, 127, 127, 0.3);
+}
+.gcal-sync-progress-bar > span {
+    display: block;
+    height: 100%;
+    background: currentColor;
+    transition: width 0.2s ease;
+}
