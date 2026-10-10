@@ -3739,6 +3739,32 @@ body.selection-locked .note.active-selection-note .note-content {
     opacity: 1;
 }
 
+/* „До“: видимият текст е датата по устройството; прозрачното поле за дата отгоре отваря избора. */
+.note-cal-until-field {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 5.5em;
+    font-variant-numeric: tabular-nums;
+}
+
+.note-cal-chip .note-cal-until-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.note-cal-chip .note-cal-until-input::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    cursor: pointer;
+}
+
 /* Media query for very small screens */
 @media (max-width: 400px) {
     .modal-header-buttons {

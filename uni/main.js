@@ -9830,20 +9830,22 @@ function applyNoteCalDraft(uiState, draft) {
     return u;
 }
 
-// Редът „час / повторение / до“ под долната лента на модала (b2.12). Показва се само при зададена дата;
-// без дата се скрива, но черновата и стойностите в бележката остават. Датата се задава и маха само
-// от бутона с календар в лентата.
-function buildNoteCalRow(modalBodyElem) {
+// Редът „дата / час / повторение / до“ под долната лента на модала (b2.12; датата - b2.11, върната в b2.13). Показва се само при зададена дата;
+// без дата се скрива, но черновата и стойностите в бележката остават. Датата се задава от бутона с
+// календар в лентата и се маха от него или от ✕ в чипа. „До“ се вижда само при редакция (textarea или прегледът с окото, b2.13).
+function buildNoteCalRow(modalBodyElem, onRemoveDate) {
     const row = document.createElement('div');
     row.className = 'note-cal-row';
-    // <label>: щракване по надписа отива в полето.
-    const chip = (labelKey, fallback) => {
-        const el = document.createElement('label');
+    // <label>: щракване по надписа отива в полето. Без labelKey - без надпис. Датата е <span> - иначе би натиснало ✕.
+    const chip = (labelKey, fallback, tag = 'label') => {
+        const el = document.createElement(tag);
         el.className = 'note-cal-chip';
-        const lbl = document.createElement('span');
-        lbl.className = 'note-cal-lbl';
-        lbl.textContent = _(labelKey) || fallback;
-        el.appendChild(lbl);
+        if (labelKey) {
+            const lbl = document.createElement('span');
+            lbl.className = 'note-cal-lbl';
+            lbl.textContent = _(labelKey) || fallback;
+            el.appendChild(lbl);
+        }
         return el;
     };
     const clearBtn = (titleKey, fallback, onClick) => {
@@ -9857,7 +9859,13 @@ function buildNoteCalRow(modalBodyElem) {
         return b;
     };
 
-    const timeChip = chip('noteCalTime', 'time');
+    const dateChip = chip('noteCalDate', 'date', 'span');
+    dateChip.classList.add('note-cal-date');
+    const dateText = document.createElement('span');
+    dateText.className = 'note-cal-date-text';
+    dateChip.append(dateText, clearBtn('removeFromCalendar', 'Remove from calendar', onRemoveDate));
+
+    const timeChip = chip(null);
     timeChip.classList.add('note-cal-time');
     const timeInput = document.createElement('input');
     timeInput.type = 'time';
@@ -9880,23 +9888,33 @@ function buildNoteCalRow(modalBodyElem) {
 
     const untilChip = chip('noteCalUntil', 'until');
     untilChip.classList.add('note-cal-until');
+    // Видимата дата е по устройството; прозрачното <input type="date"> отгоре само отваря избора.
+    const untilField = document.createElement('span');
+    untilField.className = 'note-cal-until-field';
+    const untilText = document.createElement('span');
+    untilText.className = 'note-cal-until-text';
     const untilInput = document.createElement('input');
     untilInput.type = 'date';
     untilInput.className = 'note-cal-until-input';
+    untilInput.addEventListener('click', () => { try { untilInput.showPicker?.(); } catch (e) { /* старите браузъри отварят избора сами */ } });
+    untilField.append(untilText, untilInput);
     const untilClear = clearBtn('noteCalClearUntil', 'No end date', () => { untilInput.value = ''; commit(); });
-    untilChip.append(untilInput, untilClear);
+    untilChip.append(untilField, untilClear);
 
-    row.append(timeChip, repeatChip, untilChip);
+    row.append(dateChip, timeChip, repeatChip, untilChip);
 
+    const isEditing = () => !!modalBodyElem.querySelector('textarea') || modalBodyElem.dataset.isPreview === 'true';
     const sync = () => {
         const calDate = parseInt(modalBodyElem.dataset.calendarDate, 10) || 0;
         row.hidden = !(calDate > 0);
+        dateText.textContent = calDate > 0 ? formatDeviceDate(calDate) : '';
         const draft = getModalCalDraft(modalBodyElem);
         timeInput.value = draft.time;
         timeClear.hidden = !draft.time;
         repeatSelect.value = draft.repeat ? draft.repeat.f : '';
-        untilChip.hidden = !draft.repeat;
+        untilChip.hidden = !(draft.repeat && isEditing());
         untilInput.value = draft.repeat && draft.repeat.u ? draft.repeat.u : '';
+        untilText.textContent = untilInput.value ? formatDeviceDate(untilInput.value) : '—';
         untilClear.hidden = !(draft.repeat && draft.repeat.u);
     };
     const commit = () => {
@@ -9912,6 +9930,12 @@ function buildNoteCalRow(modalBodyElem) {
     // Клавишите в полетата не стигат до клавишните комбинации на прозореца (стрелки, Delete...).
     row.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
     row._noteCalSync = sync;
+    // Влизане/излизане от редакция сменя децата на тялото (textarea / готовия текст), прегледът - data-is-preview.
+    row._noteCalObserver = new MutationObserver(() => {
+        const untilHidden = !(getModalCalDraft(modalBodyElem).repeat && isEditing());
+        if (untilChip.hidden !== untilHidden) sync();
+    });
+    row._noteCalObserver.observe(modalBodyElem, { childList: true, attributes: true, attributeFilter: ['data-is-preview'] });
     sync();
     return row;
 }
@@ -11648,7 +11672,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     const oldSearchBar = modalContentBox.querySelector('.modal-search-bar');
     if (oldSearchBar) oldSearchBar.remove();
     const oldCalRow = modalContentBox.querySelector('.note-cal-row');
-    if (oldCalRow) oldCalRow.remove();
+    if (oldCalRow) {
+        oldCalRow._noteCalObserver?.disconnect();
+        oldCalRow.remove();
+    }
 
     const canEdit = (useIndexedDb || (updateGDrive && (options.gdid || options.isNewNote)) || useLocalFolder) && !isPromo && !options.readonly;
     let footerToolbar = modalContentBox.querySelector('.modal-footer-toolbar');
@@ -11844,9 +11871,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         calendarBtn.className = 'modal-footer-btn';
         calendarBtn.innerHTML = hasCalendarDate ? noCalendarIconSvg : calendarIconSvg;
         calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
-        // Ред „час / повторение / до“ - само при зададена дата, последен в кутията, под долната лента.
+        // Ред „дата / час / повторение / до“ - само при зададена дата, последен в кутията, под долната лента;
+        // ✕ на датата прави същото като бутона.
         const calRowBody = modalBody;
-        const calRow = buildNoteCalRow(calRowBody);
+        const calRow = buildNoteCalRow(calRowBody, () => calendarBtn.click());
         footerToolbar.after(calRow);
         calendarBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -12577,7 +12605,49 @@ function formatDateTime(timestamp) {
     }
 }
 
-// Часът по настройката на устройството (12/24 ч, b2.12); при грешка - 'HH:MM'.
+// 12 или 24 ч по устройството (b2.13), определя се веднъж: първо -u-hc- в езика (системната настройка
+// стига до браузъра така, напр. en-US-u-hc-h23), после какво дава Intl за езика. null - няма Intl.
+let deviceHour12 = undefined;
+function getDeviceHour12() {
+    if (deviceHour12 !== undefined) return deviceHour12;
+    deviceHour12 = null;
+    try {
+        const tag = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+        const hc = /-u(?:-[a-z0-9]+)*?-hc-(h11|h12|h23|h24)(?:-|$)/i.exec(tag);
+        if (hc) {
+            deviceHour12 = /^h1[12]$/i.test(hc[1]);
+        } else {
+            const resolved = new Intl.DateTimeFormat(navigator.language, { hour: 'numeric' }).resolvedOptions();
+            if (typeof resolved.hour12 === 'boolean') deviceHour12 = resolved.hour12;
+            else if (resolved.hourCycle) deviceHour12 = resolved.hourCycle === 'h11' || resolved.hourCycle === 'h12';
+        }
+    } catch (e) {
+        deviceHour12 = null;
+    }
+    return deviceHour12;
+}
+
+// Датата по устройството (b2.13): ден/месец/година и разделителите между тях, без опашки като „ г.“.
+let deviceDateFormatter = null;
+function formatDeviceDate(value) {
+    if (!value) return '';
+    const isoDay = typeof value === 'string' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    const parsedValue = !isoDay && !isNaN(value) && !isNaN(parseFloat(value)) ? Number(value) : value;
+    const date = isoDay ? new Date(Number(isoDay[1]), Number(isoDay[2]) - 1, Number(isoDay[3])) : new Date(parsedValue);
+    if (Number.isNaN(date.getTime())) return '';
+    try {
+        if (!deviceDateFormatter) deviceDateFormatter = new Intl.DateTimeFormat(navigator.language, { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const parts = deviceDateFormatter.formatToParts(date);
+        const first = parts.findIndex(p => p.type !== 'literal');
+        let last = parts.length - 1;
+        while (last >= 0 && parts[last].type === 'literal') last--;
+        const text = parts.slice(first, last + 1).map(p => p.value).join('');
+        if (text) return text;
+    } catch (e) { /* без Intl - ръчно по-долу */ }
+    return formatDate(date.getTime());
+}
+
+// Часът по настройката на устройството (12/24 ч, b2.12; изрично hour12 от b2.13); без Intl - 'HH:MM'.
 let timeFormatter = null;
 function formatTime(timestamp) {
     if (!timestamp) return '';
@@ -12586,7 +12656,9 @@ function formatTime(timestamp) {
         const date = new Date(parsedValue);
         if (Number.isNaN(date.getTime())) return '';
         try {
-            if (!timeFormatter) timeFormatter = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+            const hour12 = getDeviceHour12();
+            if (typeof hour12 !== 'boolean') throw new Error('no Intl');
+            if (!timeFormatter) timeFormatter = new Intl.DateTimeFormat(navigator.language, { hour: 'numeric', minute: '2-digit', hour12 });
             return timeFormatter.format(date);
         } catch (e) {
             const hours = String(date.getHours()).padStart(2, '0');
