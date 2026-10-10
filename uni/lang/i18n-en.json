@@ -500,5 +500,17 @@
     ],
     "wipeConfirmationPrompt": "Enter confirmation code {code} to wipe all data:",
     "wipeWrongCode": "Incorrect confirmation code. Operation cancelled.",
-    "linkMarkersRemovedToast": "Links that could not be restored and were removed on save: {count}. The original is in the file’s Drive history."
+    "linkMarkersRemovedToast": "Links that could not be restored and were removed on save: {count}. The original is in the file’s Drive history.",
+    "noteCalDate": "date",
+    "noteCalTime": "time",
+    "noteCalRepeat": "repeat",
+    "noteCalUntil": "until",
+    "noteCalRepeatNone": "none",
+    "noteCalRepeatDaily": "every day",
+    "noteCalRepeatWeekly": "every week",
+    "noteCalRepeatMonthly": "every month",
+    "noteCalRepeatYearly": "every year",
+    "noteCalClearTime": "No time (all day)",
+    "noteCalClearUntil": "No end date",
+    "removeFromCalendar": "Remove the date"
 }

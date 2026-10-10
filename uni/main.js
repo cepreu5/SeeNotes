@@ -9770,6 +9770,153 @@ function normalizeNoteUiStateInMemory(noteObj) {
     if (JSON.stringify(normalized) !== JSON.stringify(noteObj.uiState)) noteObj.uiState = normalized;
 }
 
+// Час и повторение на бележка с дата (етап 2 на календара): uiState.cTime = "HH:MM" (няма ли го -
+// целодневна), uiState.cRepeat = {f: daily|weekly|monthly|yearly, u: "YYYY-MM-DD"|null} („без“ =
+// ключът липсва). В модала чернова стои в dataset.cTime / dataset.cRepeat, а dataset.calBase е
+// стойността от бележката при отваряне. Записва се само с обикновения запис на бележката.
+const NOTE_CAL_REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
+
+function getNoteCalTime(uiState) {
+    const t = getNoteUiState(uiState).cTime;
+    return typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t) ? t : '';
+}
+
+function getNoteCalRepeat(uiState) {
+    const r = getNoteUiState(uiState).cRepeat;
+    if (!r || typeof r !== 'object' || !NOTE_CAL_REPEAT_FREQS.includes(r.f)) return null;
+    return { f: r.f, u: typeof r.u === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.u) ? r.u : null };
+}
+
+function noteCalStateKey(time, repeat) {
+    return JSON.stringify({ t: time || '', r: repeat || null });
+}
+
+function getModalCalDraft(modalBodyElem) {
+    let repeat = null;
+    try { repeat = modalBodyElem.dataset.cRepeat ? JSON.parse(modalBodyElem.dataset.cRepeat) : null; } catch (e) { repeat = null; }
+    return { time: getNoteCalTime({ cTime: modalBodyElem.dataset.cTime }), repeat: getNoteCalRepeat({ cRepeat: repeat }) };
+}
+
+function setModalCalDraft(modalBodyElem, time, repeat) {
+    if (time) modalBodyElem.dataset.cTime = time; else delete modalBodyElem.dataset.cTime;
+    if (repeat) modalBodyElem.dataset.cRepeat = JSON.stringify(repeat); else delete modalBodyElem.dataset.cRepeat;
+}
+
+// При отваряне черновата идва от бележката. При опресняване на същата бележка непроменената чернова
+// следва бележката (запис от друго устройство), а променената се пази.
+function initModalCalDraft(modalBodyElem, noteObj, keepDraft) {
+    const time = getNoteCalTime(noteObj && noteObj.uiState), repeat = getNoteCalRepeat(noteObj && noteObj.uiState);
+    const draft = getModalCalDraft(modalBodyElem);
+    const isDirty = keepDraft && modalBodyElem.dataset.calBase !== undefined && noteCalStateKey(draft.time, draft.repeat) !== modalBodyElem.dataset.calBase;
+    modalBodyElem.dataset.calBase = noteCalStateKey(time, repeat);
+    if (!isDirty) setModalCalDraft(modalBodyElem, time, repeat);
+}
+
+function hasModalCalChanges(modalBodyElem, noteObj) {
+    const draft = getModalCalDraft(modalBodyElem);
+    return noteCalStateKey(draft.time, draft.repeat) !== noteCalStateKey(getNoteCalTime(noteObj && noteObj.uiState), getNoteCalRepeat(noteObj && noteObj.uiState));
+}
+
+// Слага черновата в uiState: празен час / „без“ повторение махат ключа.
+function applyNoteCalDraft(uiState, draft) {
+    const u = { ...uiState };
+    if (draft.time) u.cTime = draft.time; else delete u.cTime;
+    if (draft.repeat) u.cRepeat = { f: draft.repeat.f, u: draft.repeat.u || null }; else delete u.cRepeat;
+    return u;
+}
+
+// Редът „дата / час / повторение / до“ над долната лента на модала. Показва се само при зададена дата;
+// без дата се скрива, но черновата и стойностите в бележката остават.
+function buildNoteCalRow(modalBodyElem, onRemoveDate) {
+    const row = document.createElement('div');
+    row.className = 'note-cal-row';
+    // <label>: щракване по надписа отива в полето. Датата е <span> - иначе би натиснало ✕.
+    const chip = (labelKey, fallback, tag = 'label') => {
+        const el = document.createElement(tag);
+        el.className = 'note-cal-chip';
+        const lbl = document.createElement('span');
+        lbl.className = 'note-cal-lbl';
+        lbl.textContent = _(labelKey) || fallback;
+        el.appendChild(lbl);
+        return el;
+    };
+    const clearBtn = (titleKey, fallback, onClick) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'note-cal-clear';
+        b.textContent = '✕';
+        b.title = _(titleKey) || fallback;
+        b.setAttribute('aria-label', b.title);
+        b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onClick(); });
+        return b;
+    };
+
+    const dateChip = chip('noteCalDate', 'date', 'span');
+    dateChip.classList.add('note-cal-date');
+    const dateText = document.createElement('span');
+    dateText.className = 'note-cal-date-text';
+    dateChip.append(dateText, clearBtn('removeFromCalendar', 'Remove from calendar', onRemoveDate));
+
+    const timeChip = chip('noteCalTime', 'time');
+    timeChip.classList.add('note-cal-time');
+    const timeInput = document.createElement('input');
+    timeInput.type = 'time';
+    timeInput.className = 'note-cal-time-input';
+    const timeClear = clearBtn('noteCalClearTime', 'Remove the time (all day)', () => { timeInput.value = ''; commit(); });
+    timeChip.append(timeInput, timeClear);
+
+    const repeatChip = chip('noteCalRepeat', 'repeat');
+    repeatChip.classList.add('note-cal-repeat');
+    const repeatSelect = document.createElement('select');
+    repeatSelect.className = 'note-cal-repeat-select';
+    [['', 'noteCalRepeatNone', 'none'], ['daily', 'noteCalRepeatDaily', 'every day'], ['weekly', 'noteCalRepeatWeekly', 'every week'],
+        ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year']].forEach(([value, key, fallback]) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = _(key) || fallback;
+        repeatSelect.appendChild(opt);
+    });
+    repeatChip.appendChild(repeatSelect);
+
+    const untilChip = chip('noteCalUntil', 'until');
+    untilChip.classList.add('note-cal-until');
+    const untilInput = document.createElement('input');
+    untilInput.type = 'date';
+    untilInput.className = 'note-cal-until-input';
+    const untilClear = clearBtn('noteCalClearUntil', 'No end date', () => { untilInput.value = ''; commit(); });
+    untilChip.append(untilInput, untilClear);
+
+    row.append(dateChip, timeChip, repeatChip, untilChip);
+
+    const sync = () => {
+        const calDate = parseInt(modalBodyElem.dataset.calendarDate, 10) || 0;
+        row.hidden = !(calDate > 0);
+        dateText.textContent = calDate > 0 ? formatDate(calDate) : '';
+        const draft = getModalCalDraft(modalBodyElem);
+        timeInput.value = draft.time;
+        timeClear.hidden = !draft.time;
+        repeatSelect.value = draft.repeat ? draft.repeat.f : '';
+        untilChip.hidden = !draft.repeat;
+        untilInput.value = draft.repeat && draft.repeat.u ? draft.repeat.u : '';
+        untilClear.hidden = !(draft.repeat && draft.repeat.u);
+    };
+    const commit = () => {
+        const f = repeatSelect.value;
+        const repeat = NOTE_CAL_REPEAT_FREQS.includes(f) ? { f, u: untilInput.value || null } : null;
+        setModalCalDraft(modalBodyElem, getNoteCalTime({ cTime: timeInput.value }), getNoteCalRepeat({ cRepeat: repeat }));
+        sync();
+        updateModalUiStateSaveUI();
+    };
+    timeInput.addEventListener('change', commit);
+    repeatSelect.addEventListener('change', commit);
+    untilInput.addEventListener('change', commit);
+    // Клавишите в полетата не стигат до клавишните комбинации на прозореца (стрелки, Delete...).
+    row.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
+    row._noteCalSync = sync;
+    sync();
+    return row;
+}
+
 function applyExpandedModalSize(modalContentBox, isExpanded) {
     if (isExpanded) {
         // Целият екран, без рамка (b1.91): 100% от овърлея, който е fixed inset 0, значи точно
@@ -9817,6 +9964,8 @@ function hasModalUiStateChanges() {
     const savedEditorSize = getValidEditorSize(savedUiState);
     const editorSize = getModalEditorSize();
     const editorSizeChanged = JSON.stringify(editorSize) !== JSON.stringify(savedEditorSize);
+    // Час / повторение (uiState.cTime / cRepeat) също са промяна по бележката.
+    if (hasModalCalChanges(modalBodyElem, noteObj)) return true;
     // Преместен прозорец също е промяна (спрямо мястото при отваряне): затварянето пита за запис,
     // а записът носи uiState.pos. Собственият размер е в dataset.editorSize (само Ctrl/задържане).
     return isExpandedChanged || editorSizeChanged || !!getMovedNoteWindowPosition(modalBodyElem);
@@ -11025,6 +11174,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     }
     const noteObjForCalendar = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
     modalBody.dataset.calendarDate = (noteObjForCalendar && noteObjForCalendar.calendarDate) ? noteObjForCalendar.calendarDate : '0';
+    initModalCalDraft(modalBody, noteObjForCalendar, isMatchingNote && !fresh);
     let colorIndex = 0;
     if (typeof noteColor === 'number') {
         if (noteColor >= 0 && noteColor < noteColorMap.length) {
@@ -11498,6 +11648,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     }
     const oldSearchBar = modalContentBox.querySelector('.modal-search-bar');
     if (oldSearchBar) oldSearchBar.remove();
+    const oldCalRow = modalContentBox.querySelector('.note-cal-row');
+    if (oldCalRow) oldCalRow.remove();
 
     const canEdit = (useIndexedDb || (updateGDrive && (options.gdid || options.isNewNote)) || useLocalFolder) && !isPromo && !options.readonly;
     let footerToolbar = modalContentBox.querySelector('.modal-footer-toolbar');
@@ -11689,6 +11841,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         calendarBtn.className = 'modal-footer-btn';
         calendarBtn.innerHTML = hasCalendarDate ? noCalendarIconSvg : calendarIconSvg;
         calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
+        // Ред „дата / час / повторение / до“ - само при зададена дата; ✕ на датата прави същото като бутона.
+        const calRowBody = modalBody;
+        const calRow = buildNoteCalRow(calRowBody, () => calendarBtn.click());
+        modalContentBox.insertBefore(calRow, footerToolbar);
         calendarBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const currentCalendarDateVal = modalBody.dataset.calendarDate;
@@ -11700,7 +11856,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
                 calendarBtn.style.pointerEvents = 'auto';
                 calendarBtn.innerHTML = calendarIconSvg;
                 calendarBtn.title = _('calendarButtonTooltip') || "Assign date";
-                modalBody.dataset.calendarDate = "0";
+                calRowBody.dataset.calendarDate = "0";
+                calRow._noteCalSync();
             } else {
                 if (modalBody.querySelector('textarea')) await saveEditedNote();
                 noteToAssignDate = { id: modalBody.dataset.id || noteId, gdid: modalBody.dataset.gdid || noteGdid };
@@ -21983,12 +22140,15 @@ function saveEditedNote(forceClose = false) {
         // такъв, иначе този, с който прозорецът стои в момента - дори да е стандартният. Разпънатият
         // изглед не се брои: мястото му не се пази, а размерът е екранът.
         const savedSize = editorSize || (!isExpanded && windowPosition ? getNoteWindowCurrentSize(modalBodyElem) : null);
-        const currentUiState = {
+        // Час / повторение от реда в модала; сравнява се със записаното, преди uiState да се подмени.
+        const calDraft = getModalCalDraft(modalBodyElem);
+        const hasCalChanged = !!modalNoteObj && hasModalCalChanges(modalBodyElem, modalNoteObj);
+        const currentUiState = applyNoteCalDraft({
             ...storedUiState,
             exp: isExpanded,
             ...noteUiSizeKey(savedSize),
             ...noteUiPosKey(windowPosition)
-        };
+        }, calDraft);
         // Сравнява се със записаното преди присвояването по-долу (то подменя uiState в паметта).
         const hasWindowGeometryChanged = !!movedPosition
             || JSON.stringify(editorSize) !== JSON.stringify(getValidEditorSize(storedUiState))
@@ -22170,7 +22330,7 @@ function saveEditedNote(forceClose = false) {
         const previousIsExpanded = getNoteExpanded(noteObj?.uiState);
         const previousEditorSize = getValidEditorSize(noteObj?.uiState);
         const hasEditorSizeChanged = JSON.stringify(editorSize) !== JSON.stringify(previousEditorSize);
-        const hasChanges = isNewNote || hasDrafts || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color || isExpanded !== previousIsExpanded || hasEditorSizeChanged || hasWindowGeometryChanged);
+        const hasChanges = isNewNote || hasDrafts || hasCalChanged || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color || isExpanded !== previousIsExpanded || hasEditorSizeChanged || hasWindowGeometryChanged);
 
         if (hasChanges) {
             // --- Apply Changes ---
@@ -22184,13 +22344,13 @@ function saveEditedNote(forceClose = false) {
             const oldCalendarDate = noteObj.calendarDate || 0;
             noteObj.calendarDate = newCalendarDate;
             const hasExistingUiState = noteObj.uiState && typeof noteObj.uiState === 'object' && !Array.isArray(noteObj.uiState);
-            if (hasExistingUiState || isExpanded || editorSize) {
-                noteObj.uiState = {
+            if (hasExistingUiState || isExpanded || editorSize || calDraft.time || calDraft.repeat) {
+                noteObj.uiState = applyNoteCalDraft({
                     ...normalizeNoteUiState(noteObj.uiState),
                     exp: isExpanded,
                     ...noteUiSizeKey(editorSize),
                     ...noteUiPosKey(windowPosition)
-                };
+                }, calDraft);
             }
 
             // --- Sync with timer ---

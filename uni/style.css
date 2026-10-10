@@ -3652,6 +3652,85 @@ body.selection-locked .note.active-selection-note .note-content {
     white-space: nowrap;
 }
 
+/* Ред „дата / час / повторение / до“ в модала на бележка с дата (b2.10). Цветовете са
+   полупрозрачни, за да стоят върху всеки цвят на бележката. */
+.note-cal-row {
+    --note-cal-chip-bg: rgba(0, 0, 0, 0.06);
+    --note-cal-chip-border: rgba(0, 0, 0, 0.18);
+    --note-cal-label: rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: auto;
+    padding: 6px 0;
+    font-size: 0.85em;
+    position: relative;
+    z-index: 10001;
+}
+
+.note-cal-row[hidden],
+.note-cal-row [hidden] {
+    display: none !important;
+}
+
+.note-cal-row + .modal-footer-toolbar {
+    margin-top: 0;
+}
+
+.note-cal-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 30px;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: var(--note-cal-chip-bg);
+    border: 1px solid var(--note-cal-chip-border);
+    color: inherit;
+    white-space: nowrap;
+}
+
+.note-cal-lbl {
+    color: var(--note-cal-label);
+    font-size: 0.85em;
+}
+
+.note-cal-chip input,
+.note-cal-chip select {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+    outline-offset: 2px;
+}
+
+.note-cal-chip select {
+    cursor: pointer;
+}
+
+.note-cal-chip option {
+    color: #000;
+}
+
+.note-cal-clear {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 1em;
+    line-height: 1;
+}
+
+.note-cal-clear:hover {
+    opacity: 1;
+}
+
 /* Media query for very small screens */
 @media (max-width: 400px) {
     .modal-header-buttons {
