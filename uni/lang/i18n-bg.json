@@ -61,6 +61,7 @@
     "sortRemindersTop": "напомняния най-отгоре",
     "calendar": "Месечен календар",
     "calendarButtonTooltip": "Месечен календар",
+    "calendarBellTooltip": "Събитие от календара — отвори бележката",
     "settingsTitle": "Настройки",
     "submitButton": "Потвърди",
     "updateButton": "Обнови",

@@ -929,6 +929,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     boardsData = boardRes.data;
     mediaData = mediaRes.data;
     allNotesData = noteRes.data;
+    startCalendarBellClock();
     trackMaxIds(allNotesData);
     trackMaxBoardIds(boardsData);
     // Integrity checks for initial Google Drive load
@@ -6590,8 +6591,15 @@ function initApp() {
     // --- Mode Button Logic ---
     const modeButton = document.getElementById('mode_button');
     const calendarButton = document.getElementById('calendar_button');
+    // Часовникът и при работа без Google Drive (IndexedDB/локална папка); празен allNotesData не му пречи.
+    startCalendarBellClock();
     if (calendarButton) {
         calendarButton.addEventListener('click', () => {
+            // b2.14: докато е камбанка, кликът отваря бележката на събитието, не филтъра.
+            if (calBellActive) {
+                openCalendarBellNote();
+                return;
+            }
             filterNotesByBoard('calendar');
         });
     }
@@ -12681,6 +12689,185 @@ function getNoteCalDateTimeTimestamp(noteData) {
     d.setHours(h, m, 0, 0);
     return d.getTime();
 }
+
+// --- b2.14: камбанка и звук при настъпване на събитие от календара ---
+// Локален часовник на всеки 20 сек през allNotesData: без заявки към Google. Звъни бележка с дата и час,
+// чийто момент е настъпил в последната минута, докато приложението е отворено. Момент преди пускането на
+// часовника (отминал, при затворено приложение, при презареждане) не звъни; всяка двойка бележка+момент звъни веднъж.
+const CAL_BELL_TICK_MS = 20000;
+const CAL_BELL_WINDOW_MS = 60000;
+const CAL_BELL_SHOW_MS = 10000;
+const CAL_BELL_SVG = '<svg width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>';
+let calBellStartedAt = 0;
+let calBellInterval = null;
+const calBellFired = new Set(); // '<id|gdid>@<момент>'
+let calBellQueue = []; // бележките на събитията, които звъннаха, докато камбанката е на екрана
+let calBellOpened = 0; // колко от опашката вече са отворени с клик
+let calBellActive = false;
+let calBellUntil = 0;
+let calBellTimer = null;
+let calBellSaved = null; // { html, title, keyTitle } на календарчето
+let calBellAudioCtx = null;
+let calBellSoundCalls = 0;
+
+function getCalBellAudioCtx() {
+    if (!calBellAudioCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        calBellAudioCtx = new Ctx();
+    }
+    if (calBellAudioCtx.state === 'suspended') calBellAudioCtx.resume().catch(() => { });
+    return calBellAudioCtx;
+}
+
+// Политиката за автостарт пуска звук само след жест: първото докосване отключва контекста с тих импулс.
+function unlockCalBellAudio() {
+    document.removeEventListener('pointerdown', unlockCalBellAudio, true);
+    try {
+        const ctx = getCalBellAudioCtx();
+        if (!ctx) return;
+        const src = ctx.createBufferSource();
+        src.buffer = ctx.createBuffer(1, 1, 22050);
+        src.connect(ctx.destination);
+        src.start(0);
+    } catch (e) { }
+}
+
+// Къс двоен тон (880 Hz, после 1175 Hz), без звуков файл.
+function playCalendarBellSound() {
+    calBellSoundCalls++;
+    try {
+        const ctx = getCalBellAudioCtx();
+        if (!ctx) return;
+        const t0 = ctx.currentTime + 0.01;
+        [[880, 0], [1175, 0.14]].forEach(([freq, at]) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.0001, t0 + at);
+            gain.gain.exponentialRampToValueAtTime(0.15, t0 + at + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.12);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t0 + at);
+            osc.stop(t0 + at + 0.13);
+        });
+    } catch (e) { }
+}
+
+function calBellNoteKey(note) {
+    return String(note.gdid || note.id || '');
+}
+
+function showCalendarBell(now) {
+    const btn = document.getElementById('calendar_button');
+    if (!btn) return;
+    if (!calBellActive) {
+        calBellSaved = { html: btn.innerHTML, title: btn.getAttribute('title'), keyTitle: btn.getAttribute('data-key-title') };
+        btn.innerHTML = CAL_BELL_SVG;
+        btn.classList.add('cal-bell-flash');
+        btn.setAttribute('data-key-title', 'calendarBellTooltip');
+        btn.setAttribute('title', (typeof _ === 'function' && _('calendarBellTooltip')) || 'Calendar event');
+        calBellActive = true;
+    }
+    // 10-те секунди се броят от последното събитие.
+    calBellUntil = now + CAL_BELL_SHOW_MS;
+    clearTimeout(calBellTimer);
+    calBellTimer = setTimeout(restoreCalendarButton, CAL_BELL_SHOW_MS);
+}
+
+function restoreCalendarButton() {
+    clearTimeout(calBellTimer);
+    calBellTimer = null;
+    calBellQueue = [];
+    calBellOpened = 0;
+    calBellUntil = 0;
+    if (!calBellActive) return;
+    calBellActive = false;
+    const btn = document.getElementById('calendar_button');
+    if (!btn || !calBellSaved) return;
+    btn.innerHTML = calBellSaved.html;
+    btn.classList.remove('cal-bell-flash');
+    if (calBellSaved.title === null) btn.removeAttribute('title'); else btn.setAttribute('title', calBellSaved.title);
+    if (calBellSaved.keyTitle === null) btn.removeAttribute('data-key-title'); else btn.setAttribute('data-key-title', calBellSaved.keyTitle);
+    const restoredTitle = calBellSaved.keyTitle && typeof _ === 'function' ? _(calBellSaved.keyTitle) : '';
+    if (restoredTitle) btn.setAttribute('title', restoredTitle); // езикът може да се е сменил междувременно
+    calBellSaved = null;
+}
+
+// Клик върху камбанката: най-старата неотворена бележка от опашката (после пак последната).
+function openCalendarBellNote() {
+    if (!calBellQueue.length) return;
+    const entry = calBellQueue[Math.min(calBellOpened, calBellQueue.length - 1)];
+    calBellOpened++;
+    const note = allNotesData.find(n => n && ((entry.gdid && String(n.gdid) === entry.gdid) || (entry.id && String(n.id) === entry.id)));
+    if (!note) return;
+    // Същият път като клик върху картата на борда (handleNoteClick); без карта в DOM - същият showModal.
+    let card = null;
+    try {
+        card = (note.gdid ? document.querySelector(`.note[data-g="${CSS.escape(String(note.gdid))}"]`) : null) ||
+            ((note.id !== undefined && note.id !== null) ? document.querySelector(`.note[data-i="${CSS.escape(String(note.id))}"]`) : null);
+    } catch (e) { }
+    if (card) {
+        card.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
+        return;
+    }
+    showModal({
+        raw: note.notetxt !== undefined ? note.notetxt : note.text,
+        format: note.text_span,
+        titleFormat: note.title_span || note.title_text_span,
+        color: getNoteColorCss(note.color),
+        boardId: note.boardid,
+        id: note.id,
+        gdid: note.gdid,
+        datemod: note.datemod,
+        originalNote: note
+    });
+}
+
+function calendarBellTick(now = Date.now()) {
+    try {
+        if (calBellActive && calBellUntil && now >= calBellUntil) restoreCalendarButton();
+        if (!Array.isArray(allNotesData) || !allNotesData.length) return 0;
+        const due = [];
+        allNotesData.forEach(note => {
+            if (!note || Number(note.status) === 1 || !(Number(note.calendarDate) > 0)) return;
+            const moment = getNoteCalDateTimeTimestamp(note);
+            if (!moment || now < moment) return;
+            const key = calBellNoteKey(note) + '@' + moment;
+            if (calBellFired.has(key)) return;
+            calBellFired.add(key); // отминалите се отбелязват, за да не звънят по-късно
+            if (moment < calBellStartedAt || now - moment > CAL_BELL_WINDOW_MS) return;
+            due.push({ id: note.id !== undefined && note.id !== null ? String(note.id) : '', gdid: note.gdid ? String(note.gdid) : '', moment });
+        });
+        if (!due.length) return 0;
+        due.sort((a, b) => a.moment - b.moment);
+        calBellQueue.push(...due);
+        playCalendarBellSound();
+        showCalendarBell(now);
+        return due.length;
+    } catch (e) {
+        console.warn('calendarBellTick failed:', e);
+        return 0;
+    }
+}
+
+function startCalendarBellClock() {
+    if (calBellInterval) return;
+    calBellStartedAt = Date.now();
+    calendarBellTick(calBellStartedAt);
+    calBellInterval = setInterval(() => calendarBellTick(Date.now()), CAL_BELL_TICK_MS);
+    document.addEventListener('pointerdown', unlockCalBellAudio, true);
+}
+
+// Тънка кука за проверките с изкуствен часовник.
+window.calendarBell = {
+    tick: calendarBellTick,
+    expire: (now) => { if (calBellActive && now >= calBellUntil) restoreCalendarButton(); return !calBellActive; },
+    restart: (startedAt) => { restoreCalendarButton(); calBellFired.clear(); calBellStartedAt = startedAt; calBellSoundCalls = 0; },
+    state: () => ({ active: calBellActive, until: calBellUntil, queue: calBellQueue.slice(), opened: calBellOpened, soundCalls: calBellSoundCalls, startedAt: calBellStartedAt })
+};
 // Add an event listener to the modal's close button to reset button visibility
 document.querySelectorAll('.modal-close').forEach(btn => {
     if (btn.closest('.note-window')) return; // the note windows reset themselves (wireNoteWindow)

@@ -4226,3 +4226,14 @@ body.selection-locked .note.active-selection-note .note-content {
     background: currentColor;
     transition: width 0.2s ease;
 }
+
+/* b2.14: камбанката на мястото на календарчето мига 10 сек (само прозрачност, цветовете са на .header-btn). */
+.header-btn.cal-bell-flash svg {
+    animation: cal-bell-flash 0.8s ease-in-out infinite;
+}
+
+@keyframes cal-bell-flash {
+    50% {
+        opacity: 0.2;
+    }
+}

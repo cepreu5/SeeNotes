@@ -59,6 +59,7 @@
     "useArhDbLabel": "Archive:",
     "calendar": "Monthly calendar",
     "calendarButtonTooltip": "Monthly calendar",
+    "calendarBellTooltip": "Calendar event — open the note",
     "settingsTitle": "Settings",
     "searchSavedTip": "Save search",
     "saveTokenTooltip": "Process token",
