@@ -2626,7 +2626,12 @@ async function getMultinotesDataFolderID() {
     if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') return 'appDataFolder';
     const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
     const cachedForFolder = localStorage.getItem('gdrive_multinotes_data_id_folder');
-    if (cachedId && cachedForFolder === activeFolderName) return cachedId;
+    // b2.05: кешът се приема и когато записаното име се различава по главни/малки букви
+    // (CX-notes срещу CX-Notes). Иначе всеки запис тръгва по точно име, не я намира и
+    // кодът по-долу чисти настройките и презарежда приложението.
+    const cachedNameMatches = !!cachedForFolder &&
+        String(cachedForFolder).toLowerCase() === String(activeFolderName).toLowerCase();
+    if (cachedId && cachedNameMatches) return cachedId;
 
     const sendRequest = async (token) => {
         const query = encodeURIComponent(`name='${activeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
@@ -2640,6 +2645,7 @@ async function getMultinotesDataFolderID() {
 
     const maxAttempts = 3;
     const retryDelays = [1000, 2000, 4000];
+    let caseInsensitiveTried = false; // b2.05: изреждането на папките се прави най-много веднъж
     let tokenData = null;
     try {
         const sessionToken = sessionStorage.getItem('google_auth_token');
@@ -2676,6 +2682,17 @@ async function getMultinotesDataFolderID() {
                     if (attempt > 0) console.log(`[getMultinotesDataFolderID] Found folder on attempt ${attempt + 1}.`);
                     setCachedMainFolderId(activeFolderName, id);
                     return id;
+                }
+                // b2.05: точното име не я намери (напр. записано 'CX-notes', а в Drive 'CX-Notes') —
+                // търсим без значение от регистъра, преди да чистим настройките и да презареждаме.
+                if (!caseInsensitiveTried) {
+                    caseInsensitiveTried = true;
+                    const ciId = await findFolderIdByNameIgnoreCase(activeFolderName, tokenData.access_token);
+                    if (ciId) {
+                        console.log(`[getMultinotesDataFolderID] Found '${activeFolderName}' ignoring case (id=${ciId}).`);
+                        setCachedMainFolderId(activeFolderName, ciId);
+                        return ciId;
+                    }
                 }
                 console.warn(`[getMultinotesDataFolderID] Attempt ${attempt + 1}: Folder '${activeFolderName}' not found in GDrive response.`);
             }
