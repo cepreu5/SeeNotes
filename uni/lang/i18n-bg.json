@@ -191,6 +191,8 @@
     "gcalStatusNoAuth": "Няма вход в Google: влез отново, за да се свърже календарът.",
     "gcalStatusAuthExpired": "Входът в Google е изтекъл (401). Влез отново, за да се свърже календарът.",
     "gcalStatusHttp": "Google Календар не отговори както трябва. Опитай пак по-късно.",
+    "gcalStatusScopeMissing": "Google върна, че входът няма разрешение за календара. Натисни ключа отново (или презареди и докосни приложението), за да се поиска съгласие наново.",
+    "gcalStatusGoogleDetail": "Отговор от Google:",
     "closeAllNotesConfirm": "Незаписани промени в {count} бележки. Да се запишат ли преди затваряне?",
     "noteWindowUpdated": "обновено",
     "noteChangedElsewhere": "Бележката е променена другаде.",

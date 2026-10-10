@@ -190,6 +190,8 @@
     "gcalStatusNoAuth": "Not signed in to Google: sign in again to connect the calendar.",
     "gcalStatusAuthExpired": "The Google sign-in has expired (401). Sign in again to connect the calendar.",
     "gcalStatusHttp": "Google Calendar did not respond as expected. Try again later.",
+    "gcalStatusScopeMissing": "Google says the current sign-in has no permission for the calendar. Press the key again (or reload and tap the app) so consent is requested again.",
+    "gcalStatusGoogleDetail": "Google's reply:",
     "closeAllNotesConfirm": "Unsaved changes in {count} notes. Save them before closing?",
     "noteWindowUpdated": "updated",
     "noteChangedElsewhere": "This note was changed elsewhere.",

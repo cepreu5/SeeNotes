@@ -2928,15 +2928,22 @@ function getActiveRequiredScopes() {
     return SCOPES_BASE;
 }
 
-async function requestAdditionalScopes(additionalScopes) {
+// Низ с обхвати → масив от отделни токени (разделени с интервали); сравнява се само за точно равенство
+function splitScopeTokens(scopeString) {
+    return typeof scopeString === 'string' ? scopeString.split(/\s+/).filter(Boolean) : [];
+}
+
+// force: съгласието се иска, дори authToken.scope да твърди, че обхватът вече е даден (Google е казал друго)
+async function requestAdditionalScopes(additionalScopes, { force = false } = {}) {
     if (typeof tokenClient === 'undefined' || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
         return false;
     }
     const currentScopeString = SCOPES || SCOPES_BASE;
     const combinedScopes = Array.from(new Set((currentScopeString + ' ' + additionalScopes).split(' '))).filter(Boolean).join(' ');
-    if (authToken && authToken.scope) {
-        const currentScopes = authToken.scope.split(' ');
-        const allPresent = additionalScopes.split(' ').every(s => currentScopes.includes(s));
+    if (!force && authToken && authToken.scope) {
+        // Точно равенство по отделен токен: '.../auth/calendar' е префикс на '.../auth/calendar.app.created'
+        const currentScopes = splitScopeTokens(authToken.scope);
+        const allPresent = splitScopeTokens(additionalScopes).every(s => currentScopes.includes(s));
         if (allPresent) return true;
     }
     return new Promise((resolve) => {
@@ -13839,10 +13846,29 @@ function getGcalAccessToken() {
 }
 
 // 'has' | 'lacks' | 'unknown' — дали текущият токен вече носи обхвата за календара
+// gcalScopeStale: Google върна, че токенът няма обхвата — важи повече от authToken.scope до успешен опит
 function getGcalTokenScopeState() {
+    if (localStorage.getItem('gcalScopeStale') === 'true') return 'lacks';
     const scope = authToken && authToken.scope;
     if (!scope) return 'unknown';
-    return scope.split(' ').includes(CALENDAR_APP_SCOPE) ? 'has' : 'lacks';
+    return splitScopeTokens(scope).includes(CALENDAR_APP_SCOPE) ? 'has' : 'lacks';
+}
+
+// Един ред в конзолата при всяко решение за обхвата: какво има в токена и какво следва
+function logGcalScopeDecision(where, decision) {
+    const scope = authToken && authToken.scope;
+    const calendarTokens = splitScopeTokens(scope).filter(t => t.includes('/auth/calendar'));
+    console.log(`[gcal] scope (${where}): state=${getGcalTokenScopeState()}, stale=${localStorage.getItem('gcalScopeStale') === 'true'}, ` +
+        `token calendar scopes=[${calendarTokens.join(' ')}]${scope ? '' : ' (no scope field)'} → ${decision}`);
+}
+
+// Съгласието се иска синхронно, още в жеста на потребителя: попъп, отворен след await, браузърът го блокира.
+// requestAdditionalScopes стига до tokenClient.requestAccessToken без await. Връща Promise<boolean>.
+function startGcalConsent(where) {
+    const force = localStorage.getItem('gcalScopeStale') === 'true';
+    const state = getGcalTokenScopeState();
+    logGcalScopeDecision(where, state === 'has' && !force ? 'skip consent (token has the scope)' : 'request consent');
+    return requestAdditionalScopes(CALENDAR_APP_SCOPE, { force });
 }
 
 // Заявка към Calendar API; при 401 токенът се опреснява веднъж, както при Drive заявките
@@ -13857,6 +13883,44 @@ async function gcalApiFetch(buildRequest) {
         }
     }
     return resp;
+}
+
+// Тялото на грешката от Google: {"error":{"code":403,"message":"...","errors":[{"reason":"..."}],"status":"..."}}
+// Връща {reason, message} (низове, до 400 знака) или null; никога не хвърля
+async function readGcalErrorDetail(resp) {
+    if (!resp) return null;
+    try {
+        let body = null;
+        if (typeof resp.clone === 'function') body = await resp.clone().json();
+        else if (typeof resp.json === 'function') body = await resp.json();
+        const err = body && typeof body === 'object' ? body.error : null;
+        if (!err || typeof err !== 'object') return null;
+        const first = Array.isArray(err.errors) && err.errors[0] && typeof err.errors[0] === 'object' ? err.errors[0] : {};
+        const pick = (...values) => {
+            for (const v of values) {
+                if ((typeof v === 'string' && v.trim()) || typeof v === 'number') return String(v).trim().slice(0, 400);
+            }
+            return '';
+        };
+        const reason = pick(first.reason, err.status, err.code);
+        const message = pick(err.message, first.message);
+        // Само кодът (без причина и съобщение) повтаря HTTP статуса и не казва нищо ново
+        if (!message && !pick(first.reason, err.status)) return null;
+        return { reason, message };
+    } catch (e) {
+        return null;
+    }
+}
+
+// Не-ok отговор: detail от тялото; 403 с липсващ обхват → 'scope-missing' и следващият клик иска съгласие наново
+async function gcalHttpFailure(resp, calendarId) {
+    const detail = await readGcalErrorDetail(resp);
+    const scopeMissing = resp.status === 403 && detail &&
+        (detail.reason === 'insufficientPermissions' || detail.reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT');
+    if (scopeMissing) localStorage.setItem('gcalScopeStale', 'true');
+    const result = { ok: false, calendarId, reason: scopeMissing ? 'scope-missing' : `http-${resp.status}` };
+    if (detail) result.detail = detail;
+    return result;
 }
 
 // calendar.json в папката на settings.json: {"id":"<calendarId>"}
@@ -13906,30 +13970,48 @@ function forgetGcalCalendar() {
 }
 
 let _gcalEnsurePromise = null;
-// {ok, calendarId, reason}; reason: 'no-auth' | 'scope-denied' | 'calendar-deleted' | 'network' | 'http-<код>'
+let _gcalEnsureQuiet = false; // текущият опит е тихата проверка при старт (без съгласие)
+// {ok, calendarId, reason, detail?}; reason: 'no-auth' | 'scope-denied' | 'scope-missing' | 'calendar-deleted' | 'network' | 'http-<код>'
 // quiet (при старт): прозорецът за съгласие никога не се отваря (браузърът го блокира без жест);
 // ако токенът явно няма обхвата, връща reason 'scope-needed' и съгласието чака първия клик
 async function ensureGcalCalendar(options = {}) {
-    if (_gcalEnsurePromise) return _gcalEnsurePromise; // две извиквания наведнъж не създават два календара
-    localStorage.removeItem('gcalLastError'); // нов опит: старата причина не важи
-    _gcalEnsurePromise = ensureGcalCalendarOnce(options)
-        .then(result => {
-            // Причината се помни за реда под ключа; изтрит календар си има свой ред, а 'scope-needed' чака клик
-            if (result.ok) localStorage.removeItem('gcalLastError');
-            else if (result.reason && result.reason !== 'calendar-deleted' && result.reason !== 'scope-needed') {
-                localStorage.setItem('gcalLastError', result.reason);
-            }
-            return result;
-        })
-        .finally(() => { _gcalEnsurePromise = null; });
-    return _gcalEnsurePromise;
+    // Тече опит от потребителя: съгласието вече е поискано; второ не се отваря (GIS има един callback)
+    // и две извиквания наведнъж не създават два календара
+    if (_gcalEnsurePromise && !_gcalEnsureQuiet) return _gcalEnsurePromise;
+    // Опит от потребителя: съгласието се иска веднага, синхронно в жеста (преди всеки await)
+    const consent = !options.quiet && getGcalAccessToken() ? startGcalConsent(options.where || 'user action') : null;
+    if (_gcalEnsurePromise && !consent) return _gcalEnsurePromise;
+    // Ако тече тиха проверка, опитът с вече поисканото съгласие продължава след нея, вместо да се изгуби
+    const previous = _gcalEnsurePromise;
+    const attempt = (async () => {
+        if (previous) await previous.catch(() => null);
+        localStorage.removeItem('gcalLastError'); // нов опит: старата причина не важи
+        localStorage.removeItem('gcalLastErrorDetail');
+        const result = await ensureGcalCalendarOnce({ ...options, consent });
+        // Причината се помни за реда под ключа; изтрит календар си има свой ред, а 'scope-needed' чака клик
+        if (result.ok) {
+            localStorage.removeItem('gcalLastError');
+            localStorage.removeItem('gcalLastErrorDetail');
+            localStorage.removeItem('gcalScopeStale');
+        } else if (result.reason && result.reason !== 'calendar-deleted' && result.reason !== 'scope-needed') {
+            localStorage.setItem('gcalLastError', result.reason);
+            // Точният отговор на Google (само локално, не е в appSettingsKeys)
+            if (result.detail) localStorage.setItem('gcalLastErrorDetail', JSON.stringify(result.detail));
+        }
+        return result;
+    })().finally(() => { if (_gcalEnsurePromise === attempt) _gcalEnsurePromise = null; });
+    _gcalEnsurePromise = attempt;
+    _gcalEnsureQuiet = !!options.quiet;
+    return attempt;
 }
-async function ensureGcalCalendarOnce({ quiet = false } = {}) {
+async function ensureGcalCalendarOnce({ quiet = false, consent = null } = {}) {
     if (!getGcalAccessToken()) return { ok: false, calendarId: null, reason: 'no-auth' };
-    if (quiet && getGcalTokenScopeState() === 'lacks') {
-        return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-needed' };
+    if (quiet) {
+        const lacks = getGcalTokenScopeState() === 'lacks';
+        logGcalScopeDecision('start check', lacks ? 'wait for first click to request consent' : 'no consent (quiet), check the calendar');
+        if (lacks) return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-needed' };
     }
-    if (!quiet && !(await requestAdditionalScopes(CALENDAR_APP_SCOPE))) {
+    if (!quiet && !(await (consent || startGcalConsent('user action')))) {
         localStorage.setItem('gcalNotes', 'false');
         return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-denied' };
     }
@@ -13959,7 +14041,7 @@ async function ensureGcalCalendarOnce({ quiet = false } = {}) {
             if (driveId === calendarId) await writeGcalIdToDrive(null);
             return { ok: false, calendarId: null, reason: 'calendar-deleted' };
         }
-        return { ok: false, calendarId, reason: `http-${resp.status}` };
+        return gcalHttpFailure(resp, calendarId);
     }
     // Няма ID нито локално, нито в Drive: нов календар „CX Notes“
     let resp;
@@ -13969,7 +14051,7 @@ async function ensureGcalCalendarOnce({ quiet = false } = {}) {
         console.warn('[gcal] calendars.insert failed:', e);
         return { ok: false, calendarId: null, reason: 'network' };
     }
-    if (!resp.ok) return { ok: false, calendarId: null, reason: `http-${resp.status}` };
+    if (!resp.ok) return gcalHttpFailure(resp, null);
     let created = null;
     try { created = await resp.json(); } catch (e) { created = null; }
     if (!created || !created.id) return { ok: false, calendarId: null, reason: 'http-' + resp.status };
@@ -13982,6 +14064,7 @@ async function ensureGcalCalendarOnce({ quiet = false } = {}) {
 // Редът под ключа: подсказка, „свързан“ или „изтрит“ — един ред, ключът е в data-key за смяната на езика
 function getGcalErrorKey(reason) {
     if (reason === 'http-403') return 'gcalStatusApiDisabled';
+    if (reason === 'scope-missing') return 'gcalStatusScopeMissing';
     if (reason === 'no-auth') return 'gcalStatusNoAuth';
     if (reason === 'http-401') return 'gcalStatusAuthExpired';
     return 'gcalStatusHttp';
@@ -14003,7 +14086,23 @@ function applyGcalNotesSetting() {
         const key = getGcalStatusKey();
         line.setAttribute('data-key', key);
         line.innerHTML = _(key);
+        // Под реда за грешка: точният отговор на Google, ако е записан (строи се тук, за да следва езика)
+        const detail = isGcalNotesOn() && localStorage.getItem('gcalLastError') ? getGcalLastErrorDetail() : null;
+        if (detail) {
+            const text = [detail.reason, detail.message].filter(Boolean).join(': ');
+            line.innerHTML += '<span style="display:block;margin-top:2px;font-size:0.85em;opacity:.75;word-break:break-word;">' +
+                _('gcalStatusGoogleDetail') + ' ' + escapeHtml(text) + '</span>';
+        }
     }
+}
+function getGcalLastErrorDetail() {
+    try {
+        const d = JSON.parse(localStorage.getItem('gcalLastErrorDetail') || 'null');
+        if (!d || typeof d !== 'object') return null;
+        const reason = typeof d.reason === 'string' ? d.reason : '';
+        const message = typeof d.message === 'string' ? d.message : '';
+        return reason || message ? { reason, message } : null;
+    } catch (e) { return null; }
 }
 function initGcalNotesCheckbox() {
     const checkbox = document.getElementById('gcal-notes-checkbox');
@@ -14023,7 +14122,7 @@ function initGcalNotesCheckbox() {
         checkbox.disabled = true;
         let result;
         try {
-            result = await ensureGcalCalendar();
+            result = await ensureGcalCalendar({ where: 'toggle' });
         } catch (e) {
             console.warn('[gcal] ensureGcalCalendar failed:', e);
             result = { ok: false, calendarId: null, reason: 'network' };
@@ -14048,24 +14147,30 @@ function reportGcalResult(result) {
     applyGcalNotesSetting();
 }
 
-// Съгласието за календара иска потребителски жест: при старт само се закачва еднократен слушател
+// Съгласието за календара иска потребителски жест: при старт само се закачва еднократен слушател.
+// Събитието е 'click': pointerdown от докосване не е жест за браузъра и попъпът на Google се блокира
 let _gcalConsentListener = null;
 function armGcalConsentOnFirstClick() {
     if (_gcalConsentListener) return;
     _gcalConsentListener = () => {
         _gcalConsentListener = null; // once: не се възстановява
-        if (!isGcalNotesOn() || getGcalTokenScopeState() === 'has') return;
-        ensureGcalCalendar()
+        if (!isGcalNotesOn()) return;
+        if (getGcalTokenScopeState() === 'has') { logGcalScopeDecision('first click', 'skip consent (token has the scope)'); return; }
+        ensureGcalCalendar({ where: 'first click' })
             .then(reportGcalResult)
             .catch(e => console.warn('[gcal] consent on first click failed:', e));
     };
-    document.addEventListener('pointerdown', _gcalConsentListener, { capture: true, once: true });
+    document.addEventListener('click', _gcalConsentListener, { capture: true, once: true });
 }
 
 // При старт: тиха проверка, само ако ключът е включен; грешка не спира старта и не пипа ключа
 function verifyGcalOnStart() {
     if (!isGcalNotesOn() || isOffline) return;
-    if (getGcalTokenScopeState() === 'lacks') { armGcalConsentOnFirstClick(); return; }
+    if (getGcalTokenScopeState() === 'lacks') {
+        logGcalScopeDecision('start', 'wait for first click to request consent');
+        armGcalConsentOnFirstClick();
+        return;
+    }
     ensureGcalCalendar({ quiet: true })
         .then(result => {
             if (result.reason === 'scope-needed') armGcalConsentOnFirstClick();
