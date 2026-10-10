@@ -2349,6 +2349,25 @@ async function migrateDataToNewFolder(targetFolderId) {
 
 
 let cachedFolderIdsByName = {};
+// Папка с името, но с други малки/главни букви (CX-notes срещу CX-Notes); само единствено пълно съвпадение.
+async function findFolderIdByNameIgnoreCase(name, token) {
+    const target = String(name).toLowerCase();
+    const matches = [];
+    let pageToken = null;
+    do {
+        const query = encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and trashed=false`);
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=nextPageToken,files(id,name)&pageSize=1000&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!resp.ok) return null;
+        const page = await resp.json();
+        (page.files || []).forEach(f => { if (f && f.id && typeof f.name === 'string' && f.name.toLowerCase() === target) matches.push(f.id); });
+        pageToken = page.nextPageToken;
+    } while (pageToken);
+    return matches.length === 1 ? matches[0] : null;
+}
+
 async function getFolderIDByName(name) {
     if (isOffline) return null;
     if (name === 'AppDataFolder') return 'appDataFolder';
@@ -2374,7 +2393,8 @@ async function getFolderIDByName(name) {
         }
         if (!resp.ok) return null;
         const result = await resp.json();
-        const id = result.files?.[0]?.id || null;
+        let id = result.files?.[0]?.id || null;
+        if (!id) id = await findFolderIdByNameIgnoreCase(name, tokenData.access_token);
         if (id) cachedFolderIdsByName[name] = id;
         return id;
     } catch (e) {

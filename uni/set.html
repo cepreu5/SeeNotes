@@ -1191,20 +1191,58 @@
 
         const driveQ = (v) => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-        async function findWorkingFolderId(DRIVE, name) {
-            const q = encodeURIComponent(`name='${driveQ(name)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+        const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+        async function driveJsonOrThrow(url) {
             let res;
             try {
-                res = await driveFetch(`${DRIVE}?q=${q}&fields=files(id,name)&pageSize=10`);
+                res = await driveFetch(url);
             } catch (e) {
                 throw new Error(st('dupBoardsListError', { error: e && e.message ? e.message : e }));
             }
             if (!res.ok) throw new Error(st('dupBoardsListError', { error: await driveErrorText(res) }));
-            let data;
-            try { data = await res.json(); } catch (e) { throw new Error(st('dupBoardsListError', { error: st('dupBoardsReasonJson') })); }
+            try { return await res.json(); } catch (e) { throw new Error(st('dupBoardsListError', { error: st('dupBoardsReasonJson') })); }
+        }
+
+        // a) id на папката, записан от приложението (същия origin); приема се само жива папка.
+        async function workingFolderIdFromApp(DRIVE) {
+            const seen = new Set();
+            for (const key of ['activeFolderId', 'gdrive_multinotes_data_id']) {
+                const id = localStorage.getItem(key);
+                if (!id || id === 'appDataFolder' || seen.has(id)) continue;
+                seen.add(id);
+                try {
+                    const res = await driveFetch(`${DRIVE}/${encodeURIComponent(id)}?fields=id,name,mimeType,trashed`);
+                    if (!res.ok) continue;
+                    const meta = await res.json();
+                    if (meta && meta.mimeType === FOLDER_MIME && meta.trashed === false) return meta.id || id;
+                } catch (e) { }
+            }
+            return null;
+        }
+
+        async function findWorkingFolderId(DRIVE, name) {
+            const byId = await workingFolderIdFromApp(DRIVE);
+            if (byId) return byId;
+            // b) Точното име.
+            const q = encodeURIComponent(`name='${driveQ(name)}' and mimeType='${FOLDER_MIME}' and trashed=false`);
+            const data = await driveJsonOrThrow(`${DRIVE}?q=${q}&fields=files(id,name)&pageSize=10`);
             const hit = (data.files || []).find(f => f && f.id && (!f.name || f.name === name));
-            if (!hit) throw new Error(st('dupBoardsFolderNotFound', { folder: name }));
-            return hit.id;
+            if (hit) return hit.id;
+            // c) Името без значение на малки/главни букви (CX-notes срещу CX-Notes).
+            const target = String(name).toLowerCase();
+            const matches = [];
+            let pageToken = null;
+            do {
+                const lq = encodeURIComponent(`mimeType='${FOLDER_MIME}' and trashed=false`);
+                const page = await driveJsonOrThrow(`${DRIVE}?q=${lq}&fields=nextPageToken,files(id,name)&pageSize=1000&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+                (page.files || []).forEach(f => { if (f && f.id && typeof f.name === 'string' && f.name.toLowerCase() === target) matches.push(f); });
+                pageToken = page.nextPageToken;
+            } while (pageToken);
+            if (matches.length === 1) return matches[0].id;
+            const pick = matches.find(f => f.name === 'CX-Notes') || matches.find(f => f.name === name);
+            if (pick) return pick.id;
+            throw new Error(st('dupBoardsFolderNotFound', { folder: name }));
         }
 
         async function findDuplicateBoards(folderName, onProgress) {
