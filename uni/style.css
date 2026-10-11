@@ -3670,8 +3670,8 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Ред „час / повторение / до“ в модала на бележка с дата (b2.10). От b2.12 е лента точно под
-   долната лента - последният елемент в кутията, подравнен като бутоните вдясно. Цветовете са
-   полупрозрачни, за да стоят върху всеки цвят на бележката. */
+   долната лента - последният елемент в кутията. От b2.18 започва от левия вътрешен ръб (с текста и
+   датата в лентата). Цветовете са полупрозрачни, за да стоят върху всеки цвят на бележката. */
 .note-cal-row {
     --note-cal-chip-bg: rgba(0, 0, 0, 0.06);
     --note-cal-chip-border: rgba(0, 0, 0, 0.18);
@@ -3679,14 +3679,14 @@ body.selection-locked .note.active-selection-note .note-content {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 6px;
     flex-shrink: 0;
     box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
     margin-top: 0;
-    padding: 0 10px 10px 0;
+    padding: 0 0 10px 0;
     font-size: 0.85em;
     position: relative;
     z-index: 10001;

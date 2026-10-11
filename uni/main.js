@@ -9846,6 +9846,7 @@ function applyNoteCalDraft(uiState, draft) {
 // b2.17: часовникът и часът са само тук (не и в лентата) и оттук се задава часът. В преглед празните
 // полета (без час, „без“ повторение, без „До“) не се виждат, а без нищо за показване се скрива целият
 // ред; в редакция трите полета стоят винаги, празните като „час“ / „без“ / „до“.
+// b2.18: прегледът с окото се държи като обикновения изглед (без празни полета); редът е подравнен вляво.
 function buildNoteCalRow(modalBodyElem) {
     const row = document.createElement('div');
     row.className = 'note-cal-row';
@@ -9921,7 +9922,10 @@ function buildNoteCalRow(modalBodyElem) {
 
     row.append(timeChip, repeatChip, untilChip);
 
+    // Прегледът с окото е част от редакцията (промените чакат Save), но празните полета се виждат само
+    // при истинска редакция - с textarea (b2.18).
     const isEditing = () => !!modalBodyElem.querySelector('textarea') || modalBodyElem.dataset.isPreview === 'true';
+    const showEmpty = () => !!modalBodyElem.querySelector('textarea');
     const timeLabel = (hhmm) => {
         const m = /^(\d{2}):(\d{2})$/.exec(hhmm || '');
         if (!m) return _('noteCalTime') || 'time';
@@ -9932,10 +9936,10 @@ function buildNoteCalRow(modalBodyElem) {
     const sync = () => {
         const calDate = parseInt(modalBodyElem.dataset.calendarDate, 10) || 0;
         const draft = getModalCalDraft(modalBodyElem);
-        const editing = isEditing();
+        const editing = showEmpty();
         const hasUntil = !!(draft.repeat && draft.repeat.u);
         row._noteCalEditing = editing;
-        // В преглед ред без нищо за показване не стои като празна ивица (b2.17).
+        // Без редакция (и в прегледа с окото) ред без нищо за показване не стои като празна ивица (b2.17, b2.18).
         row.hidden = !(calDate > 0) || (!editing && !draft.time && !draft.repeat);
         timeInput.value = draft.time;
         timeText.textContent = timeLabel(draft.time);
@@ -9970,7 +9974,7 @@ function buildNoteCalRow(modalBodyElem) {
     row._noteCalSync = sync;
     // Влизане/излизане от редакция сменя децата на тялото (textarea / готовия текст), прегледът - data-is-preview.
     row._noteCalObserver = new MutationObserver(() => {
-        if (row._noteCalEditing !== isEditing()) sync();
+        if (row._noteCalEditing !== showEmpty()) sync();
     });
     row._noteCalObserver.observe(modalBodyElem, { childList: true, attributes: true, attributeFilter: ['data-is-preview'] });
     sync();
@@ -11236,6 +11240,15 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     delete modalBody.dataset.initialTitleFormat;
     delete modalBody.dataset.draftText;
     delete modalBody.dataset.draftTitle;
+    // Затворен преглед (окото) без запис оставяше флага на тялото и следващата бележка в същия прозорец се
+    // смяташе за преглед: празни полета в реда, а промяна на часа не се записваше (b2.18). previewEditedNote
+    // ги вдига наново след showModal.
+    delete modalBody.dataset.isPreview;
+    delete modalBody.dataset.previewDraftFormat;
+    delete modalBody.dataset.previewDraftTitleFormat;
+    delete modalBody.dataset.previewDraftMaskedLinks;
+    delete modalBody.dataset.previewHasTitle;
+    delete modalBody.dataset.previewDraftJoined;
     modalBody.dataset.boardId = (options && options.boardId) ? options.boardId : '';
     modalBody.dataset.isNewNote = options.isNewNote ? 'true' : 'false';
     modalBody.dataset.color = typeof noteColor === 'string' ? noteColor.toUpperCase() : (noteColor || '');
