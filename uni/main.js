@@ -9842,7 +9842,10 @@ function applyNoteCalDraft(uiState, draft) {
 // Редът „час / повторение / до“ под долната лента на модала (b2.12). Показва се само при зададена дата;
 // без дата се скрива, но черновата и стойностите в бележката остават. Датата НЕ е в реда - тя е само в
 // лентата и се задава/маха от бутона с календара там (b2.15). Часът се вижда като в лентата (formatTime),
-// а не както Chrome рисува нативния input. Празното „До“ не стои на екрана (b2.15).
+// а не както Chrome рисува нативния input.
+// b2.17: часовникът и часът са само тук (не и в лентата) и оттук се задава часът. В преглед празните
+// полета (без час, „без“ повторение, без „До“) не се виждат, а без нищо за показване се скрива целият
+// ред; в редакция трите полета стоят винаги, празните като „час“ / „без“ / „до“.
 function buildNoteCalRow(modalBodyElem) {
     const row = document.createElement('div');
     row.className = 'note-cal-row';
@@ -9871,16 +9874,20 @@ function buildNoteCalRow(modalBodyElem) {
 
     const timeChip = chip(null);
     timeChip.classList.add('note-cal-time');
-    // Видимият час е като в лентата (formatTime); прозрачното <input type="time"> отгоре само отваря избора (b2.15).
+    // Видимият час е по устройството (formatTime); прозрачното <input type="time"> отгоре (върху часовника
+    // и часа) само отваря избора (b2.15, часовникът от b2.17).
     const timeField = document.createElement('span');
     timeField.className = 'note-cal-time-field';
+    const timeIcon = document.createElement('span');
+    timeIcon.className = 'note-cal-time-icon';
+    timeIcon.innerHTML = clockIconSvg;
     const timeText = document.createElement('span');
     timeText.className = 'note-cal-time-text';
     const timeInput = document.createElement('input');
     timeInput.type = 'time';
     timeInput.className = 'note-cal-time-input';
     timeInput.addEventListener('click', () => { try { timeInput.showPicker?.(); } catch (e) { /* старите браузъри отварят избора сами */ } });
-    timeField.append(timeText, timeInput);
+    timeField.append(timeIcon, timeText, timeInput);
     const timeClear = clearBtn('noteCalClearTime', 'Remove the time (all day)', () => { timeInput.value = ''; commit(); });
     timeChip.append(timeField, timeClear);
 
@@ -9915,27 +9922,36 @@ function buildNoteCalRow(modalBodyElem) {
     row.append(timeChip, repeatChip, untilChip);
 
     const isEditing = () => !!modalBodyElem.querySelector('textarea') || modalBodyElem.dataset.isPreview === 'true';
-    // Празното „До“ не стои на екрана: вижда се при стойност или след избор на честота в този модал (b2.15).
-    const untilShown = (draft) => !!(draft.repeat && isEditing() && (draft.repeat.u || row._untilRevealed));
     const timeLabel = (hhmm) => {
         const m = /^(\d{2}):(\d{2})$/.exec(hhmm || '');
-        if (!m) return '--:--';
+        if (!m) return _('noteCalTime') || 'time';
         const d = new Date();
         d.setHours(Number(m[1]), Number(m[2]), 0, 0);
         return formatTime(d.getTime()) || hhmm;
     };
     const sync = () => {
         const calDate = parseInt(modalBodyElem.dataset.calendarDate, 10) || 0;
-        row.hidden = !(calDate > 0);
         const draft = getModalCalDraft(modalBodyElem);
+        const editing = isEditing();
+        const hasUntil = !!(draft.repeat && draft.repeat.u);
+        row._noteCalEditing = editing;
+        // В преглед ред без нищо за показване не стои като празна ивица (b2.17).
+        row.hidden = !(calDate > 0) || (!editing && !draft.time && !draft.repeat);
         timeInput.value = draft.time;
         timeText.textContent = timeLabel(draft.time);
         timeClear.hidden = !draft.time;
+        timeChip.hidden = !editing && !draft.time;
+        timeChip.classList.toggle('is-empty', !draft.time);
         repeatSelect.value = draft.repeat ? draft.repeat.f : '';
-        untilChip.hidden = !untilShown(draft);
-        untilInput.value = draft.repeat && draft.repeat.u ? draft.repeat.u : '';
-        untilText.textContent = untilInput.value ? formatDeviceDate(untilInput.value) : '';
-        untilClear.hidden = !(draft.repeat && draft.repeat.u);
+        repeatChip.hidden = !editing && !draft.repeat;
+        repeatChip.classList.toggle('is-empty', !draft.repeat);
+        untilChip.hidden = !editing && !hasUntil;
+        untilChip.classList.toggle('is-empty', !hasUntil);
+        // „До“ има смисъл само при повторение: без него полето се вижда (в редакция), но не се избира.
+        untilInput.disabled = !draft.repeat;
+        untilInput.value = hasUntil ? draft.repeat.u : '';
+        untilText.textContent = hasUntil ? formatDeviceDate(untilInput.value) : '';
+        untilClear.hidden = !hasUntil;
     };
     const commit = () => {
         const f = repeatSelect.value;
@@ -9947,15 +9963,14 @@ function buildNoteCalRow(modalBodyElem) {
         updateModalUiStateSaveUI();
     };
     timeInput.addEventListener('change', commit);
-    repeatSelect.addEventListener('change', () => { if (repeatSelect.value) row._untilRevealed = true; commit(); });
+    repeatSelect.addEventListener('change', commit);
     untilInput.addEventListener('change', commit);
     // Клавишите в полетата не стигат до клавишните комбинации на прозореца (стрелки, Delete...).
     row.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
     row._noteCalSync = sync;
     // Влизане/излизане от редакция сменя децата на тялото (textarea / готовия текст), прегледът - data-is-preview.
     row._noteCalObserver = new MutationObserver(() => {
-        const untilHidden = !untilShown(getModalCalDraft(modalBodyElem));
-        if (untilChip.hidden !== untilHidden) sync();
+        if (row._noteCalEditing !== isEditing()) sync();
     });
     row._noteCalObserver.observe(modalBodyElem, { childList: true, attributes: true, attributeFilter: ['data-is-preview'] });
     sync();
@@ -9970,17 +9985,7 @@ function saveModalCalDraft(modalBodyElem) {
     const draft = getModalCalDraft(modalBodyElem);
     noteObj.uiState = applyNoteCalDraft(normalizeNoteUiState(noteObj.uiState), draft);
     modalBodyElem.dataset.calBase = noteCalStateKey(draft.time, draft.repeat);
-    // Часът в лентата на модала (както след запис); при ръчно напомняне там стои timer и не се пипа.
-    const footerToolbar = modalBodyElem.closest('.modal-content-box')?.querySelector('.modal-footer-toolbar');
-    const timeSpan = footerToolbar?.querySelector('.modal-note-footer .note-header-time');
-    const t = noteObj.timer ? new Date(noteObj.timer) : null;
-    const hasManualTimer = !!t && !(t.getHours() === 0 && t.getMinutes() === 0 && t.getSeconds() === 33);
-    if (timeSpan && !hasManualTimer) {
-        const calDateTime = getNoteCalDateTimeTimestamp(noteObj);
-        const timeText = calDateTime ? formatTime(calDateTime) : '';
-        timeSpan.innerHTML = timeText ? `<span class="header-icon">${clockIconSvg}</span> ${timeText}` : '';
-        footerToolbar._footerDateScheduleUpdate?.();
-    }
+    // Часът вече не е в лентата на модала, а само в реда (b2.17) - там няма какво да се опреснява.
     return saveNoteCalendarChange(noteObj).catch(e => console.error('Failed to save note time/repeat', e));
 }
 
@@ -11765,10 +11770,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         } else if (currentNoteObj.calendarDate) {
             const dateText = formatDate(currentNoteObj.calendarDate);
             if (dateText) dateSpan.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
-            // Зададеният час (uiState.cTime) - без да се пише timer, който би я сложил в „Напомняния“.
-            const calDateTime = getNoteCalDateTimeTimestamp(currentNoteObj);
-            const timeText = calDateTime ? formatTime(calDateTime) : '';
-            if (dateText && timeText) timeSpan.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
+            // Часът (uiState.cTime) не е в лентата: стои в реда под нея и се задава оттам (b2.17).
         } else if (currentNoteObj.datemod) {
             const dateText = formatDate(currentNoteObj.datemod);
             if (dateText) {

@@ -3228,8 +3228,25 @@ body.selection-locked .note.active-selection-note .note-content {
 .modal-note-footer .header-icon svg {
     width: 16px;
     height: 16px;
-    margin-right: 4px;
     vertical-align: text-bottom;
+}
+
+/* Иконата и датата в лентата - точно 4px (b2.17): разстоянието идва само от gap-а, без margin и
+   без интервала в текста (началният интервал в анонимния flex елемент отпада). */
+.modal-note-footer .note-header-date,
+.modal-note-footer .note-header-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.modal-note-footer .note-header-date:empty,
+.modal-note-footer .note-header-time:empty {
+    display: none;
+}
+
+.modal-note-footer .header-icon {
+    display: inline-flex;
 }
 
 /* Boards Menu Modal Container - Center Align Container, Right Align Items */
@@ -3689,7 +3706,7 @@ body.selection-locked .note.active-selection-note .note-content {
 .note-cal-chip {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     min-height: 30px;
     box-sizing: border-box;
     padding: 2px 8px;
@@ -3752,6 +3769,27 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .note-cal-time-field {
     min-width: 3em;
+    gap: 4px;
+}
+
+/* Часовникът в реда (b2.17) - на 4px от часа, като календара и датата в лентата. */
+.note-cal-time-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.note-cal-time-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* Празните полета (само в редакция): „час“ / „без“ / „до“ по-бледо. */
+.note-cal-chip.is-empty {
+    color: var(--note-cal-label);
+}
+
+.note-cal-chip .note-cal-until-input:disabled {
+    cursor: default;
 }
 
 .note-cal-chip .note-cal-time-input,
