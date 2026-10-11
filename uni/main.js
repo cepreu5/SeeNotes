@@ -9786,7 +9786,8 @@ function normalizeNoteUiStateInMemory(noteObj) {
 // Час и повторение на бележка с дата (етап 2 на календара): uiState.cTime = "HH:MM" (няма ли го -
 // целодневна), uiState.cRepeat = {f: daily|weekly|monthly|yearly, u: "YYYY-MM-DD"|null} („без“ =
 // ключът липсва). В модала чернова стои в dataset.cTime / dataset.cRepeat, а dataset.calBase е
-// стойността от бележката при отваряне. Записва се само с обикновения запис на бележката.
+// стойността от бележката при отваряне. Без редакция смяната в реда се записва веднага, както датата от
+// бутона (b2.16); при редакция / преглед чака обикновения запис на бележката.
 const NOTE_CAL_REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
 
 function getNoteCalTime(uiState) {
@@ -9941,6 +9942,8 @@ function buildNoteCalRow(modalBodyElem) {
         const repeat = NOTE_CAL_REPEAT_FREQS.includes(f) ? { f, u: untilInput.value || null } : null;
         setModalCalDraft(modalBodyElem, getNoteCalTime({ cTime: timeInput.value }), getNoteCalRepeat({ cRepeat: repeat }));
         sync();
+        // Без редакция няма Save, който да я приложи: записва се веднага и тръгва сверката с календара (b2.16).
+        if (!isEditing()) saveModalCalDraft(modalBodyElem);
         updateModalUiStateSaveUI();
     };
     timeInput.addEventListener('change', commit);
@@ -9957,6 +9960,28 @@ function buildNoteCalRow(modalBodyElem) {
     row._noteCalObserver.observe(modalBodyElem, { childList: true, attributes: true, attributeFilter: ['data-is-preview'] });
     sync();
     return row;
+}
+
+// Записва часа / повторението от реда в бележката без режим редакция (b2.16) - по пътя на бутона с датата
+// (saveNoteCalendarChange: източниците + сверката с Google Календар). timer не се пипа.
+function saveModalCalDraft(modalBodyElem) {
+    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(modalBodyElem.dataset.gdid)) || (n.id && String(n.id) === String(modalBodyElem.dataset.id)));
+    if (!noteObj || !hasModalCalChanges(modalBodyElem, noteObj)) return null;
+    const draft = getModalCalDraft(modalBodyElem);
+    noteObj.uiState = applyNoteCalDraft(normalizeNoteUiState(noteObj.uiState), draft);
+    modalBodyElem.dataset.calBase = noteCalStateKey(draft.time, draft.repeat);
+    // Часът в лентата на модала (както след запис); при ръчно напомняне там стои timer и не се пипа.
+    const footerToolbar = modalBodyElem.closest('.modal-content-box')?.querySelector('.modal-footer-toolbar');
+    const timeSpan = footerToolbar?.querySelector('.modal-note-footer .note-header-time');
+    const t = noteObj.timer ? new Date(noteObj.timer) : null;
+    const hasManualTimer = !!t && !(t.getHours() === 0 && t.getMinutes() === 0 && t.getSeconds() === 33);
+    if (timeSpan && !hasManualTimer) {
+        const calDateTime = getNoteCalDateTimeTimestamp(noteObj);
+        const timeText = calDateTime ? formatTime(calDateTime) : '';
+        timeSpan.innerHTML = timeText ? `<span class="header-icon">${clockIconSvg}</span> ${timeText}` : '';
+        footerToolbar._footerDateScheduleUpdate?.();
+    }
+    return saveNoteCalendarChange(noteObj).catch(e => console.error('Failed to save note time/repeat', e));
 }
 
 function applyExpandedModalSize(modalContentBox, isExpanded) {
@@ -23312,6 +23337,19 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
         }
     }
 
+    if (newCalendarDate === 0) {
+        const weekCal = document.getElementById('weekly-calendar-container');
+        if (weekCal && weekCal.style.display !== 'none') {
+            const contentModal = document.getElementById('content-modal');
+            if (contentModal) contentModal.classList.remove('visible');
+        }
+    }
+    await saveNoteCalendarChange(noteObj);
+}
+
+// Записът след промяна по календарните полета на бележката (дата от бутона, час / повторение от реда в
+// модала): datemod, картата, източниците, броячите, съобщението, сверката с Google Календар и изгледите.
+async function saveNoteCalendarChange(noteObj) {
     noteObj.datemod = Date.now();
     // Update UI (DOM Note)
     const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
@@ -23386,10 +23424,6 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
     const weekCal = document.getElementById('weekly-calendar-container');
     const isWeeklyView = weekCal && weekCal.style.display !== 'none';
     if (isWeeklyView) {
-        if (newCalendarDate === 0) {
-            const contentModal = document.getElementById('content-modal');
-            if (contentModal) contentModal.classList.remove('visible');
-        }
         if (typeof renderWeeklyCalendarView === 'function') renderWeeklyCalendarView(currentWeeklyViewDate);
     } else if (monthCal && monthCal.style.display !== 'none') {
         if (typeof renderCalendarView === 'function') renderCalendarView();
