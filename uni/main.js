@@ -13423,9 +13423,73 @@ function orderBoardEntriesByVisibleMenu(entries) {
     ];
 }
 
+// b2.19: лексикален крак на търсенето — българска нормализация, прилагана и на заявката, и на текста на бележката.
+// Семантиката остава подниз: нормализират се само двата сравнявани низа.
+const SEARCH_HOMOGLYPHS = {
+    a: 'а', e: 'е', o: 'о', c: 'с', p: 'р', x: 'х', y: 'у', k: 'к',
+    A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
+    '0': 'о', '3': 'З'
+};
+const SEARCH_CYRILLIC_RE = /[\u0400-\u04FF]/;
+const SEARCH_WORD_RE = /[\p{L}\p{N}]+/gu;
+const SEARCH_ARTICLE_ENDINGS = ['ите', 'ът', 'ят', 'та', 'то', 'те'];
+const SEARCH_MIN_STEM = 4;
+
+// Хомоглифи само в дума с кирилска буква (иначе „ok“, „SMS“ стават кирилица). Цифрите 0/3 се сменят само когато
+// не са до друга цифра и думата има поне 3 букви — „б0лка“ → „болка“, но „2023г“, „10кг“ остават числа.
+function replaceSearchHomoglyphs(word) {
+    if (!SEARCH_CYRILLIC_RE.test(word)) return word;
+    const letters = (word.match(/\p{L}/gu) || []).length;
+    let out = '';
+    for (let i = 0; i < word.length; i++) {
+        const ch = word[i];
+        const mapped = SEARCH_HOMOGLYPHS[ch];
+        if (mapped && (ch === '0' || ch === '3')) {
+            const isolated = !/\d/.test(word[i - 1] || '') && !/\d/.test(word[i + 1] || '');
+            out += (isolated && letters >= 3) ? mapped : ch;
+        } else {
+            out += mapped || ch;
+        }
+    }
+    return out;
+}
+
+// Членуване: маха -ите/-ът/-ят/-та/-то/-те само ако основата остава ≥ 4 знака („дата“, „нота“ не се пипат).
+function stripSearchArticle(word) {
+    if (!SEARCH_CYRILLIC_RE.test(word)) return word;
+    for (const ending of SEARCH_ARTICLE_ENDINGS) {
+        if (word.endsWith(ending) && word.length - ending.length >= SEARCH_MIN_STEM) {
+            return word.slice(0, -ending.length);
+        }
+    }
+    return word;
+}
+
+function normalizeSearchText(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(SEARCH_WORD_RE, replaceSearchHomoglyphs)
+        .toLowerCase()
+        .replace(/ѝ/g, 'и')
+        .replace(SEARCH_WORD_RE, stripSearchArticle);
+}
+
+// b2.19: нормализираният текст на бележка се помни за самия елемент (WeakMap), за да не се преизчислява
+// на всяко натискане. Ключ е самият суров textContent — щом текстът се промени, кешът се подменя.
+const normalizedNoteTextCache = new WeakMap();
+function getNormalizedNoteText(el, raw) {
+    const cached = normalizedNoteTextCache.get(el);
+    if (cached && cached.raw === raw) return cached.norm;
+    const norm = normalizeSearchText(raw);
+    normalizedNoteTextCache.set(el, { raw, norm });
+    return norm;
+}
+
 function applyFilters() {
     const searchBox = document.getElementById('search-box');
     const searchTerm = searchBox ? searchBox.value.toLowerCase() : '';
+    // b2.19: заявката се нормализира веднъж на извикване, само при непразно търсене
+    const normalizedSearchTerm = searchTerm !== '' ? normalizeSearchText(searchBox.value) : '';
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;
     // --- PRE-CALCULATE FILTER MODES ---
@@ -13502,7 +13566,7 @@ function applyFilters() {
             const titleEl = note.querySelector('.note-title-truncated');
             const contentEl = note.querySelector('.note-content');
             const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
-            matchesSearch = noteText.toLowerCase().includes(searchTerm);
+            matchesSearch = getNormalizedNoteText(note, noteText).includes(normalizedSearchTerm);
         }
         // Проверка за режим "търсене само в борда"
         let inBoardScope = true;
