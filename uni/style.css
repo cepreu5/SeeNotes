@@ -3739,7 +3739,9 @@ body.selection-locked .note.active-selection-note .note-content {
     opacity: 1;
 }
 
-/* „До“: видимият текст е датата по устройството; прозрачното поле за дата отгоре отваря избора. */
+/* Час и „До“: видимият текст е по устройството (като в лентата); прозрачното нативно поле отгоре
+   само отваря избора (часът - от b2.15, иначе Chrome рисува „01:55 AM“). */
+.note-cal-time-field,
 .note-cal-until-field {
     position: relative;
     display: inline-flex;
@@ -3748,6 +3750,11 @@ body.selection-locked .note.active-selection-note .note-content {
     font-variant-numeric: tabular-nums;
 }
 
+.note-cal-time-field {
+    min-width: 3em;
+}
+
+.note-cal-chip .note-cal-time-input,
 .note-cal-chip .note-cal-until-input {
     position: absolute;
     inset: 0;
@@ -3757,6 +3764,7 @@ body.selection-locked .note.active-selection-note .note-content {
     cursor: pointer;
 }
 
+.note-cal-chip .note-cal-time-input::-webkit-calendar-picker-indicator,
 .note-cal-chip .note-cal-until-input::-webkit-calendar-picker-indicator {
     position: absolute;
     inset: 0;

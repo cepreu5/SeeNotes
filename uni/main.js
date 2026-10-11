@@ -9838,13 +9838,14 @@ function applyNoteCalDraft(uiState, draft) {
     return u;
 }
 
-// Редът „дата / час / повторение / до“ под долната лента на модала (b2.12; датата - b2.11, върната в b2.13). Показва се само при зададена дата;
-// без дата се скрива, но черновата и стойностите в бележката остават. Датата се задава от бутона с
-// календар в лентата и се маха от него или от ✕ в чипа. „До“ се вижда само при редакция (textarea или прегледът с окото, b2.13).
-function buildNoteCalRow(modalBodyElem, onRemoveDate) {
+// Редът „час / повторение / до“ под долната лента на модала (b2.12). Показва се само при зададена дата;
+// без дата се скрива, но черновата и стойностите в бележката остават. Датата НЕ е в реда - тя е само в
+// лентата и се задава/маха от бутона с календара там (b2.15). Часът се вижда като в лентата (formatTime),
+// а не както Chrome рисува нативния input. Празното „До“ не стои на екрана (b2.15).
+function buildNoteCalRow(modalBodyElem) {
     const row = document.createElement('div');
     row.className = 'note-cal-row';
-    // <label>: щракване по надписа отива в полето. Без labelKey - без надпис. Датата е <span> - иначе би натиснало ✕.
+    // <label>: щракване по надписа отива в полето. Без labelKey - без надпис. Датата е само в лентата (b2.15).
     const chip = (labelKey, fallback, tag = 'label') => {
         const el = document.createElement(tag);
         el.className = 'note-cal-chip';
@@ -9867,19 +9868,20 @@ function buildNoteCalRow(modalBodyElem, onRemoveDate) {
         return b;
     };
 
-    const dateChip = chip('noteCalDate', 'date', 'span');
-    dateChip.classList.add('note-cal-date');
-    const dateText = document.createElement('span');
-    dateText.className = 'note-cal-date-text';
-    dateChip.append(dateText, clearBtn('removeFromCalendar', 'Remove from calendar', onRemoveDate));
-
     const timeChip = chip(null);
     timeChip.classList.add('note-cal-time');
+    // Видимият час е като в лентата (formatTime); прозрачното <input type="time"> отгоре само отваря избора (b2.15).
+    const timeField = document.createElement('span');
+    timeField.className = 'note-cal-time-field';
+    const timeText = document.createElement('span');
+    timeText.className = 'note-cal-time-text';
     const timeInput = document.createElement('input');
     timeInput.type = 'time';
     timeInput.className = 'note-cal-time-input';
+    timeInput.addEventListener('click', () => { try { timeInput.showPicker?.(); } catch (e) { /* старите браузъри отварят избора сами */ } });
+    timeField.append(timeText, timeInput);
     const timeClear = clearBtn('noteCalClearTime', 'Remove the time (all day)', () => { timeInput.value = ''; commit(); });
-    timeChip.append(timeInput, timeClear);
+    timeChip.append(timeField, timeClear);
 
     const repeatChip = chip('noteCalRepeat', 'repeat');
     repeatChip.classList.add('note-cal-repeat');
@@ -9909,20 +9911,29 @@ function buildNoteCalRow(modalBodyElem, onRemoveDate) {
     const untilClear = clearBtn('noteCalClearUntil', 'No end date', () => { untilInput.value = ''; commit(); });
     untilChip.append(untilField, untilClear);
 
-    row.append(dateChip, timeChip, repeatChip, untilChip);
+    row.append(timeChip, repeatChip, untilChip);
 
     const isEditing = () => !!modalBodyElem.querySelector('textarea') || modalBodyElem.dataset.isPreview === 'true';
+    // Празното „До“ не стои на екрана: вижда се при стойност или след избор на честота в този модал (b2.15).
+    const untilShown = (draft) => !!(draft.repeat && isEditing() && (draft.repeat.u || row._untilRevealed));
+    const timeLabel = (hhmm) => {
+        const m = /^(\d{2}):(\d{2})$/.exec(hhmm || '');
+        if (!m) return '--:--';
+        const d = new Date();
+        d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+        return formatTime(d.getTime()) || hhmm;
+    };
     const sync = () => {
         const calDate = parseInt(modalBodyElem.dataset.calendarDate, 10) || 0;
         row.hidden = !(calDate > 0);
-        dateText.textContent = calDate > 0 ? formatDeviceDate(calDate) : '';
         const draft = getModalCalDraft(modalBodyElem);
         timeInput.value = draft.time;
+        timeText.textContent = timeLabel(draft.time);
         timeClear.hidden = !draft.time;
         repeatSelect.value = draft.repeat ? draft.repeat.f : '';
-        untilChip.hidden = !(draft.repeat && isEditing());
+        untilChip.hidden = !untilShown(draft);
         untilInput.value = draft.repeat && draft.repeat.u ? draft.repeat.u : '';
-        untilText.textContent = untilInput.value ? formatDeviceDate(untilInput.value) : '—';
+        untilText.textContent = untilInput.value ? formatDeviceDate(untilInput.value) : '';
         untilClear.hidden = !(draft.repeat && draft.repeat.u);
     };
     const commit = () => {
@@ -9933,14 +9944,14 @@ function buildNoteCalRow(modalBodyElem, onRemoveDate) {
         updateModalUiStateSaveUI();
     };
     timeInput.addEventListener('change', commit);
-    repeatSelect.addEventListener('change', commit);
+    repeatSelect.addEventListener('change', () => { if (repeatSelect.value) row._untilRevealed = true; commit(); });
     untilInput.addEventListener('change', commit);
     // Клавишите в полетата не стигат до клавишните комбинации на прозореца (стрелки, Delete...).
     row.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
     row._noteCalSync = sync;
     // Влизане/излизане от редакция сменя децата на тялото (textarea / готовия текст), прегледът - data-is-preview.
     row._noteCalObserver = new MutationObserver(() => {
-        const untilHidden = !(getModalCalDraft(modalBodyElem).repeat && isEditing());
+        const untilHidden = !untilShown(getModalCalDraft(modalBodyElem));
         if (untilChip.hidden !== untilHidden) sync();
     });
     row._noteCalObserver.observe(modalBodyElem, { childList: true, attributes: true, attributeFilter: ['data-is-preview'] });
@@ -11879,10 +11890,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         calendarBtn.className = 'modal-footer-btn';
         calendarBtn.innerHTML = hasCalendarDate ? noCalendarIconSvg : calendarIconSvg;
         calendarBtn.title = hasCalendarDate ? (_('removeFromCalendar') || "Remove from calendar") : (_('calendarButtonTooltip') || "Assign date");
-        // Ред „дата / час / повторение / до“ - само при зададена дата, последен в кутията, под долната лента;
-        // ✕ на датата прави същото като бутона.
+        // Ред „час / повторение / до“ - само при зададена дата, последен в кутията, под долната лента.
+        // Датата се вижда в лентата и се маха само с бутона (b2.15).
         const calRowBody = modalBody;
-        const calRow = buildNoteCalRow(calRowBody, () => calendarBtn.click());
+        const calRow = buildNoteCalRow(calRowBody);
         footerToolbar.after(calRow);
         calendarBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
