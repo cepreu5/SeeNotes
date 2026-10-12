@@ -502,6 +502,10 @@
         {
             "cmd": "/0",
             "text": "/0  or  /wipe — Erase data and close tab"
+        },
+        {
+            "cmd": "/9",
+            "text": "/9  or  /lex — Lexical search (normalised)"
         }
     ],
     "wipeConfirmationPrompt": "Enter confirmation code {code} to wipe all data:",

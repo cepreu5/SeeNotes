@@ -221,7 +221,6 @@ let isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to 
 
 // --- Състояние на търсенето ---
 let searchMode = 'content'; // Default to content search (includes title)
-let lastSearchTerm = "";
 let savedSearches = [];
 let maxSavedSearches = 20;
 
@@ -6212,7 +6211,7 @@ function initApp() {
         updateSearchModeIndicator();
         const searchBox = document.getElementById('search-box');
         if (searchBox && searchBox.value.trim()) {
-            triggerSearch(false);
+            triggerSearch();
         }
     });
     // 2. Clear Button (Right, next to Save)
@@ -6262,18 +6261,17 @@ function initApp() {
         const contentContainer = document.createElement('div');
         contentContainer.className = 'saved-searches-content';
         popup.appendChild(contentContainer);
-        // Комбинираме последното търсене със запазените и премахваме дубликати,
-        // за да сме сигурни, че всяко търсене се показва само веднъж.
-        const allSearchesForDisplay = [...new Set([lastSearchTerm, ...savedSearches])];
-        allSearchesForDisplay.forEach((term, index) => {
-            if (index > 0 && !term) return; // Don't show empty saved searches
+        // b2.20: показват се само запазените търсения (без дубликати) — последното търсене вече не се помни
+        const allSearchesForDisplay = [...new Set(savedSearches)];
+        allSearchesForDisplay.forEach((term) => {
+            if (!term) return; // Don't show empty saved searches
             const item = document.createElement('div');
             item.className = 'saved-search-item';
             item.textContent = term;
             item.addEventListener('click', () => {
                 if (searchBox) {
                     searchBox.value = term;
-                    triggerSearch(true);
+                    triggerSearch();
                 }
                 popup.style.display = 'none';
             });
@@ -6282,16 +6280,10 @@ function initApp() {
     }
 
     // This function will be the single point for applying search and UI updates
-    const triggerSearch = (isUserTyping = false) => {
-        if (isUserTyping) {
-            // Only update the "last search" if the input is not empty
-            if (searchBox.value.trim() !== '') {
-                lastSearchTerm = searchBox.value;
-                localStorage.setItem('lastSearchTerm', lastSearchTerm);
-            }
-        }
-
-        const hasTextTrimmed = searchBox.value.trim().length > 0;
+    const triggerSearch = () => {
+        // b2.20: „/9“ без текст не е търсене — бордът не превключва, докато няма дума след командата
+        const parsedSearch = parseSearchQuery(searchBox.value);
+        const hasTextTrimmed = parsedSearch.query.trim().length > 0;
         const searchBoardBtn = document.getElementById('search-results-board-btn');
 
         if (!hasTextTrimmed && currentBoardFilter === 'search-results') {
@@ -6325,7 +6317,7 @@ function initApp() {
 
         const hasText = searchBox.value.length > 0;
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
-        saveSearchBtn.style.display = hasTextTrimmed ? 'flex' : 'none';
+        saveSearchBtn.style.display = (hasTextTrimmed && !parsedSearch.lex) ? 'flex' : 'none';
 
         if (hasTextTrimmed && searchBoardBtn) {
             setTimeout(() => {
@@ -6363,17 +6355,21 @@ function initApp() {
             clearTimeout(searchDebounceTimeout);
             return;
         }
+        const isLexInput = parseSearchQuery(val).lex;
         if (val.startsWith('/')) {
             saveSearchBtn.style.display = 'none';
-            clearTimeout(searchDebounceTimeout);
             const popup = document.getElementById('saved-searches-popup');
             if (popup) popup.style.display = 'none';
-            return;
+            if (!isLexInput) {
+                clearTimeout(searchDebounceTimeout);
+                return;
+            }
+            // b2.20: „/9 …“ и „/lex …“ продължават към търсенето в реално време
         }
         if (!event.isTrusted) return;
         clearTimeout(searchDebounceTimeout);
         searchDebounceTimeout = setTimeout(() => {
-            triggerSearch(true);
+            triggerSearch();
         }, 300); // Wait 300ms after last keystroke
     });
 
@@ -6396,7 +6392,7 @@ function initApp() {
                     return;
                 }
             }
-            triggerSearch(true); // Ensure search is applied
+            triggerSearch(); // Ensure search is applied
             document.getElementById('saved-searches-popup').style.display = 'none'; // Close popup
         }
     });
@@ -6404,9 +6400,7 @@ function initApp() {
     // Clear Button Logic
     clearSearchBtn.addEventListener('click', () => {
         searchBox.value = '';
-        lastSearchTerm = '';
-        localStorage.setItem('lastSearchTerm', lastSearchTerm);
-        triggerSearch(true);
+        triggerSearch();
         searchBox.blur();
         const popup = document.getElementById('saved-searches-popup');
         if (popup) popup.style.display = 'none';
@@ -6534,7 +6528,9 @@ function initApp() {
     modalBody.style.fontSize = `${initialModalFontSize}px`;
 
     // Load saved searches and settings from localStorage
-    lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
+    // b2.20: последното търсене не се помни и не се възстановява — при старт полето е празно и режимът изключен.
+    // Остатъкът от по-стари версии се изчиства.
+    localStorage.removeItem('lastSearchTerm');
     savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
     maxSavedSearches = parseInt(localStorage.getItem('maxSavedSearches') || '20', 10);
     setLanguage(currentLang);
@@ -12420,7 +12416,8 @@ function renderCommandsHelpPopup() {
         { cmd: '/6', text: '/6  or  /norm — Exit expanded mode' },
         { cmd: '/7', text: '/7  or  /ex — Enter expanded mode' },
         { cmd: '/%', text: '/%number — Zoom (e.g. /%50)' },
-        { cmd: '/0', text: '/0  or  /wipe — Erase data and close tab' }
+        { cmd: '/0', text: '/0  or  /wipe — Erase data and close tab' },
+        { cmd: '/9', text: '/9  or  /lex — Lexical search (normalised)' }
     ];
     const rawList = (typeof _ === 'function') ? _('searchCommandsList') : null;
     const commandsList = (Array.isArray(rawList) && rawList.length > 0) ? rawList : defaultList;
@@ -12438,6 +12435,12 @@ function renderCommandsHelpPopup() {
             if (cmd === '/%') {
                 if (sBox) {
                     sBox.value = '/%';
+                    sBox.focus();
+                }
+            } else if (parseSearchQuery(cmd).lex) {
+                // b2.20: режимът иска текст — оставяме командата в полето и чакаме думата
+                if (sBox) {
+                    sBox.value = '/9 ';
                     sBox.focus();
                 }
             } else {
@@ -12458,6 +12461,9 @@ async function handleSearchCommand(commandText) {
         renderCommandsHelpPopup();
         return true;
     }
+    // b2.20: /9 и /lex не са еднократно действие, а режим на търсенето — връщаме false, за да остане
+    // командата в полето и извикващият да пусне обикновеното търсене (applyFilters разпознава командата).
+    if (parseSearchQuery(trimmed).lex) return false;
     if (cmd === '/set' || cmd === '/settings' || cmd === '/1') {
         const btn = document.getElementById('settings_button');
         if (btn) btn.click();
@@ -13485,11 +13491,24 @@ function getNormalizedNoteText(el, raw) {
     return norm;
 }
 
+// b2.20: лексикалният режим се вдига само с команда в самото поле — „/9 текст“ или „/lex текст“.
+// Командата остава видима (тя е указателят за режима); търси се само текстът след нея.
+const LEX_SEARCH_COMMAND_RE = /^\s*\/(?:9|lex)(?:\s+|$)/i;
+function parseSearchQuery(raw) {
+    const value = raw || '';
+    const m = value.match(LEX_SEARCH_COMMAND_RE);
+    if (!m) return { lex: false, query: value };
+    return { lex: true, query: value.slice(m[0].length) };
+}
+
 function applyFilters() {
     const searchBox = document.getElementById('search-box');
-    const searchTerm = searchBox ? searchBox.value.toLowerCase() : '';
-    // b2.19: заявката се нормализира веднъж на извикване, само при непразно търсене
-    const normalizedSearchTerm = searchTerm !== '' ? normalizeSearchText(searchBox.value) : '';
+    const parsedSearch = parseSearchQuery(searchBox ? searchBox.value : '');
+    const isLexSearch = parsedSearch.lex;
+    // b2.20: ефективната заявка е без командата — празно „/9“ не е търсене; голата заявка е както преди b2.19
+    const searchTerm = (!isLexSearch || parsedSearch.query.trim() !== '') ? parsedSearch.query.toLowerCase() : '';
+    // b2.19: заявката се нормализира веднъж на извикване — b2.20: само в лексикален режим
+    const normalizedSearchTerm = (isLexSearch && searchTerm !== '') ? normalizeSearchText(parsedSearch.query) : '';
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;
     // --- PRE-CALCULATE FILTER MODES ---
@@ -13566,7 +13585,9 @@ function applyFilters() {
             const titleEl = note.querySelector('.note-title-truncated');
             const contentEl = note.querySelector('.note-content');
             const noteText = (titleEl ? titleEl.textContent : '') + ' ' + (contentEl ? contentEl.textContent : '');
-            matchesSearch = getNormalizedNoteText(note, noteText).includes(normalizedSearchTerm);
+            matchesSearch = isLexSearch
+                ? getNormalizedNoteText(note, noteText).includes(normalizedSearchTerm)
+                : noteText.toLowerCase().includes(searchTerm);
         }
         // Проверка за режим "търсене само в борда"
         let inBoardScope = true;
@@ -14316,7 +14337,7 @@ const appSettingsKeys = [
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
     'folderId', 'language', 'rememberMe',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
-    'enableNoteSorting', 'lastSearchTerm', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
+    'enableNoteSorting', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'gdrive_folder_names', 'deviceName',
     'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
 ];
