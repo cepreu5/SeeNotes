@@ -1187,6 +1187,9 @@ async function runGoogleDriveSync(forceFullSync = false) {
             }
         }
         loaderText.textContent = _('syncFinishedLoadingData');
+        // b2.23: входящите промени от Drive са в allNotesData — индексът за търсене по смисъл догонва само разликата
+        // (нови / променени по отпечатък / изчезнали). Без зареден двигател нищо не се зарежда — догонва се в Настройки.
+        if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
         return totalActualUpdates;
     } finally {
         isSyncing = false;
@@ -4253,6 +4256,7 @@ async function moveNoteToTrash(noteGdid, noteId) {
     }
     updateReloadButtonState();
     scheduleGcalSync(); // бележка в кошчето → събитието се трие
+    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: изчезва от индекса за търсене по смисъл
     return true;
 }
 /**
@@ -4291,6 +4295,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
     const midx = allNotesData.findIndex(n => (noteGdid ? n.gdid === noteGdid : n.id == noteId));
     if (midx !== -1) allNotesData.splice(midx, 1);
     scheduleGcalSync(); // изтрита бележка → събитието се трие (изпразването на кошчето дава една сверка)
+    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
     const noteEl = document.querySelector(`.note[data-g="${actualGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
     if (noteEl) noteEl.remove();
@@ -4542,6 +4547,7 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
         filterNotesByBoard(currentBoardFilter, false);
         updateReloadButtonState();
         scheduleGcalSync(); // възстановена от кошчето → събитието се връща
+        if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
         return true;
     }
     return false;
@@ -8932,6 +8938,7 @@ async function runLocalSync(forceFullSync = false) {
             : _('localNoUpdates');
         showToast(message, 3000);
     }
+    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: както след синхрона с Drive
     return updatedCount;
 }
 
@@ -16462,6 +16469,8 @@ async function createSettingsUI(boardsData, boardParseError) {
         boardsArrow.style.transition = 'transform 0.3s ease';
         boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
     });
+    // Търсене по смисъл (b2.23): акордеонът под „Подреждане на бележките“ — само слушатели, нищо не се тегли
+    if (typeof initSemanticSection === 'function') initSemanticSection();
     // Sorting options
     const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
     const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
@@ -17792,6 +17801,7 @@ async function saveNoteCheckboxChange(noteObj) {
     else if (useIndexedDbNow) noteObj.type = -1; // за офлайн синхронизация
     if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
     if (typeof updateReloadButtonState === 'function') updateReloadButtonState();
+    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: отметката мени текста
 }
 
 // Елементът, спрямо чийто шрифт се мери висящият отстъп на списъците.
@@ -23383,6 +23393,7 @@ function saveEditedNote(forceClose = false) {
             showToast(_(msgKey).replace('{boardName}', boardTitle));
             updateReloadButtonState();
             scheduleGcalSync(); // събитието в Google Календар (етап 3)
+            if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: индексът за търсене по смисъл
         }
 
         // If modal was not closed, refresh its content to show the saved state

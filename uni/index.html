@@ -68,6 +68,27 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* b2.23: „Търсене по смисъл“ в Настройки */
+        #semantic-search-header { cursor: pointer; }
+        #semantic-head-state:empty { display: none; }
+        #semantic-head-state { margin-left: 6px; font-size: 0.85em; opacity: 0.75; font-variant-numeric: tabular-nums; }
+        .sem-body { padding: 4px 0 10px; text-align: left; }
+        .sem-body [hidden] { display: none !important; }
+        .sem-note { margin: 0 0 10px; font-size: 0.9em; line-height: 1.4; }
+        .sem-note.bad { color: #b3261e; }
+        .sem-fine { margin: 6px 0 0; font-size: 0.82em; line-height: 1.35; opacity: 0.75; font-variant-numeric: tabular-nums; }
+        .sem-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; font-size: 0.9em; }
+        .sem-muted { opacity: 0.7; font-size: 0.9em; }
+        .sem-link { background: none; border: none; padding: 2px 4px; color: #1f3b52; text-decoration: underline; cursor: pointer; font: inherit; }
+        .sem-bar { height: 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.15); overflow: hidden; }
+        .sem-bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: #1f3b52; transition: width 0.2s ease; }
+        .sem-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.82em; font-weight: 600; margin-bottom: 8px; }
+        .sem-chip.good { background: rgba(46, 125, 50, 0.15); color: #1b5e20; }
+        .sem-chip.bad { background: rgba(179, 38, 30, 0.12); color: #b3261e; }
+        .sem-kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 0.9em; margin-bottom: 10px; max-width: 420px; }
+        .sem-kv em { font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.85; }
+        .sem-body .zoom-btn { margin: 0; }
     </style>
     <script>
         (function () {
@@ -818,6 +839,56 @@
                     </div>
                 </div>
 
+                <!-- b2.23: Търсене по смисъл — акордеон, свит по подразбиране -->
+                <div class="settings-mobile-row zoom-control-wrapper" id="semantic-search-header" style="margin-top: 5px;"
+                    role="button" aria-expanded="false" aria-controls="semantic-section">
+                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; cursor: pointer;"
+                        data-key="semanticTitle">Search by meaning:</label>
+                    <span id="semantic-head-state"></span>
+                    <span id="semantic-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
+                </div>
+
+                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
+
+                <div id="semantic-section" style="display: none;">
+                    <div class="sem-body">
+                        <div data-sem="idle">
+                            <p class="sem-note" data-key="semanticIntro">Finds notes even when they use different words.</p>
+                            <button type="button" id="semantic-download-btn" class="zoom-btn" data-key="semanticDownloadBtn">Download the model · 118 MB</button>
+                            <p class="sem-fine" data-key="semanticIdleFine">Needs internet only for the download.</p>
+                        </div>
+                        <div data-sem="downloading" hidden>
+                            <div class="sem-row"><span data-key="semanticDownloading">Downloading the model</span>
+                                <button type="button" id="semantic-cancel-btn" class="sem-link" data-key="semanticCancel">Cancel</button></div>
+                            <div class="sem-bar"><i id="semantic-dl-bar"></i></div>
+                            <p class="sem-fine" id="semantic-dl-text"></p>
+                        </div>
+                        <div data-sem="indexing" hidden>
+                            <div class="sem-row"><span data-key="semanticIndexing">Indexing notes</span>
+                                <span class="sem-muted" data-key="semanticCanContinue">you can keep working</span></div>
+                            <div class="sem-bar"><i id="semantic-ix-bar"></i></div>
+                            <p class="sem-fine" id="semantic-ix-text"></p>
+                        </div>
+                        <div data-sem="ready" hidden>
+                            <span class="sem-chip good" data-key="semanticReady">ready</span>
+                            <div class="sem-kv">
+                                <span data-key="semanticModelOnDevice">Model on the device</span><em>118 MB</em>
+                                <span data-key="semanticIndexedNotes">Indexed notes</span><em id="semantic-ready-count"></em>
+                                <span data-key="semanticWorksOffline">Works offline</span><em data-key="semanticYes">yes</em>
+                            </div>
+                            <button type="button" id="semantic-delete-btn" class="zoom-btn" data-key="semanticDeleteBtn">Delete the model</button>
+                            <p class="sem-fine" data-key="semanticDeleteFine">Deleting frees 118 MB.</p>
+                        </div>
+                        <div data-sem="error" hidden>
+                            <span class="sem-chip bad" data-key="semanticFailed">failed</span>
+                            <p class="sem-note bad" id="semantic-error-text"></p>
+                            <button type="button" id="semantic-retry-btn" class="zoom-btn" data-key="semanticRetry">Try again</button>
+                        </div>
+                        <div data-sem="checking" hidden></div>
+                    </div>
+                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
+                </div>
+
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 10px;"
                         data-key="dataManagementTitle">Data Loading</label>
@@ -1146,6 +1217,7 @@
     <script src="fs.js"></script>
     <!-- b2.22: семантичен двигател — само window.SeeNotesSemantic; нищо не се тегли до изрично init() -->
     <script src="semantic.js"></script>
+    <script src="semantic-index.js"></script>
     <script>
         // PWA Install Prompt
         let deferredPrompt;
