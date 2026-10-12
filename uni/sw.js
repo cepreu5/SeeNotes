@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b2.24';
+const CACHE_NAME = 'cx-notes-b2.25';
 const OFFLINE_PAGE = 'index.html';
 // b2.22: моделът и библиотеката на семантичното търсене живеят в собствен кеш (semantic.js: 'cx-notes-semantic-v1'),
 // не са в ASSETS_TO_CACHE, а заявките към CDN/Hugging Face са cross-origin и fetch handler-ът ги пропуска.

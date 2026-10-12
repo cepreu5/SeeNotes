@@ -5,12 +5,17 @@
 // Резултатите в търсачката не се променят — сливането на двата крака е стъпка 4.
 // b2.24: по-бързо индексиране без промяна във векторите — партиди по 16, текстът се реже на 3000 знака (моделът и без
 // това чете само първите 512 токена) и кратка пауза между партидите, за да диша интерфейсът.
+// b2.25: отметка в реда на блока (пред стрелката, без отметка по подразбиране, помни се в semanticSearchEnabled) —
+// търсене по смисъл само ако индексът е готов И отметката е поставена (searchEnabled()). Търсачката още НЕ го вика:
+// това е шлюзът за стъпка 4 (сливането на двата крака). Фоновото догонване на индекса не зависи от отметката.
+// Редът не показва проценти: при сваляне е празен (процентът е в тялото), при индексиране „…“, при готов индекс „Готово“.
 (function () {
     'use strict';
 
     const MB = 1000 * 1000;
     const MODEL_MB = 118; // onnx/model_quantized.onnx — числото на бутона
     const READY_KEY = 'semanticIndexReady'; // '1' след пълен индекс — евтина проверка при всеки запис
+    const ENABLED_KEY = 'semanticSearchEnabled'; // '1' = отметката в реда е поставена; липсва = изключено
     const SYNC_DELAY_MS = 3000; // поредица записи → едно обновяване
     const BATCH = 16;
     // e5 чете само първите 512 токена ≈ до ~2400 знака български (измерено: 3,56 знака/токен средно, 4,65 най-много);
@@ -318,8 +323,20 @@
         }
         const arrowState = document.getElementById('semantic-head-state');
         if (arrowState) {
-            arrowState.textContent = ui.phase === 'downloading' ? (ui.pct || 0) + '%' : ui.phase === 'indexing' ? '…' : '';
+            arrowState.textContent = ui.phase === 'indexing' ? '…' : ui.phase === 'ready' ? t('semanticReadyWord') : '';
         }
+    }
+
+    // ---------- отметката „използвай търсене по смисъл“ ----------
+    function storageGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+
+    // Шлюзът за стъпка 4: true само при поставена отметка И готов индекс — иначе търсачката остава старата.
+    function searchEnabled() { return storageGet(ENABLED_KEY) === '1' && storageGet(READY_KEY) === '1'; }
+
+    function setSearchEnabled(on) {
+        try { if (on) localStorage.setItem(ENABLED_KEY, '1'); else localStorage.removeItem(ENABLED_KEY); } catch (e) { }
+        const box = document.getElementById('semantic-enabled');
+        if (box) box.checked = !!on;
     }
 
     // Вика се от main.js при инициализацията на Настройки. Само слушатели — нищо не се чете и не се тегли.
@@ -330,6 +347,13 @@
         const arrow = document.getElementById('semantic-arrow');
         if (!header || !section || !arrow || !S()) return;
         bound = true;
+        const enabled = document.getElementById('semantic-enabled');
+        if (enabled) {
+            enabled.checked = storageGet(ENABLED_KEY) === '1';
+            // кликът по отметката не отваря/затваря акордеона
+            enabled.addEventListener('click', (e) => e.stopPropagation());
+            enabled.addEventListener('change', () => setSearchEnabled(enabled.checked));
+        }
         header.addEventListener('click', () => {
             const isOpen = section.style.display === 'block';
             section.style.display = isOpen ? 'none' : 'block';
@@ -349,6 +373,9 @@
     window.SeeNotesSemanticIndex = {
         get state() { return Object.assign({}, ui); },
         readyKey: READY_KEY,
+        enabledKey: ENABLED_KEY,
+        searchEnabled,
+        setSearchEnabled,
         modelMb: MODEL_MB,
         refresh: refreshState,
         sync: syncIndex,

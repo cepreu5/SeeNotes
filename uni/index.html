@@ -89,6 +89,13 @@
         .sem-kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 0.9em; margin-bottom: 10px; max-width: 420px; }
         .sem-kv em { font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.85; }
         .sem-body .zoom-btn { margin: 0; }
+        /* b2.25: фон като на допълнителните бордове; десният отстъп пази съдържанието от скролбара на панела, левият ръб остава с другите редове */
+        #semantic-section { background-color: #909090; padding: 6px 20px 0 0; box-sizing: border-box; }
+        #semantic-enabled { flex-shrink: 0; margin: 0 0 0 6px; }
+        /* на тесен екран етикетът (265px) отстъпва място на „Готово“ + отметката + стрелката, иначе стрелката отива под скролбара */
+        #semantic-search-header label { flex-shrink: 1 !important; min-width: 0; }
+        #semantic-head-state, #semantic-arrow { white-space: nowrap; flex-shrink: 0; }
+        #semantic-delete-btn { width: 100%; box-sizing: border-box; }
     </style>
     <script>
         (function () {
@@ -845,6 +852,8 @@
                     <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; cursor: pointer;"
                         data-key="semanticTitle">Search by meaning:</label>
                     <span id="semantic-head-state"></span>
+                    <input type="checkbox" id="semantic-enabled" class="settings-checkbox" data-key-title="semanticEnableTitle"
+                        title="Use search by meaning">
                     <span id="semantic-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
                 </div>
 
