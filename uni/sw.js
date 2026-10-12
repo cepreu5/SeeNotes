@@ -1,5 +1,8 @@
-const CACHE_NAME = 'cx-notes-b2.21';
+const CACHE_NAME = 'cx-notes-b2.22';
 const OFFLINE_PAGE = 'index.html';
+// b2.22: моделът и библиотеката на семантичното търсене живеят в собствен кеш (semantic.js: 'cx-notes-semantic-v1'),
+// не са в ASSETS_TO_CACHE, а заявките към CDN/Hugging Face са cross-origin и fetch handler-ът ги пропуска.
+const SEMANTIC_CACHE_PREFIX = 'cx-notes-semantic-';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -8,6 +11,8 @@ const ASSETS_TO_CACHE = [
   './style.css',
   './main.js',
   './fs.js',
+  './semantic.js',
+  './semantic-worker.js',
   './languages.json',
   './lang/i18n-bg.json',
   './lang/i18n-en.json',
@@ -136,7 +141,8 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName !== 'app-cache' && cacheName !== 'share-target-image') {
+          // b2.22: кешът на семантичния двигател (модел + transformers.js) не е част от версията — оцелява при обновяване
+          if (cacheName !== CACHE_NAME && cacheName !== 'app-cache' && cacheName !== 'share-target-image' && !cacheName.startsWith(SEMANTIC_CACHE_PREFIX)) {
             return caches.delete(cacheName);
           }
         })
