@@ -4283,3 +4283,58 @@ body.selection-locked .note.active-selection-note .note-content {
         opacity: 0.2;
     }
 }
+
+/* b2.26: сливането на лексикалното и смисловото търсене — редът под полето и знакът „≈“ на бележките, дошли само по смисъла */
+#search-hybrid-line {
+    position: absolute;
+    top: 100%;
+    left: 45px;
+    margin-top: 2px;
+    font-size: 0.75em;
+    line-height: 1.2;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    z-index: 2;
+}
+
+#search-hybrid-line[hidden] {
+    display: none;
+}
+
+#search-hybrid-line.pending {
+    opacity: 0.7;
+}
+
+#search-wrapper.has-hybrid-line #saved-searches-popup {
+    top: calc(100% + 18px);
+}
+
+/* в колоната на тесен екран бутоните са точно под полето — редът си взима място, вместо да легне върху тях */
+@media (max-width: 899px) {
+    #search-wrapper.has-hybrid-line {
+        margin-bottom: 16px;
+    }
+}
+
+.note.semantic-hit .note-title-truncated {
+    margin-right: 46px;
+}
+
+.note .semantic-hit-chip {
+    position: absolute;
+    top: 50px;
+    right: 20px;
+    min-width: 1.2em;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.12);
+    color: inherit;
+    font-size: 0.95em;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+    pointer-events: none;
+}

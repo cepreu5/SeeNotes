@@ -9,6 +9,10 @@
 // търсене по смисъл само ако индексът е готов И отметката е поставена (searchEnabled()). Търсачката още НЕ го вика:
 // това е шлюзът за стъпка 4 (сливането на двата крака). Фоновото догонване на индекса не зависи от отметката.
 // Редът не показва проценти: при сваляне е празен (процентът е в тялото), при индексиране „…“, при готов индекс „Готово“.
+// b2.26: стъпка 4 — векторният крак на обикновеното търсене: searchVectors(заявка) → топ 20 над прага по косинус и fuse()
+// (RRF, k = 60) за сливането с лексикалния крак в applyFilters(). Двигателят се вдига от кеша само при търсене с поставена
+// отметка и готов индекс — и само ако моделът е в кеша (isCached(), Cache API, без мрежа). Няма ли го — пети ред в блока:
+// „липсва модел“ с бутон за повторно сваляне; търсенето пада на лексикалния крак.
 (function () {
     'use strict';
 
@@ -23,14 +27,28 @@
     const MAX_CHARS = 3000;
     const BATCH_PAUSE_MS = 20; // между партидите — рисува се напредъкът, интерфейсът не замръзва
     const VECTOR_BYTES = 384 * 4;
+    // Праг по косинус за векторния крак. Измерено на 12.10.2026 с истинския модел (Xenova/multilingual-e5-small, q8,
+    // „query: “ / „passage: “, нормализирани вектори) върху 18 реалистични български бележки (кола и сервиз, застраховка,
+    // гуми, лекар, лекарства, пазар, рецепта, почивка, билети, сметки, заплата, куче, градина, книги, работа, водопроводчик,
+    // фитнес, Коледа) и 30 заявки: 21 със зададени близки бележки и 9, които нямат съответствие никъде.
+    // e5 събира всичко нагоре: и далечните двойки са 0,71–0,84 (медиана 0,79), близките 0,76–0,90 (медиана 0,82), а
+    // заявките без съответствие стигат до 0,84 — ориентирът от плана 0,70–0,75 би пропуснал почти всичко.
+    // При 0,83 остават 14 от 33 близки двойки, 4 от 345 далечни и 1 от 144 при заявките без съответствие
+    // („ремонт на покрива“ → сервизът на колата, 0,837); при 0,82 са 17/33, 18/345 и 1/144; при 0,84 — 8/33, 0 и 0.
+    // Избрано 0,83: бележка с „≈“ без думата от заявката трябва да е наистина близка, а лексикалният крак носи останалото.
+    // Пробата е .bolter-task-artifacts/b226-threshold-probe.mjs.
+    const SEARCH_MIN_COSINE = 0.83;
+    const SEARCH_TOP = 20;
+    const RRF_K = 60;
 
-    let ui = { phase: 'idle' }; // idle | checking | downloading | indexing | ready | error
+    let ui = { phase: 'idle' }; // idle | checking | downloading | indexing | ready | error | missing (b2.26)
     let gen = 0; // всяко отказване / изтриване го вдига — старите обещания се игнорират
     let db = null;
     let syncPromise = null;
     let syncAgain = false;
     let syncTimer = null;
     let bound = false;
+    let vectorRows = null; // векторите от базата в паметта за търсене; всеки запис в базата ги нулира
 
     const S = () => window.SeeNotesSemantic;
     const t = (key, vars) => {
@@ -62,6 +80,7 @@
 
     function closeDB() {
         if (db) { try { db.close(); } catch (e) { /* вече затворена */ } db = null; }
+        vectorRows = null;
     }
 
     function tx(store, mode, fn) {
@@ -138,7 +157,7 @@
             do {
                 syncAgain = false;
                 const { notes, stale, todo } = await diffIndex();
-                if (stale.length) await tx('vectors', 'readwrite', st => stale.forEach(id => st.delete(id)));
+                if (stale.length) { vectorRows = null; await tx('vectors', 'readwrite', st => stale.forEach(id => st.delete(id))); }
                 let done = notes.length - todo.length;
                 if (onProgress) onProgress(done, notes.length);
                 for (let i = 0; i < todo.length; i += BATCH) {
@@ -146,6 +165,7 @@
                     const part = todo.slice(i, i + BATCH);
                     const vectors = await S().embedBatch(part.map(n => n.raw), 'passage');
                     if (myGen !== gen) throw new Error('cancelled');
+                    vectorRows = null;
                     await tx('vectors', 'readwrite', st => part.forEach((n, k) => st.put({ id: n.id, fp: n.fp, v: vectors[k] })));
                     done += part.length;
                     if (onProgress) onProgress(done, notes.length);
@@ -255,7 +275,7 @@
         const myGen = gen;
         setUi({ phase: 'checking' });
         const cached = await S().isCached();
-        const meta = cached ? await readMeta() : null;
+        const meta = await readMeta();
         if (myGen !== gen) return;
         if (cached && meta && meta.complete) {
             // Промени отвсякъде (запис тук без зареден двигател, синхрон от Drive) се догонват тук — само разликата.
@@ -266,8 +286,91 @@
             return;
         }
         if (cached) { runIndex(++gen); return; } // индексът не е довършен (затворено по средата) — продължава
+        if (modelMissing(meta)) { setUi({ phase: 'missing' }); return; }
         localStorage.removeItem(READY_KEY);
         setUi({ phase: 'idle' });
+    }
+
+    // b2.26: отметката е поставена, индексът е правен, но моделът вече не е в кеша (системата го е изчистила — Safari на iOS).
+    // Индексът и semanticIndexReady остават: след повторно сваляне сверката смята само разликата.
+    function modelMissing(meta) {
+        return storageGet(ENABLED_KEY) === '1' && (storageGet(READY_KEY) === '1' || !!(meta && meta.complete));
+    }
+
+    // ---------- търсенето (b2.26) ----------
+    // Векторите от базата се четат веднъж и стоят в паметта до следващия запис в базата.
+    async function loadVectors() {
+        if (vectorRows) return vectorRows;
+        const myGen = gen;
+        const rows = await tx('vectors', 'readonly', st => st.getAll());
+        const out = (rows || []).filter(r => r && r.id && r.v && r.v.length).map(r => ({ id: r.id, v: r.v }));
+        if (myGen === gen) vectorRows = out;
+        return out;
+    }
+
+    // Чисто смятане (тества се отделно): косинус срещу всеки вектор, само над прага, най-близките първи, най-много top.
+    function rankVectors(queryVector, rows, minCosine, top) {
+        const min = typeof minCosine === 'number' ? minCosine : SEARCH_MIN_COSINE;
+        const limit = typeof top === 'number' ? top : SEARCH_TOP;
+        const hits = [];
+        for (const r of rows || []) {
+            let sum = 0;
+            const v = r.v;
+            for (let i = 0; i < v.length; i++) sum += queryVector[i] * v[i];
+            if (sum >= min) hits.push({ id: r.id, score: sum });
+        }
+        hits.sort((a, b) => b.score - a.score);
+        return hits.slice(0, limit);
+    }
+
+    // RRF: оценка = Σ 1/(k + ранг) по двата крака; ранговете са от 1. Без нагласа между брой срещания и косинус.
+    // lexicalIds и vectorIds са подредени списъци с ИД; връща [{id, score, lexRank, vecRank}] по низходяща оценка,
+    // при равенство — по реда на лексикалния крак, после на векторния.
+    function fuse(lexicalIds, vectorIds, k) {
+        const kk = typeof k === 'number' ? k : RRF_K;
+        const map = new Map();
+        const add = (ids, field) => (ids || []).forEach((id, i) => {
+            const key = String(id);
+            const row = map.get(key) || { id: key, score: 0, lexRank: 0, vecRank: 0, first: map.size };
+            if (row[field]) return; // повторен ИД в същия списък — важи първият ранг
+            row[field] = i + 1;
+            row.score += 1 / (kk + i + 1);
+            map.set(key, row);
+        });
+        add(lexicalIds, 'lexRank');
+        add(vectorIds, 'vecRank');
+        return [...map.values()]
+            .sort((a, b) => (b.score - a.score) || (a.first - b.first))
+            .map(({ id, score, lexRank, vecRank }) => ({ id, score, lexRank, vecRank }));
+    }
+
+    // Векторният крак за една заявка. Никога не хвърля: { ok: true, hits } или { ok: false, reason } — тогава търсенето
+    // остава лексикално. Мрежа не се пипа: двигателят се вдига само ако моделът е в кеша; иначе блокът казва „липсва модел“.
+    async function searchVectors(query) {
+        const q = String(query || '').trim();
+        if (!q) return { ok: false, reason: 'empty' };
+        if (!searchEnabled() || !S()) return { ok: false, reason: 'off' };
+        if (ui.phase === 'downloading' || ui.phase === 'indexing') return { ok: false, reason: 'busy' };
+        const myGen = gen;
+        try {
+            if (S().status !== 'ready') {
+                if (!(await S().isCached())) {
+                    if (myGen === gen && (ui.phase === 'idle' || ui.phase === 'ready' || ui.phase === 'checking')) setUi({ phase: 'missing' });
+                    return { ok: false, reason: 'missing-model' };
+                }
+                await S().init(); // от кеша — моделът и библиотеката са там
+                if (myGen !== gen) return { ok: false, reason: 'cancelled' };
+                scheduleSemanticIndexSync(); // двигателят вече е зареден — догонва се разликата, ако има такава
+            }
+            const rows = await loadVectors();
+            if (!rows.length) return { ok: false, reason: 'no-index' };
+            const qv = await S().embedQuery(q);
+            if (myGen !== gen) return { ok: false, reason: 'cancelled' };
+            return { ok: true, hits: rankVectors(qv, rows) };
+        } catch (e) {
+            console.warn('[SemanticIndex] search failed:', e && e.message);
+            return { ok: false, reason: 'error' };
+        }
     }
 
     // След запис / триене / възстановяване и след като синхронът с Drive / локалната папка приложи входящите промени:
@@ -318,12 +421,15 @@
             $('semantic-ix-text').textContent = t('semanticIndexProgress', { done: fmt(ui.done || 0), total: fmt(ui.total || 0) });
         } else if (ui.phase === 'ready') {
             $('semantic-ready-count').textContent = fmt(ui.count || 0) + ' · ' + indexSizeText(ui.count || 0);
+        } else if (ui.phase === 'missing') {
+            // нищо за попълване — текстът е в речника
         } else if (ui.phase === 'error') {
             $('semantic-error-text').textContent = t(ui.errorKey, { mb: fmt(ui.errorMb || 0), done: fmt(ui.done || 0), total: fmt(ui.total || 0) });
         }
         const arrowState = document.getElementById('semantic-head-state');
         if (arrowState) {
-            arrowState.textContent = ui.phase === 'indexing' ? '…' : ui.phase === 'ready' ? t('semanticReadyWord') : '';
+            arrowState.textContent = ui.phase === 'indexing' ? '…' : ui.phase === 'ready' ? t('semanticReadyWord')
+                : ui.phase === 'missing' ? t('semanticMissingWord') : '';
         }
     }
 
@@ -365,6 +471,8 @@
         document.getElementById('semantic-cancel-btn').addEventListener('click', cancel);
         document.getElementById('semantic-delete-btn').addEventListener('click', deleteModel);
         document.getElementById('semantic-retry-btn').addEventListener('click', retry);
+        const redownload = document.getElementById('semantic-redownload-btn');
+        if (redownload) redownload.addEventListener('click', startDownload);
         render();
     }
 
@@ -383,5 +491,11 @@
         scheduleSync: scheduleSemanticIndexSync,
         fingerprint,
         collectNotes,
+        searchVectors,
+        rankVectors,
+        fuse,
+        minCosine: SEARCH_MIN_COSINE,
+        searchTop: SEARCH_TOP,
+        rrfK: RRF_K,
     };
 })();

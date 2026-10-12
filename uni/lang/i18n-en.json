@@ -548,5 +548,10 @@
     "semanticErrNoSpace": "Not enough space on the device. Nothing was left taking up space.",
     "semanticErrServer": "The model server did not respond. Nothing was left taking up space — try again later.",
     "semanticErrDevice": "The model did not start on this device. Nothing was left taking up space.",
-    "semanticErrIndex": "Indexing stopped at {done} of {total} notes. The model stays on the device."
+    "semanticErrIndex": "Indexing stopped at {done} of {total} notes. The model stays on the device.",
+    "semanticSearchLine": "≈ {n} of {total} notes",
+    "semanticSearchLineOne": "≈ {n} of {total} note",
+    "semanticMissingWord": "model missing",
+    "semanticMissingNote": "The model is no longer on this device (the system cleared its cache). Until you download it again, search matches words only.",
+    "semanticRedownloadBtn": "Download again · 118 MB"
 }

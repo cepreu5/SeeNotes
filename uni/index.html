@@ -121,6 +121,8 @@
         </div>
         <div id="search-wrapper">
             <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder">
+            <!-- b2.26: редът на сливането — само знакът и броят („≈ 5 от 12 бележки“) -->
+            <div id="search-hybrid-line" aria-live="polite" hidden></div>
         </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
@@ -892,6 +894,11 @@
                             <span class="sem-chip bad" data-key="semanticFailed">failed</span>
                             <p class="sem-note bad" id="semantic-error-text"></p>
                             <button type="button" id="semantic-retry-btn" class="zoom-btn" data-key="semanticRetry">Try again</button>
+                        </div>
+                        <div data-sem="missing" hidden>
+                            <span class="sem-chip bad" data-key="semanticMissingWord">model missing</span>
+                            <p class="sem-note" data-key="semanticMissingNote">The model is no longer on this device (the system cleared its cache). Until you download it again, search matches words only.</p>
+                            <button type="button" id="semantic-redownload-btn" class="zoom-btn" data-key="semanticRedownloadBtn">Download again · 118 MB</button>
                         </div>
                         <div data-sem="checking" hidden></div>
                     </div>

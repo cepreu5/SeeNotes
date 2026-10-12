@@ -13510,6 +13510,85 @@ function parseSearchQuery(raw) {
     return { lex: true, query: value.slice(m[0].length) };
 }
 
+// b2.26: стъпка 4 — обикновеното търсене е hybrid, когато отметката „Търсене по смисъл“ е поставена и индексът е готов
+// (SeeNotesSemanticIndex.searchEnabled()). Два паса: лексикалното се показва веднага, както досега; векторният крак
+// (semantic-index.js → searchVectors: топ 20 над прага по косинус) идва асинхронно и applyFilters() се вика пак.
+// Тогава двата списъка се сливат по RRF (k = 60), подредбата е с CSS order (DOM редът не се мести — изчистеното поле
+// връща реда и знаците както днес), а бележките, дошли само от векторния крак, носят „≈“. Под полето: „≈ N от M бележки“.
+// „/9“ и „/lex“ остават само лексикални. Без модел / индекс / грешка → само лексикалният крак, без съобщение.
+let hybridSearchSeq = 0; // заявките се броят: отговор на стара заявка не презаписва реда на нова
+let hybridSearchPending = null; // заявката, чийто векторен крак се смята в момента
+let hybridSearchResult = null; // { query, ok, hits } — последният получен отговор
+
+function hybridSearchActive() {
+    return !!(window.SeeNotesSemanticIndex && typeof window.SeeNotesSemanticIndex.searchEnabled === 'function'
+        && window.SeeNotesSemanticIndex.searchEnabled());
+}
+
+// null = още се смята (първи пас); { ok:false } = падане на лексикалния крак; { ok:true, hits } = вторият пас.
+function getHybridVectorResult(query) {
+    if (hybridSearchResult && hybridSearchResult.query === query) {
+        // отговорът, който още се смята за друга (по-стара) заявка, вече не трябва да презапише този
+        if (hybridSearchPending !== null) { hybridSearchSeq++; hybridSearchPending = null; }
+        return hybridSearchResult;
+    }
+    if (hybridSearchPending === query) return null;
+    hybridSearchPending = query;
+    const seq = ++hybridSearchSeq;
+    const done = (res) => {
+        if (seq !== hybridSearchSeq) return;
+        hybridSearchPending = null;
+        hybridSearchResult = { query, ok: !!(res && res.ok), hits: (res && res.ok && res.hits) || [] };
+        const box = document.getElementById('search-box');
+        const now = box ? parseSearchQuery(box.value) : null;
+        if (now && !now.lex && now.query.trim() === query) applyFilters();
+    };
+    Promise.resolve()
+        .then(() => window.SeeNotesSemanticIndex.searchVectors(query))
+        .then(done, () => done(null));
+    return null;
+}
+
+function hybridNoteKey(note) {
+    return String(note.dataset.g || note.dataset.i || '');
+}
+
+// Ранг в лексикалния крак: срещания на заявката — в заглавието ×3, в тялото ×1.
+function countSearchOccurrences(text, term) {
+    if (!term) return 0;
+    let n = 0;
+    for (let i = text.indexOf(term); i !== -1; i = text.indexOf(term, i + term.length)) n++;
+    return n;
+}
+
+function setSemanticHitChip(note, on) {
+    note.classList.toggle('semantic-hit', !!on);
+    let chip = note.querySelector(':scope > .semantic-hit-chip');
+    if (on && !chip) {
+        chip = document.createElement('span');
+        chip.className = 'semantic-hit-chip';
+        chip.textContent = '≈';
+        chip.setAttribute('aria-hidden', 'true');
+        note.appendChild(chip);
+    } else if (!on && chip) {
+        chip.remove();
+    }
+}
+
+function renderHybridSearchLine(state, semanticCount, total) {
+    const line = document.getElementById('search-hybrid-line');
+    if (!line) return;
+    const wrapper = line.parentElement;
+    if (wrapper) wrapper.classList.toggle('has-hybrid-line', !!state); // попъпът със запазените търсения слиза под реда
+    line.classList.toggle('pending', state === 'pending');
+    if (!state) { line.hidden = true; line.textContent = ''; return; }
+    if (state === 'pending') { line.textContent = '≈'; line.hidden = false; return; }
+    const key = total === 1 ? 'semanticSearchLineOne' : 'semanticSearchLine';
+    const tpl = (typeof _ === 'function' && _(key)) || '≈ {n} / {total}';
+    line.textContent = tpl.split('{n}').join(String(semanticCount)).split('{total}').join(String(total));
+    line.hidden = false;
+}
+
 function applyFilters() {
     const searchBox = document.getElementById('search-box');
     const parsedSearch = parseSearchQuery(searchBox ? searchBox.value : '');
@@ -13520,6 +13599,13 @@ function applyFilters() {
     const normalizedSearchTerm = (isLexSearch && searchTerm !== '') ? normalizeSearchText(parsedSearch.query) : '';
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;
+    // b2.26: hybrid само за голата заявка; векторният резултат е null, докато се смята (първи пас)
+    const hybridQuery = (!isLexSearch && searchTerm.trim() !== '' && hybridSearchActive()) ? parsedSearch.query.trim() : '';
+    const hybridResult = hybridQuery ? getHybridVectorResult(hybridQuery) : null;
+    const hybridReady = !!(hybridResult && hybridResult.ok);
+    const vectorRank = new Map();
+    if (hybridReady) hybridResult.hits.forEach((h, i) => { if (!vectorRank.has(String(h.id))) vectorRank.set(String(h.id), i + 1); });
+    const hybridVisible = []; // { note, key, lexScore, semanticOnly, domIndex }
     // --- PRE-CALCULATE FILTER MODES ---
     const isAll = currentBoardFilter === 'all' || currentBoardFilter === 'search-results';
     const isReminder = currentBoardFilter === 'reminder';
@@ -13589,6 +13675,8 @@ function applyFilters() {
         }
         // Filter by Search Term
         let matchesSearch = true;
+        let lexScore = 0;
+        let semanticOnly = false;
         // OPTIMIZATION: Only access DOM textContent if there is a search term!
         if (searchTerm !== '') {
             const titleEl = note.querySelector('.note-title-truncated');
@@ -13597,13 +13685,26 @@ function applyFilters() {
             matchesSearch = isLexSearch
                 ? getNormalizedNoteText(note, noteText).includes(normalizedSearchTerm)
                 : noteText.toLowerCase().includes(searchTerm);
+            if (hybridReady) {
+                if (matchesSearch) {
+                    lexScore = 3 * countSearchOccurrences((titleEl ? titleEl.textContent : '').toLowerCase(), searchTerm)
+                        + countSearchOccurrences((contentEl ? contentEl.textContent : '').toLowerCase(), searchTerm);
+                } else if (vectorRank.has(hybridNoteKey(note))) {
+                    matchesSearch = true;
+                    semanticOnly = true;
+                }
+            }
         }
         // Проверка за режим "търсене само в борда"
         let inBoardScope = true;
         if (searchInBoardOnly && searchTerm !== '' && boardOnlyIds.length > 0) {
             inBoardScope = boardOnlyIds.some(id => note.dataset.b == id);
         }
-        if ((searchTerm !== '' ? (matchesSearch && inBoardScope && (!isDeleted || trashSearch)) : isVisibleByBoard)) {
+        const isShown = (searchTerm !== '' ? (matchesSearch && inBoardScope && (!isDeleted || trashSearch)) : isVisibleByBoard);
+        setSemanticHitChip(note, isShown && semanticOnly);
+        if (isShown && hybridReady) hybridVisible.push({ note, key: hybridNoteKey(note), lexScore, semanticOnly, domIndex: hybridVisible.length });
+        else if (note.style.order) note.style.order = '';
+        if (isShown) {
             note.style.display = 'flex';
             visibleCount++;
             if (isNewUpdates && isDeleted) {
@@ -13623,13 +13724,31 @@ function applyFilters() {
             if (trashOverlay) trashOverlay.remove();
         }
     }
+    // b2.26: вторият пас на hybrid търсенето — ред по RRF вместо обичайното сортиране
+    let semanticOnlyCount = 0;
+    if (hybridReady) {
+        const lexical = hybridVisible.filter(x => !x.semanticOnly)
+            .sort((a, b) => (b.lexScore - a.lexScore) || (a.domIndex - b.domIndex));
+        const byKey = new Map();
+        hybridVisible.forEach(x => { if (!byKey.has(x.key)) byKey.set(x.key, []); byKey.get(x.key).push(x); });
+        const lexIds = lexical.map(x => x.key);
+        const vecIds = hybridResult.hits.map(h => String(h.id)).filter(id => byKey.has(id));
+        let order = 1;
+        window.SeeNotesSemanticIndex.fuse(lexIds, vecIds).forEach(row => {
+            (byKey.get(row.id) || []).forEach(x => { if (!x.ordered) { x.note.style.order = String(order++); x.ordered = true; } });
+            byKey.delete(row.id);
+        });
+        hybridVisible.forEach(x => { if (!x.ordered) x.note.style.order = String(order++); }); // бележки без ИД — накрая
+        semanticOnlyCount = hybridVisible.filter(x => x.semanticOnly).length;
+    }
+    renderHybridSearchLine(hybridQuery ? (hybridReady ? 'ready' : (hybridResult ? null : 'pending')) : null, semanticOnlyCount, visibleCount);
     // --- Sorting Logic ---
     const pinSortingEnabled = currentBoardFilter === 'all' || isStandard;
     const systemSortStatus = getSystemBoardSortStatus(currentBoardFilter);
     const systemSortOverrideEnabled = systemSortStatus >= 10;
     const reminderDateSortingEnabled = isReminder && !systemSortOverrideEnabled;
     const noteSortingEnabled = localStorage.getItem('enableNoteSorting') === 'true';
-    if (noteSortingEnabled || pinSortingEnabled || reminderDateSortingEnabled || systemSortOverrideEnabled) {
+    if (!hybridReady && (noteSortingEnabled || pinSortingEnabled || reminderDateSortingEnabled || systemSortOverrideEnabled)) {
         let sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
         let sortReverse = localStorage.getItem('sortInReverse') === 'true';
         let sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
