@@ -38,6 +38,13 @@
     // Избрано 0,83: бележка с „≈“ без думата от заявката трябва да е наистина близка, а лексикалният крак носи останалото.
     // Пробата е .bolter-task-artifacts/b226-threshold-probe.mjs.
     const SEARCH_MIN_COSINE = 0.83;
+    // Долна граница на дължината на индексирания текст (заглавие + тяло, от който е изчислен векторът) за векторния крак.
+    // Измерено на 12.10.2026 с истинския модел (Xenova/multilingual-e5-small, q8, „query: “ / „passage: “, нормализирани
+    // вектори): бележки от 4–6 знака дават косинус 0,80–0,89 срещу всяка заявка от една дума („Кольо“ 0,874 и „Мляко“ 0,817
+    // за „кола“), а несвързани бележки от 9+ знака стоят ≤ 0,82 — при късия текст косинусът е шум и прагът не го дели
+    // (дефект: „кола“ показваше бележка само със „Светла“). Под границата бележка не се показва САМО по смисъл;
+    // лексикалният крак продължава да я намира, ако съдържа думата от заявката. Дължината е в отпечатъка (fp „хеш:дължина“).
+    const MIN_NOTE_CHARS = 12;
     const SEARCH_TOP = 20;
     const RRF_K = 60;
 
@@ -303,17 +310,29 @@
         if (vectorRows) return vectorRows;
         const myGen = gen;
         const rows = await tx('vectors', 'readonly', st => st.getAll());
-        const out = (rows || []).filter(r => r && r.id && r.v && r.v.length).map(r => ({ id: r.id, v: r.v }));
+        const out = (rows || []).filter(r => r && r.id && r.v && r.v.length).map(r => ({ id: r.id, v: r.v, len: rowLen(r.fp) }));
         if (myGen === gen) vectorRows = out;
         return out;
     }
 
+    // Дължината на индексирания текст от отпечатъка „хеш:дължина“; null, ако я няма.
+    function rowLen(fp) {
+        if (typeof fp !== 'string') return null;
+        const tail = fp.slice(fp.lastIndexOf(':') + 1);
+        if (fp.indexOf(':') < 0 || tail === '') return null;
+        const n = Number(tail);
+        return Number.isFinite(n) ? n : null;
+    }
+
     // Чисто смятане (тества се отделно): косинус срещу всеки вектор, само над прага, най-близките първи, най-много top.
-    function rankVectors(queryVector, rows, minCosine, top) {
+    // Ред с известна дължина под minChars се прескача (b2.27); ред без дължина (стар/непознат) не се гейтва.
+    function rankVectors(queryVector, rows, minCosine, top, minChars) {
         const min = typeof minCosine === 'number' ? minCosine : SEARCH_MIN_COSINE;
         const limit = typeof top === 'number' ? top : SEARCH_TOP;
+        const floor = typeof minChars === 'number' ? minChars : MIN_NOTE_CHARS;
         const hits = [];
         for (const r of rows || []) {
+            if (typeof r.len === 'number' && r.len < floor) continue;
             let sum = 0;
             const v = r.v;
             for (let i = 0; i < v.length; i++) sum += queryVector[i] * v[i];
@@ -495,6 +514,7 @@
         rankVectors,
         fuse,
         minCosine: SEARCH_MIN_COSINE,
+        minNoteChars: MIN_NOTE_CHARS,
         searchTop: SEARCH_TOP,
         rrfK: RRF_K,
     };
