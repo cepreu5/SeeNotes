@@ -13431,6 +13431,7 @@ function orderBoardEntriesByVisibleMenu(entries) {
 
 // b2.19: лексикален крак на търсенето — българска нормализация, прилагана и на заявката, и на текста на бележката.
 // Семантиката остава подниз: нормализират се само двата сравнявани низа.
+// b2.21: „и“ и „й“ се приравняват — и двете стават „и“, точно както ѝ→и. Важи само в лексикалния режим (/9, /lex).
 const SEARCH_HOMOGLYPHS = {
     a: 'а', e: 'е', o: 'о', c: 'с', p: 'р', x: 'х', y: 'у', k: 'к',
     A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
@@ -13477,6 +13478,7 @@ function normalizeSearchText(text) {
         .replace(SEARCH_WORD_RE, replaceSearchHomoglyphs)
         .toLowerCase()
         .replace(/ѝ/g, 'и')
+        .replace(/й/g, 'и')
         .replace(SEARCH_WORD_RE, stripSearchArticle);
 }
 
