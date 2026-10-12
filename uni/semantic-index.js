@@ -3,6 +3,8 @@
 // Двигателят е SeeNotesSemantic от semantic.js (b2.22) — тук само се вика. При зареждане на приложението НИЩО не се
 // тегли и не се отваря: initSemanticSection() само закача слушатели; кешът и базата се поглеждат при отваряне на акордеона.
 // Резултатите в търсачката не се променят — сливането на двата крака е стъпка 4.
+// b2.24: по-бързо индексиране без промяна във векторите — партиди по 16, текстът се реже на 3000 знака (моделът и без
+// това чете само първите 512 токена) и кратка пауза между партидите, за да диша интерфейсът.
 (function () {
     'use strict';
 
@@ -10,8 +12,11 @@
     const MODEL_MB = 118; // onnx/model_quantized.onnx — числото на бутона
     const READY_KEY = 'semanticIndexReady'; // '1' след пълен индекс — евтина проверка при всеки запис
     const SYNC_DELAY_MS = 3000; // поредица записи → едно обновяване
-    const BATCH = 8;
-    const MAX_CHARS = 4000; // e5 гледа първите 512 токена; повече текст само бави
+    const BATCH = 16;
+    // e5 чете само първите 512 токена ≈ до ~2400 знака български (измерено: 3,56 знака/токен средно, 4,65 най-много);
+    // 3000 оставя резерв — първите 512 токена са същите като на пълния текст. Под 2500 вече може да реже четен текст.
+    const MAX_CHARS = 3000;
+    const BATCH_PAUSE_MS = 20; // между партидите — рисува се напредъкът, интерфейсът не замръзва
     const VECTOR_BYTES = 384 * 4;
 
     let ui = { phase: 'idle' }; // idle | checking | downloading | indexing | ready | error
@@ -139,6 +144,7 @@
                     await tx('vectors', 'readwrite', st => part.forEach((n, k) => st.put({ id: n.id, fp: n.fp, v: vectors[k] })));
                     done += part.length;
                     if (onProgress) onProgress(done, notes.length);
+                    if (i + BATCH < todo.length) await new Promise(r => setTimeout(r, BATCH_PAUSE_MS));
                 }
                 count = notes.length;
                 await tx('meta', 'readwrite', st => st.put({ key: 'state', complete: true, count, modelId: S().modelId, updated: Date.now() }));
