@@ -1,14 +1,16 @@
-const CACHE_NAME = 'cxeditor-b1.68';
+const CACHE_NAME = 'cx-notes-b2.21';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
+  './set.html',
   './manifest.webmanifest',
   './style.css',
   './main.js',
   './fs.js',
-  './i18n-bg.txt',
-  './i18n-en.txt',
+  './languages.json',
+  './lang/i18n-bg.json',
+  './lang/i18n-en.json',
   './MNVLogo.png',
   './NoteFav.png',
   './Refresh.png',
@@ -39,13 +41,8 @@ const ASSETS_TO_CACHE = [
   './wb1_1.png',
   './wg1_1.png',
   './wr1_1.png',
-  './kb-core.json',
-  './kb-bg.json',
-  './kb-en.json',
   './msmstyle.css',
-  './kb-assistant.css',
-  './kb-assistant.js',
-  './msmrt.js',
+  './msm.js',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
@@ -87,38 +84,86 @@ const ASSETS_TO_CACHE = [
   './msm-ex/1764554407319.jpg',
   './msm-ex/1764554540104.jpg',
 ];
+// Асистентът се зарежда при първо отваряне (ensureKBAssistant в main.js), затова
+// файловете му не са в предкеша, а влизат в кеша при първото ползване.
+const LAZY_ASSETS = [
+  './kb-assistantt.js',
+  './kb-assistant.css',
+  './lang/kb-core.json',
+  './lang/kb-bg.json',
+  './lang/kb-en.json',
+];
+const LAZY_ASSET_URLS = LAZY_ASSETS.map(url => new URL(url, self.location.href).href);
+
+function swLog(...args) {
+  try {
+    console.log(...args);
+    const bc = new BroadcastChannel('sw_debug_channel');
+    bc.postMessage({
+      type: 'LOG',
+      args: args.map(a => {
+        try {
+          return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch (e) { return "[Unserializable Object]"; }
+      })
+    });
+    bc.close();
+  } catch (e) {
+    console.error('swLog failed:', e);
+  }
+}
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Force activation to recover from broken main.js
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // Cache assets individually for better error reporting and resilience
-      return Promise.allSettled(
-        ASSETS_TO_CACHE.map(url =>
-          cache.add(url).catch(err => console.warn(`Failed to cache ${url}:`, err))
-        )
-      );
-    })
-  );
+  swLog('[SW] Install event triggered.');
+  // Start caching assets without blocking the page load
+  caches.open(CACHE_NAME).then((cache) => {
+    return Promise.allSettled(
+      ASSETS_TO_CACHE.map(url =>
+        cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
+      )
+    );
+  });
+  // Без поемане на контрола при install: новият SW изчаква. main.js го пуска
+  // (SKIP_WAITING) веднага щом страницата се зареди, ако потребителят още не е
+  // пипал приложението - тогава обикновен refresh вдига версията. Ако вече се
+  // работи в приложението, банерът изчаква натискането на Refresh now.
+  // НЕ връщай self.skipWaiting() тук (виж projects/seenotes-sw-update в паметта).
 });
 
 self.addEventListener('activate', (event) => {
+  swLog('[SW] Activate event triggered.');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME && cacheName !== 'app-cache') {
+          if (cacheName !== CACHE_NAME && cacheName !== 'app-cache' && cacheName !== 'share-target-image') {
             return caches.delete(cacheName);
           }
         })
       );
-    }).then(() => self.clients.claim())
+    }).then(() => {
+      swLog('[SW] Activated and claiming clients...');
+      return self.clients.claim();
+    })
   );
 });
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  // main.js чете версията на приложението от CACHE_NAME (отговор през MessageChannel).
+  if (event.data && event.data.type === 'GET_VERSION' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ type: 'VERSION', cacheName: CACHE_NAME });
+  }
+  // Изпраща се след първото успешно зареждане на асистента: допълва липсващите
+  // му файлове (напр. другия езиков KB файл), за да работи и офлайн.
+  if (event.data && event.data.type === 'CACHE_KB_ASSETS') {
+    event.waitUntil(caches.open(CACHE_NAME).then((cache) => {
+      return Promise.allSettled(
+        LAZY_ASSETS.map(url => cache.match(url).then(hit => hit || cache.add(url)))
+      );
+    }));
   }
 });
 
@@ -127,7 +172,99 @@ self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
+  // --- Share Target POST handler ---
+  if (event.request.method === 'POST') {
+    const url = new URL(event.request.url);
+    if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
+      swLog('[SW] Share Target POST request intercepted:', url.href);
 
+      event.respondWith((async () => {
+        try {
+          const formData = await event.request.formData();
+          const title = formData.get('shared_title') || '';
+          const text = formData.get('shared_text') || '';
+          const sharedUrl = formData.get('shared_url') || '';
+          const imageFiles = formData.getAll('shared_image');
+
+          // Build redirect URL for fallback
+          const redirectUrl = new URL(url.pathname, self.location.origin);
+          if (title) redirectUrl.searchParams.set('shared_title', title);
+          if (text) redirectUrl.searchParams.set('shared_text', text);
+          if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
+
+          // Store all shared files in cache with indexed keys
+          const validFiles = imageFiles.filter(f => f && f.size > 0);
+          if (validFiles.length > 0) {
+            swLog('[SW] Processing shared files...', validFiles.length);
+            const cache = await caches.open('share-target-image');
+            // Изчистваме стари файлове от предишен share
+            const existingKeys = await cache.keys();
+            await Promise.all(existingKeys.map(k => cache.delete(k)));
+            for (let i = 0; i < validFiles.length; i++) {
+              const f = validFiles[i];
+              const headers = new Headers({
+                'Content-Type': f.type || 'image/jpeg',
+                'X-Filename': f.name || `shared_${Date.now()}_${i}.jpg`
+              });
+              await cache.put(`shared-image-${i}`, new Response(f, { headers }));
+            }
+            redirectUrl.searchParams.set('shared_image', String(validFiles.length));
+          }
+
+          const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+          swLog('[SW] Found active clients:', clients.length);
+
+          let existingClient = clients.find(c => {
+            const clientUrl = new URL(c.url);
+            const reqPath = url.pathname.replace(/\/+$/, '');
+            const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
+            return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
+          });
+
+          if (!existingClient && clients.length > 0) existingClient = clients[0];
+
+          if (existingClient) {
+            swLog('[SW] Targeting client:', existingClient.url);
+
+            // Пробваме да фокусираме, но ако браузърът го блокира - не сриваме целия процес
+            try {
+              await existingClient.focus();
+            } catch (focusErr) {
+              swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
+            }
+
+            const shareData = {
+              type: 'SHARE_TARGET_EVENT',
+              data: {
+                shared_title: title,
+                shared_text: text,
+                shared_url: sharedUrl,
+                shared_image: validFiles.length > 0 ? String(validFiles.length) : '0'
+              }
+            };
+            existingClient.postMessage(shareData);
+            // const bc = new BroadcastChannel('share_target_channel');
+            // bc.postMessage(shareData);
+            // bc.close();
+
+            // Вместо 204 (което на Desktop оставя празен прозорец), връщаме скрипт за самозатваряне
+            return new Response('<script>window.close()</script>', {
+              headers: { 'Content-Type': 'text/html' }
+            });
+          }
+
+          swLog('[SW] Redirecting to new instance.');
+          return Response.redirect(redirectUrl.toString(), 303);
+
+        } catch (err) {
+          swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
+          // Failsafe: just redirect to index without shared data rather than showing error page
+          return Response.redirect('./index.html', 303);
+        }
+      })());
+      return;
+    }
+  }
   // Only handle GET requests
   if (event.request.method !== 'GET') {
     return;
@@ -144,6 +281,10 @@ self.addEventListener('fetch', (event) => {
 
       // 2. If not in cache, try network
       return fetch(event.request).then((networkResponse) => {
+        if (networkResponse.ok && LAZY_ASSET_URLS.includes(event.request.url)) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        }
         return networkResponse;
       }).catch(() => {
         // 3. Fallback logic for offline/network failure

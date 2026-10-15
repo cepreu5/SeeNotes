@@ -10,7 +10,7 @@
 // App version: идва от CACHE_NAME на service worker-а ('cx-notes-b1.67' -> 'Beta 1.67').
 // null, докато не се разбере; ако не се разбере изобщо, надписът се скрива.
 let version = null;
-const debug = true; // Глобален флаг за дебъг режим
+const debug = false; // Глобален флаг за дебъг режим
 
 function versionFromCacheName(cacheName) {
     const match = /^cx-notes-b(\d.*)$/.exec(String(cacheName || '').trim());
@@ -9893,7 +9893,7 @@ function buildNoteCalRow(modalBodyElem) {
     const repeatSelect = document.createElement('select');
     repeatSelect.className = 'note-cal-repeat-select';
     [['', 'noteCalRepeatNone', 'none'], ['daily', 'noteCalRepeatDaily', 'every day'], ['weekly', 'noteCalRepeatWeekly', 'every week'],
-        ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year']].forEach(([value, key, fallback]) => {
+    ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year']].forEach(([value, key, fallback]) => {
         const opt = document.createElement('option');
         opt.value = value;
         opt.textContent = _(key) || fallback;
@@ -19890,21 +19890,21 @@ async function waitingWorkerIsNewBuild(worker) {
 
 // Банерът за обновяване: на топ ниво, защото го вика handleWaitingWorker (вътре в load
 // handler-а не се виждаше от нея - ReferenceError: showUpdateNotification is not defined).
-        // Function to show update notification as a persistent floating bar
-        // Uses a simple boolean flag - guarantees at most ONE notification per page load
-        const showUpdateNotification = (waitingSW) => {
-            if (!waitingSW) return;
+// Function to show update notification as a persistent floating bar
+// Uses a simple boolean flag - guarantees at most ONE notification per page load
+const showUpdateNotification = (waitingSW) => {
+    if (!waitingSW) return;
 
-            // Block if already shown on this page load
-            if (window._swUpdateBarShown) return;
+    // Block if already shown on this page load
+    if (window._swUpdateBarShown) return;
 
-            window._swUpdateBarShown = true;
-            console.log('[SW] Showing update notification bar.');
+    window._swUpdateBarShown = true;
+    console.log('[SW] Showing update notification bar.');
 
-            // Create update notification bar
-            const updateBar = document.createElement('div');
-            updateBar.id = 'sw-update-bar';
-            updateBar.style.cssText = `
+    // Create update notification bar
+    const updateBar = document.createElement('div');
+    updateBar.id = 'sw-update-bar';
+    updateBar.style.cssText = `
                 position: fixed;
                 bottom: 15px;
                 left: 50%;
@@ -19923,13 +19923,13 @@ async function waitingWorkerIsNewBuild(worker) {
                 animation: swSlideUp 0.3s ease;
             `;
 
-            const textSpan = document.createElement('span');
-            textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
-            textSpan.style.fontWeight = '500';
+    const textSpan = document.createElement('span');
+    textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
+    textSpan.style.fontWeight = '500';
 
-            const refreshBtn = document.createElement('button');
-            refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
-            refreshBtn.style.cssText = `
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
+    refreshBtn.style.cssText = `
                 background: white;
                 color: #667eea;
                 border: none;
@@ -19939,31 +19939,31 @@ async function waitingWorkerIsNewBuild(worker) {
                 font-weight: bold;
                 transition: all 0.2s;
             `;
-            refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
-            refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
-            refreshBtn.onclick = () => {
-                localStorage.removeItem('app_version_seen');
-                waitingSW.postMessage({ type: 'SKIP_WAITING' });
-                setTimeout(() => updateBar.remove(), 100);
-            };
+    refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
+    refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
+    refreshBtn.onclick = () => {
+        localStorage.removeItem('app_version_seen');
+        waitingSW.postMessage({ type: 'SKIP_WAITING' });
+        setTimeout(() => updateBar.remove(), 100);
+    };
 
-            updateBar.appendChild(textSpan);
-            updateBar.appendChild(refreshBtn);
-            document.body.appendChild(updateBar);
+    updateBar.appendChild(textSpan);
+    updateBar.appendChild(refreshBtn);
+    document.body.appendChild(updateBar);
 
-            // Add animation style if not exists
-            if (!document.getElementById('sw-update-style')) {
-                const style = document.createElement('style');
-                style.id = 'sw-update-style';
-                style.textContent = `
+    // Add animation style if not exists
+    if (!document.getElementById('sw-update-style')) {
+        const style = document.createElement('style');
+        style.id = 'sw-update-style';
+        style.textContent = `
                     @keyframes swSlideUp {
                         from { transform: translateX(-50%) translateY(100px); opacity: 0; }
                         to { transform: translateX(-50%) translateY(0); opacity: 1; }
                     }
                 `;
-                document.head.appendChild(style);
-            }
-        };
+        document.head.appendChild(style);
+    }
+};
 
 let handledWaitingWorker = null;
 async function handleWaitingWorker(worker) {
