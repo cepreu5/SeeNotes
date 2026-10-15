@@ -1921,8 +1921,11 @@ code {
 }
 
 /* b1.95: таблет и десктоп 900-1220px — хедърът остава в ЕДИН ред (преди: колона от 4 реда и ~212px).
-   Търсачката се свива, за да се събере редом бутоните, вместо да се пренася на втори ред. */
-@media (min-width: 900px) and (max-width: 1220px) {
+   Търсачката се свива, за да се събере редом бутоните, вместо да се пренася на втори ред.
+   15 Oct 2026: горната граница 1220px е премахната — над 1220px панелът с дъските (.boards-note, пълна ширина,
+   добавен от main.js) нямаше order и заставаше ПРЕДИ бутоните, избутвайки ги на трети ред, а търсачката
+   се долепяше най-вдясно. Сега същият едноредов ред важи и за широки екрани. */
+@media (min-width: 900px) {
     header {
         flex-direction: row;
         align-items: center;
@@ -1991,37 +1994,10 @@ code {
     }
 
     /* Board menu at the bottom */
-}
 
-
-
-    /* Reorder elements for mobile view (up to 768px) */
-    /* Title is already order 1 from the rule above */
-    #search-container {
-        order: 3;
+    #scale-wrapper .slider-container {
+        flex-wrap: nowrap;
     }
-
-    /* Search Box moves down */
-    #header-buttons {
-        order: 2;
-    }
-
-    /* Buttons move up */
-    
-
-    
-
-
-/*#search-container {
-        padding: 1em 0 0.5em;
-    }*/
-
-#header-buttons {
-    display: flex;
-    justify-content: center;
-    padding-top: 5px;
-    padding-bottom: 5px;
-}
 
 /* Responsive layout for settings modal on small screens */
 
@@ -2039,11 +2015,6 @@ code {
         /* Ensure labels are left-aligned */
     }
 
-    /* Ensure settings modal is above Ko-fi widget on mobile
-    #settings-modal {
-        z-index: 100000000 !important;
-    } */
-
     #settings-modal .modal-content-box {
         height: 90% !important;
         width: 100% !important;
@@ -2060,10 +2031,6 @@ code {
         /* Поддържа вертикално центриране */
     }
 
-    #scale-wrapper .slider-container {
-        flex-wrap: nowrap;
-    }
-
     #scale-wrapper #scaleInput {
         min-width: 55px;
         width: 55px;
@@ -2076,6 +2043,37 @@ code {
         -webkit-appearance: none;
         margin: 0;
     }
+}
+
+/*#search-container {
+        padding: 1em 0 0.5em;
+    }*/
+
+/* ВАЖНО (15 Oct 2026): оттук до #header-buttons НЕ е изтекло от @media (max-width:899px) —
+   двете правила тук важат на всички ширини и са единствените за този селектор:
+     - #header-buttons { display:flex; justify-content:center; padding:5px 0 } — от него зависи
+       едноредовият хедър на таблет/десктоп (без него хедърът става 132px вместо 96px);
+     - #header-buttons { order: 2 } — редът вече е излишен, след като медията за едноредов хедър
+       стана @media (min-width: 900px) и тя сама задава order:3 на бутоните, но е оставен на
+       мястото си, за да не се пипа нищо извън двете поправки.
+   Мобилните правила, които наистина бяха изтекли (диалогът на настройките, редовете в него и
+   полето за мащаб), са прибрани обратно в @media (max-width:899px) — иначе диалогът се разпъваше
+   по цялата ширина на широк екран вместо да е max 400px. */
+#header-buttons {
+    display: flex;
+    justify-content: center;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+#header-buttons {
+    order: 2;
+}
+
+    /* Ensure settings modal is above Ko-fi widget on mobile
+    #settings-modal {
+        z-index: 100000000 !important;
+    } */
 
     /* Превключва грида за сортиране в една колона на тесни екрани */
     
