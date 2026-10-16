@@ -17688,8 +17688,22 @@ function renderNoteCheckboxes(html) {
         hit.append(input, src);
         markNode.replaceWith(hit);
         src.appendChild(markNode);
+        // Квадратчето и първата дума след него са една неразделяща се двойка с 4px резерв отзад:
+        // колоната в таблицата резервира цялата двойка, затова редът не се къса, когато колоната
+        // е тясна (например при по-едър шрифт на телефон).
+        let pairTail = [];
+        if (rest && rest.data) {
+            const firstWord = /^[ \t]*\S+/.exec(rest.data);
+            if (firstWord) {
+                pairTail = [rest.splitText(firstWord[0].length)];
+                const pair = document.createElement('span');
+                pair.className = 'nmd-cb-pair';
+                hit.replaceWith(pair);
+                pair.append(hit, rest);
+            }
+        }
         if (m.checked) {
-            [rest, ...nodes.slice(at + 1)].forEach(n => {
+            [rest, ...pairTail, ...nodes.slice(at + 1)].forEach(n => {
                 if (!n || !n.data) return;
                 const done = document.createElement('span');
                 done.className = 'nmd-cb-done';
