@@ -4133,6 +4133,13 @@ body.selection-locked .note.active-selection-note .note-content {
     accent-color: #3a6ff0;
 }
 
+/* Квадратчето и първата дума след него са една двойка: редът не се къса между тях, а 4px
+   резерв отзад кара тясната колона в таблицата да резервира място за цялата двойка. */
+.nmd-cb-pair {
+    white-space: nowrap;
+    padding-right: 4px;
+}
+
 /* Отметнатият ред само сменя цвета си на приглушен - без задраскване */
 .nmd-cb-done {
     opacity: 0.55;
