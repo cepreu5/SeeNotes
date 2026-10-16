@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b1.62';
+const CACHE_NAME = 'cx-notes-b2.21';
 const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
@@ -6,7 +6,7 @@ const ASSETS_TO_CACHE = [
   './set.html',
   './manifest.webmanifest',
   './style.css',
-  './mainn.js',
+  './main.js',
   './fs.js',
   './languages.json',
   './lang/i18n-bg.json',
@@ -42,7 +42,7 @@ const ASSETS_TO_CACHE = [
   './wg1_1.png',
   './wr1_1.png',
   './msmstyle.css',
-  './msmrtt.js',
+  './msm.js',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
@@ -123,8 +123,11 @@ self.addEventListener('install', (event) => {
       )
     );
   });
-  // Immediately take control of the page, avoiding install‑time delay
-  self.skipWaiting();
+  // Без поемане на контрола при install: новият SW изчаква. main.js го пуска
+  // (SKIP_WAITING) веднага щом страницата се зареди, ако потребителят още не е
+  // пипал приложението - тогава обикновен refresh вдига версията. Ако вече се
+  // работи в приложението, банерът изчаква натискането на Refresh now.
+  // НЕ връщай self.skipWaiting() тук (виж projects/seenotes-sw-update в паметта).
 });
 
 self.addEventListener('activate', (event) => {
