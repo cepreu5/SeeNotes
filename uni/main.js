@@ -19137,7 +19137,7 @@ async function createNoteElement(noteContent) {
             // --- END FORCE GDRIVE READ LOGIC ---
 
             const noteBgColor = getNoteColorCss(noteColor);
-            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
+            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: (function () { try { const _src = (typeof noteContent !== 'undefined' && noteContent) ? noteContent : extraData; const _live = (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) ? allNotesData.find(n => n && (String(n.gdid) === String(_src.gdid) || (n.id !== undefined && _src.id !== undefined && String(n.id) === String(_src.id)))) : null; return (_live && _live.boardid !== undefined) ? _live.boardid : extraData.boardid; } catch (e) { return extraData.boardid; } })(), id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
 
             // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
             const updateGDrive = useGoogleDb && !isOffline;
