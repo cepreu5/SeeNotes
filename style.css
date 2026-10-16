@@ -34,6 +34,92 @@ body {
     background-image: url('Frame.png');
 }
 
+body:not(.app-ready) header,
+body:not(.app-ready) #add-note-fab,
+body:not(.app-ready) #scrollTopBtn,
+body:not(.app-ready) #kb-fab {
+    display: none !important;
+}
+
+/* A note modal blocks creating another note; hide the global add button. */
+body:has(.note-window.visible) #add-note-fab {
+    display: none !important;
+}
+
+/* The Assistant button is static now; keep it off the login page as before. */
+body:has(#login-page:not([hidden])) #kb-fab {
+    display: none !important;
+}
+
+/* Keep the Assistant clear of an expanded note's bottom toolbar. */
+body.modal-note-expanded #kb-fab {
+    translate: 0 -60px;
+}
+
+/* KB Assistant FAB - статичен в index.html; kb-assistant.css се зарежда при първо отваряне */
+.kb-fab {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--kb-primary-color, #f59e0b) 0%, var(--kb-primary-dark, #d97706) 100%);
+    color: white;
+    font-size: 28px;
+    border: none;
+    cursor: pointer;
+    box-shadow: var(--kb-shadow-md, 0 4px 12px rgba(72, 183, 162, 0.3));
+    z-index: 9998;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kb-fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(72, 183, 162, 0.6);
+}
+
+.kb-fab:active {
+    transform: scale(0.95);
+}
+
+.kb-fab-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0);
+}
+
+/* Панел "зареждане" при първото отваряне на асистента (ensureKBAssistant) */
+#kb-loading-panel {
+    position: fixed;
+    bottom: 80px;
+    right: 10px;
+    width: 240px;
+    max-width: calc(100vw - 20px);
+    background: #1a202c;
+    color: #cbd5e0;
+    border: 5px solid #f59e0b;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    z-index: 10100;
+    overflow: hidden;
+    font-family: sans-serif;
+}
+
+#kb-loading-panel .kb-loading-panel-title {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+    font-weight: bold;
+    padding: 10px 14px;
+}
+
+#kb-loading-panel .kb-loading-panel-text {
+    padding: 14px;
+}
+
 header {
     padding: 5px 1em 0px 5px;
     border-bottom: 3px solid #6c6c6c;
@@ -48,6 +134,46 @@ header {
     position: sticky;
     top: 0;
     z-index: 100;
+}
+
+header.header-fullscreen {
+    padding: 2px 5px;
+    border-bottom: none;
+    box-shadow: none;
+    background-image: none;
+    background-color: transparent;
+    justify-content: center;
+}
+
+header.header-fullscreen>*:not(#search-wrapper) {
+    display: none !important;
+}
+
+header.header-fullscreen #search-wrapper {
+    max-width: 600px;
+}
+
+#fullscreen-board-label {
+    display: none;
+}
+
+header.header-fullscreen #fullscreen-board-label {
+    display: block;
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: bold;
+    color: #555;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
 }
 
 .header-logo {
@@ -102,29 +228,9 @@ header h1 {
     outline: none;
 }
 
-.note-save-icon {
-    position: fixed;
-    /* Fixed to viewport as modal scrolls */
-    bottom: 20px;
-    right: 20px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    background-color: rgba(255, 255, 255, 0.8);
-    border-radius: 50%;
-    padding: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-    z-index: 1001;
-    /* Ensure above modal content */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: transform 0.2s;
-}
 
-.note-save-icon:hover {
-    transform: scale(1.1);
-}
+
+
 
 /* Hide native clear button */
 #search-box::-webkit-search-cancel-button {
@@ -133,24 +239,28 @@ header h1 {
     display: none;
 }
 
-/* Static Search Icon (Left) */
+/* Static Search Icon (Left) — clickable for search mode toggle */
 .search-icon-static {
     position: absolute;
     left: 12px;
     top: 50%;
     transform: translateY(-50%);
     color: #666;
-    pointer-events: none;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 2;
+    cursor: pointer;
 }
 
 .search-icon-static svg {
     width: 24px;
     height: 24px;
     opacity: 0.6;
+}
+
+.search-mode-dot {
+    transition: fill 0.3s ease;
 }
 
 /* Base style for Action Buttons (Clear & Save) */
@@ -228,33 +338,13 @@ header h1 {
 }
 
 /* Стил за самата икона за зареждане в бутона */
-.board-loading-icon {
-    display: none;
-    /* Скрита по подразбиране */
-    width: 16px;
-    height: 16px;
-    margin-left: 8px;
-    /* Разстояние от текста */
-    vertical-align: middle;
-}
+
 
 /* Клас, който се добавя, за да се покаже иконата и да се стартира анимацията */
 .button-loading {
     display: inline-block !important;
     /* Показваме иконата */
     animation: button-spin 0.8s linear infinite;
-    transform-origin: center;
-}
-
-/* Fallback loading indicator while switching boards if the mode button has no spinner. */
-@keyframes board-filter-spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.board-filter-loading {
-    animation: board-filter-spin 0.8s linear infinite;
     transform-origin: center;
 }
 
@@ -495,11 +585,7 @@ main {
 }
 
 /* Временен клас, докато се генерира фона */
-.note.note-item.loading-bg {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
-}
+
 
 .note-background-canvas {
     position: absolute;
@@ -530,14 +616,21 @@ main {
     margin: 0 10% 10% 8%;
 }
 
+.note-borderless-table .note-title-wrapper {
+    flex: 0 0 50px;
+    min-height: 50px;
+}
+
 .note:not(.note-item) .note-content-wrapper>.note-content {
     margin: 0;
 }
 
 .note-content {
     flex-grow: 1;
-    overflow-y: hidden;
+    overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     word-wrap: break-word;
     /* Font size is now inherited from .note */
     white-space: pre-wrap;
@@ -555,27 +648,145 @@ code {
     user-select: contain;
 }
 
-.note-content::-webkit-scrollbar {
-    width: 8px;
+.note .note-content,
+.note .note-content * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
 }
 
-.note-content::-webkit-scrollbar-track {
-    background: #e9c7a6;
+.note .note-content::-webkit-scrollbar,
+.note .note-content *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
 }
 
-.note-content::-webkit-scrollbar-thumb {
-    background: #888;
+.md-table-wrapper {
+    margin: 6px 0;
+    max-width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
+    background: transparent;
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
+}
+
+
+
+
+
+
+
+
+
+
+
+.md-table-render {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    font-size: 0.95em;
+    line-height: 1.35;
+    white-space: normal;
+}
+
+.md-table-render th,
+.md-table-render td {
+    padding: 4px 6px;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    text-align: left;
+    vertical-align: top;
+}
+
+.md-table-render th {
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.md-table-render.md-table-borderless th,
+.md-table-render.md-table-borderless td {
+    border: none;
+    background: transparent;
+    padding: 2px 10px 2px 0;
+}
+
+.code-block {
+    position: relative;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    padding: 8px;
+    padding-right: 28px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: pre;
+    line-height: 1.4;
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
+}
+
+.code-block::-webkit-scrollbar {
+    height: 8px;
+}
+
+.code-block::-webkit-scrollbar-track {
+    background: #c8a64b;
+}
+
+.code-block::-webkit-scrollbar-thumb {
+    background: #555;
     border-radius: 4px;
 }
 
-@media (hover: hover) {
-    .note-content::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
+.code-block::-webkit-scrollbar-thumb:hover {
+    background: #333;
+}
+
+.code-block code {
+    background: none;
+    padding: 0;
+}
+
+.code-block-copy {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
+
+.code-block-copy:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.code-block-copy svg {
+    width: 14px;
+    height: 14px;
+    stroke: #333;
+    fill: none;
+    stroke-width: 2;
+}
+
+.note-content::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
 }
 
 .note-content a,
-#modal-body a {
+:is(#modal-body, .nw-modal-body) a {
     color: #007bff;
     text-decoration: none;
     display: inline-block;
@@ -643,6 +854,23 @@ code {
     stroke-width: 1.5;
 }
 
+.trash-icon-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    color: rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+}
+
+.trash-icon-overlay svg {
+    width: 100px;
+    height: 100px;
+    stroke: rgba(0, 0, 0, 0.2);
+    stroke-width: 1.5;
+}
+
 
 /* Specific styles for the boards note to make it a full-width panel */
 .boards-note,
@@ -695,8 +923,9 @@ code {
     left: 0;
     width: 100%;
     display: flex;
-    justify-content: space-between;
-    padding: 0 40px 0 20px;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 0 30px 0 20px;
     /* Horizontal padding */
     box-sizing: border-box;
     pointer-events: none;
@@ -714,6 +943,218 @@ code {
     /* Re-enable clicks on date/time elements */
     gap: 5px;
     /* Space between icon and text */
+}
+
+.note-header-date {
+    cursor: pointer;
+}
+
+.note-week-calendar {
+    position: absolute;
+    inset: 5px 10px 10px 5px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    padding: 7px;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.88) url('Board1.png') center / cover;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+.note-week-calendar-header {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 24px 18px 24px;
+    align-items: center;
+    gap: 3px;
+    min-height: 27px;
+    padding-bottom: 2px;
+    border-radius: 4px;
+    background: rgba(185, 221, 246, 0.92);
+    cursor: pointer;
+}
+
+.note-week-nav {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.note-week-nav:hover,
+.note-week-nav:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-today {
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    cursor: pointer;
+}
+
+.note-week-today svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+.note-week-today:hover,
+.note-week-today:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-close-hint {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    border-radius: 50%;
+    color: rgba(0, 0, 0, 0.7);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.note-week-title {
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.note-week-days {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 3px;
+}
+
+.note-week-day {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 1px 4px;
+    border: 1px solid rgba(0, 0, 0, 0.24);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.note-week-day.is-today {
+    background: #bfc523;
+}
+
+.note-week-date-label {
+    width: 34px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.note-week-markers {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-content: center;
+    gap: 2px;
+    min-height: 16px;
+}
+
+.note-week-marker {
+    display: block;
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    border-radius: 2px;
+    box-sizing: border-box;
+    appearance: none;
+    opacity: 1;
+    visibility: visible;
+    cursor: pointer;
+}
+
+.note-week-marker:hover,
+.note-week-marker:focus-visible {
+    outline: 2px solid rgba(0, 0, 0, 0.65);
+    outline-offset: 1px;
+    transform: scale(1.25);
+}
+
+.note-header-time {
+    margin-left: auto;
+}
+
+.note-pin-btn {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    padding: 2px;
+    color: rgba(0, 0, 0, 0.42);
+    background: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.note-pin-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.note-pin-btn .pin-dot {
+    fill: transparent;
+}
+
+.note-pin-btn:hover {
+    color: rgba(0, 0, 0, 0.75);
+    background: rgba(255, 255, 255, 0.62);
+    transform: translateY(-1px);
+}
+
+.note-pin-btn.pinned {
+    color: #c22d1f;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.note-pin-btn.pinned .pin-dot {
+    fill: currentColor;
+}
+
+.note-pinned {
+    box-shadow: 0 0 0 2px rgba(194, 45, 31, 0.28), 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
 }
 
 .header-icon svg {
@@ -813,6 +1254,7 @@ code {
 }
 
 .modal-content-box {
+    box-sizing: border-box;
     padding-top: 55px;
     /* Ensure space for header buttons */
     padding-right: 15px;
@@ -824,7 +1266,7 @@ code {
     /* Задаваме ширината да е 90% от екрана */
     max-width: 90%;
     min-height: 10%;
-    max-height: 80vh;
+    max-height: 95vh;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -836,7 +1278,6 @@ code {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2), 0 20px 50px rgba(0, 0, 0, 0.4);
 }
 
-/* Стил за "лист хартия" когато няма фоново изображение */
 /* Стил за "лист хартия" когато няма фоново изображение */
 .modal-content-box.no-bg-image {
     border: none;
@@ -859,8 +1300,8 @@ code {
 }
 
 /* Гарантираме, че съдържанието е над псевдо-елемента */
-#modal-body,
-#modal-board-name,
+:is(#modal-body, .nw-modal-body),
+:is(#modal-board-name, .nw-modal-board-name),
 .modal-header-btn,
 .modal-resize-handle {
     position: relative;
@@ -872,11 +1313,24 @@ code {
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 20px;
-    height: 20px;
+    width: 32px;
+    height: 32px;
     cursor: se-resize;
     z-index: 2;
     /* Трябва да е над съдържанието */
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 3px;
+    box-sizing: border-box;
+    color: rgba(0, 0, 0, 0.65);
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.modal-resize-handle.individual-resize-active {
+    color: #1976d2;
+    filter: drop-shadow(0 0 3px rgba(25, 118, 210, 0.8));
 }
 
 .popup-mode {
@@ -888,7 +1342,7 @@ code {
     /* Let content define width */
 }
 
-#modal-body {
+:is(#modal-body, .nw-modal-body) {
     padding-top: 1px;
     padding-right: 10px;
     overflow-y: auto;
@@ -897,28 +1351,28 @@ code {
     flex-grow: 1;
 }
 
-#modal-body.no-bg-image {
+:is(#modal-body, .nw-modal-body).no-bg-image {
     padding: 0 0;
     /* Keeps vertical 0, but content-box handles side padding */
 }
 
 /* Custom scrollbar for modal content */
-#modal-body::-webkit-scrollbar {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar {
     width: 10px;
 }
 
-#modal-body::-webkit-scrollbar-track {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-track {
     background: #c8a64b;
     /* Dark yellow background for the track */
 }
 
-#modal-body::-webkit-scrollbar-thumb {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb {
     background: #555;
     /* Darker handle for contrast */
     border-radius: 5px;
 }
 
-#modal-body::-webkit-scrollbar-thumb:hover {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb:hover {
     background: #333;
     /* Even darker on hover */
 }
@@ -939,7 +1393,7 @@ code {
 }
 
 /* New style for board name in modal header */
-#modal-board-name {
+:is(#modal-board-name, .nw-modal-board-name) {
     position: absolute;
     top: 15px;
     /* Moved 5px up */
@@ -966,7 +1420,7 @@ code {
     box-sizing: border-box;
 }
 
-#copy-modal-btn svg {
+:is(#copy-modal-btn, .nw-copy-modal-btn) svg {
     width: 16px;
     height: 16px;
     stroke: #333;
@@ -981,11 +1435,11 @@ code {
 /* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
 /* Бутон за затваряне (X) е на right: 15px */
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
-#prev-note-btn {
+:is(#prev-note-btn, .nw-prev-note-btn) {
     right: 235px;
 }
 
-#next-note-btn {
+:is(#next-note-btn, .nw-next-note-btn) {
     right: 193px;
 }
 
@@ -997,22 +1451,22 @@ code {
     }
 }
 
-#delete-modal-btn {
+:is(#delete-modal-btn, .nw-delete-modal-btn) {
     right: 57px;
     /* 57px (delete) + 32px (width) + 10px (gap) */
 }
 
-#copy-modal-btn {
+:is(#copy-modal-btn, .nw-copy-modal-btn) {
     right: 99px;
 }
 
-#calculate-modal-btn {
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) {
     right: 151px;
     /* 151px (calculate) + 32px (width) + 10px (gap) */
 }
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
-#calculate-modal-btn svg {
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) svg {
     pointer-events: none;
     /* Иконата не "поглъща" клика */
 }
@@ -1069,12 +1523,12 @@ code {
 
 /* Floating button for popup menu in boards-menu-container */
 .popup-menu-btn-floating {
-    display: none;
+    display: flex;
     position: fixed;
     top: 60px;
     right: 10px;
-    z-index: 99;
-    border: 2px solid #dddddd;
+    z-index: 9998;
+    border: none;
     outline: none;
     background-color: yellow;
     color: black;
@@ -1107,12 +1561,7 @@ code {
     cursor: grabbing;
 }
 
-/* Show floating button on narrow screens */
-@media (max-width: 1220px) {
-    .popup-menu-btn-floating {
-        display: flex;
-    }
-}
+/* Floating button is now always flex */
 
 #loader-container {
     text-align: center;
@@ -1151,13 +1600,7 @@ code {
     }
 }
 
-.note .board-menu-header {
-    background-color: #a9cce3;
-    color: #1f3b52;
-    padding: 10px 12px;
-    margin: -10px -10px 10px -10px;
-    border-radius: 8px 8px 0 0;
-}
+
 
 .scrolling-menu-wrapper {
     display: grid;
@@ -1189,13 +1632,13 @@ code {
     /* Премахваме правилата, които скриват скролбара */
     scrollbar-color: #aaa #555;
     /* thumb track - за Firefox */
-    scrollbar-width: thin;
-    /* за Firefox */
+    scrollbar-width: auto;
+    /* thin - за Firefox */
 }
 
 /* Стилизиране на скролбара за Webkit-базирани браузъри (Chrome, Edge, Safari) */
 .board-menu-container::-webkit-scrollbar {
-    height: 8px;
+    height: 16px;
     /* Височина на скролбара */
 }
 
@@ -1211,36 +1654,13 @@ code {
     border-radius: 4px;
 }
 
-.board-menu-button {
-    background-color: #d0e0ed;
-    border: 1px solid #a9cce3;
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    margin-left: 20px;
-    margin-right: 10px;
-    visibility: hidden;
-    /* Hidden by default */
-}
 
-.board-menu-button svg {
-    width: 24px;
-    height: 24px;
-    stroke-width: 2;
-}
 
-.board-menu-button.visible {
-    visibility: visible;
-}
 
-.board-menu-button:hover {
-    background-color: #bdd9ef;
-}
+
+
+
+
 
 .board-filter-link {
     position: relative;
@@ -1274,7 +1694,7 @@ code {
     /* За да може active да се повдига */
     /* Центриране по хоризонтала */
     min-width: 70px;
-    /* Минимална ширина на таба */
+    /* Минимална ширина на таба      max-width: 150px;*/
     height: 35px;
     /* Височина на таба */
     /* Добавено за съкращаване на текста */
@@ -1314,23 +1734,14 @@ code {
     box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
         inset 0 -1px 3px rgba(0, 0, 0, 0.3),
         0 4px 8px rgba(0, 0, 0, 0.3);
+    border: 2px solid #fff;
 }
 
 /* Prevent text selection in board menu items */
-.board-filter-link,
-.popup-menu {
-    -webkit-user-select: none;
-    user-select: none;
-}
+.board-filter-link
 
 /* Restore lift effect for active items in dropdown menu */
-.popup-menu .board-filter-link.active {
-    transform: translateY(-5px);
-    /* Re-apply strong bottom shadow to create "floating" look, otherwise it looks sunken/pressed */
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4),
-        inset 0 2px 5px rgba(255, 255, 255, 0.3);
-    z-index: 20;
-}
+
 
 .modal-body .board-filter-link {
     display: inline-block;
@@ -1457,29 +1868,13 @@ code {
 }
 
 /* Style for the icon inside the button */
-.board-icon-in-button svg {
-    width: 18px;
-    height: 18px;
-    stroke: #333;
-    /* A slightly softer black */
-    vertical-align: middle;
-    margin-left: 8px;
-}
 
-.calendar-filter-btn {
-    background-color: darkblue;
-    color: white;
-}
 
-.calendar-filter-btn:hover {
-    background-color: #0000b3;
-    color: white;
-}
 
-.calendar-filter-btn.selected-board {
-    background-color: #000066;
-    color: white;
-}
+
+
+
+
 
 .reminder-filter-btn {
     background-color: red;
@@ -1525,10 +1920,61 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1220px) {
+/* b1.95: таблет и десктоп 900-1220px — хедърът остава в ЕДИН ред (преди: колона от 4 реда и ~212px).
+   Търсачката се свива, за да се събере редом бутоните, вместо да се пренася на втори ред.
+   15 Oct 2026: горната граница 1220px е премахната — над 1220px панелът с дъските (.boards-note, пълна ширина,
+   добавен от main.js) нямаше order и заставаше ПРЕДИ бутоните, избутвайки ги на трети ред, а търсачката
+   се долепяше най-вдясно. Сега същият едноредов ред важи и за широки екрани. */
+@media (min-width: 900px) {
+    header {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    header > div:first-child {
+        order: 1;
+    }
+
+    /* Title */
+
+    #search-wrapper {
+        order: 2;
+        min-width: 0;
+        flex: 1 1 150px;
+        max-width: 400px;
+        /* b1.96: гарантирано >=10px отстояние до заглавието и до бутоните, и когато полето се свие */
+        margin-left: 12px;
+        margin-right: 12px;
+    }
+
+    /* Search Box — свиваем */
+
+    #header-buttons {
+        order: 3;
+    }
+
+    /* Buttons */
+
+    .boards-note {
+        order: 4;
+    }
+
+    /* Board menu — собствен ред под горния ред */
+}
+
+/* Под 900px (телефони, тесни портретни екрани) остава колоната, както досега. */
+@media (max-width: 899px) {
     header {
         flex-direction: column;
         align-items: center;
+    }
+
+    /* b1.96: полето за търсене пази >=10px до ръбовете на хедъра и в колона */
+    #search-wrapper {
+        width: calc(100% - 20px);
+        max-width: 400px;
+        margin-left: 10px;
+        margin-right: 10px;
     }
 
     /* Order for tablets (769px - 1030px) */
@@ -1548,42 +1994,13 @@ code {
     }
 
     /* Board menu at the bottom */
-}
 
-@media (max-width: 768px) {
-
-    /* Reorder elements for mobile view (up to 768px) */
-    /* Title is already order 1 from the rule above */
-    #search-container {
-        order: 3;
+    #scale-wrapper .slider-container {
+        flex-wrap: nowrap;
     }
-
-    /* Search Box moves down */
-    #header-buttons {
-        order: 2;
-    }
-
-    /* Buttons move up */
-    .boards-note {
-        order: 4;
-    }
-
-    /* .boards-note is already order 4 from the rule above */
-}
-
-/*#search-container {
-        padding: 1em 0 0.5em;
-    }*/
-
-#header-buttons {
-    display: flex;
-    justify-content: center;
-    padding-top: 5px;
-    padding-bottom: 5px;
-}
 
 /* Responsive layout for settings modal on small screens */
-@media (max-width: 480px) {
+
     .zoom-control-wrapper {
         flex-direction: column;
         align-items: flex-start;
@@ -1598,11 +2015,6 @@ code {
         /* Ensure labels are left-aligned */
     }
 
-    /* Ensure settings modal is above Ko-fi widget on mobile
-    #settings-modal {
-        z-index: 100000000 !important;
-    } */
-
     #settings-modal .modal-content-box {
         height: 90% !important;
         width: 100% !important;
@@ -1613,45 +2025,10 @@ code {
     }
 
     /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
-    #google-db-wrapper,
-    #max-searches,
-    #notes-bgrd,
-    #img-bgrd,
-    #order-notes,
-    #show-date,
-    #modal-font-size,
-    #note-font-size,
-    #max-searches,
-    #note-count,
-    #one-tap-link,
-    #click-to-edit,
-    #close-after-save,
-    #update-local-folder,
-    #automated-timer,
-    #hide-toast,
-    #hide-assistant,
-    #show-photos-board,
-    #show-videos-board,
-    #show-sounds-board,
-    #show-other-board,
-    #all-board,
-    #remind-board,
-    #weekly-calendar,
-    #use-indexeddb-wrapper,
-    #db-buttons-wrapper,
-    #local-db-wrapper,
-    #arh-db-wrapper,
-    #scale-wrapper,
-    #start-board-wrapper,
-    #force-gdrive-read,
-    #check-empty-boards {
+    .settings-mobile-row {
         flex-direction: row !important;
         align-items: center !important;
         /* Поддържа вертикално центриране */
-    }
-
-    #scale-wrapper .slider-container {
-        flex-wrap: nowrap;
     }
 
     #scale-wrapper #scaleInput {
@@ -1666,12 +2043,41 @@ code {
         -webkit-appearance: none;
         margin: 0;
     }
+}
+
+/*#search-container {
+        padding: 1em 0 0.5em;
+    }*/
+
+/* ВАЖНО (15 Oct 2026): оттук до #header-buttons НЕ е изтекло от @media (max-width:899px) —
+   двете правила тук важат на всички ширини и са единствените за този селектор:
+     - #header-buttons { display:flex; justify-content:center; padding:5px 0 } — от него зависи
+       едноредовият хедър на таблет/десктоп (без него хедърът става 132px вместо 96px);
+     - #header-buttons { order: 2 } — редът вече е излишен, след като медията за едноредов хедър
+       стана @media (min-width: 900px) и тя сама задава order:3 на бутоните, но е оставен на
+       мястото си, за да не се пипа нищо извън двете поправки.
+   Мобилните правила, които наистина бяха изтекли (диалогът на настройките, редовете в него и
+   полето за мащаб), са прибрани обратно в @media (max-width:899px) — иначе диалогът се разпъваше
+   по цялата ширина на широк екран вместо да е max 400px. */
+#header-buttons {
+    display: flex;
+    justify-content: center;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+#header-buttons {
+    order: 2;
+}
+
+    /* Ensure settings modal is above Ko-fi widget on mobile
+    #settings-modal {
+        z-index: 100000000 !important;
+    } */
 
     /* Превключва грида за сортиране в една колона на тесни екрани */
-    .sort-criteria-grid {
-        grid-template-columns: 1fr;
-    }
-}
+    
+
 
 /* Toast Notification */
 .toast-notification {
@@ -1824,27 +2230,14 @@ code {
 
 
 
-.boards-note-footer {
-    padding-top: 5px;
-    margin-top: auto;
-    border-top: 1px solid gray;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    /* Align items to both ends */
-    font-size: 0.8em;
-    color: #666;
-    min-height: 18px;
-    padding-right: 10px;
-    /* Add some padding on the right */
-}
+
 
 .slider-container {
     display: flex;
     align-items: center;
     flex: 1;
     min-width: 0;
-    padding: 10px;
+    padding: 3px;
     box-sizing: border-box;
     overflow: visible;
 }
@@ -1936,12 +2329,7 @@ code {
 }
 
 /* Специфичен стил, за да се подредят етикетът и бутонът за избор на папка вертикално */
-.sync-wrapper {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    /* Добавя разстояние между етикета и бутона */
-}
+
 
 /* Renamed from #zoom-modal to #settings-modal */
 #settings-modal .modal-content-box {
@@ -1993,7 +2381,7 @@ code {
 }
 
 .zoom-input-number {
-    width: 50px;
+    width: 75px;
     min-width: 50px;
     flex-shrink: 0;
     margin: 0 2px 0 10px;
@@ -2037,15 +2425,19 @@ code {
     margin-bottom: 5px;
     padding-bottom: 0px;
     align-self: center;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
 }
 
-.set-modal {
+#settings-modal .modal-content-box.set-modal {
     background: linear-gradient(135deg, #858585, #E4E4E4);
     border-radius: 3px;
-    padding: 20px;
+    padding: 5px;
     position: relative;
     height: auto;
-    width: 400px;
+    max-width: 400px;
+    width: 100%;
 }
 
 .corner-dot {
@@ -2118,7 +2510,8 @@ code {
     /* Ensure the wrapper takes full width to allow alignment */
 }
 
-.start-board-select {
+.start-board-select,
+.active-folder-select {
     padding: 8px;
     border-radius: 4px;
     border: 1px solid #060606;
@@ -2128,7 +2521,8 @@ code {
     min-width: 200px;
 }
 
-.start-board-select:focus {
+.start-board-select:focus,
+.active-folder-select:focus {
     outline: 2px solid #4285F4;
 }
 
@@ -2434,8 +2828,11 @@ code {
     background-color: rgba(0, 0, 0, 0.05);  
     border-radius: 4px;*/
     padding: 0 10px;
-    /* Horizontal padding when open */
     margin-top: 0px;
+}
+
+.accordion.active .accordion-content {
+    max-height: 2000px;
 }
 
 /* --- Стилове за Седмичен Календар --- */
@@ -2461,8 +2858,8 @@ code {
 }
 
 .today-row {
-    background-color: var(--note-bg-0);
-    /* #FBFF86 - жълт фон за днешния ден */
+    background-color: #bfc523;
+    /* var(--note-bg-0); - фон за днешния ден */
     border-radius: 5px;
     /* Леко заобляне на ъглите */
 }
@@ -2598,25 +2995,9 @@ code {
 
 
 
-.search-mode-btn {
-    position: absolute;
-    left: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
 
-.search-mode-btn svg {
-    width: 20px;
-    height: 20px;
-    stroke: #555;
-}
+
+
 
 .settings-icon-label {
     display: flex;
@@ -2690,39 +3071,15 @@ code {
 
 /* --- Responsive Header Logic --- */
 
-/* Default state: Hide the header button container, show the scrolling wrapper */
 #boards-menu-container {
-    display: none;
+    display: block;
 }
 
 
 
-/* 
-   When screen is small (likely forcing header to 3 rows), 
-   swap visibility: show header button, hide scrolling wrapper 
-*/
-@media (max-width: 1160px) {
-    #boards-menu-container {
-        display: block;
-    }
+/* Floating button visibility handled in its own class */
 
-    /* Hide the specific button inside the scrolling wrapper that triggers the modal */
-    .scrolling-menu-wrapper .board-menu-button {
-        display: none !important;
-    }
-}
-
-.popup-menu-btn {
-    background-color: #FFFF00 !important;
-    /* Yellow background */
-}
-
-@media (hover: hover) {
-    .popup-menu-btn:hover {
-        background-color: #E6E600 !important;
-        /* Darker yellow on hover */
-    }
-}
+/* .popup-menu-btn removed */
 
 /* --- Login Page Styles --- */
 .login-box {
@@ -2758,15 +3115,6 @@ code {
     margin-left: auto;
 }
 
-.lang-btn {
-    background: none;
-    border: 1px solid #747474;
-    color: #333;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 0.9em;
-}
-
 /* Стилове за главния language switcher извън login-box */
 #lang-switcher-main {
     display: flex;
@@ -2782,32 +3130,6 @@ code {
     margin-bottom: 15px;
 }
 
-.lang-btn {
-    background: none;
-    border: 1px solid #747474;
-    color: #333;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 0.9em;
-}
-
-.lang-btn:first-child {
-    border-top-left-radius: 4px;
-    border-bottom-left-radius: 4px;
-}
-
-.lang-btn:last-child {
-    border-top-right-radius: 4px;
-    border-bottom-right-radius: 4px;
-    border-left: none;
-}
-
-.lang-btn.active {
-    background-color: #4285F4;
-    color: white;
-    border-color: #4285F4;
-}
-
 #trialBtn {
     background-color: #4CAF50;
     color: white;
@@ -2817,18 +3139,14 @@ code {
     cursor: pointer;
     font-size: 16px;
     display: block;
-    margin: 20px auto;
+    margin: 10px auto;
 }
 
 #trialBtn:hover {
     background-color: #45a049;
 }
 
-.version-text {
-    font-size: 0.6em;
-    font-weight: bold;
-    white-space: nowrap;
-}
+
 
 /* Login container to center content */
 #login-container {
@@ -2874,24 +3192,12 @@ body.selection-locked .note.active-selection-note .note-content {
     margin-bottom: 2px;
 }
 
-.note-header-board-link {
-    display: none;
-    /* Hidden by default */
-    margin-right: 8px;
-    font-weight: bold;
-    text-decoration: underline;
-    cursor: pointer;
-    color: #333;
-}
+
 
 /* Show only when in global view mode */
-.global-view-mode .note-header-board-link {
-    display: block;
-}
 
-.note-header-board-link:hover {
-    color: #000;
-}
+
+
 
 /* Modal Note Footer (inside toolbar) */
 .modal-note-footer {
@@ -2908,6 +3214,11 @@ body.selection-locked .note.active-selection-note .note-content {
     text-overflow: ellipsis;
     max-width: 160px;
     /* Limit width */
+    flex-shrink: 0;
+}
+
+.modal-note-footer[hidden] {
+    display: none;
 }
 
 
@@ -2915,8 +3226,25 @@ body.selection-locked .note.active-selection-note .note-content {
 .modal-note-footer .header-icon svg {
     width: 16px;
     height: 16px;
-    margin-right: 4px;
     vertical-align: text-bottom;
+}
+
+/* Иконата и датата в лентата - точно 4px (b2.17): разстоянието идва само от gap-а, без margin и
+   без интервала в текста (началният интервал в анонимния flex елемент отпада). */
+.modal-note-footer .note-header-date,
+.modal-note-footer .note-header-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.modal-note-footer .note-header-date:empty,
+.modal-note-footer .note-header-time:empty {
+    display: none;
+}
+
+.modal-note-footer .header-icon {
+    display: inline-flex;
 }
 
 /* Boards Menu Modal Container - Center Align Container, Right Align Items */
@@ -2994,16 +3322,9 @@ body.selection-locked .note.active-selection-note .note-content {
     transform: scale(1.1);
 }
 
-.floatingchat-container-mobi {
-    width: 60px !important;
-}
 
-.floatingchat-container-wrap-mobi {
-    width: 60px !important;
-    bottom: -8px !important;
-    left: -15px !important;
-    right: auto !important;
-}
+
+
 
 /* --- RESPONSIVE MODAL TOOLBARS --- */
 .modal-header-toolbar {
@@ -3011,8 +3332,9 @@ body.selection-locked .note.active-selection-note .note-content {
     top: 0;
     left: 0;
     right: 0;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-rows: auto auto;
     align-items: center;
     z-index: 10001;
     pointer-events: none;
@@ -3026,9 +3348,13 @@ body.selection-locked .note.active-selection-note .note-content {
     gap: 8px;
     align-items: center;
     pointer-events: auto;
-    flex-wrap: wrap;
-    /* Allow wrapping in header */
+    flex-wrap: nowrap;
+    width: max-content;
     justify-content: flex-end;
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+    flex-shrink: 0;
 }
 
 .modal-footer-toolbar {
@@ -3099,15 +3425,388 @@ body.selection-locked .note.active-selection-note .note-content {
     margin-bottom: 0px;
 }
 
-/* Adjustments for #modal-board-name when in toolbar */
-.modal-header-toolbar #modal-board-name {
+/* Secondary header row shown only while a note is being edited. */
+.modal-edit-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+    pointer-events: auto;
+}
+
+.modal-edit-toolbar-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #aaa;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.modal-edit-toolbar-btn:hover,
+.modal-edit-toolbar-btn:focus-visible {
+    background: rgba(255, 255, 255, 0.35);
+    border-color: #555;
+    outline: none;
+}
+
+.modal-edit-toolbar-btn.is-bold {
+    font-weight: 700;
+}
+
+.modal-edit-toolbar-btn.is-italic {
+    font-style: italic;
+}
+
+.modal-edit-toolbar-btn.is-underline {
+    text-decoration: underline;
+}
+
+.modal-edit-toolbar-btn.is-strike {
+    text-decoration: line-through;
+}
+
+
+
+
+
+.modal-edit-toolbar-btn.is-table {
+    font-size: 18px;
+}
+
+.modal-edit-toolbar-btn.is-table.is-active {
+    background: #4a90e2;
+    border-color: #4a90e2;
+    color: #fff;
+}
+
+/* ▦ table fields: the content editor becomes text pieces + read-only table fields in place.
+   The note textarea stays underneath (hidden) as the source of truth. */
+.is-table-split > :is(#note-edit-textarea, .nw-note-edit-textarea),
+.is-table-split > :is(#note-edit-textarea-backdrop, .nw-note-edit-textarea-backdrop) {
+    visibility: hidden;
+}
+
+.note-table-split {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px 0;
+    box-sizing: border-box;
+}
+
+.note-table-split-seg {
+    position: relative;
+}
+
+.note-table-split-text,
+.note-table-split-backdrop {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0 10px;
+    box-sizing: border-box;
+    line-height: normal;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+.note-table-split-text {
+    position: relative;
+    z-index: 2;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    resize: none;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.note-table-split-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    color: transparent;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Modelled on .code-block: no wrapping, sideways scroll, monospace. A textarea you type in. */
+.note-table-field {
+    display: block;
+    width: calc(100% - 20px);
+    min-height: 0;
+    resize: none;
+    color: inherit;
+    margin: 6px 10px;
+    max-height: 50%;
+    padding: 8px;
+    box-sizing: border-box;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    overflow: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-wrap: normal;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
+    outline: none;
+}
+
+.note-table-field:focus-visible {
+    border-color: #4a90e2;
+}
+
+.note-table-field::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.note-table-field::-webkit-scrollbar-track {
+    background: #c8a64b;
+}
+
+.note-table-field::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+/* A table field with its backdrop: the wrapper takes the field's margin, the backdrop has the
+   field's metrics (border, padding, font, line-height, no wrapping) and draws the formatted text
+   under the transparent field text. JS sets its right/bottom to the field's scrollbars and keeps
+   its scroll in step with the field. */
+.note-table-field-seg {
+    margin: 6px 10px;
+}
+
+.note-table-field-seg > .note-table-field {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    margin: 0;
+    background-color: transparent;
+}
+
+.note-table-field-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    margin: 0;
+    padding: 8px;
+    box-sizing: border-box;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-wrap: normal;
+    color: inherit;
+    pointer-events: none;
+}
+
+/* Keep ▦ on the same row as the other formatting buttons on phones. */
+@media (max-width: 420px) {
+    .modal-edit-toolbar {
+        gap: 4px;
+    }
+}
+
+.modal-content-box.has-edit-toolbar {
+    padding-top: 100px;
+}
+
+/* Adjustments for :is(#modal-board-name, .nw-modal-board-name) when in toolbar */
+.modal-header-toolbar :is(#modal-board-name, .nw-modal-board-name) {
     position: static !important;
-    max-width: 60%;
+    grid-column: 1;
+    grid-row: 1;
+    /* Only the name itself is clickable: it is as wide as its text (cut with … when long). The rest of
+       the strip lets the press through to the box (pointer-events: none on the toolbar), which drags
+       the window and does nothing on a click (b1.83). */
+    justify-self: start;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
     pointer-events: auto;
     font-size: 1.1em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Ред „час / повторение / до“ в модала на бележка с дата (b2.10). От b2.12 е лента точно под
+   долната лента - последният елемент в кутията. От b2.18 започва от левия вътрешен ръб (с текста и
+   датата в лентата). Цветовете са полупрозрачни, за да стоят върху всеки цвят на бележката. */
+.note-cal-row {
+    --note-cal-chip-bg: rgba(0, 0, 0, 0.06);
+    --note-cal-chip-border: rgba(0, 0, 0, 0.18);
+    --note-cal-label: rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    margin-top: 0;
+    padding: 0 0 10px 0;
+    font-size: 0.85em;
+    position: relative;
+    z-index: 10001;
+    pointer-events: auto;
+}
+
+.note-cal-row[hidden],
+.note-cal-row [hidden] {
+    display: none !important;
+}
+
+/* Лентата отгоре дава долния си отстъп на реда, за да стоят двете като една. */
+.modal-footer-toolbar:has(+ .note-cal-row:not([hidden])) {
+    padding-bottom: 6px;
+}
+
+.note-cal-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 30px;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: var(--note-cal-chip-bg);
+    border: 1px solid var(--note-cal-chip-border);
+    color: inherit;
+    white-space: nowrap;
+}
+
+.note-cal-lbl {
+    color: var(--note-cal-label);
+    font-size: 0.85em;
+}
+
+.note-cal-chip input,
+.note-cal-chip select {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+    outline-offset: 2px;
+}
+
+.note-cal-chip select {
+    cursor: pointer;
+}
+
+.note-cal-chip option {
+    color: #000;
+}
+
+.note-cal-clear {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 1em;
+    line-height: 1;
+}
+
+.note-cal-clear:hover {
+    opacity: 1;
+}
+
+/* Час и „До“: видимият текст е по устройството (като в лентата); прозрачното нативно поле отгоре
+   само отваря избора (часът - от b2.15, иначе Chrome рисува „01:55 AM“). */
+.note-cal-time-field,
+.note-cal-until-field {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 5.5em;
+    font-variant-numeric: tabular-nums;
+}
+
+.note-cal-time-field {
+    min-width: 3em;
+    gap: 4px;
+}
+
+/* Часовникът в реда (b2.17) - на 4px от часа, като календара и датата в лентата. */
+.note-cal-time-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.note-cal-time-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* Празните полета (само в редакция): „час“ / „без“ / „до“ по-бледо. */
+.note-cal-chip.is-empty {
+    color: var(--note-cal-label);
+}
+
+.note-cal-chip .note-cal-until-input:disabled {
+    cursor: default;
+}
+
+.note-cal-chip .note-cal-time-input,
+.note-cal-chip .note-cal-until-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.note-cal-chip .note-cal-time-input::-webkit-calendar-picker-indicator,
+.note-cal-chip .note-cal-until-input::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    cursor: pointer;
 }
 
 /* Media query for very small screens */
@@ -3127,5 +3826,458 @@ body.selection-locked .note.active-selection-note .note-content {
 
     .modal-footer-toolbar .modal-search-bar {
         width: 100%;
+    }
+
+    .note-cal-row {
+        gap: 4px;
+        padding-right: 5px;
+    }
+
+    .note-cal-chip {
+        padding: 2px 6px;
+    }
+}
+
+/* --- Бутон "Нареди" в менюто с бордове --- */
+.reorder-boards-btn {
+    font-weight: 600 !important;
+    letter-spacing: 0.3px;
+}
+
+@media (hover: hover) {
+    .reorder-boards-btn:hover {
+        background-color: #455A64 !important;
+    }
+}
+
+/* --- Overlay за пренареждане на бордовете --- */
+.reorder-overlay {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.reorder-item {
+    transition: background 0.2s, transform 0.2s;
+}
+
+.reorder-item:hover {
+    filter: brightness(0.95);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.reorder-item:active {
+    cursor: grabbing;
+    transform: scale(1.02);
+}
+
+#create-db-btn {
+    min-width: 160px;
+}
+
+#delete-db-btn {
+    min-width: 160px;
+}
+
+/* Unsynced Offline Changes indicator */
+.note.dirty::after {
+    content: '!';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ff9800;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+    animation: pulseSync 2s infinite;
+}
+
+@keyframes pulseSync {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.code-block {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin: 10px 0;
+    overflow: auto;
+    font-family: monospace;
+    white-space: pre !important;
+    display: block;
+}
+
+.code-block code {
+    white-space: pre !important;
+}
+
+.all-boards-filter-btn span {
+    text-align: center;
+    width: 100%;
+}
+
+.sounds-filter-btn {
+    color: #fcfcfc !important;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+:is(#copy-modal-btn, .nw-copy-modal-btn) svg {
+    width: 24px !important;
+    height: 24px !important;
+    stroke-width: 2 !important;
+}
+
+/* Clock styles from clock-1.html */
+.clock {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #444, #111);
+    position: relative;
+    box-shadow: inset 0 0 10px #000, 0 0 20px #000;
+    box-sizing: border-box;
+}
+
+.center {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #1df52f;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+}
+
+.hand {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-origin: bottom center;
+}
+
+.hour {
+    width: 6px;
+    height: 50px;
+    background: #fff;
+    border-radius: 3px;
+}
+
+.minute {
+    width: 4px;
+    height: 70px;
+    background: #1df52f;
+    border-radius: 2px;
+}
+
+.second {
+    width: 2px;
+    height: 80px;
+    background: #ff3b3b;
+    border-radius: 1px;
+    box-shadow: 0 0 6px #ff3b3b;
+}
+
+.mark {
+    position: absolute;
+    width: 4px;
+    height: 12px;
+    background: #eee;
+    top: 4px;
+    left: 50%;
+    transform-origin: center 96px;
+}
+
+/* Стилизиране на цифрите */
+.number {
+    position: absolute;
+    color: #fff;
+    font-size: 16px;
+    /* Малко по-малък размер, за да стоят по-елегантно до ръба */
+    font-weight: bold;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Позициониране максимално близо до периферията */
+.n12 {
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.n3 {
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.n6 {
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.n9 {
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Ripple ефект върху header бутони 
+.header-btn {
+    transition: transform .15s, box-shadow .15s;
+    overflow: hidden;
+}
+
+.header-btn:hover {
+    transform: scale(1.08);
+    filter: brightness(1.1);
+}
+
+.header-btn:active {
+    transform: scale(.92);
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-40px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+ 1. Hover: lift + rotate 
+.note {
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
+}
+
+.note:hover {
+    transform: translateY(-6px) scale(1.04) rotate(-1deg);
+    box-shadow: 6px 14px 24px rgba(0, 0, 0, .22);
+}
+
+ 2. Появяване на нова бележка 
+@keyframes noteAppear {
+    from {
+        opacity: 0;
+        transform: scale(.7) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.note-appear {
+    animation: noteAppear .35s cubic-bezier(.34, 1.56, .64, 1) both;
+} */
+
+/* MD отметки [ ] / [x] в прегледа и в картата на борда: системен чекбокс, зона за клик ~28px */
+.nmd-cb-hit {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 0;
+    text-indent: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nmd-cb-hit::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 28px;
+    height: 28px;
+    transform: translate(-50%, -50%);
+}
+
+.nmd-cb {
+    position: relative;
+    z-index: 1;
+    width: 1.05em;
+    height: 1.05em;
+    margin: 0;
+    vertical-align: top;
+    cursor: pointer;
+    accent-color: #3a6ff0;
+}
+
+/* Отметнатият ред само сменя цвета си на приглушен - без задраскване */
+.nmd-cb-done {
+    opacity: 0.55;
+}
+
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+    .nmd-cb-done {
+        opacity: 1;
+        color: color-mix(in srgb, currentColor 52%, transparent);
+    }
+}
+
+/* --- Several open notes (b1.82) ---
+   Every note window is a clone of #content-modal-template inside #note-windows-layer. The layer is
+   one stacking context at the old modal's level, so the windows' own z-index (10050 and up, last
+   pressed in front) never reaches the rest of the page. The windows do not block the page: the
+   list and the boards stay usable, so a second note opens from the same places as the first. */
+#note-windows-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    pointer-events: none;
+}
+#note-windows-layer:empty {
+    display: none;
+}
+.note-window.modal-overlay,
+.note-window.modal-overlay.visible {
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    pointer-events: none;
+    display: block;
+}
+.note-window.modal-overlay .modal-content-box {
+    position: absolute;
+    pointer-events: none;
+}
+.note-window.modal-overlay.visible .modal-content-box {
+    pointer-events: auto;
+}
+.note-window.note-window-moving .modal-content-box {
+    transition: none;
+    user-select: none;
+}
+/* The quiet trace after a background sync took the new text in, and the question when it could not. */
+.note-window-sync-trace {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    transform: translateX(-50%);
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 10002;
+    opacity: 1;
+    transition: opacity 0.6s ease;
+}
+.note-window-sync-trace.is-fading {
+    opacity: 0;
+}
+.note-window-sync-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin: 0 0 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    color: #222;
+    font-size: 13px;
+    position: relative;
+    z-index: 10002;
+}
+.note-window-sync-banner span {
+    flex: 1 1 160px;
+}
+.note-window-sync-banner button {
+    font: inherit;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    background: #fff;
+    color: #222;
+    cursor: pointer;
+}
+/* "Close all notes": one more square in the boards menu grid, next to Reorder / Fullscreen. */
+#close-all-notes-btn {
+    font-size: 1.5em;
+    line-height: 1;
+}
+/* Single note mode (b1.83): the shade under the top note window, as the one modal had it before b1.82.
+   It sits inside #note-windows-layer right below the top window (main.js places it), so it takes
+   every press meant for the list, the boards or any other note window; a press on it closes the note. */
+#single-note-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+#single-note-overlay.visible {
+    display: block;
+}
+
+/* Обхождането след включване на Google Календар (b2.11): брояч и лента в реда под ключа.
+   Лентата е в currentColor — следва цвета на текста в настройките, светли и тъмни. */
+.gcal-sync-progress {
+    display: block;
+    margin-top: 4px;
+}
+.gcal-sync-progress-text {
+    display: block;
+    font-variant-numeric: tabular-nums;
+}
+.gcal-sync-progress-bar {
+    display: block;
+    position: relative;
+    height: 4px;
+    margin-top: 3px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: rgba(127, 127, 127, 0.3);
+}
+.gcal-sync-progress-bar > span {
+    display: block;
+    height: 100%;
+    background: currentColor;
+    transition: width 0.2s ease;
+}
+
+/* b2.14: камбанката на мястото на календарчето мига 10 сек (само прозрачност, цветовете са на .header-btn). */
+.header-btn.cal-bell-flash svg {
+    animation: cal-bell-flash 0.8s ease-in-out infinite;
+}
+
+@keyframes cal-bell-flash {
+    50% {
+        opacity: 0.2;
     }
 }
