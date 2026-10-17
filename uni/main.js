@@ -3415,6 +3415,8 @@ async function authCallback(tokenResponse) {
         }
         sessionStorage.removeItem('logout_flag');
         isSyncSuspended = false;
+        // Флагът падна — прерисуваме иконата, за да махнем ⚠ още преди startApp
+        updateModeButton();
         scheduleProactiveTokenRefresh();
         document.getElementById('login-page').hidden = true;
         sessionStorage.setItem('isExplicitLogin', 'true');
@@ -6040,6 +6042,15 @@ function initApp() {
     });
     reloadButton.addEventListener('click', (e) => {
         const isForceSync = Boolean(e && (e.ctrlKey || e.shiftKey));
+        // При спряна синхронизация първо възстановяваме входа (както иконата на източника) — без токен
+        // синхронизацията не може да тръгне, значи преди клона за мръсни бележки; важи и при Ctrl/Shift.
+        if (isSyncSuspended && !isOffline) {
+            const modeBtn = document.getElementById('mode_button');
+            if (modeBtn) {
+                modeBtn.click();
+                return;
+            }
+        }
         const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
         if (hasDirtyNotes && !isForceSync) {
             if (isOffline) {
@@ -6609,7 +6620,8 @@ function initApp() {
     // Click handler
     modeButton.addEventListener('click', async (e) => {
         if (isSyncSuspended) {
-            isSyncSuspended = false;
+            // Флагът се сваля чак в authCallback, когато токенът наистина дойде;
+            // иначе отказан/затворен вход маха ⚠, а синхронизацията остава мъртва.
             isOffline = false;
             isAppStarted = false;
             handleAuthClick();
