@@ -12971,6 +12971,29 @@ document.querySelectorAll('.modal-close').forEach(btn => {
  * @param {string|number} boardId - ID-то на борда.
  * @param {boolean} [shouldScroll=false] - Дали да се скролира менюто до избрания борд.
  */
+// b2.35: менюто с бордовете се връща при избрания борд и когато е било скрито по време на избора.
+// При отворен календар хедърът е display:none, така че scrollIntoView в boardClick не може да измери
+// нищо; след връщането към бележките менюто остава там, където е било, а избраният борд е извън екрана.
+// Скролира се само когато бордът наистина не се вижда, за да не мести менюто при обикновен клик.
+function revealBoardInHeaderMenu(boardId) {
+    if (boardId === undefined || boardId === null) return;
+    const menu = document.querySelector('header .board-menu-container');
+    if (!menu) return;
+    let link = null;
+    try {
+        link = menu.querySelector(`.board-filter-link[data-boardid="${CSS.escape(String(boardId))}"]`);
+    } catch (e) {
+        link = null;
+    }
+    if (!link) return;
+    const box = menu.getBoundingClientRect();
+    const item = link.getBoundingClientRect();
+    if (!box.width || !item.width) return; // още скрит: няма какво да се скролира
+    if (item.left >= box.left - 1 && item.right <= box.right + 1) return; // вече се вижда
+    const target = menu.scrollLeft + (item.left - box.left) - (box.width - item.width) / 2;
+    menu.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+}
+
 async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement = null) {
     // --- ПРОВЕРКА ЗА КОНФЛИКТ: Стартов борд, който е скрит ---
     // Ако стартовият борд е "Всички", но е скрит, избираме първия наличен борд.
@@ -13191,6 +13214,9 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const addNoteFab = document.getElementById('add-note-fab');
         if (addNoteFab) addNoteFab.style.display = 'flex';
         adjustFullscreenSearchLayout();
+        // b2.35: хедърът тъкмо е станал видим — връщаме менюто при избрания борд (при отворен календар
+        // кликът е минал, докато менюто беше скрито, и скролирането в boardClick не е имало какво да мери).
+        requestAnimationFrame(() => revealBoardInHeaderMenu(buttonBoardId));
     }
     // Add or remove a class from the container to control child visibility
     // This part is no longer needed as calendar has its own view
