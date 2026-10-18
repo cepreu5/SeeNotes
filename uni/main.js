@@ -13952,6 +13952,43 @@ function initializeLoad(showLoader = true) {
     }
 }
 
+// The colour of a board button. One set of rules for every place that draws a board as a button
+// (the menu itself and the reorder popup), so a board cannot show one colour in the menu and a
+// different one while its order is being changed. `color` comes in three shapes: a 0..6 index into
+// the --board-bg-* theme colours, a negative decimal (the Windows app stores ARGB like -65536), or
+// a hex string typed by hand in the board dialog's custom field.
+function boardBackgroundValue(color) {
+    if (color === undefined || color === null || color === '') return null;
+    const num = Number(color);
+    if (!isNaN(num)) {
+        if (num >= 0 && num <= 6) return `var(--board-bg-${num})`;
+        if (num < 0) return '#' + (num >>> 0).toString(16).slice(-6);
+        return null; // an index outside 0..6 has never had a background colour
+    }
+    const text = String(color).trim();
+    return text.startsWith('#') ? text : null;
+}
+
+// The text colour of a board button, or null when the board keeps the default one. Status 1 wins
+// (the platform marks such a board red); then colorfont: 1/2/3 are white/red/blue, a negative
+// decimal is ARGB, anything else is a hex string from the custom field.
+function boardFontColorValue(board) {
+    if (!board) return null;
+    if (board.status === 1) return 'red';
+    const colorfont = board.colorfont;
+    if (colorfont === undefined || colorfont === null || colorfont === '') return null;
+    const num = Number(colorfont);
+    if (!isNaN(num)) {
+        if (num === 1) return '#FFFFFF';
+        if (num === 2) return '#FF0000';
+        if (num === 3) return '#0000FF';
+        if (num < 0) return '#' + (num >>> 0).toString(16).slice(-6);
+        return null; // 0 and anything above 3 keep the default text colour
+    }
+    const text = String(colorfont).trim();
+    return text.startsWith('#') ? text : null;
+}
+
 async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     const { boardCounts = new Map(), reminderCount = 0, calendarCount = 0 } = extraCounts;
     const boardsNote = document.createElement('div');
@@ -14174,36 +14211,11 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
         link.classList.add('board-filter-link');
         link.dataset.boardid = boardId;
-        let bColor = board.color;
-        if (bColor !== undefined && bColor !== null && bColor !== "") {
-            const num = Number(bColor);
-            if (!isNaN(num)) {
-                if (num >= 0 && num <= 6) {
-                    link.style.backgroundColor = `var(--board-bg-${num})`;
-                } else if (num < 0) {
-                    link.style.backgroundColor = '#' + (num >>> 0).toString(16).slice(-6);
-                }
-            } else if (typeof bColor === 'string' && bColor.startsWith('#')) {
-                link.style.backgroundColor = bColor;
-            }
-        }
+        const boardBg = boardBackgroundValue(board.color);
+        if (boardBg) link.style.backgroundColor = boardBg;
         link.style.color = 'black';
-        if (board.status === 1) {
-            link.style.color = 'red';
-        } else {
-            let bFColor = board.colorfont;
-            if (bFColor !== undefined && bFColor !== null && bFColor !== "") {
-                const fnum = Number(bFColor);
-                if (!isNaN(fnum)) {
-                    if (fnum === 1) link.style.color = '#FFFFFF';
-                    else if (fnum === 2) link.style.color = '#FF0000';
-                    else if (fnum === 3) link.style.color = '#0000FF';
-                    else if (fnum < 0) link.style.color = '#' + (fnum >>> 0).toString(16).slice(-6);
-                } else if (typeof bFColor === 'string' && bFColor.startsWith('#')) {
-                    link.style.color = bFColor;
-                }
-            }
-        }
+        const boardFont = boardFontColorValue(board);
+        if (boardFont) link.style.color = boardFont;
         addBoardButtonEvents(link, boardId);
         allButtonLinks.push(link);
     });
@@ -24227,27 +24239,17 @@ function showBoardReorderPopup() {
             item.dataset.boardkey = getBoardOrderEntryKey(entry);
             item.draggable = true;
             item.style.cssText = `width:${itemWidth - 40}px;cursor:default;flex-shrink:0;display:flex;align-items:center;justify-content:flex-start;padding:0 10px;box-sizing:border-box;`;
-            if (entry.backgroundColor) {
-                item.style.backgroundColor = entry.backgroundColor;
-            } else if (board && board.color !== undefined && !isNaN(board.color)) {
-                if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
-                else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-            }
+            const rowBackground = entry.backgroundColor || (board ? boardBackgroundValue(board.color) : null);
+            if (rowBackground) item.style.backgroundColor = rowBackground;
             const text = document.createElement('span');
             text.textContent = entry.title;
             text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+            // Same rules as the menu button for a real board. A system square (Reminder, Trash, ...)
+            // keeps the text colour its own CSS class gives it unless the entry names one.
             if (entry.color) {
                 text.style.color = entry.color;
-            } else if (board && board.status === 1) {
-                text.style.color = 'red';
-            } else if (board && board.colorfont !== undefined && !isNaN(board.colorfont)) {
-                if (board.colorfont === 1) text.style.color = '#FFFFFF';
-                else if (board.colorfont === 2) text.style.color = '#FF0000';
-                else if (board.colorfont === 3) text.style.color = '#0000FF';
-                else if (board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-                else text.style.color = 'black';
-            } else {
-                text.style.color = 'black';
+            } else if (board) {
+                text.style.color = boardFontColorValue(board) || 'black';
             }
             item.appendChild(text);
             const handle = document.createElement('div');
