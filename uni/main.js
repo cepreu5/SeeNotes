@@ -10448,6 +10448,7 @@ function restoreNoteWindowIds(win) {
 
 function activateNoteWindow(win, front = true) {
     if (!win) return;
+    const switchedWindow = activeNoteWindow !== win;
     if (activeNoteWindow !== win) {
         const prev = activeNoteWindow;
         if (prev) {
@@ -10469,6 +10470,8 @@ function activateNoteWindow(win, front = true) {
         win.el.classList.add('note-window-active');
         if (win.open) setExpandedModalFloatingControls(win.body.dataset.isExpanded === 'true');
     }
+    // Историята за отмяна е на бележка: при смяна на прозореца (от потребителя) започва от тук.
+    if (switchedWindow && front) resetNoteEditUndoHistory(win.body);
     if (front) raiseNoteWindow(win);
 }
 
@@ -21600,6 +21603,9 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         // Геометрията влиза в отметката; вече взета при отварянето - остава (местене преди редакция пак е промяна).
         if (modalBodyElem.dataset.baseGeometry === undefined) setNoteWindowBaseGeometry(modalBodyElem);
     }
+    // Начална точка на историята за отмяна: състоянието, в което бележката се отваря (след
+    // подравняването на таблиците при отваряне, за да не се отменя то).
+    resetNoteEditUndoHistory(modalBodyElem);
 }
 function toggleListFormat(textarea, listType) {
     const start = textarea.selectionStart;
@@ -21740,6 +21746,19 @@ document.addEventListener('keydown', (e) => {
         const isI = (code === 'KeyI' || key === 'i');
         const isU = (code === 'KeyU' || key === 'u');
         const isD = (code === 'KeyD' || key === 'd');
+        const isZ = (code === 'KeyZ' || key === 'z');
+        const isY = (code === 'KeyY' || key === 'y');
+
+        // Ctrl/⌘+Z - назад, Ctrl/⌘+Shift+Z (или Ctrl+Y) - напред, през нашата история за бележката.
+        if (isZ || isY) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            const undoBody = getNoteEditUndoBodyFrom(activeTextarea);
+            if (isY || e.shiftKey) redoNoteEdit(undoBody);
+            else undoNoteEdit(undoBody);
+            return;
+        }
 
         if (isB || isI || isU || isD) {
             e.preventDefault();
@@ -23165,6 +23184,7 @@ function applyMarkdownTableAlignment(all = false) {
         const result = planMarkdownTableFieldsClose(textarea.value, ranges || []);
         applyTableEditsToNoteTextarea(textarea, result.edits, result.text);
         updateTableAlignButtonState();
+        commitNoteEditUndo(getNoteEditModalBody(textarea));
         return;
     }
     const plan = planMarkdownTableFieldsOpen(textarea.value, textarea.selectionStart, all);
@@ -23175,6 +23195,7 @@ function applyMarkdownTableAlignment(all = false) {
     applyTableEditsToNoteTextarea(textarea, plan.edits, plan.text);
     openNoteTableSplit(textarea, plan.ranges);
     updateTableAlignButtonState();
+    commitNoteEditUndo(getNoteEditModalBody(textarea));
 }
 
 // Opening the editor (plan 9): every alignable table in the note is aligned and shown in its
@@ -23224,6 +23245,255 @@ function revealNoteTableSplitCaret(split) {
     } else if (top < split.scrollTop || top > split.scrollTop + split.clientHeight - 24) {
         split.scrollTop = Math.max(0, top - 24);
     }
+}
+
+// --- Отмяна / връщане напред в редактора на бележката (10 стъпки) ---
+// Снимка се пази на пауза в писането (~400 ms), при B/I/U/S, при поставяне, при смяна на ред,
+// при ▦ и при излизане от полето - не на всеки символ, иначе 10 нива се изчерпват с една дума.
+// Снимката носи текста на тялото и заглавието, форматите им (dataset.format / dataset.titleFormat),
+// позицията на курсора и полето, в което е бил. Историята е на бележка (пази се на елемента
+// #modal-body на прозореца), за да не прескача от бележка в бележка.
+const NOTE_EDIT_UNDO_STEPS = 10; // колко стъпки назад (текущото състояние не се брои)
+const NOTE_EDIT_UNDO_DELAY = 400; // пауза в писането, след която се записва снимка
+let noteEditUndoRestoring = false; // връщането не бива да записва нова снимка
+
+// Кой #modal-body (или неговият скрит двойник при няколко отворени бележки) стои зад елемент.
+function getNoteEditUndoBodyFrom(el) {
+    if (el && el._undoBody) return el._undoBody;
+    const box = el && el.closest ? el.closest('.modal-content-box') : null;
+    const inBox = box ? box.querySelector('#modal-body, .nw-modal-body, [data-mwid="modal-body"]') : null;
+    return inBox || (el && el.closest ? el.closest('#modal-body') : null) || document.getElementById('modal-body');
+}
+
+function getNoteEditUndoHistory(modalBodyElem, create = true) {
+    if (!modalBodyElem) return null;
+    if (!modalBodyElem._noteEditUndo && create) {
+        modalBodyElem._noteEditUndo = { entries: [], cursor: -1, timer: null };
+    }
+    return modalBodyElem._noteEditUndo || null;
+}
+
+// Текущото състояние на редактора като снимка. При отворени полета на таблица (▦) скритата
+// текстова кутия пак държи цялата бележка, значи снимката се чете само от нея.
+function takeNoteEditUndoSnapshot(modalBodyElem) {
+    const body = getNoteEditUndoBodyFrom(modalBodyElem) || modalBodyElem;
+    const main = document.getElementById('note-edit-textarea');
+    const title = document.getElementById('note-edit-title-textarea');
+    const active = document.activeElement;
+    let fieldId = 'note-edit-textarea';
+    let caretStart = main ? main.selectionStart : 0;
+    let caretEnd = main ? main.selectionEnd : 0;
+    if (active && active.id === 'note-edit-title-textarea' && title) {
+        fieldId = 'note-edit-title-textarea';
+        caretStart = title.selectionStart;
+        caretEnd = title.selectionEnd;
+    } else if (active && active !== main && isNoteEditBodyField(active)) {
+        // Поле от таблицата: позицията се брои в бележката, не в полето.
+        const ctx = getNoteEditContext(active);
+        if (ctx && ctx.off >= 0) {
+            fieldId = 'note-edit-textarea';
+            caretStart = ctx.off + active.selectionStart;
+            caretEnd = ctx.off + active.selectionEnd;
+        }
+    }
+    return {
+        body: main ? main.value : ((body && body.dataset.draftText) || ''),
+        title: title ? title.value : ((body && body.dataset.draftTitle) || ''),
+        bodyFormat: (body && body.dataset.format) || '',
+        titleFormat: (body && body.dataset.titleFormat) || '',
+        caretStart: caretStart,
+        caretEnd: caretEnd,
+        fieldId: fieldId
+    };
+}
+
+function noteEditUndoSnapshotEqual(a, b) {
+    return !!a && !!b
+        && a.body === b.body
+        && a.title === b.title
+        && a.bodyFormat === b.bodyFormat
+        && a.titleFormat === b.titleFormat;
+}
+
+// Записва снимка, ако има промяна. Нова промяна след отмяна изтрива стъпките напред.
+function commitNoteEditUndo(modalBodyElem) {
+    if (noteEditUndoRestoring) return;
+    const body = modalBodyElem || document.getElementById('modal-body');
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    // Само по активния прозорец: иначе отложена снимка ще смеси текста на една бележка с форматите на друга.
+    const activeBody = getNoteEditUndoBodyFrom(document.getElementById('note-edit-textarea'));
+    if (activeBody && body !== activeBody) return;
+    if (hist.timer) {
+        clearTimeout(hist.timer);
+        hist.timer = null;
+    }
+    const snap = takeNoteEditUndoSnapshot(body);
+    const current = hist.entries[hist.cursor];
+    if (current && noteEditUndoSnapshotEqual(current, snap)) {
+        updateNoteEditUndoUI(body);
+        return;
+    }
+    if (hist.cursor < hist.entries.length - 1) hist.entries = hist.entries.slice(0, hist.cursor + 1);
+    hist.entries.push(snap);
+    // Най-старото излиза: пазят се 10 стъпки назад плюс текущото състояние.
+    if (hist.entries.length > NOTE_EDIT_UNDO_STEPS + 1) {
+        hist.entries = hist.entries.slice(hist.entries.length - (NOTE_EDIT_UNDO_STEPS + 1));
+    }
+    hist.cursor = hist.entries.length - 1;
+    updateNoteEditUndoUI(body);
+}
+
+// Отлага снимка с ~400 ms след последния натиснат клавиш.
+function scheduleNoteEditUndoCommit(field) {
+    if (noteEditUndoRestoring) return;
+    const body = getNoteEditUndoBodyFrom(field);
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    if (hist.timer) clearTimeout(hist.timer);
+    hist.timer = setTimeout(() => {
+        hist.timer = null;
+        commitNoteEditUndo(body);
+    }, NOTE_EDIT_UNDO_DELAY);
+}
+
+// Връща една снимка: текст, заглавие, форматите им и курсора. При отворена таблица (▦) полетата
+// се затварят първо и се отварят пак само ако това няма да препише върнатия текст.
+function applyNoteEditUndoSnapshot(modalBodyElem, snap) {
+    if (!snap) return;
+    const body = modalBodyElem || document.getElementById('modal-body');
+    const main = document.getElementById('note-edit-textarea');
+    const title = document.getElementById('note-edit-title-textarea');
+    const mainBackdrop = document.getElementById('note-edit-textarea-backdrop');
+    const titleBackdrop = document.getElementById('note-edit-title-textarea-backdrop');
+    noteEditUndoRestoring = true;
+    try {
+        if (main && getNoteTableSplit(main)) closeNoteTableSplit(main);
+        if (main) {
+            main.value = snap.body;
+            // lastVal се вдига преди handleEditInput: разлика няма, значи форматите не се местят сами.
+            main.dataset.lastVal = snap.body;
+            handleEditInput(main, mainBackdrop);
+        }
+        if (title) {
+            title.value = snap.title;
+            title.dataset.lastVal = snap.title;
+            handleEditInput(title, titleBackdrop);
+        }
+        // Форматите се връщат точно както са били записани.
+        if (body) {
+            body.dataset.format = snap.bodyFormat || '';
+            body.dataset.titleFormat = snap.titleFormat || '';
+        }
+        refreshNoteEditBackdrops(getNoteEditContext(main));
+        refreshNoteEditBackdrops(getNoteEditContext(title));
+        if (main) {
+            const caret = Math.max(0, Math.min(snap.caretStart || 0, snap.body.length));
+            main.setSelectionRange(caret, caret);
+            const plan = planMarkdownTableFieldsOpen(snap.body, caret, true);
+            if (plan.tableCount && plan.text === snap.body) openNoteTableSplit(main, plan.ranges);
+        }
+        const field = (snap.fieldId === 'note-edit-title-textarea' && title) ? title : main;
+        const splitOpen = main ? getNoteTableSplit(main) : null;
+        if (field && !(splitOpen && splitOpen.contains(document.activeElement))) {
+            const maxPos = field.value.length;
+            const start = Math.max(0, Math.min(snap.caretStart || 0, maxPos));
+            const end = Math.max(start, Math.min(snap.caretEnd || start, maxPos));
+            field.focus({ preventScroll: true });
+            field.setSelectionRange(start, end);
+        }
+        if (typeof updateTableAlignButtonState === 'function') updateTableAlignButtonState();
+    } finally {
+        noteEditUndoRestoring = false;
+    }
+}
+
+function undoNoteEdit(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    // Първо се записва какво е написано от последната пауза, за да не се загуби.
+    commitNoteEditUndo(body);
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist || hist.cursor <= 0) {
+        updateNoteEditUndoUI(body);
+        return;
+    }
+    hist.cursor -= 1;
+    applyNoteEditUndoSnapshot(body, hist.entries[hist.cursor]);
+    updateNoteEditUndoUI(body);
+}
+
+function redoNoteEdit(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    if (hist.cursor >= hist.entries.length - 1) {
+        updateNoteEditUndoUI(body);
+        return;
+    }
+    hist.cursor += 1;
+    applyNoteEditUndoSnapshot(body, hist.entries[hist.cursor]);
+    updateNoteEditUndoUI(body);
+}
+
+// Нова начална точка: една снимка (по подразбиране текущото състояние). Извиква се при отваряне на
+// бележка, при смяна на прозореца и след Запис.
+function resetNoteEditUndoHistory(modalBodyElem, state = null) {
+    const body = getNoteEditUndoBodyFrom(modalBodyElem) || modalBodyElem || document.getElementById('modal-body');
+    if (!body) return;
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    if (hist.timer) {
+        clearTimeout(hist.timer);
+        hist.timer = null;
+    }
+    hist.entries = [state || takeNoteEditUndoSnapshot(body)];
+    hist.cursor = 0;
+    updateNoteEditUndoUI(body);
+}
+
+// Броячът показва колко стъпки назад са налични, а стрелките се приглушават, когато не могат нищо.
+function updateNoteEditUndoUI(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    if (!body || !body.closest) return;
+    const box = body.closest('.modal-content-box');
+    const toolbar = box ? box.querySelector('.modal-edit-toolbar') : null;
+    if (!toolbar) return;
+    const hist = getNoteEditUndoHistory(body, false);
+    const cursor = hist ? hist.cursor : 0;
+    const total = hist ? hist.entries.length : 1;
+    const undoBtn = toolbar.querySelector('.modal-edit-toolbar-btn.is-undo');
+    const redoBtn = toolbar.querySelector('.modal-edit-toolbar-btn.is-redo');
+    const count = toolbar.querySelector('.modal-edit-undo-count');
+    if (undoBtn) undoBtn.classList.toggle('is-disabled', cursor <= 0);
+    if (redoBtn) redoBtn.classList.toggle('is-disabled', cursor >= total - 1);
+    if (count) {
+        const back = Math.max(0, Math.min(cursor, NOTE_EDIT_UNDO_STEPS));
+        count.textContent = `${back} / ${NOTE_EDIT_UNDO_STEPS}`;
+        count.classList.toggle('is-full', back >= NOTE_EDIT_UNDO_STEPS);
+        count.title = _('undoCountTooltip') || 'Стъпки назад / общо (10) · Steps back / total';
+    }
+}
+
+// Закача полетата на редактора към историята на своята бележка. Повторно извикване не слага
+// втори слушател на същото поле.
+function initNoteEditUndo(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    if (!body) return;
+    const fields = [document.getElementById('note-edit-textarea'), document.getElementById('note-edit-title-textarea')];
+    fields.forEach((field) => {
+        if (!field) return;
+        field._undoBody = body;
+        if (field._undoBound) return;
+        field._undoBound = true;
+        field.addEventListener('input', () => scheduleNoteEditUndoCommit(field));
+        field.addEventListener('blur', () => commitNoteEditUndo(field._undoBody));
+        field.addEventListener('paste', () => setTimeout(() => commitNoteEditUndo(field._undoBody), 0));
+        field.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.isComposing) commitNoteEditUndo(field._undoBody);
+        });
+    });
+    if (!getNoteEditUndoHistory(body, false)) resetNoteEditUndoHistory(body);
+    updateNoteEditUndoUI(body);
 }
 
 function createModalEditToolbar(modalContentBox) {
@@ -23310,7 +23580,28 @@ function createModalEditToolbar(modalContentBox) {
             type === 'underline',
             type === 'strike'
         );
+        // Форматирането се записва като отделна стъпка веднага, без да чака пауза.
+        commitNoteEditUndo(getNoteEditUndoBodyFrom(textarea));
     };
+    // Отмяна ↶ / връщане напред ↷: най-отляво, преди B - историята е за текста, не за навигация.
+    addButton({
+        label: '↶',
+        title: _('undoTooltip') || 'Назад · Undo (Ctrl+Z)',
+        className: 'is-undo',
+        action: () => undoNoteEdit(getNoteEditUndoBodyFrom(toolbar))
+    });
+    addButton({
+        label: '↷',
+        title: _('redoTooltip') || 'Напред · Redo (Ctrl+Shift+Z)',
+        className: 'is-redo',
+        action: () => redoNoteEdit(getNoteEditUndoBodyFrom(toolbar))
+    });
+    const undoCount = document.createElement('span');
+    undoCount.className = 'modal-edit-undo-count';
+    undoCount.setAttribute('aria-hidden', 'true');
+    undoCount.textContent = `0 / ${NOTE_EDIT_UNDO_STEPS}`;
+    undoCount.title = _('undoCountTooltip') || 'Стъпки назад / общо (10) · Steps back / total';
+    toolbar.appendChild(undoCount);
     addButton({ label: 'B', title: _('boldTooltip') || 'Bold text', className: 'is-bold', action: () => applyMarkdown('bold') });
     addButton({ label: 'I', title: _('italicTooltip') || 'Italic text', className: 'is-italic', action: () => applyMarkdown('italic') });
     addButton({ label: 'U', title: _('underlineTooltip') || 'Underline text', className: 'is-underline', action: () => applyMarkdown('underline') });
@@ -23431,6 +23722,7 @@ function initNoteEditUI() {
     }
     if (modalBodyEl?.querySelector('textarea')) {
         createModalEditToolbar(modalContentBox);
+        initNoteEditUndo(modalBodyEl);
     }
 
     // Bind hidden attach input listener if not already bound
@@ -24080,6 +24372,17 @@ function saveEditedNote(forceClose = false) {
         const titleFormatStr = isPreview ? (modalBodyElem.dataset.previewDraftTitleFormat || "") : (modalBodyElem.dataset.titleFormat || "");
         // Чете се преди disableNoteEditing - то трие previewHasTitle (иначе запис от прегледа губи заглавието).
         const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
+
+        // След Запис историята за отмяна започва наново от записаното състояние.
+        resetNoteEditUndoHistory(modalBodyElem, {
+            body: newText === undefined ? '' : newText,
+            title: titleText || '',
+            bodyFormat: formatStr || '',
+            titleFormat: titleFormatStr || '',
+            caretStart: 0,
+            caretEnd: 0,
+            fieldId: 'note-edit-textarea'
+        });
 
         if (!closeAfterSave) {
             disableNoteEditing(modalBodyElem);
