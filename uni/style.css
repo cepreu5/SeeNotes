@@ -4502,10 +4502,13 @@ body.selection-locked .note.active-selection-note .note-content {
     width: 100%;
     box-sizing: border-box;
     margin-bottom: 15px;
-    font-size: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.55);
+    font-size: 12.5px;
     line-height: 1.5;
     text-align: center;
-    color: rgba(255, 255, 255, 0.85);
+    color: #fff;
 }
 
 /* --- Лентата в хедъра: свой ред над заглавието, с изход --- */
@@ -4556,15 +4559,42 @@ body.selection-locked .note.active-selection-note .note-content {
     }
 }
 
+/* Под 900px хедърът е центрирана колона — лентата заема ширината с еднакъв отстъп. */
+@media (max-width: 899px) {
+    .demo-banner {
+        width: calc(100% - 20px);
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
 /* --- Предупреждението преди влизане --- */
 .demo-modal-box {
     width: 95%;
     max-width: 420px;
-    padding: 46px 20px 18px 20px;
+    padding: 20px 20px 18px 20px;
     background-image: none;
     background-color: #fffdf7;
     border-radius: 10px;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+/* Бутонът за затваряне стои в ъгъла на картата, както в макета. */
+#demo-warning-modal .modal-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    padding: 2px 6px;
+    border: none;
+    background: none;
+    color: #777;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#demo-warning-modal .modal-close:hover {
+    color: #333;
 }
 
 .demo-modal-title {

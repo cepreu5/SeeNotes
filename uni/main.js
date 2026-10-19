@@ -3768,6 +3768,10 @@ async function exitDemoMode() {
 
 /** Бутонът на началния екран, предупреждението и изходът от лентата. */
 function initDemoModeUI() {
+    // Идемпотентно: извиква се веднага (елементите вече са в DOM, main.js е в края на body)
+    // и повторно при DOMContentLoaded, без да дублира слушателите.
+    if (window.__cxDemoUIReady) return;
+    window.__cxDemoUIReady = true;
     const startBtn = document.getElementById('demo-start-btn');
     const modal = document.getElementById('demo-warning-modal');
     const banner = document.getElementById('demo-banner');
@@ -3810,10 +3814,11 @@ function initDemoModeUI() {
     }
 }
 
+// Веднага: main.js се зарежда след началния екран, значи елементите вече съществуват и
+// бутонът работи още преди края на парсването на страницата.
+initDemoModeUI();
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initDemoModeUI);
-} else {
-    initDemoModeUI();
 }
 
 // Стартирай зареждането в зависимост от състоянието
