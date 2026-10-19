@@ -21208,7 +21208,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             top: '0',
             left: '0',
             width: '100%',
-            height: '100%',
+            height: 'auto',
             padding: '10px',
             boxSizing: 'border-box',
             fontFamily: textarea.style.fontFamily,
@@ -21221,7 +21221,10 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             color: 'inherit',
             pointerEvents: 'none',
             zIndex: '1',
-            overflow: 'hidden'
+            // Painted once and then moved by the compositor: scrolling a clipped box re-rastered
+            // the whole visible text on every scroll frame, so a long note scrolled at half speed.
+            willChange: 'transform',
+            transform: 'translate3d(0, 0, 0)'
         });
 
         container.appendChild(backdrop);
@@ -21249,8 +21252,8 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
 
     // Sync scrolling for both if applicable (mostly body)
     if (bodyTextarea && bodyBackdrop) {
-        bodyTextarea.addEventListener('scroll', () => { bodyBackdrop.scrollTop = bodyTextarea.scrollTop; });
-        bodyBackdrop.addEventListener('scroll', () => { bodyTextarea.scrollTop = bodyBackdrop.scrollTop; });
+        syncNoteEditBackdropOffset(bodyTextarea, bodyBackdrop);
+        bodyTextarea.addEventListener('scroll', () => { syncNoteEditBackdropOffset(bodyTextarea, bodyBackdrop); }, { passive: true });
         bodyTextarea.addEventListener('input', () => { handleEditInput(bodyTextarea, bodyBackdrop); });
         handleEditInput(bodyTextarea, bodyBackdrop);
     }
@@ -21262,8 +21265,8 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         });
     }
     if (titleTextarea && titleBackdrop) {
-        titleTextarea.addEventListener('scroll', () => { titleBackdrop.scrollTop = titleTextarea.scrollTop; });
-        titleBackdrop.addEventListener('scroll', () => { titleTextarea.scrollTop = titleBackdrop.scrollTop; });
+        syncNoteEditBackdropOffset(titleTextarea, titleBackdrop);
+        titleTextarea.addEventListener('scroll', () => { syncNoteEditBackdropOffset(titleTextarea, titleBackdrop); }, { passive: true });
         titleTextarea.addEventListener('input', () => { handleEditInput(titleTextarea, titleBackdrop); });
         handleEditInput(titleTextarea, titleBackdrop);
     }
@@ -21761,7 +21764,17 @@ function syncNoteEditBackdropBox(textarea, backdrop) {
     const pad = parseFloat(textarea.style.paddingRight || getComputedStyle(textarea).paddingRight) || 0;
     const value = (pad + sb) + 'px';
     if (backdrop.style.paddingRight !== value) backdrop.style.paddingRight = value;
-    if (backdrop.scrollTop !== textarea.scrollTop) backdrop.scrollTop = textarea.scrollTop;
+    syncNoteEditBackdropOffset(textarea, backdrop);
+}
+
+// The backdrop is not scrolled: it keeps its full height and is moved up by the field's
+// scrollTop with a transform, which the compositor applies without re-rastering the text.
+function syncNoteEditBackdropOffset(textarea, backdrop) {
+    if (!textarea || !backdrop) return;
+    const y = -textarea.scrollTop;
+    if (backdrop._lastY === y) return;
+    backdrop._lastY = y;
+    backdrop.style.transform = `translate3d(0, ${y}px, 0)`;
 }
 
 function getNoteEditModalBody(field) {
