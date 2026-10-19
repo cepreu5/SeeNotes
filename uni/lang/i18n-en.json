@@ -548,9 +548,9 @@
     "batchMoveSkipped.one": "1 was already in '{boardName}'.",
     "batchUndone.one": "1 note was restored.",
     "demoButton": "Demo mode",
-    "demoConfirm": "Demo mode\n\nThe app will not send a single request to Google or any external address. Notes stay in this browser only, in a separate demo database.\n\nContinue?",
+    "demoConfirm": "Demo mode\n\nThe app will not send requests to the internet. All notes stay in this browser only, until cleared by the user or the system.\n\nContinue?",
     "demoBannerLabel": "Demo mode",
-    "demoBannerText": "The app is fully functional. All notes are saved in the browser's database and kept until the cache is cleared. The only thing missing is syncing with Google Drive.",
+    "demoBannerText": "The app is fully functional. All notes are saved in the browser's database and kept until the cache is cleared. The only thing missing is syncing with Google Drive, so the notes are only available on this device.",
     "demoExitTooltip": "Exit demo mode",
     "demoWelcomeBoard": "Welcome",
     "demoWelcomeNote": "welcome"
