@@ -177,6 +177,10 @@ const DEMO_NOTE_LIMIT = 5;
 // (DEMO_MODE по-горе е стар флаг за ограничаване на бележките и не участва в това.)
 const DEMO_MODE_STORAGE_KEY = 'cxNotesDemoMode';
 const DEMO_DB_NAME = 'NotesDB-demo';
+// Интрото на асистента в демо: показва се веднъж на влизане в демо (флагът е в
+// sessionStorage, значи презареждане в демото не го пуска пак, а изходът го чисти).
+const DEMO_INTRO_SESSION_KEY = 'cxNotesDemoIntroShown';
+const DEMO_INTRO_DELAY_MS = 1500;
 const DEMO_FLAGS_SNAPSHOT_KEY = 'cxNotesDemoPrevFlags';
 const DEMO_DATA_SOURCE_KEYS = ['useGoogleDb', 'useIndexedDb', 'useLocalDb', 'useArhDb'];
 
@@ -3703,6 +3707,8 @@ function showDemoBanner() {
 async function exitDemoMode() {
     try {
         localStorage.removeItem(DEMO_MODE_STORAGE_KEY);
+        // Следващото влизане в демо пак показва интрото.
+        sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY);
         const raw = sessionStorage.getItem(DEMO_FLAGS_SNAPSHOT_KEY);
         if (raw) {
             const previous = JSON.parse(raw);
@@ -8805,6 +8811,12 @@ async function mainLogic(forceFullSync = false) {
         // Показваме бутона за инсталиране, ако има такъв
         if (window.showInstallButton) window.showInstallButton();
 
+        // Демо режимът минава по този клон и не стига до интрото в онлайн finally-то.
+        // Затова то се пуска тук — веднъж на влизане в демо.
+        if (IS_DEMO_MODE) {
+            setTimeout(startDemoAssistantIntro, DEMO_INTRO_DELAY_MS);
+        }
+
         return;
     }
     if (isMainLogicRunning) {
@@ -9233,18 +9245,11 @@ async function mainLogic(forceFullSync = false) {
             if (window.showInstallButton) window.showInstallButton();
             if (!isOffline) loadSettingsFromGDrive(true);
             if (guide && localStorage.getItem('initial_setup_complete') === 'true') {
-                const startAssistantGuide = async () => {
+                const startAssistantGuideOnLoad = async () => {
                     // Водачът зарежда асистента сам (без "какво ново" - то е при отваряне на панела)
-                    if (await ensureKBAssistant()) {
-                        const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
-                        if (entry && entry.guide) {
-                            window.kbAssistant.showGuide(entry.guide);
-                            localStorage.setItem('guide', 'false');
-                            guide = false;
-                        }
-                    }
+                    await startAssistantGuide();
                 };
-                setTimeout(startAssistantGuide, 1500);
+                setTimeout(startAssistantGuideOnLoad, 1500);
             }
         }
     } finally {
@@ -20954,6 +20959,55 @@ function ensureKBAssistant() {
             return ok;
         });
     return kbAssistantLoadPromise;
+}
+
+/**
+ * Интрото на асистента (запис assistant-1 в базата на знанието): зарежда асистента и
+ * пуска тура. Връща true, ако турът е тръгнал.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.force] - пуска интрото дори при вече изтекъл флаг 'guide'
+ * @param {boolean} [options.persistFlag=true] - записва ли 'guide'='false' (демото не пипа
+ *        истинските настройки на браузъра, за да не изяде интрото на реалното приложение)
+ * @returns {Promise<boolean>}
+ */
+async function startAssistantGuide(options = {}) {
+    if (!options.force && !guide) return false;
+    if (!(await ensureKBAssistant())) return false;
+    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+    if (!entry || !entry.guide) return false;
+    window.kbAssistant.showGuide(entry.guide);
+    if (options.persistFlag !== false) {
+        localStorage.setItem('guide', 'false');
+        guide = false;
+    }
+    return true;
+}
+
+/**
+ * Интро в демо режима: показва се веднъж на влизане в демо, независимо от
+ * initial_setup_complete (демото не минава първоначална настройка, значи флагът
+ * никога не се вдига) и независимо от флага 'guide'.
+ */
+async function startDemoAssistantIntro() {
+    if (!IS_DEMO_MODE) return false;
+    try {
+        // Флагът се вдига веднага, синхронно: иначе две извиквания на mainLogic, чиито
+        // таймери гръмнат в един и същ тик, биха пуснали тура два пъти. При неуспех се
+        // маха, за да опита пак при следващо влизане.
+        if (sessionStorage.getItem(DEMO_INTRO_SESSION_KEY) === '1') return false;
+        sessionStorage.setItem(DEMO_INTRO_SESSION_KEY, '1');
+        // Офлайн клонът на mainLogic прави return, а finally-то на онлайн клона не се
+        // изпълнява — затова тук чакаме само рамка, за да е готов бордът.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const started = await startAssistantGuide({ force: true, persistFlag: false });
+        if (!started) sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY);
+        return started;
+    } catch (e) {
+        try { sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY); } catch (_) { }
+        console.warn('[Demo] Assistant intro could not be shown:', e);
+        return false;
+    }
 }
 
 function onKBFabClick(e) {
