@@ -550,5 +550,7 @@
     "demoButton": "Demo mode",
     "demoConfirm": "Demo mode\n\nThe app will not send a single request to Google or any external address. Notes stay in this browser only, in a separate demo database.\n\nContinue?",
     "demoBannerLabel": "Demo mode · no internet",
-    "demoExit": "Exit"
+    "demoExit": "Exit",
+    "demoWelcomeBoard": "Welcome",
+    "demoWelcomeNote": "welcome"
 }

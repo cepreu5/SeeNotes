@@ -92,7 +92,7 @@ const ASSETS_TO_CACHE = [
 // Асистентът се зарежда при първо отваряне (ensureKBAssistant в main.js), затова
 // файловете му не са в предкеша, а влизат в кеша при първото ползване.
 const LAZY_ASSETS = [
-  './kb-assistantt.js',
+  './kb-assistant.js',
   './kb-assistant.css',
   './lang/kb-core.json',
   './lang/kb-bg.json',
