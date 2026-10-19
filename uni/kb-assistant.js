@@ -415,6 +415,15 @@ class KBAssistant {
                 const corePath = 'lang/kb-core.json';
                 const langPath = `lang/kb-${this.currentLang}.json`;
                 const enPath = 'lang/kb-en.json';
+                // Optional extra KB file sets (same format, merged by id). The product
+                // tour lives in lang/kb-tour-*.json so it stays out of the app's KB.
+                const extraSets = ['tour'];
+                const extraFetches = [];
+                extraSets.forEach(name => {
+                    extraFetches.push(fetch(`lang/kb-${name}-core.json`));
+                    extraFetches.push(fetch(`lang/kb-${name}-${this.currentLang}.json`));
+                    extraFetches.push(this.currentLang !== 'en' ? fetch(`lang/kb-${name}-en.json`) : Promise.resolve(null));
+                });
                 const [coreResponse, langResponse, enResponse] = await Promise.all([
                     fetch(corePath),
                     fetch(langPath),
@@ -426,6 +435,25 @@ class KBAssistant {
                 const langData = await langResponse.json();
                 const enData = (enResponse && enResponse.ok) ? await enResponse.json() : null;
                 const mergedData = coreData;
+                // Merge optional extra sets into the core structure, then treat them
+                // exactly like the built-in items when applying translations.
+                const extraLang = {};
+                for (let i = 0; i < extraFetches.length; i += 3) {
+                    const setName = extraSets[i / 3];
+                    const [extraCoreRes, extraLangRes, extraEnRes] = await Promise.all([
+                        extraFetches[i], extraFetches[i + 1], extraFetches[i + 2]
+                    ]);
+                    if (!extraCoreRes || !extraCoreRes.ok) continue; // optional file set
+                    const extraCore = await extraCoreRes.json();
+                    const extraLangData = (extraLangRes && extraLangRes.ok) ? await extraLangRes.json() : null;
+                    const extraEnData = (extraEnRes && extraEnRes.ok) ? await extraEnRes.json() : null;
+                    ['settings', 'general'].forEach(section => {
+                        if (Array.isArray(extraCore[section])) {
+                            mergedData[section] = (mergedData[section] || []).concat(extraCore[section]);
+                        }
+                    });
+                    extraLang[setName] = { lang: extraLangData, en: extraEnData };
+                }
                 const mergeLanguageData = (coreItems, langItems) => {
                     if (!coreItems || !langItems) return;
                     coreItems.forEach(coreItem => {
@@ -445,8 +473,20 @@ class KBAssistant {
                         }
                     });
                 };
-                mergeLanguageData(mergedData.settings, langData.settings);
-                mergeLanguageData(mergedData.general, langData.general);
+                // Combine translations from the base files and the extra sets, so one
+                // pass applies them all by id. Fallback to English, then current lang.
+                const combinedLang = { settings: {}, general: {}, ui_texts: langData.ui_texts };
+                ['settings', 'general'].forEach(section => {
+                    Object.values(extraLang).forEach(set => {
+                        if (set.en && set.en[section]) Object.assign(combinedLang[section], set.en[section]);
+                    });
+                    if (langData[section]) Object.assign(combinedLang[section], langData[section]);
+                    Object.values(extraLang).forEach(set => {
+                        if (set.lang && set.lang[section]) Object.assign(combinedLang[section], set.lang[section]);
+                    });
+                });
+                mergeLanguageData(mergedData.settings, combinedLang.settings);
+                mergeLanguageData(mergedData.general, combinedLang.general);
                 mergedData.ui_texts = {};
                 if (langData.ui_texts) {
                     mergedData.ui_texts[this.currentLang] = langData.ui_texts;

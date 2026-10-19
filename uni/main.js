@@ -13120,6 +13120,23 @@ function showAllBoardsModal(onSelectCallback = null, hint = '') {
         boardsModalBody.appendChild(hintEl);
     }
     boardsModalBody.appendChild(modalContent);
+    // --- „Пусни демо-тура": един вход към продуктовия тур, на едно място с бордовете ---
+    if (!onSelectCallback) {
+        const tourBtn = document.createElement('button');
+        tourBtn.id = 'start-product-tour-btn';
+        tourBtn.className = 'board-filter-link start-product-tour-btn';
+        tourBtn.type = 'button';
+        tourBtn.textContent = (localStorage.getItem('language') === 'bg')
+            ? 'Пусни демо-тура'
+            : 'Start the demo tour';
+        tourBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            boardsModal.classList.remove('visible');
+            startProductTour();
+        });
+        boardsModalBody.appendChild(tourBtn);
+    }
     // --- Calculate optimal width to fit columns exactly ---
     let buttonWidth = maxWidthForButtons;
     // Fallback if global variable is not set or 0
@@ -20968,10 +20985,11 @@ function ensureKBAssistant() {
 }
 
 /**
- * Интрото на асистента (запис assistant-1 в базата на знанието): зарежда асистента и
- * пуска тура. Връща true, ако турът е тръгнал.
+ * Тур от базата на знанието: зарежда асистента и пуска водача на запис с дадено id.
+ * По подразбиране това е интрото на асистента (запис assistant-1). Връща true, ако турът е тръгнал.
  *
  * @param {Object} [options]
+ * @param {string} [options.id='assistant-1'] - id на записа в general, чиито guide стъпки се пускат
  * @param {boolean} [options.force] - пуска интрото дори при вече изтекъл флаг 'guide'
  * @param {boolean} [options.persistFlag=true] - записва ли 'guide'='false' (демото не пипа
  *        истинските настройки на браузъра, за да не изяде интрото на реалното приложение)
@@ -20980,7 +20998,8 @@ function ensureKBAssistant() {
 async function startAssistantGuide(options = {}) {
     if (!options.force && !guide) return false;
     if (!(await ensureKBAssistant())) return false;
-    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+    const guideId = options.id || 'assistant-1';
+    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === guideId);
     if (!entry || !entry.guide) return false;
     window.kbAssistant.showGuide(entry.guide);
     if (options.persistFlag !== false) {
@@ -20988,6 +21007,18 @@ async function startAssistantGuide(options = {}) {
         guide = false;
     }
     return true;
+}
+
+/**
+ * Ръчен вход към продуктовия тур: от менюто с бордове („Пусни демо-тура").
+ * Не пипа флаговете на интрото — турът е нещо, което потребителят иска сега.
+ */
+async function startProductTour() {
+    const started = await startAssistantGuide({ id: 'winnotes-tour', force: true, persistFlag: false });
+    if (!started) {
+        console.warn('[Tour] winnotes-tour is not in the knowledge base');
+    }
+    return started;
 }
 
 /**
@@ -21006,7 +21037,9 @@ async function startDemoAssistantIntro() {
         // Офлайн клонът на mainLogic прави return, а finally-то на онлайн клона не се
         // изпълнява — затова тук чакаме само рамка, за да е готов бордът.
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        const started = await startAssistantGuide({ force: true, persistFlag: false });
+        // Продуктовият тур (запис winnotes-tour). Ако липсва в базата, падаме обратно на интрото.
+        let started = await startAssistantGuide({ id: 'winnotes-tour', force: true, persistFlag: false });
+        if (!started) started = await startAssistantGuide({ force: true, persistFlag: false });
         if (!started) localStorage.removeItem(DEMO_INTRO_STORAGE_KEY);
         return started;
     } catch (e) {
