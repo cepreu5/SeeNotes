@@ -228,7 +228,7 @@ let maxSavedSearches = 20;
 let currentModalContent = '';
 let maxWidthForButtons = 0; // За менюто с бордове
 let toastTimeout, isShowingToast = false;
-let undoToastTimer = null; // b2.36: брояч за бутона „Отмени" в съобщението
+
 let dbExists = false; // Флаг за съществуването на IndexedDB
 let settingsInitialState = {}; // Запомня състоянието на настройките при отваряне
 let dbSourceGlobal = null; // Запомня откъде е създадена базата
@@ -5454,6 +5454,21 @@ function _(key) {
     return '';
 }
 
+/**
+ * Текст за партида (b2.36): при една бележка се ползва ключът с наставка '.one', за да не
+ * пише „1 бележки". Замества {count} и подадените стойности.
+ * @param {string} key - Ключът за много бележки.
+ * @param {number} count - Броят.
+ * @param {Object} [vars] - Допълнителни замествания, напр. { boardName: 'Борд Б' }.
+ */
+function _n(key, count, vars = {}) {
+    const lookupKey = (count === 1 && _((key + '.one'))) ? (key + '.one') : key;
+    let text = _(lookupKey) || _(key) || '';
+    text = text.replace('{count}', count);
+    Object.keys(vars).forEach(k => { text = text.replace('{' + k + '}', vars[k]); });
+    return text;
+}
+
 function hideToast() {
     clearUndoToast();
     const toast = document.getElementById('toastNotification');
@@ -5464,13 +5479,9 @@ function hideToast() {
     }
 }
 
-// Маха бутона „Отмени" от съобщението и спира таймера му. Извиква се при всяко скриване,
-// за да не остане бутон, който вече сочи към свършена партида.
+// Маха бутона „Отмени" от съобщението. Извиква се при всяко скриване, за да не остане
+// бутон, който вече сочи към свършена партида.
 function clearUndoToast() {
-    if (undoToastTimer) {
-        clearTimeout(undoToastTimer);
-        undoToastTimer = null;
-    }
     const toast = document.getElementById('toastNotification');
     if (!toast) return;
     const btn = toast.querySelector('.toast-undo-btn');
@@ -5519,7 +5530,6 @@ function showUndoToast(message, onUndo, durationMs = 8000) {
         e.preventDefault();
         e.stopPropagation();
         hideToast();
-        undoToastTimer = null;
         try {
             const result = onUndo();
             if (result && typeof result.catch === 'function') result.catch(err => console.error('Undo failed:', err));
@@ -14183,6 +14193,18 @@ function applySelectionDomOnly() {
                 box = document.createElement('div');
                 box.className = 'note-select-check';
                 box.setAttribute('aria-hidden', 'true');
+                // Отметката застава точно на мястото на кръгчето за закачане — то се крие по време
+                // на избор, а мястото му зависи от фона на бележката, затова се мери веднъж.
+                const pin = card.querySelector('.note-pin-btn');
+                if (pin) {
+                    const pr = pin.getBoundingClientRect();
+                    const cr = card.getBoundingClientRect();
+                    if (pr.width > 0) {
+                        const size = 20;
+                        box.style.top = Math.round(pr.top - cr.top + (pr.height - size) / 2) + 'px';
+                        box.style.right = Math.round(cr.right - pr.right + (pr.width - size) / 2) + 'px';
+                    }
+                }
                 card.appendChild(box);
             }
             box.classList.toggle('checked', isSel);
@@ -14263,6 +14285,12 @@ function setNoteSelected(key, selected) {
     }
     applySelectionDomOnly();
     updateSelectionBar();
+}
+
+/** Маха бележка от избора, ако е била в него (при триене от кабарчето). */
+function dropFromSelectionIfPresent(key) {
+    if (!key || !selectionState.active || !selectionState.keys.has(key)) return;
+    setNoteSelected(key, false);
 }
 
 /** Обикновен клик в режим на избор: сменя отметката на картата. */
@@ -14439,8 +14467,8 @@ async function bulkDeleteSelectedNotes() {
     const count = targets.length;
     const inTrash = currentBoardFilter === 'trash';
     const confirmMsg = inTrash
-        ? (_('confirmBatchDelete') || _('confirmNoteDelete') || '').replace('{count}', count)
-        : (_('confirmBatchMoveToTrash') || _('confirmNoteMoveToTrash') || '').replace('{count}', count);
+        ? (_n('confirmBatchDelete', count) || _('confirmNoteDelete') || '')
+        : (_n('confirmBatchMoveToTrash', count) || _('confirmNoteMoveToTrash') || '');
     const confirmed = await showConfirmation(confirmMsg);
     if (!confirmed) return;
     const before = targets.map(note => ({ note, boardid: note.boardid, status: note.status }));
@@ -14459,7 +14487,7 @@ async function bulkDeleteSelectedNotes() {
             }
         }
         refreshAfterBatch(boards);
-        showToast((_('batchDeleted') || '').replace('{count}', count), 4000);
+        showToast(_n('batchDeleted', count), 4000);
         return;
     }
     let trashed = 0;
@@ -14472,7 +14500,7 @@ async function bulkDeleteSelectedNotes() {
         showToast(_('noteDeletedError') || 'Error', 5000);
         return;
     }
-    showUndoToast((_('batchMovedToTrash') || '').replace('{count}', trashed), async () => {
+    showUndoToast(_n('batchMovedToTrash', trashed), async () => {
         let restored = 0;
         for (const b of before) {
             b.note.status = b.status === undefined ? 0 : b.status;
@@ -14488,7 +14516,7 @@ async function bulkDeleteSelectedNotes() {
         }
         refreshAfterBatch(boards);
         if (restored === before.length) {
-            showToast((_('batchUndone') || '').replace('{count}', restored), 3000);
+            showToast(_n('batchUndone', restored), 3000);
         } else {
             showToast((_('batchUndoPartial') || '')
                 .replace('{done}', restored).replace('{total}', before.length), 5000);
@@ -14504,7 +14532,7 @@ async function bulkMoveSelectedNotes() {
         return;
     }
     const keys = Array.from(selectionState.keys);
-    const hint = (_('selectionMoveHint') || 'Move {count} notes to…').replace('{count}', keys.length);
+    const hint = _n('selectionMoveHint', keys.length);
     showAllBoardsModal((newBoardId) => {
         runBulkMove(keys, newBoardId);
     }, hint);
@@ -14550,10 +14578,9 @@ async function runBulkMove(keys, newBoardId) {
         showToast((_('batchMoveNothing') || '').replace('{boardName}', targetBoard.title), 4000);
         return;
     }
-    let msg = (_('batchMovedSuccess') || "{count} notes were moved to '{boardName}'")
-        .replace('{count}', moved).replace('{boardName}', targetBoard.title);
+    let msg = _n('batchMovedSuccess', moved, { boardName: targetBoard.title });
     if (skipped > 0) {
-        msg += ' ' + (_('batchMoveSkipped') || '').replace('{count}', skipped).replace('{boardName}', targetBoard.title);
+        msg += ' ' + _n('batchMoveSkipped', skipped, { boardName: targetBoard.title });
     }
     showUndoToast(msg, async () => {
         let restored = 0;
@@ -14571,7 +14598,7 @@ async function runBulkMove(keys, newBoardId) {
         }
         refreshAfterBatch(boards);
         if (restored === movedEntries.length) {
-            showToast((_('batchUndone') || '').replace('{count}', restored), 3000);
+            showToast(_n('batchUndone', restored), 3000);
         } else {
             showToast((_('batchUndoPartial') || '')
                 .replace('{done}', restored).replace('{total}', movedEntries.length), 5000);
@@ -19876,6 +19903,7 @@ async function createNoteElement(noteContent) {
         if (e.ctrlKey) {
             e.stopPropagation();
             e.preventDefault();
+            dropFromSelectionIfPresent(String(noteGdid || noteID || ''));
             handleNoteDelete(noteGdid, noteID);
         }
     };
@@ -19884,8 +19912,7 @@ async function createNoteElement(noteContent) {
     // като Ctrl+клик. Работи и докато има избор; ако бележката е била в него, излиза от избора.
     addLongPress(titleWrapper, () => {
         suppressCardClickOnce();
-        const headerKey = String(noteGdid || noteID || '');
-        if (headerKey && selectionState.keys.has(headerKey)) setNoteSelected(headerKey, false);
+        dropFromSelectionIfPresent(String(noteGdid || noteID || ''));
         handleNoteDelete(noteGdid, noteID);
     }, { delay: 500 });
 

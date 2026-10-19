@@ -4353,16 +4353,18 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* --- МАСОВ ИЗБОР НА БЕЛЕЖКИ (b2.36) --- */
-/* Отметката в горния десен ъгъл: заменя кръгчето за закачане, докато тече избор. */
+/* Отметката в горния десен ъгъл: заменя кръгчето за закачане, докато тече избор.
+   Стойностите по подразбиране са мястото на кръгчето при стандартния фон; ако бележката
+   е с друг фон, JS измерва мястото и го задава в inline стил. */
 .note-select-check {
     position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 18px;
-    height: 18px;
+    top: 26px;
+    right: 31px;
+    width: 20px;
+    height: 20px;
     box-sizing: border-box;
     border: 2px solid rgba(0, 0, 0, 0.45);
-    border-radius: 4px;
+    border-radius: 6px;
     background: rgba(255, 255, 255, 0.9);
     display: flex;
     align-items: center;

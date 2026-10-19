@@ -570,5 +570,13 @@
     "batchMoveNothing": "All selected notes are already in '{boardName}'.",
     "batchUndone": "{count} notes were restored.",
     "batchUndoPartial": "{done} of {total} notes were restored.",
-    "undoAction": "Undo"
+    "undoAction": "Undo",
+    "selectionMoveHint.one": "Move 1 note to…",
+    "confirmBatchMoveToTrash.one": "Are you sure you want to move 1 note to the trash?",
+    "confirmBatchDelete.one": "Are you sure you want to delete 1 note permanently?",
+    "batchMovedToTrash.one": "1 note was moved to Trash.",
+    "batchDeleted.one": "1 note was deleted permanently.",
+    "batchMovedSuccess.one": "1 note was moved to '{boardName}'.",
+    "batchMoveSkipped.one": "1 was already in '{boardName}'.",
+    "batchUndone.one": "1 note was restored."
 }
