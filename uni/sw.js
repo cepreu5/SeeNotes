@@ -1,5 +1,10 @@
 const CACHE_NAME = 'cx-notes-b2.41';
 const OFFLINE_PAGE = 'index.html';
+// Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
+// (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
+// а демото не прави такива — така че кешът не пречи на отварянето на демото. При напълно
+// първо отваряне без мрежа (преди който и да е онлайн старт) страницата не е в кеша, но това
+// важи за приложението като цяло, не само за демото.
 // b2.22: моделът и библиотеката на семантичното търсене живеят в собствен кеш (semantic.js: 'cx-notes-semantic-v1'),
 // не са в ASSETS_TO_CACHE, а заявките към CDN/Hugging Face са cross-origin и fetch handler-ът ги пропуска.
 const SEMANTIC_CACHE_PREFIX = 'cx-notes-semantic-';
