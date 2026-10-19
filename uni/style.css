@@ -27,13 +27,6 @@ body {
     background-image: url('Board.png');
 }
 
-.login-div {
-    /*max-width: 800px;*/
-    padding: 1em;
-    font-family: sans-serif;
-    background-image: url('Frame.png');
-}
-
 body:not(.app-ready) header,
 body:not(.app-ready) #add-note-fab,
 body:not(.app-ready) #scrollTopBtn,
@@ -43,11 +36,6 @@ body:not(.app-ready) #kb-fab {
 
 /* A note modal blocks creating another note; hide the global add button. */
 body:has(.note-window.visible) #add-note-fab {
-    display: none !important;
-}
-
-/* The Assistant button is static now; keep it off the login page as before. */
-body:has(#login-page:not([hidden])) #kb-fab {
     display: none !important;
 }
 
@@ -228,10 +216,6 @@ header h1 {
     outline: none;
 }
 
-
-
-
-
 /* Hide native clear button */
 #search-box::-webkit-search-cancel-button {
     -webkit-appearance: none;
@@ -339,7 +323,6 @@ header h1 {
 
 /* Стил за самата икона за зареждане в бутона */
 
-
 /* Клас, който се добавя, за да се покаже иконата и да се стартира анимацията */
 .button-loading {
     display: inline-block !important;
@@ -349,19 +332,6 @@ header h1 {
 }
 
 /* Стил за иконата за зареждане в бутона за режим */
-#mode-button-loading-icon {
-    display: none;
-    /* Скрита по подразбиране */
-    width: 24px;
-    /* Същия размер като основната икона */
-    height: 24px;
-    position: absolute;
-    /* Позиционираме я в центъра на бутона */
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    /* Първоначално центриране */
-}
 
 /* Стил за бутона за затваряне на календара */
 .close-calendar-btn {
@@ -440,7 +410,6 @@ header h1 {
     /* Make separator stronger */
 }
 
-
 .header-btn {
     margin-left: 10px;
     padding: 0;
@@ -497,32 +466,6 @@ header h1 {
 }
 
 /* Overlay for DB icon on mode button */
-.mode-db-overlay {
-    /* Премахваме абсолютното позициониране, за да е една до друга */
-    position: relative;
-    /* Позволява ни да я местим спрямо нормалната й позиция */
-    top: 7px;
-    /* Сваляме иконата 7px надолу */
-    margin-left: -15px;
-    /* Придърпваме я наляво, за да застъпи първата */
-    width: 21px;
-    /* 3px по-малка от основната икона (24px) */
-    height: 21px;
-}
-
-.mode-db-overlay img {
-    width: 100%;
-    height: 100%;
-}
-
-/* Когато mode_button зарежда, скриваме другите икони и показваме анимацията */
-.mode-button-loading #mode-button-loading-icon {
-    display: block !important;
-}
-
-.mode-button-loading .mode-icon-wrapper {
-    display: none !important;
-}
 
 .header-btn:hover {
     background-color: #c0c0c0;
@@ -585,7 +528,6 @@ main {
 }
 
 /* Временен клас, докато се генерира фона */
-
 
 .note-background-canvas {
     position: absolute;
@@ -671,16 +613,6 @@ code {
     scrollbar-color: #555 #c8a64b;
     scrollbar-width: thin;
 }
-
-
-
-
-
-
-
-
-
-
 
 /* Ширина по съдържанието, както е в ASCII режима на редактора: колоната е толкова широка,
    колкото най-дългата стойност в нея, а .md-table-wrapper я превърта хоризонтално, вместо да
@@ -878,7 +810,6 @@ code {
     stroke: rgba(0, 0, 0, 0.2);
     stroke-width: 1.5;
 }
-
 
 /* Specific styles for the boards note to make it a full-width panel */
 .boards-note,
@@ -1193,7 +1124,6 @@ code {
     /* Better alignment with the label text */
 }
 
-
 .view-button {
     background: none;
     border: none;
@@ -1479,7 +1409,6 @@ code {
     /* Иконата не "поглъща" клика */
 }
 
-
 #boards-table {
     width: 100%;
     border-collapse: collapse;
@@ -1608,8 +1537,6 @@ code {
     }
 }
 
-
-
 .scrolling-menu-wrapper {
     display: grid;
     /* Промяна на flex към grid за по-добър контрол */
@@ -1661,14 +1588,6 @@ code {
     /* По-светъл плъзгач за контраст */
     border-radius: 4px;
 }
-
-
-
-
-
-
-
-
 
 .board-filter-link {
     position: relative;
@@ -1749,7 +1668,6 @@ code {
 .board-filter-link
 
 /* Restore lift effect for active items in dropdown menu */
-
 
 .modal-body .board-filter-link {
     display: inline-block;
@@ -1876,13 +1794,6 @@ code {
 }
 
 /* Style for the icon inside the button */
-
-
-
-
-
-
-
 
 .reminder-filter-btn {
     background-color: red;
@@ -2086,7 +1997,6 @@ code {
     /* Превключва грида за сортиране в една колона на тесни екрани */
     
 
-
 /* Toast Notification */
 .toast-notification {
     visibility: hidden;
@@ -2236,10 +2146,6 @@ code {
     background-color: #357ae8;
 }
 
-
-
-
-
 .slider-container {
     display: flex;
     align-items: center;
@@ -2338,7 +2244,6 @@ code {
 
 /* Специфичен стил, за да се подредят етикетът и бутонът за избор на папка вертикално */
 
-
 /* Renamed from #zoom-modal to #settings-modal */
 #settings-modal .modal-content-box {
     background-color: #cfe6f8;
@@ -2417,7 +2322,6 @@ code {
     background-color: #eef5fb;
     /* No appearance property needed for select, as it's not a number input */
 }
-
 
 /* .zoom-input-number::-webkit-outer-spin-button,
 .zoom-input-number::-webkit-inner-spin-button {
@@ -3001,12 +2905,6 @@ code {
     /* Гарантира, че фонът е зад съдържанието */
 }
 
-
-
-
-
-
-
 .settings-icon-label {
     display: flex;
     align-items: center;
@@ -3083,8 +2981,6 @@ code {
     display: block;
 }
 
-
-
 /* Floating button visibility handled in its own class */
 
 /* .popup-menu-btn removed */
@@ -3117,54 +3013,11 @@ code {
     background-color: #357ae8;
 }
 
-#lang-switcher {
-    display: flex;
-    justify-content: center;
-    margin-left: auto;
-}
-
 /* Стилове за главния language switcher извън login-box */
-#lang-switcher-main {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 20px;
-    margin-top: 0px;
-}
 
 /* Стилове за language switcher в login-box */
-#lang-switcher {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 15px;
-}
-
-#trialBtn {
-    background-color: #4CAF50;
-    color: white;
-    padding: 12px 24px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 16px;
-    display: block;
-    margin: 10px auto;
-}
-
-#trialBtn:hover {
-    background-color: #45a049;
-}
-
-
 
 /* Login container to center content */
-#login-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 80vh;
-    padding: 20px;
-}
 
 /* Weekend dates in monthly calendar (Saturday and Sunday) */
 .weekend-date {
@@ -3200,12 +3053,7 @@ body.selection-locked .note.active-selection-note .note-content {
     margin-bottom: 2px;
 }
 
-
-
 /* Show only when in global view mode */
-
-
-
 
 /* Modal Note Footer (inside toolbar) */
 .modal-note-footer {
@@ -3228,8 +3076,6 @@ body.selection-locked .note.active-selection-note .note-content {
 .modal-note-footer[hidden] {
     display: none;
 }
-
-
 
 .modal-note-footer .header-icon svg {
     width: 16px;
@@ -3329,10 +3175,6 @@ body.selection-locked .note.active-selection-note .note-content {
     background: rgba(255, 255, 255, 0.9) !important;
     transform: scale(1.1);
 }
-
-
-
-
 
 /* --- RESPONSIVE MODAL TOOLBARS --- */
 .modal-header-toolbar {
@@ -3488,10 +3330,6 @@ body.selection-locked .note.active-selection-note .note-content {
 .modal-edit-toolbar-btn.is-strike {
     text-decoration: line-through;
 }
-
-
-
-
 
 .modal-edit-toolbar-btn.is-table {
     font-size: 18px;
@@ -4458,38 +4296,4 @@ body.selection-locked .note.active-selection-note .note-content {
    ===================================================================== */
 
 /* --- Бутонът на началния екран: в панела със заявката за достъп, под нея --- */
-.demo-start-btn {
-    display: block;
-    width: 100%;
-    max-width: 260px;
-    margin: 8px auto 0 auto;
-    box-sizing: border-box;
-}
 
-/* --- Лента на демо режима: точно един текстов ред под хедъра.
-   Без бутон, без flex-кутия и без допълнителен отстъп — височината е само от
-   line-height на текста. „Изход“ е inline текстова връзка в същия ред. --- */
-.demo-banner {
-    margin: 0;
-    padding: 1px 8px;
-    box-sizing: border-box;
-    background: #fff3cd;
-    font-size: 11px;
-    line-height: 1.35;
-    text-align: center;
-    white-space: normal;
-    color: #6a4b00;
-}
-
-.demo-banner[hidden] {
-    display: none;
-}
-
-.demo-banner-label {
-    font-weight: 600;
-}
-
-.demo-banner-label::after {
-    content: " · ";
-    font-weight: 400;
-}

@@ -83,7 +83,11 @@
     <header>
         <div style="display: flex; align-items: center;">
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
-            <h1 ID="app-title" data-key="appTitle">CX Notes</h1>
+            <div style="display: flex; flex-direction: column;">
+                <h1 ID="app-title" data-key="appTitle">CX Notes</h1>
+                <span id="mode-badge" data-key="localModeBadge"
+                    style="font-size: 0.75em; opacity: 0.75; line-height: 1;"></span>
+            </div>
         </div>
         <div id="search-wrapper">
             <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder">
@@ -94,9 +98,6 @@
                 <!-- Иконата се вмъква от JS -->
                 <div class="mode-icon-wrapper">
                     <img id="mode-main-icon" src="NoteFav.png" alt="" style="width:24px; height:24px;">
-                    <div class="mode-db-overlay" hidden>
-                        <img id="mode-overlay-icon" src="" alt="">
-                    </div>
                 </div>
             </button>
             <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Reload">

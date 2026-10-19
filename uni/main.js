@@ -3878,11 +3878,9 @@ function renderLocalModeBadge() {
     if (badge && typeof _ === 'function') {
         badge.textContent = _('localModeBadge') || 'локално · IndexedDB';
     }
-    const overlay = document.querySelector('#mode_button .mode-db-overlay');
-    if (overlay) overlay.hidden = true;
-    const modeButtonHtml = document.getElementById('mode_button');
-    if (modeButtonHtml) {
-        modeButtonHtml.title = _('localModeTooltip') || 'Локален режим: данните са в този браузър';
+    const modeButton = document.getElementById('mode_button');
+    if (modeButton) {
+        modeButton.title = _('localModeTooltip') || 'Локален режим: данните са в този браузър';
     }
 }
 
@@ -7776,46 +7774,14 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         }
         currentBackground = newBackground;
     }
-    // --- НОВА ЛОГИКА: Анимация в бутона за режим ---
-    const modeButton = document.getElementById('mode_button');
-    const loadingIcon = modeButton ? modeButton.querySelector('#mode-button-loading-icon') : null;
-    let animationStartTime = 0;
     const runFilter = () => {
         applyFilters();
         // Показваме контейнера след като филтрирането е приключило
-        // Използваме requestAnimationFrame, за да сме сигурни, че браузърът е готов за рисуване
         requestAnimationFrame(() => {
             notesContainer.style.visibility = '';
         });
-        // Спираме анимацията СЛЕД като браузърът е прерисувал екрана
-        if (modeButton && loadingIcon) {
-            modeButton.classList.remove('mode-button-loading');
-            loadingIcon.classList.remove('button-loading');
-            if (typeof debug !== 'undefined' && debug) {
-                setTimeout(() => {
-                    const duration = performance.now() - animationStartTime;
-                    let logName = boardId;
-                    if (boardId !== 'all' && typeof boardsData !== 'undefined') {
-                        const b = boardsData.find(b => b.gdid === boardId || b.id === boardId);
-                        if (b) logName = b.title;
-                    }
-                    const noteCounter = document.getElementById('note-counter');
-                    const count = noteCounter ? noteCounter.textContent : '0';
-                    console.log(`Board "${logName}" (${count} notes) render duration: ${duration.toFixed(0)}ms`);
-                }, 0);
-            }
-        }
     };
-    if (modeButton && loadingIcon) {
-        animationStartTime = performance.now();
-        modeButton.classList.add('mode-button-loading');
-        loadingIcon.classList.add('button-loading');
-        // Използваме setTimeout, за да позволим на браузъра да рендира анимацията
-        // преди да започне тежката операция по филтриране.
-        setTimeout(runFilter, 10);
-    } else {
-        runFilter();
-    }
+    runFilter();
     updateSearchPlaceholder();
     window.dispatchEvent(new Event('scroll'));
     // --- КОРЕКЦИЯ: Възстановяване на UI след затваряне на календара ---
