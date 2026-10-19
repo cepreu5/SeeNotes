@@ -4351,3 +4351,154 @@ body.selection-locked .note.active-selection-note .note-content {
     text-align: center;
     pointer-events: none;
 }
+
+/* --- МАСОВ ИЗБОР НА БЕЛЕЖКИ (b2.36) --- */
+/* Отметката в горния десен ъгъл: заменя кръгчето за закачане, докато тече избор.
+   Стойностите по подразбиране са мястото на кръгчето при стандартния фон; ако бележката
+   е с друг фон, JS измерва мястото и го задава в inline стил. */
+.note-select-check {
+    position: absolute;
+    top: 26px;
+    right: 31px;
+    width: 20px;
+    height: 20px;
+    box-sizing: border-box;
+    border: 2px solid rgba(0, 0, 0, 0.45);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.note-select-check.checked {
+    background: #1976d2;
+    border-color: #1976d2;
+}
+
+.note-select-check.checked::after {
+    content: '';
+    width: 4px;
+    height: 8px;
+    margin-top: -2px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+/* Избраната карта носи рамка, останалите в борда притъмняват. */
+.note.note-selected {
+    outline: 2px solid #1976d2;
+    outline-offset: -2px;
+}
+
+#notes-container.selection-mode .note:not(.note-selected) {
+    opacity: 0.75;
+}
+
+/* По време на избор закачането се крие — иначе се натиска по навик. */
+#notes-container.selection-mode .note-pin-btn {
+    display: none;
+}
+
+/* Лентата с действията: само при непразен избор; не мести решетката и хедъра. */
+#selection-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    max-width: calc(100vw - 12px);
+    background: rgba(28, 28, 30, 0.94);
+    color: #fff;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.3);
+    font-size: 0.95em;
+}
+
+#selection-bar[hidden] {
+    display: none;
+}
+
+#selection-count {
+    white-space: nowrap;
+    font-weight: 600;
+    padding-right: 2px;
+}
+
+.selection-bar-btn {
+    font: inherit;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.selection-bar-btn:hover {
+    background: rgba(255, 255, 255, 0.26);
+}
+
+.selection-bar-danger {
+    background: #c22d1f;
+    border-color: #c22d1f;
+}
+
+.selection-bar-danger:hover {
+    background: #d8422f;
+}
+
+.selection-bar-icon {
+    padding: 6px 10px;
+    font-size: 1.1em;
+    line-height: 1;
+}
+
+/* Редът „Премести N бележки в…" в избора на борд. */
+.boards-modal-hint {
+    padding: 0 10px 10px 10px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 1em;
+    color: #333;
+}
+
+/* Бутон „Отмени" в съобщението. */
+.toast-undo-btn {
+    margin-left: 12px;
+    font: inherit;
+    font-weight: 700;
+    color: #000;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.toast-undo-btn:hover {
+    background: #fff;
+}
+
+@media (max-width: 480px) {
+    #selection-bar {
+        gap: 6px;
+        padding-left: 8px;
+        padding-right: 8px;
+        font-size: 0.9em;
+    }
+
+    .selection-bar-btn {
+        padding: 6px 9px;
+    }
+}
