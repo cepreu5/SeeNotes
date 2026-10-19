@@ -170,6 +170,71 @@ let pass = false;
 let DEMO_MODE = false;
 const DEMO_NOTE_LIMIT = 5;
 
+// --- Демо режим (без мрежа, само IndexedDB) -------------------------------------
+// Демото пуска цялото приложение без нито едно външно обръщение: собствена база
+// (NotesDB-demo), твърда бариера пред fetch и никакъв Google скрипт. Флагът живее в
+// localStorage, за да преживее презареждане, и се вдига и от адрес ?demo=1.
+// (DEMO_MODE по-горе е стар флаг за ограничаване на бележките и не участва в това.)
+const DEMO_MODE_STORAGE_KEY = 'cxNotesDemoMode';
+const DEMO_DB_NAME = 'NotesDB-demo';
+const DEMO_FLAGS_SNAPSHOT_KEY = 'cxNotesDemoPrevFlags';
+const DEMO_DATA_SOURCE_KEYS = ['useGoogleDb', 'useIndexedDb', 'useLocalDb', 'useArhDb'];
+
+function readDemoModeRequest() {
+    // 1) Адресът печели: ?demo=1 влиза направо в демо, ?demo=0 го изключва.
+    try {
+        const value = new URLSearchParams(window.location.search).get('demo');
+        if (value !== null) {
+            const normalized = String(value).toLowerCase();
+            if (['1', 'true', 'yes', 'on'].includes(normalized)) return 'on';
+            if (['0', 'false', 'no', 'off'].includes(normalized)) return 'off';
+        }
+    } catch (e) { /* без URLSearchParams остава само запазеният флаг */ }
+    // 2) Запазеният флаг: демото преживява презареждане.
+    try {
+        if (localStorage.getItem(DEMO_MODE_STORAGE_KEY) === '1') return 'on';
+    } catch (e) { /* режим без localStorage: само адресът може да включи демо */ }
+    return 'off';
+}
+
+const DEMO_MODE_REQUEST = readDemoModeRequest();
+const IS_DEMO_MODE = DEMO_MODE_REQUEST === 'on';
+if (DEMO_MODE_REQUEST === 'off') {
+    try { localStorage.removeItem(DEMO_MODE_STORAGE_KEY); } catch (e) { }
+}
+window.__cxDemoMode = IS_DEMO_MODE;
+
+// Отказаните външни адреси в демо режим — за конзолата и за ръчна проверка.
+const demoBlockedRequests = [];
+
+/**
+ * Твърдата мрежова бариера на демото: всяка заявка извън произхода на приложението се
+ * отказва и се логва. Флаговете isOffline не стигат — една забравена проверка е
+ * достатъчна, за да излезе заявка към Google.
+ */
+function installDemoNetworkBarrier() {
+    if (window.__cxDemoNetworkBarrier) return;
+    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+    window.fetch = function (input, init) {
+        let target = '';
+        try {
+            target = typeof input === 'string' ? input : ((input && input.url) ? input.url : String(input));
+        } catch (e) { target = '[unknown]'; }
+        let sameOrigin = false;
+        try {
+            sameOrigin = new URL(target, window.location.href).origin === window.location.origin;
+        } catch (e) { sameOrigin = false; }
+        if (sameOrigin && nativeFetch) return nativeFetch(input, init);
+        demoBlockedRequests.push(target);
+        console.warn('[Demo] Външна заявка отказана (демо режимът няма мрежа):', target);
+        return Promise.reject(new TypeError('Demo mode: network access is disabled for ' + target));
+    };
+    window.__cxDemoNetworkBarrier = true;
+    console.log('[Demo] Network barrier is on: every request outside this origin will be refused.');
+}
+
+if (IS_DEMO_MODE) installDemoNetworkBarrier();
+
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
 // =================================================================================
@@ -258,7 +323,10 @@ console.log(`[Startup] Active folder: ${activeFolderName}`);
 let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
 
 // --- IndexedDB Конфигурация ---
-const NOTES_DB_NAME = 'NotesDB';
+const NOTES_DB_NAME_DEFAULT = 'NotesDB';
+// Демото работи в собствена база: истинските бележки в NotesDB остават недокоснати.
+// Името е една точка на истина — целият код по-долу ползва NOTES_DB_NAME.
+let NOTES_DB_NAME = IS_DEMO_MODE ? DEMO_DB_NAME : NOTES_DB_NAME_DEFAULT;
 const BOARD_STORE_NAME = 'boards';
 const MEDIA_STORE_NAME = 'media';
 const NOTE_STORE_NAME = 'notes';
@@ -3521,6 +3589,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Добави този код в началото или края на main.js
 // Динамично зареждане на Google Identity Services скрипта с retry логика
 function loadGoogleIdentityServices(retries = 3) {
+    if (IS_DEMO_MODE) {
+        // Демото не зарежда GIS: иначе скриптът от accounts.google.com тръгва още при отваряне.
+        console.log('[Demo] Google Identity Services is not loaded in demo mode.');
+        return;
+    }
     if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
         return;
     }
@@ -3537,14 +3610,131 @@ function loadGoogleIdentityServices(retries = 3) {
     document.head.appendChild(script);
 }
 
+// =================================================================================
+// II. ДЕМО РЕЖИМ — подготовка, лента, изход
+// =================================================================================
+// Демото минава по съществуващия офлайн път: checkAuth пропуска без мрежа при
+// isOffline + isExplicitLogin, а mainLogic има офлайн клон, който рисува от IndexedDB.
+// Затова не са нужни токен, имейл или лиценз — само собствена база и никаква мрежа.
+
+/**
+ * Подготвя демото преди старта на приложението: локален източник на данни в собствената
+ * база и лента в хедъра. Бариерата пред fetch вече е вдигната.
+ */
+async function prepareDemoMode() {
+    installDemoNetworkBarrier();
+    applyDemoDataSource();
+    // Минаваме по офлайн пътя: без мрежа, без проверка на лиценз и без логин страница.
+    isOffline = true;
+    showDemoBanner();
+    console.log(`[Demo] Demo mode is on: database "${NOTES_DB_NAME}", no network.`);
+}
+
+/**
+ * Демото е само локална база. Истинските настройки на браузъра се запазват, за да се
+ * върнат при изход от демо.
+ */
+function applyDemoDataSource() {
+    try {
+        if (localStorage.getItem(DEMO_MODE_STORAGE_KEY) !== '1') {
+            const previous = {};
+            DEMO_DATA_SOURCE_KEYS.forEach(key => { previous[key] = localStorage.getItem(key); });
+            sessionStorage.setItem(DEMO_FLAGS_SNAPSHOT_KEY, JSON.stringify(previous));
+        }
+        localStorage.setItem(DEMO_MODE_STORAGE_KEY, '1');
+        localStorage.setItem('useGoogleDb', 'false');
+        localStorage.setItem('useIndexedDb', 'true');
+        localStorage.setItem('useLocalDb', 'false');
+        localStorage.setItem('useArhDb', 'false');
+    } catch (e) {
+        console.warn('[Demo] Could not apply the demo data-source flags:', e);
+    }
+    updateGlobalStateFlags();
+}
+
+/** Показва трайната лента „Демо режим“ в хедъра. */
+function showDemoBanner() {
+    const banner = document.getElementById('demo-banner');
+    if (banner) {
+        banner.hidden = false;
+        banner.style.display = '';
+    }
+}
+
+/**
+ * Изходът от демо връща към началния екран (чисто) — без автоматичен опит за вход с
+ * Google. Демо базата остава, за да не се губи при следващо влизане в демото.
+ */
+async function exitDemoMode() {
+    try {
+        localStorage.removeItem(DEMO_MODE_STORAGE_KEY);
+        const raw = sessionStorage.getItem(DEMO_FLAGS_SNAPSHOT_KEY);
+        if (raw) {
+            const previous = JSON.parse(raw);
+            DEMO_DATA_SOURCE_KEYS.forEach(key => {
+                const value = previous[key];
+                if (value === null || value === undefined) localStorage.removeItem(key);
+                else localStorage.setItem(key, value);
+            });
+            sessionStorage.removeItem(DEMO_FLAGS_SNAPSHOT_KEY);
+        }
+    } catch (e) {
+        console.warn('[Demo] Could not restore the settings on exit:', e);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('demo');
+    window.location.replace(url.toString());
+}
+
+/** Бутонът на началния екран, предупреждението и изходът от лентата. */
+function initDemoModeUI() {
+    // Идемпотентно: извиква се веднага (елементите вече са в DOM, main.js е в края на body)
+    // и повторно при DOMContentLoaded, без да дублира слушателите.
+    if (window.__cxDemoUIReady) return;
+    window.__cxDemoUIReady = true;
+    const startBtn = document.getElementById('demo-start-btn');
+    const banner = document.getElementById('demo-banner');
+    const exitBtn = document.getElementById('demo-banner-exit');
+
+    // Потвърждение от самия браузър: демото не носи свой прозорец.
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            if (!confirm(_('demoConfirm'))) return;
+            try { localStorage.setItem(DEMO_MODE_STORAGE_KEY, '1'); } catch (e) { }
+            const url = new URL(window.location.href);
+            url.searchParams.set('demo', '1');
+            window.location.href = url.toString();
+        });
+    }
+    if (exitBtn) exitBtn.addEventListener('click', () => { exitDemoMode(); });
+
+    // Лентата се показва само когато демото е активно (иначе остава скрита).
+    if (IS_DEMO_MODE && banner) {
+        showDemoBanner();
+    } else if (banner) {
+        banner.hidden = true;
+    }
+}
+
+// Веднага: main.js се зарежда след началния екран, значи елементите вече съществуват и
+// бутонът работи още преди края на парсването на страницата.
+initDemoModeUI();
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDemoModeUI);
+}
+
 // Стартирай зареждането в зависимост от състоянието
 (async () => {
     await setLanguage(currentLang);
+    // Демото се подготвя преди самото стартиране: собствена база и офлайн път.
+    // Няма GIS, няма логин страница.
+    if (IS_DEMO_MODE) await prepareDemoMode();
     dbExists = await checkDbExists(NOTES_DB_NAME);
     const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
     await goOffline();
     if (isOffline) {
-        startApp();
+        // В демо входът е явен: checkAuth пропуска без мрежа и без токен.
+        startApp(IS_DEMO_MODE);
     } else if (hasToken) {
         loadGoogleIdentityServices();
         startApp();
@@ -7147,6 +7337,11 @@ function saveSearchTerm(term) {
 
 // Функция за инициализация на login страницата
 async function initLoginPage() {
+    if (IS_DEMO_MODE) {
+        // В демо няма логин страница: няма акаунт, лиценз и уайтлист за проверка.
+        console.log('[Demo] Login page skipped in demo mode.');
+        return;
+    }
     document.getElementById('login-page').hidden = false;
     document.getElementById('login-page').style.display = 'block';
     updateSearchPlaceholder();

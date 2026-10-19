@@ -546,5 +546,9 @@
     "batchDeleted.one": "1 note was deleted permanently.",
     "batchMovedSuccess.one": "1 note was moved to '{boardName}'.",
     "batchMoveSkipped.one": "1 was already in '{boardName}'.",
-    "batchUndone.one": "1 note was restored."
+    "batchUndone.one": "1 note was restored.",
+    "demoButton": "Demo mode",
+    "demoConfirm": "Demo mode\n\nThe app will not send a single request to Google or any external address. Notes stay in this browser only, in a separate demo database.\n\nContinue?",
+    "demoBannerLabel": "Demo mode · no internet",
+    "demoExit": "Exit demo"
 }
