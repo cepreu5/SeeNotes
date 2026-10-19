@@ -228,6 +228,7 @@ let maxSavedSearches = 20;
 let currentModalContent = '';
 let maxWidthForButtons = 0; // За менюто с бордове
 let toastTimeout, isShowingToast = false;
+
 let dbExists = false; // Флаг за съществуването на IndexedDB
 let settingsInitialState = {}; // Запомня състоянието на настройките при отваряне
 let dbSourceGlobal = null; // Запомня откъде е създадена базата
@@ -3415,6 +3416,8 @@ async function authCallback(tokenResponse) {
         }
         sessionStorage.removeItem('logout_flag');
         isSyncSuspended = false;
+        // Флагът падна — прерисуваме иконата, за да махнем ⚠ още преди startApp
+        updateModeButton();
         scheduleProactiveTokenRefresh();
         document.getElementById('login-page').hidden = true;
         sessionStorage.setItem('isExplicitLogin', 'true');
@@ -4209,8 +4212,11 @@ function renderWeeklyCalendarView(dateForWeek) {
 /**
  * Премества бележка в Кошчето (задава status = 1).
  * Обновява IndexedDB, GDrive и локална папка според настройките.
+ * @param {Object} [options] - { batch: true } пропуска работата по интерфейса за всяка бележка
+ *        (броячи, филтри, календар); при партида те се правят веднъж след цикъла.
  */
-async function moveNoteToTrash(noteGdid, noteId) {
+async function moveNoteToTrash(noteGdid, noteId, options = {}) {
+    const batch = !!(options && options.batch);
     const noteToUpdate = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
     if (!noteToUpdate) return false;
     const boardIdOfNote = noteToUpdate.boardid;
@@ -4245,17 +4251,21 @@ async function moveNoteToTrash(noteGdid, noteId) {
     const noteEl = document.querySelector(`.note[data-g="${noteGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
     if (noteEl) noteEl.dataset.s = '1';
-    if (boardIdOfNote) updateBoardCounterUI(boardIdOfNote);
-    updateBoardCounterUI('trash');
-    applyFilters();
-    const cal = document.getElementById('calendar-container');
-    if (cal && cal.style.display !== 'none') renderCalendarView();
-    const week = document.getElementById('weekly-calendar-container');
-    if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
-        renderWeeklyCalendarView(currentWeeklyViewDate);
+    // При партида (b2.36) интерфейсът се обновява веднъж след цикъла — иначе 20 бележки
+    // правят 20 пре-рисувания и 20 брояча.
+    if (!batch) {
+        if (boardIdOfNote) updateBoardCounterUI(boardIdOfNote);
+        updateBoardCounterUI('trash');
+        applyFilters();
+        const cal = document.getElementById('calendar-container');
+        if (cal && cal.style.display !== 'none') renderCalendarView();
+        const week = document.getElementById('weekly-calendar-container');
+        if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
+            renderWeeklyCalendarView(currentWeeklyViewDate);
+        }
+        updateReloadButtonState();
+        scheduleGcalSync(); // бележка в кошчето → събитието се трие
     }
-    updateReloadButtonState();
-    scheduleGcalSync(); // бележка в кошчето → събитието се трие
     if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: изчезва от индекса за търсене по смисъл
     return true;
 }
@@ -4445,8 +4455,11 @@ function updateBoardCounterUI(boardIdOrGdid) {
 }
 /**
  * Премества бележка в избран борд.
+ * @param {Object} [options] - { batch: true } пропуска съобщението и обновяването на
+ *        интерфейса за всяка бележка; при партида те се правят веднъж след цикъла.
  */
-async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
+async function moveNoteToBoard(noteGdid, noteId, newBoardId, options = {}) {
+    const batch = !!(options && options.batch);
     let noteToMove = null;
     if (noteGdid && typeof allNotesData !== 'undefined') {
         noteToMove = allNotesData.find(n => String(n.gdid) === String(noteGdid));
@@ -4463,7 +4476,7 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
             if (noteToMove.status === 1) {
                 noteToMove.status = 0; // Възстановяване от кошчето в същия борд
             } else {
-                showToast(_('noteAlreadyInBoard'), 3000);
+                if (!batch) showToast(_('noteAlreadyInBoard'), 3000);
                 return false;
             }
         } else {
@@ -4529,25 +4542,28 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId) {
             }
         }
 
-        showToast(_('noteMovedSuccess').replace('{boardName}', targetBoardTitle), 3000);
-        const oldBoard = boardsData.find(b => (b.gdid || b.id) == oldBoardId);
-        const newBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
-        if (oldBoard) {
-            updateBoardCounterUI(oldBoardId);
-        }
-        if (newBoard) {
-            updateBoardCounterUI(newBoardId);
-        }
+        if (!batch) showToast(_('noteMovedSuccess').replace('{boardName}', targetBoardTitle), 3000);
         const noteElementInDom = document.querySelector(`.note[data-g="${noteGdid}"]`) || document.querySelector(`.note[data-i="${noteId}"]`);
         if (noteElementInDom) {
             noteElementInDom.dataset.b = newBoardId;
             noteElementInDom.dataset.s = noteToMove.status;
         }
-        updateBoardCounterUI('trash');
-        filterNotesByBoard(currentBoardFilter, false);
-        updateReloadButtonState();
-        scheduleGcalSync(); // възстановена от кошчето → събитието се връща
-        if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
+        // При партида (b2.36) броячите и пре-рисуването се правят веднъж след цикъла.
+        if (!batch) {
+            const oldBoard = boardsData.find(b => (b.gdid || b.id) == oldBoardId);
+            const newBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
+            if (oldBoard) {
+                updateBoardCounterUI(oldBoardId);
+            }
+            if (newBoard) {
+                updateBoardCounterUI(newBoardId);
+            }
+            updateBoardCounterUI('trash');
+            filterNotesByBoard(currentBoardFilter, false);
+            updateReloadButtonState();
+            scheduleGcalSync(); // възстановена от кошчето → събитието се връща
+            if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
+        }
         return true;
     }
     return false;
@@ -5438,13 +5454,38 @@ function _(key) {
     return '';
 }
 
+/**
+ * Текст за партида (b2.36): при една бележка се ползва ключът с наставка '.one', за да не
+ * пише „1 бележки". Замества {count} и подадените стойности.
+ * @param {string} key - Ключът за много бележки.
+ * @param {number} count - Броят.
+ * @param {Object} [vars] - Допълнителни замествания, напр. { boardName: 'Борд Б' }.
+ */
+function _n(key, count, vars = {}) {
+    const lookupKey = (count === 1 && _((key + '.one'))) ? (key + '.one') : key;
+    let text = _(lookupKey) || _(key) || '';
+    text = text.replace('{count}', count);
+    Object.keys(vars).forEach(k => { text = text.replace('{' + k + '}', vars[k]); });
+    return text;
+}
+
 function hideToast() {
+    clearUndoToast();
     const toast = document.getElementById('toastNotification');
     if (toast.classList.contains('show')) {
         clearTimeout(toastTimeout);
         toast.classList.remove('show');
         isShowingToast = false;
     }
+}
+
+// Маха бутона „Отмени" от съобщението. Извиква се при всяко скриване, за да не остане
+// бутон, който вече сочи към свършена партида.
+function clearUndoToast() {
+    const toast = document.getElementById('toastNotification');
+    if (!toast) return;
+    const btn = toast.querySelector('.toast-undo-btn');
+    if (btn) btn.remove();
 }
 
 function showToast(message, duration = 10000) {
@@ -5457,9 +5498,49 @@ function showToast(message, duration = 10000) {
     }
     isShowingToast = true;
     const toast = document.getElementById('toastNotification');
+    clearUndoToast();
     toast.textContent = message;
     toast.classList.add('show');
     toastTimeout = setTimeout(hideToast, duration); // This should match the animation duration or be slightly longer
+}
+
+/**
+ * Съобщение с един бутон „Отмени" (b2.36) — за масово триене и преместване.
+ * Заменя текста на вече показано съобщение, както showToast.
+ */
+function showUndoToast(message, onUndo, durationMs = 8000) {
+    if (isToastHidden) return;
+    if (isShowingToast) {
+        hideToast();
+        setTimeout(() => showUndoToast(message, onUndo, durationMs), 300);
+        return;
+    }
+    isShowingToast = true;
+    const toast = document.getElementById('toastNotification');
+    clearUndoToast();
+    toast.textContent = '';
+    const text = document.createElement('span');
+    text.className = 'toast-msg';
+    text.textContent = message;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-undo-btn';
+    btn.textContent = _('undoAction') || 'Undo';
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        hideToast();
+        try {
+            const result = onUndo();
+            if (result && typeof result.catch === 'function') result.catch(err => console.error('Undo failed:', err));
+        } catch (err) {
+            console.error('Undo failed:', err);
+        }
+    });
+    toast.appendChild(text);
+    toast.appendChild(btn);
+    toast.classList.add('show');
+    toastTimeout = setTimeout(hideToast, durationMs);
 }
 
 // Едно съобщение на запис, когато маркер за линк не е могъл да бъде възстановен и е премахнат.
@@ -5706,29 +5787,59 @@ function showPrompt(message, defaultValue = '') {
 }
 
 /**
- * Добавя event listeners към елемент за разпознаване на "long press" или Ctrl+клик.
- * @param {HTMLElement} element - Елементът, към който да се добавят събитията.
- * @param {Function} callback - Функцията, която да се изпълни при задействане.
+ * Истинско продължително натискане (b2.36): задейства callback веднъж, ако пръстът остане
+ * неподвижен върху елемента за delay ms. Отменя се при движение над tolerance px (за да
+ * работи превъртането), при отпускане, при отмяна на докосването и при скрол.
+ * Мишка не задейства — жестът е за телефон; на компютър има Shift+клик и Ctrl+A.
+ * @param {HTMLElement} element - Елементът, който се натиска.
+ * @param {Function} callback - Функцията, която се изпълнява при задействане (получава началното събитие).
+ * @param {Object} [options] - { delay = 500, tolerance = 10 }
  */
-function addLongPressOrCtrlClick(element, callback) {
-    let longPressTimer;
-    let isLongPress = false;
+function addLongPress(element, callback, options = {}) {
+    const delay = options.delay || 500;
+    const tolerance = options.tolerance || 10;
+    let timer = null;
+    let startX = 0;
+    let startY = 0;
+    const cancel = () => {
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+    };
     const startPress = (e) => {
-        isLongPress = false;
-        // Започваме таймер за продължително натискане
-        longPressTimer = setTimeout(() => {
-            isLongPress = true;
-            // callback(e); // ВРЕМЕННО: Изключено изтриване при long press
-        }, 500); // 500ms за long press
+        if (e && e.pointerType === 'mouse') return; // само пръст/писалка
+        const p = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
+        if (!p || p.clientX === undefined) return;
+        startX = p.clientX;
+        startY = p.clientY;
+        cancel();
+        timer = setTimeout(() => {
+            timer = null;
+            callback(e);
+        }, delay);
     };
-    const endPress = () => {
-        clearTimeout(longPressTimer);
+    const movePress = (e) => {
+        if (!timer) return;
+        const p = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
+        if (!p || p.clientX === undefined) {
+            cancel();
+            return;
+        }
+        if (Math.abs(p.clientX - startX) > tolerance || Math.abs(p.clientY - startY) > tolerance) cancel();
     };
-    element.addEventListener('mousedown', startPress);
-    element.addEventListener('mouseup', endPress);
-    element.addEventListener('mouseleave', endPress);
     element.addEventListener('touchstart', startPress, { passive: true });
-    element.addEventListener('touchend', endPress);
+    element.addEventListener('pointerdown', startPress);
+    element.addEventListener('touchmove', movePress, { passive: true });
+    element.addEventListener('pointermove', movePress, { passive: true });
+    element.addEventListener('touchend', cancel);
+    element.addEventListener('touchcancel', cancel);
+    element.addEventListener('pointerup', cancel);
+    element.addEventListener('pointercancel', cancel);
+    element.addEventListener('pointerleave', cancel);
+    element.addEventListener('mouseup', cancel);
+    element.addEventListener('mouseleave', cancel);
+    element.addEventListener('scroll', cancel, { passive: true, capture: true });
     element.addEventListener('contextmenu', e => e.preventDefault()); // Предотвратява контекстното меню при long press
 }
 
@@ -6040,6 +6151,15 @@ function initApp() {
     });
     reloadButton.addEventListener('click', (e) => {
         const isForceSync = Boolean(e && (e.ctrlKey || e.shiftKey));
+        // При спряна синхронизация първо възстановяваме входа (както иконата на източника) — без токен
+        // синхронизацията не може да тръгне, значи преди клона за мръсни бележки; важи и при Ctrl/Shift.
+        if (isSyncSuspended && !isOffline) {
+            const modeBtn = document.getElementById('mode_button');
+            if (modeBtn) {
+                modeBtn.click();
+                return;
+            }
+        }
         const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
         if (hasDirtyNotes && !isForceSync) {
             if (isOffline) {
@@ -6343,6 +6463,8 @@ function initApp() {
     // Listen for user typing with Debounce
     let searchDebounceTimeout;
     searchBox.addEventListener('input', (event) => {
+        // Масовият избор (b2.36) се изчиства при търсене — иначе се трият невидими бележки.
+        if (selectionState.active && searchBox.value.trim() !== '') exitSelectionMode();
         // Immediate UI update for buttons (no debounce needed for visibility)
         const val = searchBox.value.trim();
         const hasText = val.length > 0;
@@ -6609,7 +6731,8 @@ function initApp() {
     // Click handler
     modeButton.addEventListener('click', async (e) => {
         if (isSyncSuspended) {
-            isSyncSuspended = false;
+            // Флагът се сваля чак в authCallback, когато токенът наистина дойде;
+            // иначе отказан/затворен вход маха ⚠, а синхронизацията остава мъртва.
             isOffline = false;
             isAppStarted = false;
             handleAuthClick();
@@ -12554,7 +12677,7 @@ async function handleSearchCommand(commandText) {
     return false;
 }
 
-function showAllBoardsModal(onSelectCallback = null) {
+function showAllBoardsModal(onSelectCallback = null, hint = '') {
     const modalContent = document.createElement('div');
     const boardsModal = document.getElementById('boards-menu-modal');
     updateHeaderFullscreenUI();
@@ -12622,6 +12745,13 @@ function showAllBoardsModal(onSelectCallback = null) {
     updateCloseAllNotesButtons();
     const boardsModalBody = document.getElementById('boards-menu-modal-body');
     boardsModalBody.innerHTML = '';
+    // Режим „премести N бележки": ред отгоре, иначе изборът на борд изглежда като навигация.
+    if (hint) {
+        const hintEl = document.createElement('div');
+        hintEl.className = 'boards-modal-hint';
+        hintEl.textContent = hint;
+        boardsModalBody.appendChild(hintEl);
+    }
     boardsModalBody.appendChild(modalContent);
     // --- Calculate optimal width to fit columns exactly ---
     let buttonWidth = maxWidthForButtons;
@@ -12959,6 +13089,29 @@ document.querySelectorAll('.modal-close').forEach(btn => {
  * @param {string|number} boardId - ID-то на борда.
  * @param {boolean} [shouldScroll=false] - Дали да се скролира менюто до избрания борд.
  */
+// b2.35: менюто с бордовете се връща при избрания борд и когато е било скрито по време на избора.
+// При отворен календар хедърът е display:none, така че scrollIntoView в boardClick не може да измери
+// нищо; след връщането към бележките менюто остава там, където е било, а избраният борд е извън екрана.
+// Скролира се само когато бордът наистина не се вижда, за да не мести менюто при обикновен клик.
+function revealBoardInHeaderMenu(boardId) {
+    if (boardId === undefined || boardId === null) return;
+    const menu = document.querySelector('header .board-menu-container');
+    if (!menu) return;
+    let link = null;
+    try {
+        link = menu.querySelector(`.board-filter-link[data-boardid="${CSS.escape(String(boardId))}"]`);
+    } catch (e) {
+        link = null;
+    }
+    if (!link) return;
+    const box = menu.getBoundingClientRect();
+    const item = link.getBoundingClientRect();
+    if (!box.width || !item.width) return; // още скрит: няма какво да се скролира
+    if (item.left >= box.left - 1 && item.right <= box.right + 1) return; // вече се вижда
+    const target = menu.scrollLeft + (item.left - box.left) - (box.width - item.width) / 2;
+    menu.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+}
+
 async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement = null) {
     // --- ПРОВЕРКА ЗА КОНФЛИКТ: Стартов борд, който е скрит ---
     // Ако стартовият борд е "Всички", но е скрит, избираме първия наличен борд.
@@ -13018,6 +13171,8 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         });
     }
     if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
+        // Масовият избор (b2.36) не живее в календара — изчистваме го при отваряне.
+        if (selectionState.active) exitSelectionMode();
         // Проверяваме коя версия на календара да покажем
         if (boardId === 'calendar_weekly') {
             renderWeeklyCalendarView();
@@ -13179,6 +13334,9 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const addNoteFab = document.getElementById('add-note-fab');
         if (addNoteFab) addNoteFab.style.display = 'flex';
         adjustFullscreenSearchLayout();
+        // b2.35: хедърът тъкмо е станал видим — връщаме менюто при избрания борд (при отворен календар
+        // кликът е минал, докато менюто беше скрито, и скролирането в boardClick не е имало какво да мери).
+        requestAnimationFrame(() => revealBoardInHeaderMenu(buttonBoardId));
     }
     // Add or remove a class from the container to control child visibility
     // This part is no longer needed as calendar has its own view
@@ -13911,7 +14069,544 @@ function applyFilters() {
         const isTrash = currentBoardFilter === 'trash';
         emptyTrashFab.style.display = (isTrash && visibleCount > 0) ? 'flex' : 'none';
     }
+
+    // --- Масов избор (b2.36): връщаме отметките след всяко пре-рисуване ---
+    applySelectionToDom();
 }
+
+/* --- МАСОВ ИЗБОР НА БЕЛЕЖКИ (b2.36) ---
+ * Изборът живее ИЗВЪН затварянията на картите: тук се пази само ключът на бележката
+ * (String(gdid || id)), а отметките се нанасят върху DOM след всяко пре-рисуване.
+ * Затварянията на картите държат снимка на данните от момента на рисуване, затова
+ * избор, пазен в тях, би остарял при първото пре-рисуване.
+ */
+const MASS_SELECTION_LIMIT = 500;
+const selectionState = {
+    keys: new Set(), // ключове на избраните бележки
+    anchorKey: null, // котва за Shift+клик (последната карта, отбелязана без Shift)
+    boardId: null, // бордът, в който е започнал изборът
+    active: false // дали сме в режим на избор
+};
+
+/** Ключът на карта в дъската: String(gdid || id). Празен низ = не е истинска бележка. */
+function getNoteCardKey(el) {
+    if (!el || !el.dataset) return '';
+    return String(el.dataset.g || el.dataset.i || '');
+}
+
+/** Истинска карта на бележка ли е (не промо, не ред от менюто на бордовете)? */
+function isSelectableNoteCard(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (!el.classList || !el.classList.contains('note')) return false;
+    if (el.classList.contains('promo-note') || el.classList.contains('boards-note')) return false;
+    return getNoteCardKey(el) !== '';
+}
+
+/** Всички карти на бележки в контейнера; visibleOnly - само показаните в текущия борд. */
+function getNoteCards(visibleOnly = false) {
+    if (!notesContainer) return [];
+    return Array.from(notesContainer.querySelectorAll('.note'))
+        .filter(el => isSelectableNoteCard(el) && (!visibleOnly || el.style.display !== 'none'));
+}
+
+/** Лентата с действията. Създава се веднъж и стои в document.body, за да не мести решетката. */
+function ensureSelectionBar() {
+    let bar = document.getElementById('selection-bar');
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.id = 'selection-bar';
+    bar.hidden = true;
+    const count = document.createElement('span');
+    count.id = 'selection-count';
+    bar.appendChild(count);
+    const moveBtn = document.createElement('button');
+    moveBtn.type = 'button';
+    moveBtn.id = 'selection-move-btn';
+    moveBtn.className = 'selection-bar-btn';
+    moveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        bulkMoveSelectedNotes();
+    });
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.id = 'selection-delete-btn';
+    delBtn.className = 'selection-bar-btn selection-bar-danger';
+    delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        bulkDeleteSelectedNotes();
+    });
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.id = 'selection-clear-btn';
+    clearBtn.className = 'selection-bar-btn selection-bar-icon';
+    clearBtn.textContent = '✕';
+    clearBtn.title = _('selectionClear') || 'Clear selection';
+    clearBtn.setAttribute('aria-label', clearBtn.title);
+    clearBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exitSelectionMode();
+    });
+    bar.appendChild(moveBtn);
+    bar.appendChild(delBtn);
+    bar.appendChild(clearBtn);
+    document.body.appendChild(bar);
+    return bar;
+}
+
+/** Обновява текстовете и видимостта на лентата. Показва се само при непразен избор. */
+function updateSelectionBar() {
+    const bar = ensureSelectionBar();
+    const count = selectionState.keys.size;
+    if (!selectionState.active || count === 0) {
+        bar.hidden = true;
+        return;
+    }
+    bar.hidden = false;
+    const countEl = document.getElementById('selection-count');
+    if (countEl) countEl.textContent = (_('selectionCount') || 'Selected: {count}').replace('{count}', count);
+    const moveBtn = document.getElementById('selection-move-btn');
+    if (moveBtn) moveBtn.textContent = _('selectionMove') || 'Move';
+    const delBtn = document.getElementById('selection-delete-btn');
+    if (delBtn) {
+        delBtn.textContent = (currentBoardFilter === 'trash')
+            ? (_('selectionDeletePermanent') || 'Delete permanently')
+            : (_('selectionDelete') || 'Delete {count}').replace('{count}', count);
+    }
+    const clearBtn = document.getElementById('selection-clear-btn');
+    if (clearBtn) {
+        const title = _('selectionClear') || 'Clear selection';
+        clearBtn.title = title;
+        clearBtn.setAttribute('aria-label', title);
+    }
+}
+
+/** Нанася избора върху DOM: отметки, рамка, затъмняване на останалите карти. */
+function applySelectionDomOnly() {
+    if (!notesContainer) return;
+    getNoteCards(false).forEach(card => {
+        const key = getNoteCardKey(card);
+        const isSel = selectionState.active && selectionState.keys.has(key);
+        card.classList.toggle('note-selected', isSel);
+        let box = card.querySelector('.note-select-check');
+        if (selectionState.active) {
+            if (!box) {
+                box = document.createElement('div');
+                box.className = 'note-select-check';
+                box.setAttribute('aria-hidden', 'true');
+                // Отметката застава точно на мястото на кръгчето за закачане — то се крие по време
+                // на избор, а мястото му зависи от фона на бележката, затова се мери веднъж.
+                const pin = card.querySelector('.note-pin-btn');
+                if (pin) {
+                    const pr = pin.getBoundingClientRect();
+                    const cr = card.getBoundingClientRect();
+                    if (pr.width > 0) {
+                        const size = 20;
+                        box.style.top = Math.round(pr.top - cr.top + (pr.height - size) / 2) + 'px';
+                        box.style.right = Math.round(cr.right - pr.right + (pr.width - size) / 2) + 'px';
+                    }
+                }
+                card.appendChild(box);
+            }
+            box.classList.toggle('checked', isSel);
+        } else if (box) {
+            box.remove();
+        }
+    });
+    notesContainer.classList.toggle('selection-mode', selectionState.active);
+    const bar = document.getElementById('selection-bar');
+    if (bar && !selectionState.active) bar.hidden = true;
+}
+
+/**
+ * Извиква се в края на всяко пре-рисуване на дъската: връща отметките по картите и
+ * изхвърля ключове, чиито бележки вече ги няма в DOM.
+ */
+function applySelectionToDom() {
+    if (!notesContainer) return;
+    if (!selectionState.active) {
+        if (notesContainer.classList.contains('selection-mode')) notesContainer.classList.remove('selection-mode');
+        return;
+    }
+    // Сменили сме борда или отворили календара → изборът се изчиства.
+    if (selectionState.boardId !== null && String(selectionState.boardId) !== String(currentBoardFilter)) {
+        exitSelectionMode();
+        return;
+    }
+    const present = new Set(getNoteCards(false).map(getNoteCardKey));
+    Array.from(selectionState.keys).forEach(k => {
+        if (!present.has(k)) selectionState.keys.delete(k);
+    });
+    if (selectionState.keys.size === 0) {
+        exitSelectionMode();
+        return;
+    }
+    applySelectionDomOnly();
+    updateSelectionBar();
+}
+
+/** Влиза в режим на избор и отбелязва дадена карта (ако е подадена). */
+function enterSelectionMode(key) {
+    selectionState.active = true;
+    selectionState.boardId = currentBoardFilter;
+    if (key) {
+        selectionState.keys.add(key);
+        selectionState.anchorKey = key;
+    }
+    applySelectionDomOnly();
+    updateSelectionBar();
+}
+
+/** Излиза от режима и маха всички отметки. */
+function exitSelectionMode() {
+    selectionState.active = false;
+    selectionState.keys.clear();
+    selectionState.anchorKey = null;
+    selectionState.boardId = null;
+    applySelectionDomOnly();
+    updateSelectionBar();
+}
+
+/** Слага/маха отметка на един ключ, без да пипа останалите. */
+function setNoteSelected(key, selected) {
+    if (!key) return;
+    if (selected) {
+        if (selectionState.keys.size >= MASS_SELECTION_LIMIT && !selectionState.keys.has(key)) {
+            showToast((_('selectionTooMany') || '').replace('{max}', MASS_SELECTION_LIMIT), 3000);
+            return;
+        }
+        selectionState.keys.add(key);
+    } else {
+        selectionState.keys.delete(key);
+    }
+    selectionState.anchorKey = key;
+    if (selectionState.keys.size === 0) {
+        exitSelectionMode();
+        return;
+    }
+    applySelectionDomOnly();
+    updateSelectionBar();
+}
+
+/** Маха бележка от избора, ако е била в него (при триене от кабарчето). */
+function dropFromSelectionIfPresent(key) {
+    if (!key || !selectionState.active || !selectionState.keys.has(key)) return;
+    setNoteSelected(key, false);
+}
+
+/** Обикновен клик в режим на избор: сменя отметката на картата. */
+function toggleNoteSelection(key) {
+    if (!key) return;
+    if (selectionState.keys.has(key)) {
+        selectionState.keys.delete(key);
+        selectionState.anchorKey = key;
+    } else {
+        setNoteSelected(key, true);
+        return;
+    }
+    if (selectionState.keys.size === 0) {
+        exitSelectionMode();
+        return;
+    }
+    applySelectionDomOnly();
+    updateSelectionBar();
+}
+
+/** Shift+клик: отбелязва диапазона от котвата до тази карта. */
+function extendSelectionTo(key) {
+    const keys = getNoteCards(true).map(getNoteCardKey);
+    const targetIndex = keys.indexOf(key);
+    if (targetIndex === -1) return;
+    const anchorIndex = selectionState.anchorKey ? keys.indexOf(selectionState.anchorKey) : -1;
+    if (anchorIndex === -1) {
+        setNoteSelected(key, true);
+        return;
+    }
+    const from = Math.min(anchorIndex, targetIndex);
+    const to = Math.max(anchorIndex, targetIndex);
+    for (let i = from; i <= to; i++) {
+        if (selectionState.keys.size >= MASS_SELECTION_LIMIT && !selectionState.keys.has(keys[i])) {
+            showToast((_('selectionTooMany') || '').replace('{max}', MASS_SELECTION_LIMIT), 3000);
+            break;
+        }
+        selectionState.keys.add(keys[i]);
+    }
+    applySelectionDomOnly();
+    updateSelectionBar();
+}
+
+/** Ctrl+A: избира всички показани карти на текущия борд (до лимита). */
+function selectAllVisibleNotes() {
+    const cards = getNoteCards(true);
+    if (!cards.length) return;
+    selectionState.active = true;
+    selectionState.boardId = currentBoardFilter;
+    if (cards.length > MASS_SELECTION_LIMIT) showToast((_('selectionTooMany') || '').replace('{max}', MASS_SELECTION_LIMIT), 3000);
+    for (const card of cards) {
+        if (selectionState.keys.size >= MASS_SELECTION_LIMIT) break;
+        selectionState.keys.add(getNoteCardKey(card));
+    }
+    if (selectionState.keys.size === 0) {
+        exitSelectionMode();
+        return;
+    }
+    applySelectionDomOnly();
+    updateSelectionBar();
+}
+
+/** Фокусът в поле за писане ли е (там Ctrl+A избира текста, не бележките). */
+function isTypingTarget(el) {
+    if (!el || el === document.body || el.nodeType !== 1) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
+}
+
+/** Отворен ли е модал/прозорец — тогава клавишите принадлежат на него, не на дъската. */
+function isAnyOverlayOpen() {
+    return !!document.querySelector('.modal-overlay.visible, #content-modal.visible, #boards-menu-modal.visible, #folderIdPromptPopup.show, #note-edit-textarea');
+}
+
+// Ctrl/Cmd+A избира целия борд, Escape изчиства избора.
+document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
+    if (e.key === 'Escape') {
+        if (!selectionState.active) return;
+        if (isAnyOverlayOpen()) return; // първо модалите се затварят
+        e.preventDefault();
+        exitSelectionMode();
+        return;
+    }
+    const isA = e.key === 'a' || e.key === 'A' || e.code === 'KeyA';
+    if (!isA || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (isAnyOverlayOpen()) return;
+    e.preventDefault();
+    selectAllVisibleNotes();
+});
+
+/* --- КРАЙ НА МАСОВИЯ ИЗБОР (следват действията по партида) --- */
+
+/* --- ДЕЙСТВИЯ ПО ПАРТИДА (b2.36) --- */
+
+/** Записва възстановена бележка по същите пътища, по които върви триенето/преместването. */
+async function persistRestoredNote(note) {
+    const updateGDriveNow = useGoogleDb && !isOffline;
+    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+    if (!updateGDriveNow && !updateLocalFolderNow) note.type = -1; // за офлайн синхронизация
+    if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
+        await bulkPutDB(NOTE_STORE_NAME, [note], true);
+    }
+    if (updateGDriveNow && note.gdid && typeof updateGDriveFile === 'function') {
+        try {
+            await updateGDriveFile(note.gdid, JSON.stringify(note));
+        } catch (err) {
+            console.error('GDrive undo update failed:', err);
+        }
+    }
+    if (updateLocalFolderNow && note.gdid && typeof updateLocalFile === 'function') {
+        try {
+            await updateLocalFile(note.gdid, JSON.stringify(note));
+        } catch (e) {
+            console.error('Local undo update failed:', e);
+        }
+    }
+}
+
+/** Едно пре-рисуване и едни броячи за цялата партида. */
+function refreshAfterBatch(boardIds) {
+    (boardIds || []).forEach(b => {
+        if (b !== undefined && b !== null) updateBoardCounterUI(b);
+    });
+    updateBoardCounterUI('trash');
+    applyFilters();
+    const cal = document.getElementById('calendar-container');
+    if (cal && cal.style.display !== 'none') renderCalendarView();
+    const week = document.getElementById('weekly-calendar-container');
+    if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
+        renderWeeklyCalendarView(currentWeeklyViewDate);
+    }
+    updateReloadButtonState();
+    scheduleGcalSync();
+    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
+}
+
+/** Връща на картата в DOM новите борд/статус, за да не се разминава с данните. */
+function syncCardDataset(note) {
+    if (!note) return;
+    const el = document.querySelector(`.note[data-g="${note.gdid}"]`) ||
+        (note.id !== undefined ? document.querySelector(`.note[data-i="${note.id}"]`) : null);
+    if (!el) return;
+    if (note.boardid !== undefined) el.dataset.b = note.boardid;
+    if (note.status !== undefined) el.dataset.s = String(note.status);
+}
+
+/** Избраните бележки от данните, в реда на избора. */
+function getSelectedNotes() {
+    const notes = [];
+    selectionState.keys.forEach(k => {
+        const note = allNotesData.find(n => String(n.gdid || n.id) === k);
+        if (note) notes.push(note);
+    });
+    return notes;
+}
+
+/**
+ * Триене на партидата: в кошчето — окончателно, другаде — в кошчето, с едно потвърждение
+ * с числото и едно съобщение с „Отмени" за цялата партида.
+ */
+async function bulkDeleteSelectedNotes() {
+    if (selectionState.keys.size === 0) return;
+    if (selectionState.keys.size > MASS_SELECTION_LIMIT) {
+        showToast((_('selectionTooMany') || '').replace('{max}', MASS_SELECTION_LIMIT), 3000);
+        return;
+    }
+    const targets = getSelectedNotes();
+    if (!targets.length) {
+        exitSelectionMode();
+        return;
+    }
+    const count = targets.length;
+    const inTrash = currentBoardFilter === 'trash';
+    const confirmMsg = inTrash
+        ? (_n('confirmBatchDelete', count) || _('confirmNoteDelete') || '')
+        : (_n('confirmBatchMoveToTrash', count) || _('confirmNoteMoveToTrash') || '');
+    const confirmed = await showConfirmation(confirmMsg);
+    if (!confirmed) return;
+    const before = targets.map(note => ({ note, boardid: note.boardid, status: note.status }));
+    const boards = new Set();
+    before.forEach(b => {
+        if (b.boardid !== undefined && b.boardid !== null) boards.add(String(b.boardid));
+    });
+    exitSelectionMode();
+    if (inTrash) {
+        // Окончателното триене не може да се отмени — затова тук няма бутон „Отмени".
+        for (const b of before) {
+            try {
+                await permanentlyDeleteNote(b.note.gdid, b.note.id, true);
+            } catch (err) {
+                console.error('Batch permanent delete failed:', err);
+            }
+        }
+        refreshAfterBatch(boards);
+        showToast(_n('batchDeleted', count), 4000);
+        return;
+    }
+    let trashed = 0;
+    for (const b of before) {
+        const ok = await moveNoteToTrash(b.note.gdid, b.note.id, { batch: true });
+        if (ok) trashed++;
+    }
+    refreshAfterBatch(boards);
+    if (trashed === 0) {
+        showToast(_('noteDeletedError') || 'Error', 5000);
+        return;
+    }
+    showUndoToast(_n('batchMovedToTrash', trashed), async () => {
+        let restored = 0;
+        for (const b of before) {
+            b.note.status = b.status === undefined ? 0 : b.status;
+            if (b.boardid !== undefined) b.note.boardid = b.boardid;
+            b.note.datemod = Date.now();
+            try {
+                await persistRestoredNote(b.note);
+                restored++;
+            } catch (err) {
+                console.error('Batch undo failed:', err);
+            }
+            syncCardDataset(b.note);
+        }
+        refreshAfterBatch(boards);
+        if (restored === before.length) {
+            showToast(_n('batchUndone', restored), 3000);
+        } else {
+            showToast((_('batchUndoPartial') || '')
+                .replace('{done}', restored).replace('{total}', before.length), 5000);
+        }
+    });
+}
+
+/** Отваря избора на борд за партидата (със свой ред „Премести N бележки в…"). */
+async function bulkMoveSelectedNotes() {
+    if (selectionState.keys.size === 0) return;
+    if (selectionState.keys.size > MASS_SELECTION_LIMIT) {
+        showToast((_('selectionTooMany') || '').replace('{max}', MASS_SELECTION_LIMIT), 3000);
+        return;
+    }
+    const keys = Array.from(selectionState.keys);
+    const hint = _n('selectionMoveHint', keys.length);
+    showAllBoardsModal((newBoardId) => {
+        runBulkMove(keys, newBoardId);
+    }, hint);
+}
+
+/** Самото преместване: едно пре-рисуване, едно съобщение, бележките в целта се пропускат. */
+async function runBulkMove(keys, newBoardId) {
+    const targetBoard = boardsData.find(b => (b.gdid || b.id) == newBoardId);
+    if (!targetBoard) return;
+    const targets = [];
+    keys.forEach(k => {
+        const note = allNotesData.find(n => String(n.gdid || n.id) === k);
+        if (note) targets.push(note);
+    });
+    if (!targets.length) {
+        exitSelectionMode();
+        return;
+    }
+    const before = targets.map(note => ({ note, boardid: note.boardid, status: note.status }));
+    const boards = new Set([String(newBoardId)]);
+    before.forEach(b => {
+        if (b.boardid !== undefined && b.boardid !== null) boards.add(String(b.boardid));
+    });
+    exitSelectionMode();
+    let moved = 0;
+    let skipped = 0;
+    const movedEntries = [];
+    for (const b of before) {
+        if (String(b.note.boardid) === String(newBoardId) && b.note.status !== 1) {
+            skipped++;
+            continue;
+        }
+        const ok = await moveNoteToBoard(b.note.gdid, b.note.id, newBoardId, { batch: true });
+        if (ok === true) {
+            moved++;
+            movedEntries.push(b);
+        } else {
+            skipped++;
+        }
+    }
+    refreshAfterBatch(boards);
+    if (moved === 0) {
+        showToast((_('batchMoveNothing') || '').replace('{boardName}', targetBoard.title), 4000);
+        return;
+    }
+    let msg = _n('batchMovedSuccess', moved, { boardName: targetBoard.title });
+    if (skipped > 0) {
+        msg += ' ' + _n('batchMoveSkipped', skipped, { boardName: targetBoard.title });
+    }
+    showUndoToast(msg, async () => {
+        let restored = 0;
+        for (const b of movedEntries) {
+            b.note.boardid = b.boardid;
+            b.note.status = b.status === undefined ? 0 : b.status;
+            b.note.datemod = Date.now();
+            try {
+                await persistRestoredNote(b.note);
+                restored++;
+            } catch (err) {
+                console.error('Batch move undo failed:', err);
+            }
+            syncCardDataset(b.note);
+        }
+        refreshAfterBatch(boards);
+        if (restored === movedEntries.length) {
+            showToast(_n('batchUndone', restored), 3000);
+        } else {
+            showToast((_('batchUndoPartial') || '')
+                .replace('{done}', restored).replace('{total}', movedEntries.length), 5000);
+        }
+    });
+}
+
+/* --- КРАЙ НА ДЕЙСТВИЯТА ПО ПАРТИДА --- */
 
 // --- GDrive Fetch & ID logic moved to load.js ---
 /**
@@ -13938,6 +14633,43 @@ function initializeLoad(showLoader = true) {
     if (oldBoardsNote) {
         oldBoardsNote.remove();
     }
+}
+
+// The colour of a board button. One set of rules for every place that draws a board as a button
+// (the menu itself and the reorder popup), so a board cannot show one colour in the menu and a
+// different one while its order is being changed. `color` comes in three shapes: a 0..6 index into
+// the --board-bg-* theme colours, a negative decimal (the Windows app stores ARGB like -65536), or
+// a hex string typed by hand in the board dialog's custom field.
+function boardBackgroundValue(color) {
+    if (color === undefined || color === null || color === '') return null;
+    const num = Number(color);
+    if (!isNaN(num)) {
+        if (num >= 0 && num <= 6) return `var(--board-bg-${num})`;
+        if (num < 0) return '#' + (num >>> 0).toString(16).slice(-6);
+        return null; // an index outside 0..6 has never had a background colour
+    }
+    const text = String(color).trim();
+    return text.startsWith('#') ? text : null;
+}
+
+// The text colour of a board button, or null when the board keeps the default one. Status 1 wins
+// (the platform marks such a board red); then colorfont: 1/2/3 are white/red/blue, a negative
+// decimal is ARGB, anything else is a hex string from the custom field.
+function boardFontColorValue(board) {
+    if (!board) return null;
+    if (board.status === 1) return 'red';
+    const colorfont = board.colorfont;
+    if (colorfont === undefined || colorfont === null || colorfont === '') return null;
+    const num = Number(colorfont);
+    if (!isNaN(num)) {
+        if (num === 1) return '#FFFFFF';
+        if (num === 2) return '#FF0000';
+        if (num === 3) return '#0000FF';
+        if (num < 0) return '#' + (num >>> 0).toString(16).slice(-6);
+        return null; // 0 and anything above 3 keep the default text colour
+    }
+    const text = String(colorfont).trim();
+    return text.startsWith('#') ? text : null;
 }
 
 async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
@@ -14162,36 +14894,11 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         link.textContent = (showCount && count > 0) ? `${board.title} (${count})` : board.title;
         link.classList.add('board-filter-link');
         link.dataset.boardid = boardId;
-        let bColor = board.color;
-        if (bColor !== undefined && bColor !== null && bColor !== "") {
-            const num = Number(bColor);
-            if (!isNaN(num)) {
-                if (num >= 0 && num <= 6) {
-                    link.style.backgroundColor = `var(--board-bg-${num})`;
-                } else if (num < 0) {
-                    link.style.backgroundColor = '#' + (num >>> 0).toString(16).slice(-6);
-                }
-            } else if (typeof bColor === 'string' && bColor.startsWith('#')) {
-                link.style.backgroundColor = bColor;
-            }
-        }
+        const boardBg = boardBackgroundValue(board.color);
+        if (boardBg) link.style.backgroundColor = boardBg;
         link.style.color = 'black';
-        if (board.status === 1) {
-            link.style.color = 'red';
-        } else {
-            let bFColor = board.colorfont;
-            if (bFColor !== undefined && bFColor !== null && bFColor !== "") {
-                const fnum = Number(bFColor);
-                if (!isNaN(fnum)) {
-                    if (fnum === 1) link.style.color = '#FFFFFF';
-                    else if (fnum === 2) link.style.color = '#FF0000';
-                    else if (fnum === 3) link.style.color = '#0000FF';
-                    else if (fnum < 0) link.style.color = '#' + (fnum >>> 0).toString(16).slice(-6);
-                } else if (typeof bFColor === 'string' && bFColor.startsWith('#')) {
-                    link.style.color = bFColor;
-                }
-            }
-        }
+        const boardFont = boardFontColorValue(board);
+        if (boardFont) link.style.color = boardFont;
         addBoardButtonEvents(link, boardId);
         allButtonLinks.push(link);
     });
@@ -19099,19 +19806,48 @@ async function createNoteElement(noteContent) {
 
         }
     }
-    // --- Логика за клик, Ctrl+клик и продължително натискане (long press) ---
-    let longPressTimer;
-    let isLongPress = false;
+    // --- Логика за клик, Ctrl+клик, Shift+клик и продължително натискане (long press) ---
+    // b2.36: един клик след задействано продължително натискане се поглъща, за да не отвори модала.
+    let suppressNextClick = false;
+    let suppressClickTimer = null;
+    const suppressCardClickOnce = () => {
+        suppressNextClick = true;
+        clearTimeout(suppressClickTimer);
+        suppressClickTimer = setTimeout(() => { suppressNextClick = false; }, 700);
+    };
 
     // Обработва клик върху цялата бележка (с изключение на хедъра)
     const handleNoteClick = async (e) => {
+        // Кликът, който следва задействано продължително натискане, не прави нищо.
+        if (suppressNextClick) {
+            suppressNextClick = false;
+            clearTimeout(suppressClickTimer);
+            return;
+        }
+        // --- Масов избор (b2.36): Shift+клик и Ctrl/⌘+клик върху тялото влизат в режим на избор;
+        // вътре в него всеки клик сменя отметката, а Shift+клик отбелязва диапазон.
+        // Ctrl+клик вече НЕ отваря бележката за редакция — собственикът махна това поведение.
+        const cardKey = String(note.dataset.g || note.dataset.i || '');
+        if (cardKey) {
+            if (selectionState.active) {
+                e.preventDefault();
+                if (e.shiftKey) extendSelectionTo(cardKey);
+                else toggleNoteSelection(cardKey);
+                return;
+            }
+            if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                enterSelectionMode(cardKey);
+                return;
+            }
+        }
         // Check if text is selected. If so, prevent opening the modal.
         const selection = window.getSelection();
         if (selection.toString().length > 0) {
             return;
         }
-        // Отваряме модала, само ако не е long press и кликът не е върху футъра
-        if (!isLongPress && !e.target.closest('.note-footer')) {
+        // Отваряме модала, само ако кликът не е върху футъра
+        if (!e.target.closest('.note-footer')) {
             const currentGdid = noteContent.gdid || note.dataset.g;
 
             // --- FORCE GDRIVE READ LOGIC ---
@@ -19152,38 +19888,45 @@ async function createNoteElement(noteContent) {
 
             const noteBgColor = getNoteColorCss(noteColor);
             showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: (function () { try { const _src = (typeof noteContent !== 'undefined' && noteContent) ? noteContent : extraData; const _live = (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) ? allNotesData.find(n => n && (String(n.gdid) === String(_src.gdid) || (n.id !== undefined && _src.id !== undefined && String(n.id) === String(_src.id)))) : null; return (_live && _live.boardid !== undefined) ? _live.boardid : extraData.boardid; } catch (e) { return extraData.boardid; } })(), id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
-
-            // Ако е натиснат Ctrl и сме в DB режим ИЛИ е разрешен GDrive update
-            const updateGDrive = useGoogleDb && !isOffline;
-            if (e.ctrlKey) {
-                if ((typeof useIndexedDb !== 'undefined' && useIndexedDb) || (updateGDrive && currentGdid)) {
-                    const modalBodyElem = document.getElementById('modal-body');
-                    if (modalBodyElem) {
-                        enableNoteEditing(modalBodyElem);
-                    }
-                } else if (!useIndexedDb && !updateGDrive) {
-                    showToast("Editing requires Database Mode or 'Update Google Drive' enabled.", 3000);
-                }
-            }
         }
     };
 
     // Обработва клик върху хедъра (за изтриване)
     const handleHeaderClick = (e) => {
+        // Кликът, който следва дълго натискане върху кабарчето, не бива да стига до бележката.
+        if (suppressNextClick) {
+            suppressNextClick = false;
+            clearTimeout(suppressClickTimer);
+            e.stopPropagation();
+            return;
+        }
         if (e.ctrlKey) {
             e.stopPropagation();
             e.preventDefault();
+            dropFromSelectionIfPresent(String(noteGdid || noteID || ''));
             handleNoteDelete(noteGdid, noteID);
         }
     };
     titleWrapper.addEventListener('click', handleHeaderClick);
-    addLongPressOrCtrlClick(titleWrapper, (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        isLongPress = false;
-        clearTimeout(longPressTimer);
+    // b2.36: продължително натискане върху кабарчето трие ТАЗИ бележка — със същото потвърждение
+    // като Ctrl+клик. Работи и докато има избор; ако бележката е била в него, излиза от избора.
+    addLongPress(titleWrapper, () => {
+        suppressCardClickOnce();
+        dropFromSelectionIfPresent(String(noteGdid || noteID || ''));
         handleNoteDelete(noteGdid, noteID);
-    });
+    }, { delay: 500 });
+
+    // b2.36: продължително натискане върху тялото (телефон) влиза в режим на избор с тази бележка.
+    addLongPress(note, (startEvent) => {
+        const startTarget = startEvent && startEvent.target;
+        // Кабарчето има собствен жест — там изборът не се задейства.
+        if (startTarget && startTarget.closest && startTarget.closest('.note-title-wrapper')) return;
+        const bodyKey = String(note.dataset.g || note.dataset.i || '');
+        if (!bodyKey) return;
+        suppressCardClickOnce();
+        if (!selectionState.active) enterSelectionMode(bodyKey);
+        else setNoteSelected(bodyKey, true);
+    }, { delay: 500 });
 
     // Закачаме събитието за отваряне на модала за цялата бележка
     note.addEventListener('click', handleNoteClick);
@@ -24215,27 +24958,17 @@ function showBoardReorderPopup() {
             item.dataset.boardkey = getBoardOrderEntryKey(entry);
             item.draggable = true;
             item.style.cssText = `width:${itemWidth - 40}px;cursor:default;flex-shrink:0;display:flex;align-items:center;justify-content:flex-start;padding:0 10px;box-sizing:border-box;`;
-            if (entry.backgroundColor) {
-                item.style.backgroundColor = entry.backgroundColor;
-            } else if (board && board.color !== undefined && !isNaN(board.color)) {
-                if (board.color >= 0 && board.color <= 6) item.style.backgroundColor = `var(--board-bg-${board.color})`;
-                else if (board.color < 0) item.style.backgroundColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-            }
+            const rowBackground = entry.backgroundColor || (board ? boardBackgroundValue(board.color) : null);
+            if (rowBackground) item.style.backgroundColor = rowBackground;
             const text = document.createElement('span');
             text.textContent = entry.title;
             text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+            // Same rules as the menu button for a real board. A system square (Reminder, Trash, ...)
+            // keeps the text colour its own CSS class gives it unless the entry names one.
             if (entry.color) {
                 text.style.color = entry.color;
-            } else if (board && board.status === 1) {
-                text.style.color = 'red';
-            } else if (board && board.colorfont !== undefined && !isNaN(board.colorfont)) {
-                if (board.colorfont === 1) text.style.color = '#FFFFFF';
-                else if (board.colorfont === 2) text.style.color = '#FF0000';
-                else if (board.colorfont === 3) text.style.color = '#0000FF';
-                else if (board.colorfont < 0) text.style.color = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-                else text.style.color = 'black';
-            } else {
-                text.style.color = 'black';
+            } else if (board) {
+                text.style.color = boardFontColorValue(board) || 'black';
             }
             item.appendChild(text);
             const handle = document.createElement('div');
