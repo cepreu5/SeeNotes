@@ -3522,20 +3522,15 @@ body.selection-locked .note.active-selection-note .note-content {
     border-color: #aaa;
 }
 
-/* Брояч на стъпките назад: „3 / 10“, в предупредителен цвят, когато историята е пълна. */
-.modal-edit-undo-count {
-    font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-    color: rgba(0, 0, 0, 0.45);
-    padding: 0 2px;
+/* Навигацията ← → ▦ е една група: като не се побира, минава на втория ред цялата, не на части. */
+.modal-edit-toolbar-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex: 0 0 auto;
-    white-space: nowrap;
-    letter-spacing: 0.02em;
-    user-select: none;
 }
 
-.modal-edit-undo-count.is-full {
-    color: #b45309;
-}
+/* Брояч на стъпките няма: заемаше място в лентата и сваляше бутони на долния ред. */
 
 /* ▦ table fields: the content editor becomes text pieces + read-only table fields in place.
    The note textarea stays underneath (hidden) as the source of truth. */

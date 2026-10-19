@@ -23247,14 +23247,16 @@ function revealNoteTableSplitCaret(split) {
     }
 }
 
-// --- Отмяна / връщане напред в редактора на бележката (10 стъпки) ---
-// Снимка се пази на пауза в писането (~400 ms), при B/I/U/S, при поставяне, при смяна на ред,
-// при ▦ и при излизане от полето - не на всеки символ, иначе 10 нива се изчерпват с една дума.
+// --- Отмяна / връщане напред в редактора на бележката (50 стъпки) ---
+// Снимка се пази на граница на дума (интервал, нов ред, пунктуация), при B/I/U/S, при поставяне,
+// при ▦ и при излизане от полето - не на всеки символ. Така при нормално писане отмяната връща
+// дума по дума, а не буква по буква; ако граница не дойде, снимка се записва на пауза
+// (NOTE_EDIT_UNDO_DELAY).
 // Снимката носи текста на тялото и заглавието, форматите им (dataset.format / dataset.titleFormat),
 // позицията на курсора и полето, в което е бил. Историята е на бележка (пази се на елемента
 // #modal-body на прозореца), за да не прескача от бележка в бележка.
-const NOTE_EDIT_UNDO_STEPS = 10; // колко стъпки назад (текущото състояние не се брои)
-const NOTE_EDIT_UNDO_DELAY = 400; // пауза в писането, след която се записва снимка
+const NOTE_EDIT_UNDO_STEPS = 50; // колко стъпки назад (текущото състояние не се брои)
+const NOTE_EDIT_UNDO_DELAY = 900; // пауза в писането без граница на дума, след която се записва снимка
 let noteEditUndoRestoring = false; // връщането не бива да записва нова снимка
 
 // Кой #modal-body (или неговият скрит двойник при няколко отворени бележки) стои зад елемент.
@@ -23336,7 +23338,7 @@ function commitNoteEditUndo(modalBodyElem) {
     }
     if (hist.cursor < hist.entries.length - 1) hist.entries = hist.entries.slice(0, hist.cursor + 1);
     hist.entries.push(snap);
-    // Най-старото излиза: пазят се 10 стъпки назад плюс текущото състояние.
+    // Най-старото излиза: пазят се 50 стъпки назад плюс текущото състояние.
     if (hist.entries.length > NOTE_EDIT_UNDO_STEPS + 1) {
         hist.entries = hist.entries.slice(hist.entries.length - (NOTE_EDIT_UNDO_STEPS + 1));
     }
@@ -23344,7 +23346,7 @@ function commitNoteEditUndo(modalBodyElem) {
     updateNoteEditUndoUI(body);
 }
 
-// Отлага снимка с ~400 ms след последния натиснат клавиш.
+// Отлага снимка с ~900 ms след последния натиснат клавиш (само когато няма граница на дума).
 function scheduleNoteEditUndoCommit(field) {
     if (noteEditUndoRestoring) return;
     const body = getNoteEditUndoBodyFrom(field);
@@ -23451,7 +23453,8 @@ function resetNoteEditUndoHistory(modalBodyElem, state = null) {
     updateNoteEditUndoUI(body);
 }
 
-// Броячът показва колко стъпки назад са налични, а стрелките се приглушават, когато не могат нищо.
+// Стрелките се приглушават, когато не могат нищо. (Брояч на стъпките няма: заемаше място и
+// сваляше бутони на долния ред.)
 function updateNoteEditUndoUI(modalBodyElem) {
     const body = modalBodyElem || document.getElementById('modal-body');
     if (!body || !body.closest) return;
@@ -23463,19 +23466,25 @@ function updateNoteEditUndoUI(modalBodyElem) {
     const total = hist ? hist.entries.length : 1;
     const undoBtn = toolbar.querySelector('.modal-edit-toolbar-btn.is-undo');
     const redoBtn = toolbar.querySelector('.modal-edit-toolbar-btn.is-redo');
-    const count = toolbar.querySelector('.modal-edit-undo-count');
     if (undoBtn) undoBtn.classList.toggle('is-disabled', cursor <= 0);
     if (redoBtn) redoBtn.classList.toggle('is-disabled', cursor >= total - 1);
-    if (count) {
-        const back = Math.max(0, Math.min(cursor, NOTE_EDIT_UNDO_STEPS));
-        count.textContent = `${back} / ${NOTE_EDIT_UNDO_STEPS}`;
-        count.classList.toggle('is-full', back >= NOTE_EDIT_UNDO_STEPS);
-        count.title = _('undoCountTooltip') || 'Стъпки назад / общо (10) · Steps back / total';
-    }
 }
 
 // Закача полетата на редактора към историята на своята бележка. Повторно извикване не слага
 // втори слушател на същото поле.
+// Граница на дума: интервал, нов ред или пунктуация. На граница снимка се записва веднага, за да
+// връща отмяната дума по дума; буквите между две граници се събират в една стъпка.
+const NOTE_EDIT_UNDO_BOUNDARY = /[\s\u00a0.,;:!?…·—–\-()\[\]{}"'«»„“”*_~/\\|+=<>@#$%^&]/;
+
+function isNoteEditUndoBoundaryInput(event) {
+    if (!event) return false;
+    if (event.inputType === 'insertLineBreak' || event.inputType === 'insertParagraph') return true;
+    // Изтриване на цяла дума или на изрязано: също е завършено действие, не буква по буква.
+    if (event.inputType === 'deleteByCut' || event.inputType === 'deleteWordBackward' || event.inputType === 'deleteWordForward') return true;
+    const data = event.data;
+    return typeof data === 'string' && data.length === 1 && NOTE_EDIT_UNDO_BOUNDARY.test(data);
+}
+
 function initNoteEditUndo(modalBodyElem) {
     const body = modalBodyElem || document.getElementById('modal-body');
     if (!body) return;
@@ -23485,7 +23494,10 @@ function initNoteEditUndo(modalBodyElem) {
         field._undoBody = body;
         if (field._undoBound) return;
         field._undoBound = true;
-        field.addEventListener('input', () => scheduleNoteEditUndoCommit(field));
+        field.addEventListener('input', (e) => {
+            if (isNoteEditUndoBoundaryInput(e)) commitNoteEditUndo(field._undoBody);
+            else scheduleNoteEditUndoCommit(field);
+        });
         field.addEventListener('blur', () => commitNoteEditUndo(field._undoBody));
         field.addEventListener('paste', () => setTimeout(() => commitNoteEditUndo(field._undoBody), 0));
         field.addEventListener('keydown', (e) => {
@@ -23505,7 +23517,7 @@ function createModalEditToolbar(modalContentBox) {
     const toolbar = document.createElement('div');
     toolbar.className = 'modal-edit-toolbar';
     toolbar.setAttribute('aria-label', 'Инструменти за форматиране');
-    const addButton = ({ label, title, className = '', action, onLongPress }) => {
+    const addButton = ({ label, title, className = '', action, onLongPress }, parent = toolbar) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `modal-edit-toolbar-btn modal-header-btn ${className}`.trim();
@@ -23564,7 +23576,7 @@ function createModalEditToolbar(modalContentBox) {
         } else {
             button.addEventListener('click', action);
         }
-        toolbar.appendChild(button);
+        parent.appendChild(button);
     };
     const applyMarkdown = (type) => {
         const textarea = getActiveModalEditor();
@@ -23596,12 +23608,6 @@ function createModalEditToolbar(modalContentBox) {
         className: 'is-redo',
         action: () => redoNoteEdit(getNoteEditUndoBodyFrom(toolbar))
     });
-    const undoCount = document.createElement('span');
-    undoCount.className = 'modal-edit-undo-count';
-    undoCount.setAttribute('aria-hidden', 'true');
-    undoCount.textContent = `0 / ${NOTE_EDIT_UNDO_STEPS}`;
-    undoCount.title = _('undoCountTooltip') || 'Стъпки назад / общо (10) · Steps back / total';
-    toolbar.appendChild(undoCount);
     addButton({ label: 'B', title: _('boldTooltip') || 'Bold text', className: 'is-bold', action: () => applyMarkdown('bold') });
     addButton({ label: 'I', title: _('italicTooltip') || 'Italic text', className: 'is-italic', action: () => applyMarkdown('italic') });
     addButton({ label: 'U', title: _('underlineTooltip') || 'Underline text', className: 'is-underline', action: () => applyMarkdown('underline') });
@@ -23612,6 +23618,10 @@ function createModalEditToolbar(modalContentBox) {
         button.style.display = 'flex';
         toolbar.appendChild(button);
     });
+    // Навигацията (← → ▦) е в собствена група, която не се цепи: ако лентата се събере на два реда,
+    // тези три минават на втория ред заедно, а не по един-два.
+    const navGroup = document.createElement('div');
+    navGroup.className = 'modal-edit-toolbar-nav';
     addButton({
         label: '←',
         title: _('lineStartTooltip') || 'One character left · Ctrl/hold: line start',
@@ -23619,7 +23629,7 @@ function createModalEditToolbar(modalContentBox) {
             ? moveCaretToLineEdge(getActiveModalEditor(), false, false)
             : moveCaretByOne(getActiveModalEditor(), -1),
         onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, false)
-    });
+    }, navGroup);
     addButton({
         label: '→',
         title: _('lineEndTooltip') || 'One character right · Ctrl/hold: line end',
@@ -23627,14 +23637,15 @@ function createModalEditToolbar(modalContentBox) {
             ? moveCaretToLineEdge(getActiveModalEditor(), true, false)
             : moveCaretByOne(getActiveModalEditor(), 1),
         onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, false)
-    });
+    }, navGroup);
     addButton({
         label: '▦',
         title: _('tableAlignTooltip') || 'Align the table under the caret and show it in its place in a field you can type in (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables',
         className: 'is-table',
         action: (e) => applyMarkdownTableAlignment(!!(e && (e.ctrlKey || e.metaKey))),
         onLongPress: () => applyMarkdownTableAlignment(true)
-    });
+    }, navGroup);
+    toolbar.appendChild(navGroup);
     headerToolbar.appendChild(toolbar);
     const noteTextarea = document.getElementById('note-edit-textarea');
     // The button state follows the table under the caret, so caret moves refresh it too.
