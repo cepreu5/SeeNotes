@@ -111,15 +111,6 @@ function showInitialBoardModalAfterGuide() {
     openModal();
 }
 
-// --- OAuth Redirect Handler for iframe ---
-// Ако сме в iframe и има access_token в URL hash, изпращаме го на parent
-if (window.location.hash && window.location.hash.includes('access_token')) {
-    if (window.parent !== window) {
-        // Изпращаме hash-а на parent window
-        window.parent.postMessage(window.location.hash, window.location.origin);
-    }
-}
-
 // --- Unified Share Event Handler ---
 const handleShareEvent = (eventData, source) => {
     if (eventData && eventData.type === 'SHARE_TARGET_EVENT') {
@@ -166,95 +157,16 @@ if ('serviceWorker' in navigator) {
 
 let pass = false;
 
-// --- Demo Mode ---
-let DEMO_MODE = false;
-const DEMO_NOTE_LIMIT = 5;
-
-// --- Демо режим (без мрежа, само IndexedDB) -------------------------------------
-// Демото пуска цялото приложение без нито едно външно обръщение: собствена база
-// (NotesDB-demo), твърда бариера пред fetch и никакъв Google скрипт. Флагът живее в
-// localStorage, за да преживее презареждане, и се вдига и от адрес ?demo=1.
-// (DEMO_MODE по-горе е стар флаг за ограничаване на бележките и не участва в това.)
-const DEMO_MODE_STORAGE_KEY = 'cxNotesDemoMode';
-const DEMO_DB_NAME = 'NotesDB-demo';
-// Интрото на асистента в демо: показва се само при първото влизане в демо и повече
-// никога. Флагът е в localStorage (преживява презареждане, изход от демото и нов таб) и
-// е отделен ключ, за да не пипа 'guide' на реалното приложение.
-const DEMO_INTRO_STORAGE_KEY = 'cxNotesDemoIntroShown';
-const DEMO_INTRO_DELAY_MS = 1500;
-const DEMO_FLAGS_SNAPSHOT_KEY = 'cxNotesDemoPrevFlags';
-const DEMO_DATA_SOURCE_KEYS = ['useGoogleDb', 'useIndexedDb', 'useLocalDb', 'useArhDb'];
-
-function readDemoModeRequest() {
-    // 1) Адресът печели: ?demo=1 влиза направо в демо, ?demo=0 го изключва.
-    try {
-        const value = new URLSearchParams(window.location.search).get('demo');
-        if (value !== null) {
-            const normalized = String(value).toLowerCase();
-            if (['1', 'true', 'yes', 'on'].includes(normalized)) return 'on';
-            if (['0', 'false', 'no', 'off'].includes(normalized)) return 'off';
-        }
-    } catch (e) { /* без URLSearchParams остава само запазеният флаг */ }
-    // 2) Запазеният флаг: демото преживява презареждане.
-    try {
-        if (localStorage.getItem(DEMO_MODE_STORAGE_KEY) === '1') return 'on';
-    } catch (e) { /* режим без localStorage: само адресът може да включи демо */ }
-    return 'off';
-}
-
-const DEMO_MODE_REQUEST = readDemoModeRequest();
-const IS_DEMO_MODE = DEMO_MODE_REQUEST === 'on';
-if (DEMO_MODE_REQUEST === 'off') {
-    try { localStorage.removeItem(DEMO_MODE_STORAGE_KEY); } catch (e) { }
-}
-window.__cxDemoMode = IS_DEMO_MODE;
-
-// Отказаните външни адреси в демо режим — за конзолата и за ръчна проверка.
-const demoBlockedRequests = [];
-
-/**
- * Твърдата мрежова бариера на демото: всяка заявка извън произхода на приложението се
- * отказва и се логва. Флаговете isOffline не стигат — една забравена проверка е
- * достатъчна, за да излезе заявка към Google.
- */
-function installDemoNetworkBarrier() {
-    if (window.__cxDemoNetworkBarrier) return;
-    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
-    window.fetch = function (input, init) {
-        let target = '';
-        try {
-            target = typeof input === 'string' ? input : ((input && input.url) ? input.url : String(input));
-        } catch (e) { target = '[unknown]'; }
-        let sameOrigin = false;
-        try {
-            sameOrigin = new URL(target, window.location.href).origin === window.location.origin;
-        } catch (e) { sameOrigin = false; }
-        if (sameOrigin && nativeFetch) return nativeFetch(input, init);
-        demoBlockedRequests.push(target);
-        console.warn('[Demo] Външна заявка отказана (демо режимът няма мрежа):', target);
-        return Promise.reject(new TypeError('Demo mode: network access is disabled for ' + target));
-    };
-    window.__cxDemoNetworkBarrier = true;
-    console.log('[Demo] Network barrier is on: every request outside this origin will be refused.');
-}
-
-if (IS_DEMO_MODE) installDemoNetworkBarrier();
+// --- Локален режим (b3.0) -------------------------------------------------------
+// Приложението работи само върху IndexedDB в браузъра: без акаунт, без Google
+// Drive, без нито една външна заявка.
 
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
 // =================================================================================
 
 // --- Конфигурация и версия ---
-// const CLIENT_ID = '1090128984423-80074rvs8n45v787044d9ca1bvahla98.apps.googleusercontent.com';
-const CLIENT_ID = '365177022923-59fegvrs9tjimpmclr8nbrvk6ik8qfg6.apps.googleusercontent.com';
-// Динамични scopes - ще се определят според потребителския избор
-const SCOPES_BASE = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
-const SCOPES_READONLY = 'https://www.googleapis.com/auth/drive.readonly';
-const SCOPES_FULL = 'https://www.googleapis.com/auth/drive';
-let SCOPES = SCOPES_BASE; // По подразбиране - минимални scopes
-// Календарът „CX Notes“ (b2.07): иска се при нужда през requestAdditionalScopes, не влиза в SCOPES_BASE/SCOPES_FULL.
-// С него приложението вижда и пише само в календари, които само е създало (calendars.insert/get, без calendarList).
-const CALENDAR_APP_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
+
 
 // --- Глобални флагове за инициализация на папката ---
 let folderSetupMode = null; // 'import_migrate' | 'create_empty' | 'advanced_existing' | null
@@ -266,25 +178,18 @@ let noteId = 1000000, noteNumord = 1000000;
 
 let boardsData = []; // Съхранява данните за бордовете
 let mediaData = []; // Съхранява данните за медия
-let folderIds = {}; // Съхранява ID-тата на папките за медия
 let currentBoardFilter = 'all';
 let boardBeforeSearch = 'all';
 let searchInBoardOnly = localStorage.getItem('searchInBoardOnly') === 'true';
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
-let authToken = null;
-let token;
+let authToken = null; // винаги null в локален режим
 let ts; // Време на първо стартиране на приложението
-let tokenRemainingDays = null; // Остават дни валидност на токена
-let activeFolderName = (localStorage.getItem('active_folder_name') === 'AppDataFolder' ? 'CX-Notes' : (localStorage.getItem('active_folder_name') || 'CX-Notes')); // Текуща папка в Google Drive
-let dirHandle = null; // За локален достъп до файловата система
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
 let noteToAssignDate = null; // Запомня бележката, на която ще се зададе дата
-let isDbOwner = true; // Флаг, който показва дали потребителят е собственик на базата
 let updatedNoteGdims = []; // Съхранява gdid на новите/обновените бележки
-let tokenClient = null; // Client for silent auth refresh
 let notesBgrdChanged = false; // Flag to track if notes background setting changed
 let oneTapLinkChanged = false;
 let isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
@@ -304,39 +209,35 @@ let settingsInitialState = {}; // Запомня състоянието на н�
 let dbSourceGlobal = null; // Запомня откъде е създадена базата
 
 // --- Глобални флагове за състоянието (заместват многократните localStorage.getItem()) ---
-let useGoogleDb = true;
+// Локален режим: единствен източник на данни е IndexedDB в браузъра.
+let useGoogleDb = false;
 let useLocalFolder = false;
 let useArhDb = false;
-let useIndexedDb = false;
+let useIndexedDb = true;
 let automatedTimer = true; // true по подразбиране
 let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
 let dataIntegrityIssues = []; // Track missing/duplicate IDs during load
-let initialLoadTime = null; // Time taken for initial Google Drive load in seconds
-let initialLoadTimestamp = null; // Timestamp when the load finished
 let isAppStarted = false; // Guard for startApp
 let isMainLogicRunning = false; // Guard for mainLogic concurrency
-let isOffline = false; // Flag for offline mode
-let isOfflineChecked = false;
-let isSyncSuspended = false;
-let authPopupAttempted = false; // Popup-ът за автентикация да се показва максимум веднъж на сесия
-let proactiveRefreshTimer = null; // Таймер за проактивно обновяване на токена преди изтичане
+let isOffline = true; // Локален режим: винаги работим без мрежа
 let localFileMap = new Map(); // Карта за съответствие GDID -> име на файл за локална папка
 
 // --- DOM елементи (ще бъдат инициализирани в initApp) ---
 let signoutButton, reloadButton, settingsButton, notesContainer, contentModal, modalBody, copyBtn, scrollTopBtn, searchBox, loaderContainer, loaderText, searchModeToggle, saveSearchBtn;
-console.log(`[Startup] Active folder: ${activeFolderName}`);
 let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
 
 // --- IndexedDB Конфигурация ---
 const NOTES_DB_NAME_DEFAULT = 'NotesDB';
 // Демото работи в собствена база: истинските бележки в NotesDB остават недокоснати.
 // Името е една точка на истина — целият код по-долу ползва NOTES_DB_NAME.
-let NOTES_DB_NAME = IS_DEMO_MODE ? DEMO_DB_NAME : NOTES_DB_NAME_DEFAULT;
+const NOTES_DB_NAME = NOTES_DB_NAME_DEFAULT;
 const BOARD_STORE_NAME = 'boards';
 const MEDIA_STORE_NAME = 'media';
 const NOTE_STORE_NAME = 'notes';
 const CONFIG_STORE_NAME = 'config';
-const NOTES_DB_VERSION = 3;
+// Файловете (картинки, звук, видео, прикачени) живеят като Blob в собствен store.
+const FILES_STORE_NAME = 'files';
+const NOTES_DB_VERSION = 4; // b3.0: нов store `files`
 
 // --- SVG икони ---
 // const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
@@ -397,9 +298,6 @@ function renderLanguageSwitchers(onChangeCallback) {
                 newSelect.addEventListener('change', async (e) => {
                     const lang = e.target.value;
                     localStorage.setItem('language', lang);
-                    if (typeof saveSettingsToGDrive === 'function') {
-                        try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
-                    }
                     onChangeCallback(lang);
                 });
             }
@@ -425,9 +323,6 @@ function renderLanguageSwitchers(onChangeCallback) {
             select.addEventListener('change', async (e) => {
                 const lang = e.target.value;
                 localStorage.setItem('language', lang);
-                if (typeof saveSettingsToGDrive === 'function') {
-                    try { await saveSettingsToGDrive(true); } catch (err) { console.warn('Failed to save settings on language change:', err); }
-                }
                 onChangeCallback(lang);
             });
         }
@@ -785,1263 +680,6 @@ async function preloadNoteBackgrounds(notesData) {
 // Времено решение за проблем със скролирането до последната бележка при презареждане от иконата на браузъра
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
-// =================================================================================
-// IX. LOAD MODULE (Google Drive Data Fetching & Sync)
-// =================================================================================
-/**
- * Parses the raw responses from Google Drive into JSON objects.
- */
-async function parseFileResults(results, filenameForError) {
-    const tempMap = new Map();
-    const duplicates = [];
-    let parseError = false;
-    const updateGDrive = useGoogleDb && !isOffline;
-
-    for (const { res, id } of results) {
-        if (!res || !res.body || res.body.trim() === '') continue;
-        try {
-            const content = JSON.parse(res.body);
-            let items = [];
-            if (filenameForError === 'note.txt') {
-                if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
-                    items.push(content);
-                }
-            } else {
-                if (Array.isArray(content)) {
-                    items = content;
-                } else if (typeof content === 'object' && content !== null) {
-                    items.push(content);
-                }
-            }
-
-            for (let item of items) {
-                if (id && filenameForError === 'note.txt') {
-                    if (item.gdid && item.gdid !== id) {
-                        console.warn(`[Sync-ID-Fix] Corrected mismatched ID for note "${item.id}": Internal was "${item.gdid}", actual GDrive ID is "${id}"`);
-                        item.type = -1;
-                    }
-                    item.gdid = id;
-                }
-                let key = (item.gdid && item.gdid !== '') ? item.gdid : item.id;
-                if (filenameForError === 'board.txt' && item.title) {
-                    key = `board_${item.title.trim().toLowerCase()}`;
-                }
-                if (typeof key !== 'undefined' && key !== null) {
-                    const existing = tempMap.get(key);
-                    if (!existing) {
-                        tempMap.set(key, item);
-                    } else if (filenameForError === 'note.txt') {
-                        const isDiff = (item.notetxt !== existing.notetxt ||
-                            item.color !== existing.color ||
-                            item.title !== existing.title ||
-                            item.boardid != existing.boardid);
-                        if (isDiff) {
-                            duplicates.push({ localNote: existing, serverNote: item });
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            parseError = true;
-            console.log(`Error parsing content from a '${filenameForError}' file:`, e);
-            if (updateGDrive && id && filenameForError === 'note.txt') {
-                const snippet = res.body.substring(0, 50) + (res.body.length > 50 ? '...' : '');
-                const confirmMsg = _('confirmDeleteCorruptedNote')
-                    .replace('{error}', e.message)
-                    .replace('{content}', snippet);
-                const confirmed = await showConfirmation(confirmMsg);
-                if (confirmed) {
-                    try {
-                        if (await deleteGDriveFile(id)) {
-                            if (typeof showToast === 'function') showToast(_('fileDeletedSuccess'), 3000);
-                        }
-                    } catch (delErr) {
-                        console.error("Failed to delete corrupted file", delErr);
-                        if (typeof showToast === 'function') showToast(_('gdriveDeleteError').replace('{error}', delErr.message), 5000);
-                    }
-                }
-            }
-        }
-    }
-    const finalData = Array.from(tempMap.values());
-    if (filenameForError === 'note.txt' || filenameForError === 'board.txt') {
-        console.log(`[parseFileResults] ${filenameForError}: Found ${finalData.length} unique items from ${results.length} files.`);
-    }
-    return { data: finalData, parseError, duplicates };
-}
-async function loadAndParseFile(filename, folderId, modifiedSince = null, onProgress = null) {
-    const results = await fetchFiles(filename, folderId, onProgress, modifiedSince);
-    return await parseFileResults(results, filename);
-}
-async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
-    let folderId = folderIdFromPrompt || await getFolderID();
-    if (!folderId && activeFolderName && activeFolderName !== 'CX-Notes' && activeFolderName !== 'AppDataFolder') {
-        const granted = await requestAdditionalScopes(SCOPES_FULL);
-        if (granted) {
-            folderId = await getFolderID();
-        }
-    }
-    if (!folderId) {
-        if (activeFolderName && activeFolderName !== 'AppDataFolder') {
-            removeFolderFromList(activeFolderName);
-        }
-        if (activeFolderName !== 'multinotes_data') {
-            try {
-                const multinotesId = await getFolderIDByName('multinotes_data');
-                if (multinotesId) {
-                    console.log(`[fetchAllData] Active folder "${activeFolderName}" was not found, but "multinotes_data" exists (ID: ${multinotesId}). Switching automatically.`);
-                    const oldFolder = activeFolderName;
-                    activeFolderName = 'multinotes_data';
-                    localStorage.setItem('active_folder_name', activeFolderName);
-                    setCachedMainFolderId('multinotes_data', multinotesId);
-                    cachedMainFolderId = multinotesId;
-                    let folderNames = [];
-                    try { folderNames = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]'); } catch (e) { }
-                    if (!folderNames.includes('multinotes_data')) {
-                        folderNames.push('multinotes_data');
-                        localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-                    }
-
-                    const loaderFolderInfo = document.getElementById('loader-folder-info');
-                    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-
-                    if (typeof showToast === 'function') {
-                        const toastMsg = (_('folderNotFoundSwitchedToMultinotes') || `Папката "${oldFolder}" не бе намерена. Автоматично е превключено към намерената папка "multinotes_data".`)
-                            .replace('{oldFolder}', oldFolder);
-                        showToast(toastMsg, 6000);
-                    }
-
-                    return fetchAllData(multinotesId, modifiedSince);
-                }
-            } catch (e) {
-                console.warn('[fetchAllData] Error checking for multinotes_data fallback:', e);
-            }
-        }
-
-        // 2. При първо стартиране multinotes_data може да липсва. В този случай
-        // продължаваме с работната папка на web приложението, вместо да
-        // прекъсваме началното зареждане с грешка.
-        const isFirstRun = !folderIdFromPrompt && localStorage.getItem('initial_setup_complete') !== 'true';
-        if (isFirstRun && activeFolderName !== 'CX-Notes') {
-            console.warn('[FirstRun] Active folder was not found. Switching to CX-Notes.');
-            activeFolderName = 'CX-Notes';
-            localStorage.setItem('active_folder_name', activeFolderName);
-            clearCachedMainFolderId();
-            ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
-            cachedMainFolderId = null;
-            folderIds = {};
-            localStorage.setItem('gdrive_folder_names', JSON.stringify(['CX-Notes']));
-            const loaderFolderInfo = document.getElementById('loader-folder-info');
-            if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-            const cxNotesId = await getFolderIDByName('CX-Notes');
-            return fetchAllData(cxNotesId || null, modifiedSince);
-        }
-        if (useIndexedDb && useGoogleDb) {
-            try {
-                await fetchAllDataLocal();
-                if (allNotesData.length > 0) {
-                    showToast(_('loadedFromLocalNoDrive'), 5000);
-                    return { boardParseError: false };
-                }
-            } catch (e) { }
-        }
-        // 3. Папката не е намерена и multinotes_data също я няма — предлагаме да я създадем или да превключим към CX-Notes
-        if (activeFolderName !== 'AppDataFolder') {
-            const confirmMsg = (_('folderNotFoundCreate') || `Folder "${activeFolderName}" was not found in Google Drive. Create it now?`)
-                .replace('{folder}', activeFolderName);
-            const confirmed = await showConfirmation(confirmMsg);
-            if (confirmed) {
-                try {
-                    const newId = await createNewGDriveFolder(activeFolderName);
-                    if (newId) {
-                        setCachedMainFolderId(activeFolderName, newId);
-                        cachedMainFolderId = newId;
-                        if (typeof showToast === 'function') showToast((_('folderCreated') || `Folder "${activeFolderName}" created.`).replace('{folder}', activeFolderName), 5000);
-                        return fetchAllData(newId, modifiedSince);
-                    }
-                } catch (createErr) {
-                    console.error('[fetchAllData] Failed to create folder:', createErr);
-                    if (typeof showToast === 'function') showToast(_('errorCreateFolder') || 'Failed to create folder.', 5000);
-                }
-            }
-            // Потребителят отказа или създаването се провали — превключваме към CX-Notes
-            console.warn('[fetchAllData] Falling back to CX-Notes.');
-            activeFolderName = 'CX-Notes';
-            localStorage.setItem('active_folder_name', activeFolderName);
-            clearCachedMainFolderId();
-            ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
-            cachedMainFolderId = null;
-            folderIds = {};
-            const cxFallbackId = await getFolderIDByName('CX-Notes');
-            if (cxFallbackId) {
-                setCachedMainFolderId('CX-Notes', cxFallbackId);
-                cachedMainFolderId = cxFallbackId;
-                return fetchAllData(cxFallbackId, modifiedSince);
-            }
-            showMessagePopup(_('errorFolderNotFound'));
-            throw new Error('Main folder ID not found.');
-        }
-        showMessagePopup(_('errorFolderNotFound'));
-        throw new Error("Main folder ID not found.");
-    }
-    if (loaderText) loaderText.textContent = _('loadingFile') + " ...";
-    const onNoteProgress = (loaded, total) => {
-        if (loaderText) loaderText.textContent = `${_('loadingFile')} ${loaded} ${_('of')} ${total}`;
-    };
-    console.time("fetchAllData_TotalLoad");
-    const tStart = Date.now();
-    const [boardRes, mediaRes, noteRes] = await Promise.all([
-        loadAndParseFile('board.txt', folderId, modifiedSince),
-        loadAndParseFile('media.txt', folderId, modifiedSince),
-        loadAndParseFile('note.txt', folderId, modifiedSince, onNoteProgress)
-    ]);
-    const tEnd = Date.now();
-    initialLoadTime = ((tEnd - tStart) / 1000).toFixed(2);
-    initialLoadTimestamp = tEnd;
-    console.timeEnd("fetchAllData_TotalLoad");
-    boardsData = boardRes.data;
-    mediaData = mediaRes.data;
-    allNotesData = noteRes.data;
-    startCalendarBellClock();
-    trackMaxIds(allNotesData);
-    trackMaxBoardIds(boardsData);
-    // Integrity checks for initial Google Drive load
-    const gdidMap = new Map();
-    const checkIntegrity = (data, filename) => {
-        data.forEach(item => {
-            if (!item.gdid) {
-                const textContent = item.notetxt || item.text || '';
-                dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive', text: textContent });
-            } else if (gdidMap.has(item.gdid)) {
-                dataIntegrityIssues.push({
-                    type: 'duplicate',
-                    gdid: item.gdid,
-                    file1: gdidMap.get(item.gdid),
-                    file2: filename,
-                    mode: 'gdrive'
-                });
-            } else {
-                gdidMap.set(item.gdid, filename);
-            }
-        });
-    };
-    checkIntegrity(boardsData, 'board.txt');
-    checkIntegrity(mediaData, 'media.txt');
-    checkIntegrity(allNotesData, 'note.txt');
-    if (boardsData.length === 0 && allNotesData.length === 0) {
-        if (activeFolderName && activeFolderName !== 'AppDataFolder' && localStorage.getItem('initial_setup_complete') === 'true') {
-            showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with MultiNotes data.', 10000);
-        } else {
-            showToast(_('errorNoBoardFilesFound') || 'No boards found in the selected folder. Please create a board first.', 10000);
-            showInitialBoardModalAfterGuide();
-        }
-    } else if (boardsData.length === 0) {
-        showToast(_('errorNoBoardFilesFound') || 'No boards found in the selected folder. Please create a board first.', 10000);
-        showInitialBoardModalAfterGuide();
-    } else if (allNotesData.length === 0) {
-        showToast(_('errorNoNoteFilesFound') || 'No note files found in the selected folder. Please check your data source.', 10000);
-    }
-    return { boardParseError: boardRes.parseError, duplicates: noteRes.duplicates };
-}
-
-let isSyncing = false;
-async function runGoogleDriveSync(forceFullSync = false) {
-    if (isSyncing) {
-        console.log("[Sync-Run] Already syncing, skipping call.");
-        return 0;
-    }
-    isSyncing = true;
-    try {
-        console.log("[Sync-Run] runGoogleDriveSync started, forceFullSync:", forceFullSync);
-        const loaderTitle = document.getElementById('loader-title');
-        const loaderFolderInfo = document.getElementById('loader-folder-info');
-        if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-        const loaderText = document.getElementById('loader-text');
-        if (!useIndexedDb) {
-            console.log("[Sync-Run] Exiting: useIndexedDb is false");
-            return 0;
-        }
-        const updateOnly = localStorage.getItem('updateFromSource') !== 'false';
-        const lastSyncTimestampOrig = (!forceFullSync && updateOnly && dbExists) ? await getConfig('lastGDTimestamp') : null;
-        let lastSyncTimestamp = lastSyncTimestampOrig;
-        if (lastSyncTimestamp) lastSyncTimestamp = parseInt(lastSyncTimestamp, 10);
-        const modifiedSince = (forceFullSync || !lastSyncTimestamp) ? null : new Date(lastSyncTimestamp).toISOString();
-        let notesForConflictCheck = [];
-        if (loaderTitle) {
-            loaderTitle.innerText = (modifiedSince && !forceFullSync) ?
-                _('checkingForGDriveUpdates').replace('{date}', new Date(lastSyncTimestamp).toLocaleString(currentLang)) :
-                _('initialGDriveSync');
-        }
-        const syncStartTime = Date.now();
-        const folderId = await getFolderID();
-        if (!folderId) {
-            console.log("[Sync-Run] Exiting: folderId not found.");
-            return 0;
-        }
-        console.log("[Sync-Run] Folder identity found:", folderId);
-        if (forceFullSync && useIndexedDb) {
-            console.log("[Sync-Run] forceFullSync active: clearing DB stores for full rebuild...");
-            await clearDbStores();
-            boardsData = [];
-            mediaData = [];
-            allNotesData = [];
-        }
-        let actualBoardUpdates = 0;
-        let actualMediaUpdates = 0;
-        const gdidMap = new Map(); // Track duplicates during GDrive sync
-        const syncFileWorker = async (filename, storeName, isNote = false, forceFull = false) => {
-            const since = (forceFull || forceFullSync) ? null : modifiedSince;
-            const files = await fetchFiles(filename, folderId, null, since);
-            if (files.length > 0) {
-                const { data, duplicates } = await parseFileResults(files, filename);
-                if (duplicates && duplicates.length > 0 && isNote) {
-                    duplicates.forEach(pair => notesForConflictCheck.push(pair));
-                }
-                if (data.length > 0) {
-                    // Integrity check for the batch
-                    data.forEach(item => {
-                        if (!item.gdid) {
-                            dataIntegrityIssues.push({ type: 'missing', file: filename, mode: 'gdrive' });
-                        } else if (gdidMap.has(item.gdid)) {
-                            dataIntegrityIssues.push({
-                                type: 'duplicate',
-                                gdid: item.gdid,
-                                file1: gdidMap.get(item.gdid),
-                                file2: filename,
-                                mode: 'gdrive'
-                            });
-                        } else {
-                            gdidMap.set(item.gdid, filename);
-                        }
-                    });
-                    if (filename === 'media.txt') {
-                        for (let n of data) {
-                            const i = mediaData.findIndex(m => m.gdid === n.gdid);
-                            const localMedia = await getFromDB(MEDIA_STORE_NAME, n.gdid || n.id);
-                            if (!localMedia || (parseInt(n.datemod, 10) > (parseInt(localMedia.datemod, 10) || 0))) {
-                                actualMediaUpdates++;
-                            }
-                            if (i !== -1) mediaData[i] = n; else mediaData.push(n);
-                        }
-                    } else if (filename === 'board.txt') {
-                        for (let n of data) {
-                            const i = boardsData.findIndex(b =>
-                                (n.gdid && b.gdid && b.gdid === n.gdid) ||
-                                (n.id !== undefined && b.id !== undefined && String(b.id) === String(n.id)) ||
-                                (n.title && b.title && b.title.trim().toLowerCase() === n.title.trim().toLowerCase())
-                            );
-                            const localBoard = await getFromDB(BOARD_STORE_NAME, n.gdid || n.id);
-                            const isBoardChanged = !localBoard ||
-                                localBoard.title !== n.title ||
-                                localBoard.color !== n.color ||
-                                localBoard.colorfont !== n.colorfont ||
-                                localBoard.status !== n.status ||
-                                localBoard.backnum !== n.backnum ||
-                                localBoard.backpath !== n.backpath ||
-                                localBoard.gdid !== n.gdid;
-                            if (isBoardChanged) {
-                                actualBoardUpdates++;
-                            }
-                            if (i !== -1) {
-                                const oldGdid = boardsData[i].gdid;
-                                if (oldGdid && n.gdid && oldGdid !== n.gdid && useIndexedDb) {
-                                    await deleteFromDB(BOARD_STORE_NAME, oldGdid);
-                                }
-                                boardsData[i] = { ...boardsData[i], ...n };
-                            } else {
-                                boardsData.push(n);
-                            }
-                        }
-                    }
-                    let dataToPut = data;
-                    const noteWindowSyncNotes = [];
-                    if (isNote && useIndexedDb && (lastSyncTimestamp || dbExists)) {
-                        const nonConflicting = [];
-                        for (let serverNote of data) {
-                            const localNote = await getFromDB(NOTE_STORE_NAME, serverNote.gdid || serverNote.id);
-                            if (localNote) {
-                                const isDifferent = serverNote.notetxt !== localNote.notetxt || serverNote.color !== localNote.color || serverNote.calendarDate !== localNote.calendarDate || serverNote.boardid !== localNote.boardid;
-                                const localDm = parseInt(localNote.datemod, 10) || 0;
-                                const isDirty = lastSyncTimestamp ? (localDm > lastSyncTimestamp) : isDifferent;
-
-                                // Note windows: the one showing this note decides for itself after the
-                                // update (refreshNoteWindowsAfterSync) - without the user's changes it takes
-                                // the new text quietly, with unsaved changes it is not touched and asks.
-                                const isOpenInModal = !!findNoteWindow(serverNote.id, serverNote.gdid);
-                                const isConflict = isDifferent && isDirty;
-
-                                if (isConflict) {
-                                    console.log(`[Sync-Conflict!] Buffering for manual resolution: ${serverNote.gdid}`);
-                                    notesForConflictCheck.push({ serverNote, localNote });
-                                    continue;
-                                } else if (isDifferent && isOpenInModal) {
-                                    console.log(`[Sync-Update] Open note changed elsewhere: ${serverNote.gdid}`);
-                                    noteWindowSyncNotes.push(serverNote);
-                                } else if (isDifferent && !isDirty) {
-                                    console.log(`[Sync-Update] Server version is newer: ${serverNote.gdid}`);
-                                }
-                            }
-                            nonConflicting.push(serverNote);
-                        }
-                        dataToPut = nonConflicting;
-                    }
-                    if (isNote) {
-                        for (const note of dataToPut) {
-                            if (note.gdid && !updatedNoteGdims.includes(note.gdid)) {
-                                const localNote = await getFromDB(NOTE_STORE_NAME, note.gdid);
-                                if (!localNote || (parseInt(note.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
-                                    updatedNoteGdims.push(note.gdid);
-                                }
-                            }
-                        }
-                    }
-                    await bulkPutDB(storeName, dataToPut, true);
-
-                    // Update allNotesData in memory to prevent stale data
-                    if (isNote) {
-                        dataToPut.forEach(newNote => {
-                            const mIdx = allNotesData.findIndex(n => n.gdid === newNote.gdid);
-                            if (mIdx !== -1) {
-                                allNotesData[mIdx] = newNote;
-                            } else {
-                                allNotesData.push(newNote);
-                            }
-                        });
-                        refreshNoteWindowsAfterSync(noteWindowSyncNotes);
-                    }
-
-                    console.log(`[Sync] Updated ${filename}:`, dataToPut.length, "items.");
-                }
-            }
-        };
-
-        try {
-            console.time("runGoogleDriveSync_Parallel");
-            await Promise.all([
-                syncFileWorker('board.txt', BOARD_STORE_NAME, false, false),
-                syncFileWorker('media.txt', MEDIA_STORE_NAME, false),
-                syncFileWorker('note.txt', NOTE_STORE_NAME, true)
-            ]);
-        } finally {
-            try { console.timeEnd("runGoogleDriveSync_Parallel"); } catch (e) { }
-        }
-        const totalActualUpdates = updatedNoteGdims.length + actualBoardUpdates + actualMediaUpdates;
-        console.log("[Sync-Run] Parallel sync workers finished. Actual updates:", totalActualUpdates);
-
-        await saveConfig('lastGDTimestamp', syncStartTime);
-
-        // --- Conflict Resolution Logic after GDrive Sync ---
-        if (useIndexedDb && notesForConflictCheck.length > 0) {
-            for (const pair of notesForConflictCheck) {
-                const { serverNote, localNote } = pair;
-                // Only trigger if content or critical fields actually differ
-                if (serverNote.notetxt !== localNote.notetxt || serverNote.color !== localNote.color || serverNote.calendarDate !== localNote.calendarDate || serverNote.boardid !== localNote.boardid) {
-                    // We use localNote as baseNote for mergeNotes since we don't have a common third version handy.
-                    // This means mergeNotes won't automatically detect field conflicts (as local==base),
-                    // so we manually check for differences and populate conflicts.
-                    const baseNote = localNote;
-                    const { conflicts } = mergeNotes(baseNote, localNote, serverNote);
-                    if (Object.keys(conflicts).length === 0) {
-                        if (serverNote.notetxt !== localNote.notetxt) conflicts.notetxt = { local: localNote.notetxt, server: serverNote.notetxt };
-                        if (serverNote.color !== localNote.color) conflicts.color = { local: localNote.color, server: serverNote.color };
-                        if (serverNote.calendarDate !== localNote.calendarDate) conflicts.calendarDate = { local: localNote.calendarDate, server: serverNote.calendarDate };
-                    }
-                    if (Object.keys(conflicts).length > 0) {
-                        const resolved = await showNoteConflictModal(baseNote, localNote, serverNote, conflicts);
-                        if (resolved) {
-                            await bulkPutDB(NOTE_STORE_NAME, [resolved], true);
-                            const mIdx = allNotesData.findIndex(n => n.gdid === resolved.gdid);
-                            if (mIdx !== -1) allNotesData[mIdx] = resolved;
-                            if (resolved.gdid && !updatedNoteGdims.includes(resolved.gdid)) {
-                                updatedNoteGdims.push(resolved.gdid);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        loaderText.textContent = _('syncFinishedLoadingData');
-        return totalActualUpdates;
-    } finally {
-        isSyncing = false;
-    }
-}
-let cachedLicenseData = null;
-let cachedLicenseEmailHint = null;
-async function decryptLicenseToken() {
-    let currentEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint') || localStorage.getItem('cached_whitelist_email');
-    if (!currentEmail && typeof getConfig === 'function') {
-        try {
-            currentEmail = await getConfig('userEmail');
-        } catch (e) {
-            console.warn("Could not get userEmail from config:", e);
-        }
-    }
-    if (currentEmail && !sessionStorage.getItem('google_auth_email_hint')) {
-        sessionStorage.setItem('google_auth_email_hint', currentEmail);
-    }
-    if (cachedLicenseData !== null && cachedLicenseEmailHint !== currentEmail) {
-        cachedLicenseData = null;
-    }
-    if (cachedLicenseData !== null) return cachedLicenseData;
-    cachedLicenseData = { email: null, validityDays: 30, ageInDays: 0, remainingDays: 0, pass: false };
-    const url = new URL(window.location.href);
-    const urlTokenParam = url.searchParams.get("token");
-    if (urlTokenParam) {
-        if (urlTokenParam !== localStorage.getItem('urlToken')) {
-            localStorage.setItem('urlToken', urlTokenParam);
-        }
-    }
-    let urlToken = localStorage.getItem('urlToken');
-    let whitelistData = null;
-    if (currentEmail) {
-        const cachedEmail = localStorage.getItem('cached_whitelist_email');
-        if (cachedEmail && cachedEmail !== currentEmail) {
-            localStorage.removeItem('cached_whitelist_data');
-            localStorage.removeItem('cached_whitelist_time');
-            localStorage.removeItem('cached_whitelist_email');
-        }
-        const cachedDataStr = localStorage.getItem('cached_whitelist_data');
-        const cachedTimeStr = localStorage.getItem('cached_whitelist_time');
-        let cacheIsValid = false;
-        if (cachedDataStr && cachedTimeStr && !isOffline) {
-            const cachedTime = parseInt(cachedTimeStr, 10);
-            try {
-                whitelistData = JSON.parse(cachedDataStr);
-                const term = whitelistData.term || whitelistData.newTerm || 30;
-                const daysPassed = whitelistData.daysPassed || 0;
-                const remaining = term - daysPassed;
-                const isTerminated = whitelistData.terminated === true || whitelistData.terminated === "YES";
-                const isStillValid = !isTerminated && (whitelistData.success === true && remaining > 0 || ((whitelistData.extended === true || whitelistData.extended === "YES") && whitelistData.newTerm > 0));
-                if (isStillValid) {
-                    cacheIsValid = true;
-                    console.log("[License] Using cached whitelist data (age: " + Math.round((Date.now() - cachedTime) / 60000) + " minutes).");
-                    if (Date.now() - cachedTime > 12 * 60 * 60 * 1000) {
-                        setTimeout(() => {
-                            checkWhitelist(false).then(freshData => {
-                                if (freshData) {
-                                    localStorage.setItem('cached_whitelist_data', JSON.stringify(freshData));
-                                    localStorage.setItem('cached_whitelist_time', Date.now().toString());
-                                    localStorage.setItem('cached_whitelist_email', currentEmail || '');
-                                    console.log("[License] Background whitelist update successful.");
-                                }
-                            }).catch(e => console.warn("Background whitelist update failed:", e));
-                        }, 5000);
-                    }
-                } else {
-                    console.log("[License] Cached whitelist indicates expired or invalid status. Checking online...");
-                    cacheIsValid = false;
-                }
-            } catch (e) {
-                console.warn("Error parsing cached whitelist data:", e);
-            }
-        }
-        if (!cacheIsValid && !isOffline) {
-            whitelistData = await checkWhitelist();
-            if (whitelistData) {
-                localStorage.setItem('cached_whitelist_data', JSON.stringify(whitelistData));
-                localStorage.setItem('cached_whitelist_time', Date.now().toString());
-                localStorage.setItem('cached_whitelist_email', currentEmail || '');
-            }
-        }
-    } else {
-        // Без email (logout) — изчисляваме оставащия срок от запазените данни
-        const savedDays = localStorage.getItem('license_remaining_days');
-        const savedTime = localStorage.getItem('license_remaining_timestamp');
-        if (savedDays && savedTime) {
-            const elapsed = (Date.now() - parseInt(savedTime, 10)) / (1000 * 60 * 60 * 24);
-            const remaining = Math.max(0, Math.floor(parseFloat(savedDays) - elapsed));
-            cachedLicenseData.pass = remaining > 0;
-            cachedLicenseData.remainingDays = remaining;
-            console.log(`[License] No user email; using stored license data (${remaining} days remaining).`);
-            cachedLicenseEmailHint = currentEmail;
-            return cachedLicenseData;
-        }
-    }
-    if (whitelistData) {
-        if (whitelistData.terminated === true || whitelistData.terminated === "YES") {
-            console.warn("Access terminated by server administrator.");
-            cachedLicenseData.pass = false;
-            cachedLicenseData.remainingDays = 0;
-            cachedLicenseData.email = whitelistData.email;
-            cachedLicenseEmailHint = currentEmail;
-            return cachedLicenseData;
-        }
-        const term = whitelistData.term || whitelistData.newTerm || 30;
-        const daysPassed = whitelistData.daysPassed || 0;
-        if (whitelistData.success === true) {
-            cachedLicenseData.remainingDays = Math.max(0, term - daysPassed);
-            cachedLicenseData.pass = cachedLicenseData.remainingDays > 0;
-        } else if ((whitelistData.extended === true || whitelistData.extended === "YES") && whitelistData.newTerm > 0) {
-            cachedLicenseData.pass = true;
-            cachedLicenseData.remainingDays = whitelistData.newTerm;
-        } else {
-            cachedLicenseData.pass = false;
-            cachedLicenseData.remainingDays = 0;
-        }
-        cachedLicenseData.email = whitelistData.email;
-        if (cachedLicenseData.pass) {
-            localStorage.setItem('license_remaining_days', String(cachedLicenseData.remainingDays));
-            localStorage.setItem('license_remaining_timestamp', String(Date.now()));
-            cachedLicenseEmailHint = currentEmail;
-            return cachedLicenseData;
-        } else if (!urlToken) {
-            localStorage.setItem('license_remaining_days', '0');
-            localStorage.setItem('license_remaining_timestamp', String(Date.now()));
-            cachedLicenseEmailHint = currentEmail;
-            return cachedLicenseData;
-        }
-    } else if (!isOffline && currentEmail) {
-        console.warn("Whitelist check failed.");
-    }
-    if (!urlToken) {
-        let hasSInCache = false;
-        try {
-            const cache = await caches.open('app-cache');
-            const cachedResponse = await cache.match('s');
-            hasSInCache = !!cachedResponse;
-        } catch (e) {
-            console.warn("Error checking cache for 's':", e);
-        }
-        if (!hasSInCache) {
-            cachedLicenseData.pass = false;
-            cachedLicenseData.remainingDays = 30;
-            return cachedLicenseData;
-        }
-        if (!ts) {
-            ts = await getFirstStartEncoded(false);
-        }
-        const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-        const validityInDays = 30;
-        const remainingDays = Math.max(0, Math.floor(validityInDays - ageInDays)) + 1;
-        cachedLicenseData.ageInDays = ageInDays;
-        cachedLicenseData.remainingDays = remainingDays;
-        cachedLicenseData.pass = ageInDays < validityInDays;
-        cachedLicenseEmailHint = currentEmail;
-        if (!cachedLicenseData.pass) {
-            console.warn("Trial period has expired. License required.");
-        } else if (!whitelistData) {
-            console.log(`Working in offline trial mode (${remainingDays} days remaining).`);
-        }
-        return cachedLicenseData;
-    }
-    try {
-        const b64 = urlToken.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = b64 + '='.repeat((4 - b64.length % 4) % 4);
-        const raw = Uint8Array.from(atob(pad), c => c.charCodeAt(0));
-        const iv = raw.slice(0, 12), data = raw.slice(12);
-        const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(CLIENT_ID.match(/-(.{16})/)[1]), { name: 'AES-GCM' }, false, ['decrypt']);
-        const out = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-        const [decryptedEmail, timestamp, tokenValidity] = new TextDecoder().decode(out).split('|');
-        const isDeviceValidated = (localStorage.getItem('validatedTokenForDevice') === urlToken);
-        if (!isDeviceValidated) {
-            const localPart = decryptedEmail.split('@')[0];
-            if (localPart !== 'all' && currentEmail && decryptedEmail !== currentEmail) {
-                // Do not remove the token, so it consistently fails instead of reverting to the trial on reload
-                throw new Error(`Token email (${decryptedEmail}) mismatch for user (${currentEmail})`);
-            }
-            if (currentEmail) {
-                localStorage.setItem('validatedTokenForDevice', urlToken);
-            }
-        }
-        if (!ts) ts = await getFirstStartEncoded();
-        const ageInDays = (Date.now() - parseInt(ts, 10)) / (1000 * 60 * 60 * 24);
-        let validityInDays = 30;
-        if (tokenValidity && !isNaN(parseInt(tokenValidity))) validityInDays = parseInt(tokenValidity, 10);
-        const remainingDays = Math.max(0, Math.ceil(validityInDays - ageInDays));
-        cachedLicenseData = { urlTokenUsed: urlToken, email: decryptedEmail, validityDays: validityInDays, ageInDays, remainingDays, pass: ageInDays < validityInDays };
-        cachedLicenseEmailHint = currentEmail;
-        console.log(`License token: Age: ${ageInDays.toFixed(2)} days, Remaining: ${remainingDays} days`);
-    } catch (error) {
-        console.warn("Error decrypting license token.", error);
-        cachedLicenseData.pass = false;
-        cachedLicenseData.remainingDays = 0;
-        cachedLicenseEmailHint = currentEmail;
-    }
-    return cachedLicenseData;
-}
-
-/**
- * Refreshes the Google Auth Token silently if possible.
- */
-// Singleton promise to prevent multiple concurrent refresh attempts
-let refreshPromise = null;
-
-async function refreshAuthToken(forcePopup = false, quiet = false) {
-    if (refreshPromise) return refreshPromise;
-    refreshPromise = new Promise(async (resolve, reject) => {
-        console.log("Refreshing auth token (quiet: " + quiet + ")...");
-        try {
-            const waitForGis = () => new Promise((res, rej) => {
-                if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-                    res(true);
-                    return;
-                }
-                let attempts = 0;
-                const maxAttempts = 100;
-                const checkInterval = setInterval(() => {
-                    attempts++;
-                    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-                        clearInterval(checkInterval);
-                        res(true);
-                    } else if (attempts >= maxAttempts) {
-                        clearInterval(checkInterval);
-                        rej(new Error("Google Identity Services not loaded."));
-                    }
-                }, 100);
-            });
-            try {
-                await waitForGis();
-            } catch (gisError) {
-                console.warn("GIS not available, cannot refresh token:", gisError.message);
-                resolve({ pass: false, error: gisError });
-                return;
-            }
-            const client = google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: async (tokenResponse) => {
-                    clearTimeout(requestTimeout);
-                    if (tokenResponse && tokenResponse.access_token) {
-                        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-                        try {
-                            const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-                            });
-                            if (userInfoResp.ok) {
-                                const userInfo = await userInfoResp.json();
-                                // Проверен акаунт: сверява се с имейла в базата (при разлика - екранът за смяна на акаунт)
-                                if (userInfo.email) await onVerifiedAccount(userInfo.email);
-                                const previousEmail = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
-                                if (previousEmail && userInfo.email && previousEmail !== userInfo.email) {
-                                    console.warn(`[refreshAuthToken] User account changed: ${previousEmail} → ${userInfo.email}. Resetting folder settings.`);
-                                    localStorage.removeItem('active_folder_name');
-                                    clearCachedMainFolderId();
-                                    localStorage.removeItem('initial_setup_complete');
-                                    localStorage.removeItem('settings_multinotes_data');
-                                    localStorage.removeItem('gdrive_folder_names');
-                                    sessionStorage.removeItem('first_run_lock');
-                                    ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
-                                    activeFolderName = 'CX-Notes';
-                                    cachedMainFolderId = null;
-                                    folderIds = {};
-                                }
-                                if (userInfo.email) {
-                                    sessionStorage.setItem('google_auth_email_hint', userInfo.email);
-                                    localStorage.setItem('google_login_hint', userInfo.email);
-                                }
-                            }
-                        } catch (uErr) {
-                            console.warn('[refreshAuthToken] Could not verify userinfo during token refresh:', uErr);
-                        }
-                        if (sessionStorage.getItem('google_auth_token')) {
-                            sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        }
-                        const rememberMe = localStorage.getItem('google_auth_token') !== null || localStorage.getItem('rememberMe') === 'true';
-                        if (rememberMe) {
-                            localStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        } else if (!sessionStorage.getItem('google_auth_token')) {
-                            sessionStorage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        }
-                        console.log("Token refreshed successfully.");
-                        authToken = tokenWithTimestamp;
-                        if (typeof gapi !== 'undefined' && gapi.client) {
-                            gapi.client.setToken({ access_token: authToken.access_token });
-                        }
-                        resolve({ pass: true, tokenData: tokenWithTimestamp });
-                    } else {
-                        console.warn("Token refresh failed or closed:", tokenResponse);
-                        if (tokenResponse && (tokenResponse.error === 'interaction_required' || tokenResponse.error === 'access_denied')) {
-                            if (!quiet) {
-                                if (typeof showToast === 'function') {
-                                    showToast(_('sessionExpired') || "Session expired. Please sign in again.", 5000);
-                                }
-                                setTimeout(() => {
-                                    if (!isSyncSuspended && typeof initLoginPage === 'function') initLoginPage();
-                                }, 1500);
-                            }
-                        }
-                        resolve({ pass: false, error: tokenResponse });
-                    }
-                },
-            });
-            const loginHint = sessionStorage.getItem('google_auth_email_hint') ||
-                localStorage.getItem('google_login_hint') ||
-                cachedLicenseEmailHint ||
-                (cachedLicenseData && cachedLicenseData.email_hint);
-            const tokenOptions = {
-                prompt: ''
-            };
-            if (loginHint) tokenOptions.hint = loginHint;
-            const requestTimeout = setTimeout(() => {
-                console.warn("Token refresh timed out.");
-                resolve({ pass: false, error: { error: 'timeout' } });
-            }, 10000);
-            client.requestAccessToken(tokenOptions);
-        } catch (error) {
-            console.error("Critical error in refreshAuthToken:", error);
-            resolve({ pass: false, error: error });
-        }
-    }).finally(() => {
-        refreshPromise = null;
-    });
-    return refreshPromise;
-}
-
-// Тихо опресняване на токена при старт с локални данни - стартът не го чака.
-// При успех синхронизацията тръгва веднага (pendingBackgroundSync), при провал - нищо не се показва.
-let backgroundTokenRefresh = null;
-let pendingBackgroundSync = null;
-
-function startBackgroundTokenRefresh() {
-    if (backgroundTokenRefresh) return backgroundTokenRefresh;
-    backgroundTokenRefresh = refreshAuthToken(false, true).catch(() => null).then(async (result) => {
-        backgroundTokenRefresh = null;
-        if (!result || !result.pass) {
-            console.warn("Background token refresh did not succeed. Staying in local mode.");
-            return false;
-        }
-        console.log("Background token refresh succeeded. Resuming sync.");
-        isSyncSuspended = false;
-        authToken = result.tokenData;
-        updateModeButton();
-        const run = pendingBackgroundSync;
-        pendingBackgroundSync = null;
-        if (run) {
-            if (useGoogleDb) {
-                await Promise.race([loadGoogleApis().catch(() => { }), new Promise(r => setTimeout(r, 10000))]);
-            }
-            run();
-        }
-        return true;
-    });
-    return backgroundTokenRefresh;
-}
-
-function notifyManualGoogleLoginRequired() {
-    if (typeof showToast === 'function') {
-        showToast(_('sessionExpired') || "Session expired. Please sign in again.", 5000);
-    }
-    setTimeout(() => {
-        if (typeof initLoginPage === 'function') initLoginPage();
-    }, 1500);
-}
-
-/**
- * Проактивно обновява токена ~5 минути преди изтичането му, за да не се
- * налага интеракция по средата на работа. Изпълнява се тихо (quiet) — без popup,
- * без toast и без логин екран при неуспех.
- */
-let lastBackgroundRefreshFailedTime = 0;
-
-function scheduleProactiveTokenRefresh() {
-    if (proactiveRefreshTimer) clearInterval(proactiveRefreshTimer);
-    const checkAndRefreshToken = async () => {
-        if (isOffline || isSyncSuspended || document.hidden) return;
-        if (Date.now() - lastBackgroundRefreshFailedTime < 300000) return;
-        const storedToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedToken) return;
-        let tokenData;
-        try { tokenData = JSON.parse(storedToken); } catch (e) { return; }
-        if (!tokenData || !tokenData.issued_at || !tokenData.expires_in) return;
-        const elapsedSeconds = (Date.now() - tokenData.issued_at) / 1000;
-        const remainingSeconds = tokenData.expires_in - elapsedSeconds;
-        if (remainingSeconds < 300) {
-            console.log(`Token refresh on visibility/timer: token expires/expired in ~${Math.round(remainingSeconds)}s.`);
-            try {
-                const result = await refreshAuthToken(false, true);
-                if (result && result.pass) {
-                    console.log("Token refresh succeeded.");
-                    lastBackgroundRefreshFailedTime = 0;
-                } else {
-                    console.warn("Token refresh did not succeed. Setting 5m cooldown.");
-                    lastBackgroundRefreshFailedTime = Date.now();
-                }
-            } catch (e) {
-                console.warn("Token refresh failed. Setting 5m cooldown:", e);
-                lastBackgroundRefreshFailedTime = Date.now();
-            }
-        }
-    };
-    proactiveRefreshTimer = setInterval(checkAndRefreshToken, 60000);
-    if (!window._visibilityAuthListenerAdded) {
-        window._visibilityAuthListenerAdded = true;
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) checkAndRefreshToken();
-        });
-        window.addEventListener('focus', () => {
-            if (!document.hidden) checkAndRefreshToken();
-        });
-    }
-}
-
-/**
- * Downloads file contents with Concurrency Control & 'Kick' mechanism.
- */
-async function fetchFiles(filename, folderId, onProgress, modifiedSince = null) {
-    let query = `'${folderId}' in parents and name = '${filename}' and mimeType='text/plain' and trashed = false`;
-    if (modifiedSince) query += ` and modifiedTime > '${modifiedSince}'`;
-    let allFiles = [];
-    if (filename) console.time(`fetchFiles_${filename}_List`);
-
-    const listFiles = async (token) => {
-        let files = [];
-        let nextToken = null;
-        do {
-            const spacesParam = (folderId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
-            const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name),nextPageToken&pageSize=1000${nextToken ? `&pageToken=${nextToken}` : ''}${spacesParam}&t=${Date.now()}`;
-            const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-            if (!resp.ok) {
-                const errorData = await resp.json().catch(() => ({}));
-                if (resp.status === 401) throw { status: 401, error: errorData };
-                throw new Error(`Drive API List failed: ${resp.status} ${JSON.stringify(errorData)}`);
-            }
-            const result = await resp.json();
-            files.push(...(result.files || []));
-            nextToken = result.nextPageToken;
-        } while (nextToken);
-        return files;
-    };
-
-    let attempts = 0;
-    const maxAttempts = 3;
-    try {
-        while (attempts < maxAttempts) {
-            attempts++;
-            try {
-                let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-                if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-                let tokenData = JSON.parse(storedTokenString);
-                allFiles = await listFiles(tokenData.access_token);
-                break;
-            } catch (e) {
-                if (e.status === 401 || (e.result && e.result.error && e.result.error.code === 401)) {
-                    if (attempts >= maxAttempts) throw new Error("Drive API List failed (Auth) after retries.");
-                    console.warn(`Got 401 during file list (Attempt ${attempts}), attempting token refresh...`);
-                    try {
-                        const refreshed = await refreshAuthToken(false);
-                        if (!refreshed || !refreshed.pass) throw new Error("Token refresh failed.");
-                        await new Promise(r => setTimeout(r, 500));
-                    } catch (refreshError) {
-                        console.error("Token refresh failed during retry:", refreshError);
-                        notifyManualGoogleLoginRequired();
-                        throw new Error("Drive API List failed (Auth Refresh Failed).");
-                    }
-                } else throw e;
-            }
-        }
-    } finally {
-        if (filename) {
-            try { console.timeEnd(`fetchFiles_${filename}_List`); } catch (e) { }
-        }
-    }
-    if (allFiles.length === 0) return [];
-    let loadedFiles = 0;
-    const totalFiles = allFiles.length;
-    // --- robust token retrieval ---
-    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
-    let accessToken = tokenObj ? tokenObj.access_token : null;
-    if (!accessToken) {
-        console.error("No access token found for file download!");
-        throw new Error("Missing auth token.");
-    }
-    // LIMIT CONCURRENCY: Don't overwhelm the browser socket pool
-    const CONCURRENCY_LIMIT = 100;
-    console.log(`[${filename}] Starting throttled fetch. Total: ${totalFiles}, Limit: ${CONCURRENCY_LIMIT}`);
-    if (filename) {
-        try { console.time(`fetchFiles_${filename}_Total`); } catch (e) { }
-    }
-    const UI_STEP = totalFiles <= 50 ? 1 : Math.max(5, Math.floor(totalFiles / 50));
-
-    const downloadWithKick = async (file, attempt = 1) => {
-        const controller = new AbortController();
-        const kickId = setTimeout(() => { if (attempt === 1) controller.abort(); }, 1200);
-        try {
-            const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&t=${Date.now()}`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` },
-                cache: 'no-store',
-                priority: 'high',
-                signal: controller.signal
-            });
-            clearTimeout(kickId);
-
-            if (!response.ok) {
-                if (response.status === 401) {
-                    console.warn(`Got 401 fetching file ${file.id}, refreshing token...`);
-                    const refreshResult = await refreshAuthToken();
-                    if (refreshResult && refreshResult.tokenData) {
-                        accessToken = refreshResult.tokenData.access_token;
-                    } else {
-                        throw new Error("Token refresh failed");
-                    }
-
-                    // Retry
-                    const retryResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&t=${Date.now()}`, {
-                        headers: { 'Authorization': `Bearer ${accessToken}` },
-                        cache: 'no-store',
-                        priority: 'high'
-                    });
-
-                    if (!retryResponse.ok) throw new Error(`HTTP Error ${retryResponse.status}`);
-                    const body = await retryResponse.text();
-
-                    loadedFiles++;
-                    if (onProgress && (loadedFiles % UI_STEP === 0 || loadedFiles === totalFiles)) {
-                        onProgress(loadedFiles, totalFiles);
-                    }
-                    return { res: { body }, id: file.id };
-                }
-                throw new Error(`HTTP Error ${response.status}`);
-            }
-
-            const body = await response.text();
-            if (file.id === '1aQ67KIr7Lv6cLhimAwcznpr3n11z0KmP') {
-                console.warn(`[DEBUG-LOAD] Content of ${file.id}:`, body.substring(0, 200));
-            }
-            loadedFiles++;
-            if (onProgress && (loadedFiles % UI_STEP === 0 || loadedFiles === totalFiles)) {
-                onProgress(loadedFiles, totalFiles);
-            }
-            return { res: { body }, id: file.id };
-
-        } catch (error) {
-            clearTimeout(kickId);
-            if ((error.name === 'AbortError' || error.message.includes('aborted')) && attempt === 1) {
-                return downloadWithKick(file, 2);
-            }
-            if (attempt < 3 && error.name !== 'AbortError') {
-                return new Promise(resolve => setTimeout(() => resolve(downloadWithKick(file, attempt + 1)), 500));
-            }
-            console.error(`[${filename}] Error for ${file.name}:`, error.message);
-            return { res: null, id: file.id };
-        }
-    };
-    // SLIDING WINDOW POOL
-    const results = [];
-    const pool = new Set();
-    for (const file of allFiles) {
-        if (pool.size >= CONCURRENCY_LIMIT) {
-            await Promise.race(pool);
-        }
-        const promise = downloadWithKick(file).then(res => {
-            pool.delete(promise);
-            return res;
-        });
-        results.push(promise);
-        pool.add(promise);
-    }
-    const finalResults = await Promise.all(results);
-    if (filename) {
-        try { console.timeEnd(`fetchFiles_${filename}_Total`); } catch (e) { }
-    }
-    return finalResults;
-}
-
-async function updateLocalFile(gdid, content) {
-    if (!gdid) return false;
-    try {
-        const handle = await getDirectoryHandle();
-        if (!handle) {
-            // Няма handle (например Android) — fallback към изтегляне
-            if (typeof downloadAsFile === 'function') {
-                const fname = localFileMap.get(gdid) || `note-${gdid}.txt`;
-                downloadAsFile(fname, content, 'text/plain');
-                return true;
-            }
-            return false;
-        }
-        let filename = localFileMap.get(gdid);
-        if (!filename) {
-            // Ако нямаме записано име, търсим свободно такова по схемата note.txt, note (1).txt...
-            filename = `note.txt`;
-            let exists = false;
-            try {
-                await handle.getFileHandle(filename, { create: false });
-                exists = true;
-            } catch (e) { exists = false; }
-            if (exists) {
-                let counter = 1;
-                while (true) {
-                    filename = `note (${counter}).txt`;
-                    try {
-                        await handle.getFileHandle(filename, { create: false });
-                        counter++;
-                    } catch (e) { break; }
-                }
-            }
-            localFileMap.set(gdid, filename);
-        }
-        const fileHandle = await handle.getFileHandle(filename, { create: true });
-        try {
-            const writable = await fileHandle.createWritable();
-            try {
-                await writable.write(new Blob([content], { type: 'text/plain' }));
-            } finally {
-                await writable.close();
-            }
-        } catch (writeErr) {
-            // createWritable не се поддържа (Android) — fallback към изтегляне
-            console.warn(`createWritable failed for ${filename}, falling back to download:`, writeErr.message);
-            if (typeof downloadAsFile === 'function') {
-                downloadAsFile(filename, content, 'text/plain');
-            }
-        }
-        return true;
-    } catch (e) {
-        console.error("Local file update failed:", e);
-        return false;
-    }
-}
-async function deleteLocalFile(gdid) {
-    if (!gdid) return false;
-    try {
-        const handle = await getDirectoryHandle();
-        if (!handle) return false;
-
-        const filename = localFileMap.get(gdid);
-        if (filename) {
-            await handle.removeEntry(filename);
-            localFileMap.delete(gdid);
-            return true;
-        }
-        return false;
-    } catch (e) {
-        if (e.name === 'NotFoundError') return true;
-        console.error("Local file delete failed:", e);
-        return false;
-    }
-}
-async function updateGDriveFile(fileId, content) {
-    if (isOffline || !fileId) return false;
-    const sendRequest = async (token) => {
-        return fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'text/plain'
-            },
-            body: content
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-        let response = await sendRequest(tokenData.access_token);
-        if (response.status === 401) {
-            console.warn("401 Unauthorized in updateGDriveFile, attempting silent refresh...");
-            let refreshResult = await refreshAuthToken(false);
-            if (refreshResult && refreshResult.pass) {
-                tokenData = refreshResult.tokenData;
-                response = await sendRequest(tokenData.access_token);
-            }
-            if (response.status === 401) {
-                notifyManualGoogleLoginRequired();
-            }
-            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
-        }
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[GDrive-Error] Status: ${response.status}, Details: ${errorText}`);
-            throw new Error(`${_('errorSaveGDrive')} (Status: ${response.status})`);
-        }
-        return true;
-    } catch (error) {
-        console.error("GDrive update failed:", error);
-        throw error;
-    }
-}
-async function deleteGDriveFile(fileId) {
-    if (!fileId) return false;
-    const sendRequest = async (token) => {
-        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-        let response = await sendRequest(tokenData.access_token);
-        if (response.status === 401) {
-            console.warn("401 Unauthorized in deleteGDriveFile, attempting silent refresh...");
-            let refreshResult = await refreshAuthToken(false);
-            if (refreshResult && refreshResult.pass) {
-                tokenData = refreshResult.tokenData;
-                response = await sendRequest(tokenData.access_token);
-            }
-            if (response.status === 401) {
-                notifyManualGoogleLoginRequired();
-            }
-            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
-        }
-        if (response.status === 404) return false;
-        if (!response.ok && response.status !== 204) throw new Error(`HTTP Error ${response.status}`);
-        return true;
-    } catch (error) {
-        console.error("GDrive delete failed:", error);
-        throw error;
-    }
-}
-
-async function emptyAppDataFolder() {
-    if (isOffline) return false;
-    let nextPageToken = null;
-    let allFiles = [];
-    try {
-        do {
-            const query = encodeURIComponent("trashed=false");
-            const url = `https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,parents),nextPageToken&pageSize=1000${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
-            const sendRequest = async (token) => {
-                return fetch(url, {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-            };
-            let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-            if (!storedTokenString) return false;
-            let tokenData = JSON.parse(storedTokenString);
-            let response = await sendRequest(tokenData.access_token);
-            if (response.status === 401) {
-                let refreshResult = await refreshAuthToken(false);
-                if (refreshResult && refreshResult.pass) {
-                    tokenData = refreshResult.tokenData;
-                    response = await sendRequest(tokenData.access_token);
-                }
-            }
-            if (!response.ok) break;
-            const result = await response.json();
-            if (result.files) {
-                allFiles = allFiles.concat(result.files);
-            }
-            nextPageToken = result.nextPageToken;
-        } while (nextPageToken);
-        if (allFiles.length === 0) return true;
-        const appSettingsId = await getAppSettingsFolderId();
-        const pool = new Set();
-        const CONCURRENCY_LIMIT = 10;
-        for (const file of allFiles) {
-            const id = file.id;
-            const parents = file.parents || [];
-            if (id === appSettingsId || parents.includes(appSettingsId)) continue;
-            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const promise = deleteGDriveFile(id).finally(() => pool.delete(promise));
-            pool.add(promise);
-        }
-        await Promise.all(pool);
-        return true;
-    } catch (e) {
-        console.error("emptyAppDataFolder error:", e);
-        return false;
-    }
-}
-
-
-/**
- * Търси максималните стойности на id и numord сред бележките и ги запазва в глобални променливи,
- * ако са по-големи от текущите им стойности (1 000 000).
- */
 function trackMaxIds(notes) {
     if (!Array.isArray(notes)) return;
     let changed = false;
@@ -2051,506 +689,9 @@ function trackMaxIds(notes) {
         if (!isNaN(id) && id > noteId) { noteId = id; changed = true; }
         if (!isNaN(numord) && numord > noteNumord) { noteNumord = numord; changed = true; }
     });
-    if (changed) syncFolderDataAsync();
 }
 
-/**
- * Създава нов файл в Google Drive в указаната папка.
- */
-async function createGDriveFile(folderId, filename, content) {
-    if (isOffline) return null;
-    const sendRequest = async (token) => {
-        const metadata = {
-            name: filename,
-            parents: [folderId],
-            mimeType: 'text/plain'
-        };
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([content], { type: 'text/plain' }));
-        return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: form
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-        let response = await sendRequest(tokenData.access_token);
-        if (response.status === 401) {
-            console.warn("401 Unauthorized in createGDriveFile, attempting silent refresh...");
-            let refreshResult = await refreshAuthToken(false);
-            if (refreshResult && refreshResult.pass) {
-                tokenData = refreshResult.tokenData;
-                response = await sendRequest(tokenData.access_token);
-            }
-            if (response.status === 401) {
-                notifyManualGoogleLoginRequired();
-            }
-            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
-        }
-        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-        const result = await response.json();
-        return result.id;
-    } catch (e) {
-        console.error("Error creating GDrive file:", e);
-        throw e;
-    }
-}
-
-// Uploads a binary Blob (image, etc.) to Google Drive and returns the file ID
-async function uploadBlobToGDrive(folderId, filename, blob, mimeType) {
-    if (isOffline) return null;
-    const sendRequest = async (token) => {
-        const metadata = {
-            name: filename,
-            parents: [folderId]
-        };
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', blob, filename);
-        return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: form
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-        let response = await sendRequest(tokenData.access_token);
-        if (response.status === 401) {
-            let refreshResult = await refreshAuthToken(false);
-            if (refreshResult && refreshResult.pass) {
-                tokenData = refreshResult.tokenData;
-                response = await sendRequest(tokenData.access_token);
-            }
-            if (response.status === 401) {
-                notifyManualGoogleLoginRequired();
-            }
-            if (response.status === 401) throw new Error("401 Unauthorized - access token expired.");
-        }
-        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-        const result = await response.json();
-        return result.id;
-    } catch (e) {
-        console.error("Error uploading blob to GDrive:", e);
-        throw e;
-    }
-}
-
-async function createNewGDriveFolder(folderName, parentId = null) {
-    if (isOffline) return null;
-    const sendRequest = async (token) => {
-        const body = {
-            name: folderName,
-            mimeType: 'application/vnd.google-apps.folder'
-        };
-        if (parentId) body.parents = [parentId];
-        return fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-        let response = await sendRequest(tokenData.access_token);
-        if (response.status === 401) {
-            let refreshResult = await refreshAuthToken(false);
-            if (refreshResult && refreshResult.pass) {
-                tokenData = refreshResult.tokenData;
-                response = await sendRequest(tokenData.access_token);
-            }
-        }
-        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-        const result = await response.json();
-        return result.id;
-    } catch (e) {
-        console.error("Error creating GDrive folder:", e);
-        throw e;
-    }
-}
-
-/**
- * Създава нова бележка в текущия борд.
- */
-async function isGDriveFolderEmpty(folderId) {
-    if (isOffline || !folderId) return true;
-    const sendRequest = async (token) => {
-        const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-        const spacesParam = (folderId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&pageSize=1&fields=files(id)${spacesParam}`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) return true;
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401) {
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) resp = await sendRequest(refresh.tokenData.access_token);
-        }
-        if (!resp.ok) return true;
-        const result = await resp.json();
-        return !result.files || result.files.length === 0;
-    } catch (e) {
-        console.error("isGDriveFolderEmpty error:", e);
-        return true;
-    }
-}
-
-async function copyGDriveFile(fileId, newParentId, newName) {
-    if (isOffline || !fileId || !newParentId) return null;
-    const sendRequest = async (token) => {
-        const body = { parents: [newParentId] };
-        if (newName) body.name = newName;
-        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/copy`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401) {
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                resp = await sendRequest(tokenData.access_token);
-            }
-        }
-        if (!resp.ok) {
-            if (resp.status === 404) {
-                console.warn(`[GDrive] Copy failed: File ${fileId} not found (404). Skipping.`);
-                return null;
-            }
-            throw new Error(`HTTP Error ${resp.status}`);
-        }
-        const result = await resp.json();
-        return result.id;
-    } catch (e) {
-        if (e.message && e.message.includes('404')) {
-            console.warn(`[GDrive] Copy failed: File ${fileId} not found (404). Skipping.`);
-            return null;
-        }
-        console.error("copyGDriveFile error:", e);
-        return null;
-    }
-}
-
-async function migrateDataToNewFolder(targetFolderId) {
-    const backupOnBeforeUnload = window.onbeforeunload;
-    let reloadBtn = document.getElementById('reload_button');
-    let counterElem = document.getElementById('note-counter');
-    const originalReloadHtml = reloadBtn ? reloadBtn.innerHTML : null;
-    if (!counterElem) counterElem = document.querySelector('.note-counter') || document.getElementById('footer-note-count');
-    const originalCounterHtml = counterElem ? counterElem.innerHTML : null;
-    const CONCURRENCY_LIMIT = 10;
-    try {
-        window.onbeforeunload = function () { return _('migrationInProgressWarn') || "Migration in progress, please wait..."; };
-        if (reloadBtn) {
-            reloadBtn.style.pointerEvents = 'none';
-            reloadBtn.innerHTML = `<img src="Refresh.png" style="width:24px; height:24px; animation: spin 0.8s linear infinite;">`;
-        }
-        if (typeof showToast === 'function') showToast(_('migratingData') + " (Parallel)");
-        console.time("Migration_Parallel");
-        if (useIndexedDb) {
-            try { await clearIndexedDB(); } catch (e) { console.warn('[Migration] Error clearing IndexedDB:', e); }
-        }
-        const subfolderNames = ["Other", "Sound", "Video", "Images"];
-        const newSubfolderIds = {};
-        for (const name of subfolderNames) {
-            newSubfolderIds[name] = await createNewGDriveFolder(name, targetFolderId);
-        }
-        const rawBoards = (boardsData || []);
-        const boardsToMigrate = [];
-        const seenTitles = new Set();
-        for (const b of rawBoards) {
-            if (b.title && !seenTitles.has(b.title)) {
-                boardsToMigrate.push(b);
-                seenTitles.add(b.title);
-            }
-        }
-        const totalBoards = boardsToMigrate.length;
-        const boardGdidMap = {};
-        let pool = new Set();
-        let boardResults = [];
-        let completedBoards = 0;
-        for (let i = 0; i < totalBoards; i++) {
-            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const board = boardsToMigrate[i];
-            const oldGdid = board.gdid;
-            const oldId = board.id;
-            const boardToSave = JSON.parse(JSON.stringify(board));
-            const promise = createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave)).then(async res => {
-                if (res) {
-                    boardToSave.gdid = res;
-                    await updateGDriveFile(res, JSON.stringify(boardToSave));
-                    board.gdid = res;
-                    if (oldGdid) boardGdidMap[oldGdid] = res;
-                    if (oldId) boardGdidMap[oldId] = res;
-                    if (useIndexedDb) await bulkPutDB(BOARD_STORE_NAME, [boardToSave], true);
-                }
-                pool.delete(promise);
-                completedBoards++;
-                if (counterElem) counterElem.innerText = `[B] ${completedBoards}/${totalBoards}`;
-                return res;
-            });
-            pool.add(promise);
-            boardResults.push(promise);
-        }
-        await Promise.all(boardResults);
-        boardsData = boardsToMigrate;
-        const rawNotes = (allNotesData || []);
-        const notesToMigrate = [];
-        const seenNoteKeys = new Set();
-        for (const n of rawNotes) {
-            const key = n.gdid || n.id;
-            if (key && !seenNoteKeys.has(key)) {
-                seenNoteKeys.add(key);
-                notesToMigrate.push(n);
-            }
-        }
-        allNotesData = notesToMigrate;
-        const totalNotes = notesToMigrate.length;
-        const mediaToMigrate = (mediaData || []);
-        const mediaNotesMap = {};
-        for (const item of mediaToMigrate) {
-            if (item.noteid) mediaNotesMap[item.noteid] = null;
-        }
-        pool = new Set();
-        let noteResults = [];
-        let completedNotes = 0;
-        for (let i = 0; i < totalNotes; i++) {
-            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const note = { ...notesToMigrate[i] };
-            const oldGdid = note.gdid;
-            delete note.gdid;
-            const promise = (async () => {
-                try {
-                    if (note.boardid && boardGdidMap[note.boardid]) {
-                        note.boardid = boardGdidMap[note.boardid];
-                    }
-                    const newId = await createGDriveFile(targetFolderId, 'note.txt', JSON.stringify(note));
-                    if (newId) {
-                        note.gdid = newId;
-                        if (oldGdid && mediaNotesMap.hasOwnProperty(oldGdid)) {
-                            mediaNotesMap[oldGdid] = newId;
-                        }
-                        if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [note], true);
-                    }
-                } finally {
-                    completedNotes++;
-                    if (counterElem) counterElem.innerText = `[N] ${completedNotes}/${totalNotes}`;
-                }
-            })().then(() => {
-                pool.delete(promise);
-            });
-            pool.add(promise);
-            noteResults.push(promise);
-        }
-        await Promise.all(noteResults);
-        const newMediaData = [];
-        const totalMedia = mediaToMigrate.length;
-        pool = new Set();
-        let mediaResults = [];
-        let completedMedia = 0;
-        for (let i = 0; i < totalMedia; i++) {
-            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const item = mediaToMigrate[i];
-            const promise = (async () => {
-                const newItem = { ...item };
-                if (newItem.noteid && mediaNotesMap[newItem.noteid]) {
-                    newItem.noteid = mediaNotesMap[newItem.noteid];
-                }
-                const typeFolderName = (item.type === 1 ? "Images" : (item.type === 2 ? "Sound" : (item.type === 4 ? "Video" : "Other")));
-                const targetSubfolderId = newSubfolderIds[typeFolderName];
-                if (item.pathGD && targetSubfolderId) {
-                    const newId = await copyGDriveFile(item.pathGD, targetSubfolderId, item.filename);
-                    if (newId) newItem.pathGD = newId;
-                }
-                newMediaData.push(newItem);
-                completedMedia++;
-                if (counterElem) counterElem.innerText = `[M] ${completedMedia}/${totalMedia}`;
-            })().then(() => {
-                pool.delete(promise);
-            });
-            pool.add(promise);
-            mediaResults.push(promise);
-        }
-        await Promise.all(mediaResults);
-        if (newMediaData.length > 0) {
-            await createGDriveFile(targetFolderId, 'media.txt', JSON.stringify(newMediaData));
-            if (useIndexedDb) {
-                for (let m of newMediaData) await bulkPutDB(MEDIA_STORE_NAME, [m], true);
-            }
-        }
-        const now = Date.now();
-        localStorage.setItem('lastSyncTimestamp', now);
-        lastSyncTimestamp = now;
-        if (useIndexedDb) {
-            await finalizeDbCreation();
-        }
-        if (typeof showToast === 'function') showToast(_('migrationSuccess'));
-        console.timeEnd("Migration_Parallel");
-        return true;
-    } catch (e) {
-        console.error("Parallel migration error:", e);
-        if (typeof showToast === 'function') showToast(_('migrationError'));
-        return false;
-    } finally {
-        window.onbeforeunload = backupOnBeforeUnload;
-        if (reloadBtn) {
-            reloadBtn.style.pointerEvents = 'auto';
-            reloadBtn.innerHTML = originalReloadHtml;
-        }
-        if (counterElem) counterElem.innerHTML = originalCounterHtml;
-    }
-}
-
-
-let cachedFolderIdsByName = {};
-// Папка с името, но с други малки/главни букви (CX-notes срещу CX-Notes); само единствено пълно съвпадение.
-async function findFolderIdByNameIgnoreCase(name, token) {
-    const target = String(name).toLowerCase();
-    const matches = [];
-    let pageToken = null;
-    do {
-        const query = encodeURIComponent(`mimeType='application/vnd.google-apps.folder' and trashed=false`);
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=nextPageToken,files(id,name)&pageSize=1000&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!resp.ok) return null;
-        const page = await resp.json();
-        (page.files || []).forEach(f => { if (f && f.id && typeof f.name === 'string' && f.name.toLowerCase() === target) matches.push(f.id); });
-        pageToken = page.nextPageToken;
-    } while (pageToken);
-    return matches.length === 1 ? matches[0] : null;
-}
-
-async function getFolderIDByName(name) {
-    if (isOffline) return null;
-    if (name === 'AppDataFolder') return 'appDataFolder';
-    if (cachedFolderIdsByName[name]) return cachedFolderIdsByName[name];
-    const sendRequest = async (token) => {
-        const query = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) return null;
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401 || resp.status === 403) {
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                resp = await sendRequest(tokenData.access_token);
-            }
-        }
-        if (!resp.ok) return null;
-        const result = await resp.json();
-        let id = result.files?.[0]?.id || null;
-        if (!id) id = await findFolderIdByNameIgnoreCase(name, tokenData.access_token);
-        if (id) cachedFolderIdsByName[name] = id;
-        return id;
-    } catch (e) {
-        console.error("Error in getFolderIDByName:", e);
-        return null;
-    }
-}
-
-let _appSettingsFolderIdPromise = null;
-async function getAppSettingsFolderId() {
-    if (isOffline) return null;
-    if (cachedFolderIdsByName['appDataFolder:AppSettings']) return cachedFolderIdsByName['appDataFolder:AppSettings'];
-    if (_appSettingsFolderIdPromise) return _appSettingsFolderIdPromise;
-
-    _appSettingsFolderIdPromise = (async () => {
-        const findFolder = async (token) => {
-            const query = encodeURIComponent("name='AppSettings' and mimeType='application/vnd.google-apps.folder' and trashed=false");
-            // Извличаме всички копия, сортирани по последна промяна (най-новия първи)
-            return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=appDataFolder&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
-                method: 'GET',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-        };
-        try {
-            let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-            if (!storedTokenString) return null;
-            let tokenData = JSON.parse(storedTokenString);
-            let resp = await findFolder(tokenData.access_token);
-            if (resp.status === 401 || resp.status === 403) {
-                let refresh = await refreshAuthToken(false);
-                if (refresh && refresh.pass) {
-                    tokenData = refresh.tokenData;
-                    resp = await findFolder(tokenData.access_token);
-                }
-            }
-            if (!resp.ok) {
-                console.warn(`[AppSettings] Search failed with status ${resp.status}`);
-                return null;
-            }
-            const result = await resp.json();
-            if (result.files && result.files.length > 0) {
-                // Ако има дубликати на папката AppSettings, изтриваме старите и оставяме най-новата
-                if (result.files.length > 1) {
-                    console.warn("[Sync] Cleanup duplicates for AppSettings folder.");
-                    for (let i = 1; i < result.files.length; i++) {
-                        deleteGDriveFile(result.files[i].id).catch(err => console.error("Error deleting duplicate folder:", err));
-                    }
-                }
-                const id = result.files[0].id;
-                cachedFolderIdsByName['appDataFolder:AppSettings'] = id;
-                return id;
-            }
-            // Търсенето е успешно (resp.ok), но папка AppSettings наистина не съществува в AppDataFolder -> създаваме я
-            const newId = await createNewGDriveFolder('AppSettings', 'appDataFolder');
-            if (newId) cachedFolderIdsByName['appDataFolder:AppSettings'] = newId;
-            return newId;
-        } catch (e) {
-            console.error("getAppSettingsFolderId error:", e);
-            return null;
-        }
-    })();
-
-    try {
-        const result = await _appSettingsFolderIdPromise;
-        return result;
-    } finally {
-        _appSettingsFolderIdPromise = null;
-    }
-}
-
-
-/**
- * Създава нова бележка в текущия борд.
- */
 async function createNewNote() {
-    const updateGDrive = useGoogleDb && !isOffline;
-    const useLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
 
 
     if (boardsData.length === 0) {
@@ -2590,7 +731,7 @@ async function createNewNote() {
         "date": now,
         "datemod": now,
         "eventId": 0,
-        "gdid": "",
+        "gdid": localUuid(), // локален ключ на бележката
         "id": noteId, // Temporary ID, will be finalized on save
         "notetxt": "",
         "numord": noteNumord,
@@ -2637,1152 +778,6 @@ async function createNewNote() {
 }
 
 let cachedMainFolderId = null;
-async function getFolderID() {
-    if (isOffline) return null;
-    if (cachedMainFolderId) return cachedMainFolderId;
-    try {
-        const multinotesDataId = await getMultinotesDataFolderID();
-        if (!multinotesDataId) return null;
-        cachedMainFolderId = multinotesDataId;
-
-        const listFolders = async () => {
-            const folderNames = ["Other", "Sound", "Video", "Images"];
-            const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-            if (!storedTokenString) return;
-            let tokenData = JSON.parse(storedTokenString);
-
-            await Promise.all(folderNames.map(async (name) => {
-                const cachedId = localStorage.getItem(`gdrive_folder_id_${name}`);
-                if (cachedId) { folderIds[name] = cachedId; return; }
-
-                const query = encodeURIComponent(`'${multinotesDataId}' in parents and name = '${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-                const spacesParam = (multinotesDataId === 'appDataFolder') ? '&spaces=appDataFolder' : '';
-                const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1${spacesParam}`;
-
-                let resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
-
-                if (resp.status === 401) {
-                    const refresh = await refreshAuthToken(false);
-                    if (refresh && refresh.pass) {
-                        tokenData = refresh.tokenData;
-                        resp = await fetch(url, { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } });
-                    }
-                }
-
-                if (resp.ok) {
-                    const result = await resp.json();
-                    const id = result.files?.[0]?.id || "";
-                    folderIds[name] = id;
-                    if (id) localStorage.setItem(`gdrive_folder_id_${name}`, id);
-                }
-            }));
-        };
-
-        await listFolders();
-        return multinotesDataId;
-    } catch (e) {
-        if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
-            console.log('getFolderID: Network unavailable, switching to offline mode.');
-            isOffline = true;
-            return null;
-        }
-        console.error("Error in getFolderID:", e);
-        throw e;
-    }
-}
-
-function setCachedMainFolderId(folderName, folderId) {
-    localStorage.setItem('gdrive_multinotes_data_id', folderId);
-    localStorage.setItem('gdrive_multinotes_data_id_folder', folderName);
-}
-function clearCachedMainFolderId() {
-    localStorage.removeItem('gdrive_multinotes_data_id');
-    localStorage.removeItem('gdrive_multinotes_data_id_folder');
-}
-
-async function getMultinotesDataFolderID() {
-    if (isOffline) return null;
-    if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') return 'appDataFolder';
-    const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
-    const cachedForFolder = localStorage.getItem('gdrive_multinotes_data_id_folder');
-    // b2.05: кешът се приема и когато записаното име се различава по главни/малки букви
-    // (CX-notes срещу CX-Notes). Иначе всеки запис тръгва по точно име, не я намира и
-    // кодът по-долу чисти настройките и презарежда приложението.
-    const cachedNameMatches = !!cachedForFolder &&
-        String(cachedForFolder).toLowerCase() === String(activeFolderName).toLowerCase();
-    if (cachedId && cachedNameMatches) return cachedId;
-
-    const sendRequest = async (token) => {
-        const query = encodeURIComponent(`name='${activeFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-        const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true`;
-        console.log(`[getMultinotesDataFolderID] Requesting: ${url}`);
-        return fetch(url, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-
-    const maxAttempts = 3;
-    const retryDelays = [1000, 2000, 4000];
-    let caseInsensitiveTried = false; // b2.05: изреждането на папките се прави най-много веднъж
-    let tokenData = null;
-    try {
-        const sessionToken = sessionStorage.getItem('google_auth_token');
-        const localToken = localStorage.getItem('google_auth_token');
-        const storedTokenString = sessionToken || localToken;
-        if (!storedTokenString) return null;
-        tokenData = JSON.parse(storedTokenString);
-        const tokenSource = sessionToken ? 'sessionStorage' : 'localStorage';
-        const emailHint = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint') || '?';
-        console.log(`[getMultinotesDataFolderID] Token from: ${tokenSource}, email hint: ${emailHint}, searching for folder: '${activeFolderName}'`);
-    } catch (e) {
-        console.error("Error parsing auth token in getMultinotesDataFolderID:", e);
-        return null;
-    }
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-            let resp = await sendRequest(tokenData.access_token);
-            if (resp.status === 401) {
-                console.warn("Got 401 in getMultinotesDataFolderID, attempting refresh...");
-                const refresh = await refreshAuthToken(false);
-                if (refresh && refresh.pass) {
-                    tokenData = refresh.tokenData;
-                    resp = await sendRequest(tokenData.access_token);
-                }
-            }
-            if (!resp.ok) {
-                console.warn(`[getMultinotesDataFolderID] Attempt ${attempt + 1}: HTTP ${resp.status}`);
-                try { console.warn('[getMultinotesDataFolderID] Response body:', await resp.text()); } catch (_) { }
-            } else {
-                const result = await resp.json();
-                console.log(`[getMultinotesDataFolderID] Attempt ${attempt + 1} response:`, JSON.stringify(result));
-                const id = result.files?.[0]?.id || null;
-                if (id) {
-                    if (attempt > 0) console.log(`[getMultinotesDataFolderID] Found folder on attempt ${attempt + 1}.`);
-                    setCachedMainFolderId(activeFolderName, id);
-                    return id;
-                }
-                // b2.05: точното име не я намери (напр. записано 'CX-notes', а в Drive 'CX-Notes') —
-                // търсим без значение от регистъра, преди да чистим настройките и да презареждаме.
-                if (!caseInsensitiveTried) {
-                    caseInsensitiveTried = true;
-                    const ciId = await findFolderIdByNameIgnoreCase(activeFolderName, tokenData.access_token);
-                    if (ciId) {
-                        console.log(`[getMultinotesDataFolderID] Found '${activeFolderName}' ignoring case (id=${ciId}).`);
-                        setCachedMainFolderId(activeFolderName, ciId);
-                        return ciId;
-                    }
-                }
-                console.warn(`[getMultinotesDataFolderID] Attempt ${attempt + 1}: Folder '${activeFolderName}' not found in GDrive response.`);
-            }
-        } catch (e) {
-            if (e instanceof TypeError || (e.message && e.message.includes('Failed to fetch'))) {
-                console.log('getMultinotesDataFolderID: Network unavailable, switching to offline mode.');
-                isOffline = true;
-                return null;
-            }
-            console.error(`[getMultinotesDataFolderID] Attempt ${attempt + 1} error:`, e);
-        }
-        if (attempt < maxAttempts - 1) {
-            console.log(`[getMultinotesDataFolderID] Retrying in ${retryDelays[attempt]}ms...`);
-            await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
-        }
-    }
-    console.warn(`[getMultinotesDataFolderID] All ${maxAttempts} attempts exhausted. Folder not found.`);
-    // Папката е изтрита или недостъпна
-    // sessionStorage флагът предпазва от безкраен цикъл —
-    // само един reload на сесия е позволен
-    if (!isOffline && !sessionStorage.getItem('_folder_not_found_reload')) {
-        console.warn('[getMultinotesDataFolderID] Clearing stale folder cache and reloading for re-setup...');
-        sessionStorage.setItem('_folder_not_found_reload', '1');
-        clearCachedMainFolderId();
-        localStorage.removeItem('initial_setup_complete');
-        localStorage.removeItem('folderSetupDone');
-        localStorage.removeItem('activeFolderId');
-        localStorage.removeItem('active_folder_name');
-        localStorage.removeItem('gdrive_folder_names');
-        ['Other', 'Sound', 'Video', 'Images'].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
-        location.reload();
-    }
-    return null;
-}
-
-// =================================================================================
-// INITIAL FOLDER SETUP FUNCTIONS (for new users)
-// =================================================================================
-
-function getStoredTokenData() {
-    if (typeof authToken !== 'undefined' && authToken && authToken.access_token) return authToken;
-    try {
-        const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        return stored ? JSON.parse(stored) : null;
-    } catch (e) {
-        console.warn('[getStoredTokenData] Error parsing token:', e);
-        return null;
-    }
-}
-
-/**
- * Прочита конфигурацията от AppDataFolder (source of truth)
- * Връща {activeFolderId, folderSetupMode, folderSetupDone}
- */
-async function readFolderConfigFromAppData() {
-    try {
-        const tokenData = getStoredTokenData();
-        if (!tokenData || !tokenData.access_token) {
-            console.log('[readFolderConfig] No token available yet');
-            return null;
-        }
-
-        // Drive API returns 400 (not 401) for expired tokens on appDataFolder scope —
-        // so proactively refresh if token is older than 55 minutes.
-        const tokenAge = tokenData.issued_at ? (Date.now() - tokenData.issued_at) / 60000 : 0;
-        let activeToken = tokenData.access_token;
-        if (tokenAge > 55) {
-            const refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) activeToken = refresh.tokenData.access_token;
-        }
-        const query = `name='app-config.json' and mimeType='application/json'`;
-        const doFetch = (token) => fetch(
-            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=files(id,name)`,
-            { headers: { 'Authorization': `Bearer ${token}` } }
-        );
-        let response = await doFetch(activeToken);
-        if (response.status === 401) {
-            const refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                response = await doFetch(refresh.tokenData.access_token);
-            }
-        }
-        if (!response.ok) {
-            const errBody = await response.text().catch(() => '');
-            console.warn(`[readFolderConfig] appDataFolder request failed ${response.status}:`, errBody);
-            return null;
-        }
-
-        const result = await response.json();
-        if (!result.files || result.files.length === 0) {
-            console.log('[readFolderConfig] No app-config.json found in AppDataFolder');
-            return null;
-        }
-
-        const fileId = result.files[0].id;
-        const fileResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-            {
-                headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
-            }
-        );
-
-        if (!fileResponse.ok) return null;
-
-        const config = await fileResponse.json();
-        console.log('[readFolderConfig] Config loaded from AppDataFolder:', config);
-
-        // Кешираме в localStorage за производителност
-        localStorage.setItem('activeFolderId', config.activeFolderId);
-        localStorage.setItem('folderSetupMode', config.folderSetupMode);
-        localStorage.setItem('folderSetupDone', config.folderSetupDone ? 'true' : 'false');
-
-        return config;
-    } catch (e) {
-        console.error('[readFolderConfig] Error reading config:', e);
-        return null;
-    }
-}
-
-/**
- * Записва конфигурацията в AppDataFolder (source of truth)
- */
-async function writeFolderConfigToAppData(config) {
-    try {
-        const tokenData = getStoredTokenData();
-        if (!tokenData || !tokenData.access_token) {
-            console.log('[writeFolderConfig] No token available');
-            return false;
-        }
-
-        const configContent = JSON.stringify({
-            activeFolderId: config.activeFolderId,
-            folderSetupMode: config.folderSetupMode,
-            folderSetupDone: config.folderSetupDone,
-            timestamp: Date.now()
-        });
-
-        const query = `name='app-config.json' and mimeType='application/json'`;
-        const doSearch = (token) => fetch(
-            `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&pageSize=1&fields=files(id)`,
-            { headers: { 'Authorization': `Bearer ${token}` } }
-        );
-        let searchResponse = await doSearch(tokenData.access_token);
-        if (searchResponse.status === 401) {
-            const refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                searchResponse = await doSearch(tokenData.access_token);
-            }
-        }
-        if (!searchResponse.ok) return false;
-        const searchResult = await searchResponse.json();
-        const existingFileId = searchResult.files?.[0]?.id;
-
-        if (existingFileId) {
-            // Обновяваме съществуващия файл
-            const updateResponse = await fetch(
-                `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=media`,
-                {
-                    method: 'PATCH',
-                    headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
-                    body: configContent
-                }
-            );
-            console.log('[writeFolderConfig] Config updated in AppDataFolder');
-            return updateResponse.ok;
-        } else {
-            // Създаваме нов файл в AppDataFolder
-            const metadata = {
-                name: 'app-config.json',
-                mimeType: 'application/json',
-                parents: ['appDataFolder']
-            };
-
-            const createResponse = await fetch(
-                'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-                {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
-                    body: `--boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--boundary\r\nContent-Type: application/json\r\n\r\n${configContent}\r\n--boundary--`
-                }
-            );
-
-            console.log('[writeFolderConfig] Config created in AppDataFolder');
-            return createResponse.ok;
-        }
-    } catch (e) {
-        console.error('[writeFolderConfig] Error writing config:', e);
-        return false;
-    }
-}
-
-/**
- * Проверява дали е необходимо първоначално създаване на папка.
- * Гледа САМО localStorage (кеш) — Drive не се пита тук. Затова на чисто ново
- * устройство/профил функцията казва "да" дори когато папката в Drive я има;
- * истинската проверка (AppDataFolder конфиг + търсене по име) е в
- * completeInitialFolderSetup().
- */
-function needsInitialFolderSetup() {
-    if (localStorage.getItem('initial_setup_complete') === 'true') return false;
-    if (localStorage.getItem('folderSetupDone') === 'true') return false;
-    if (localStorage.getItem('active_folder_name')) return false;
-    const gdriveFolderNames = localStorage.getItem('gdrive_folder_names');
-    if (gdriveFolderNames && gdriveFolderNames !== '[]') return false;
-    const cachedActiveFolderId = localStorage.getItem('activeFolderId');
-    const cachedSetupDone = localStorage.getItem('folderSetupDone') === 'true';
-    return !cachedActiveFolderId || !cachedSetupDone;
-}
-
-/**
- * Определя необходимите scopes на основата на избора на потребителя
- */
-function getRequiredScopes(mode) {
-    if (mode === 'import_migrate') {
-        return SCOPES_BASE + ' ' + SCOPES_READONLY;
-    } else if (mode === 'create_empty') {
-        return SCOPES_BASE;
-    } else if (mode === 'advanced_existing') {
-        return SCOPES_BASE + ' ' + SCOPES_FULL;
-    }
-    return SCOPES_BASE;
-}
-
-function getActiveRequiredScopes() {
-    const activeFolder = localStorage.getItem('active_folder_name') || (typeof activeFolderName !== 'undefined' ? activeFolderName : '');
-    if (activeFolder && activeFolder !== 'CX-Notes' && activeFolder !== 'AppDataFolder') {
-        return SCOPES_BASE + ' ' + SCOPES_FULL;
-    }
-    return SCOPES_BASE;
-}
-
-// Низ с обхвати → масив от отделни токени (разделени с интервали); сравнява се само за точно равенство
-function splitScopeTokens(scopeString) {
-    return typeof scopeString === 'string' ? scopeString.split(/\s+/).filter(Boolean) : [];
-}
-
-// force: съгласието се иска, дори authToken.scope да твърди, че обхватът вече е даден (Google е казал друго)
-async function requestAdditionalScopes(additionalScopes, { force = false } = {}) {
-    if (typeof tokenClient === 'undefined' || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
-        return false;
-    }
-    const currentScopeString = SCOPES || SCOPES_BASE;
-    const combinedScopes = Array.from(new Set((currentScopeString + ' ' + additionalScopes).split(' '))).filter(Boolean).join(' ');
-    if (!force && authToken && authToken.scope) {
-        // Точно равенство по отделен токен: '.../auth/calendar' е префикс на '.../auth/calendar.app.created'
-        const currentScopes = splitScopeTokens(authToken.scope);
-        const allPresent = splitScopeTokens(additionalScopes).every(s => currentScopes.includes(s));
-        if (allPresent) return true;
-    }
-    return new Promise((resolve) => {
-        tokenClient.callback = async (resp) => {
-            if (resp && resp.access_token) {
-                const tokenWithTimestamp = { ...resp, issued_at: Date.now() };
-                const rememberMe = localStorage.getItem('rememberMe') === 'true';
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                authToken = tokenWithTimestamp;
-                SCOPES = combinedScopes;
-                if (typeof gapi !== 'undefined' && gapi.client) {
-                    gapi.client.setToken({ access_token: authToken.access_token });
-                }
-                resolve(true);
-            } else {
-                resolve(false);
-            }
-        };
-        tokenClient.error_callback = (err) => {
-            console.warn('[requestAdditionalScopes] Error or cancelled:', err);
-            resolve(false);
-        };
-        tokenClient.requestAccessToken({ prompt: 'consent', scope: combinedScopes });
-    });
-}
-
-/**
- * Показва модал за избор на първоначална папка (ПРЕДИ OAuth)
- */
-async function showInitialDataFolderModal() {
-    return new Promise((resolve) => {
-        const popup = document.getElementById('folderIdPromptPopup');
-        if (!popup) {
-            console.error('folderIdPromptPopup not found');
-            resolve(null);
-            return;
-        }
-        const popupContent = popup.querySelector('.popup-content');
-        const messagePara = popup.querySelector('p');
-        const okButton = document.getElementById('submitFolderIdBtn');
-        const folderIdInput = document.getElementById('folderIdInput');
-        folderIdInput.style.display = 'none';
-        okButton.style.display = 'none';
-        const titleText = _('dataFolderSelectionTitle') || 'Choose your data folder';
-        const descText = _('dataFolderSelectionDescription') || 'CX Notes requires a Google Drive folder to store your notes and settings. Please choose an option:';
-        const option1Text = _('dataFolderOption1') || 'Migrate to CX-Notes (Recommended)';
-        const option1Desc = _('dataFolderOption1Description') || 'Import and migrate your notes from existing multinotes_data folder to CX-Notes.';
-        const option2Text = _('dataFolderOption2') || 'Create Empty CX-Notes';
-        const option2Desc = _('dataFolderOption2Description') || 'Start fresh with a new CX-Notes folder and a default Main board.';
-        const warningText = _('dataFolderMigrationWarning') || '';
-        messagePara.innerHTML = `
-            <div style="text-align: left; margin: 15px 0;">
-                <h2 style="margin-top: 0; font-size: 1.3em; color: #222;">${titleText}</h2>
-                <p style="margin: 8px 0 16px 0; font-size: 0.95em; color: #555;">${descText}</p>
-                <div style="border: 1px solid #ddd; padding: 14px 16px; margin: 12px 0; border-radius: 8px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%; transition: all 0.2s ease;" id="initial-modal-option-2" onmouseenter="this.style.backgroundColor='orange'; this.style.borderColor='black'; this.style.transform='translateY(-1px)';" onmouseleave="this.style.backgroundColor='#f9f9f9'; this.style.borderColor='#ddd'; this.style.transform='none';">
-                    <strong style="font-size: 1.05em; display: block; margin-bottom: 4px; color: #1a73e8;">⊞ ${option2Text}</strong>
-                    <p style="margin: 0; font-size: 0.9em; color: #555; line-height: 1.4;">${option2Desc}</p>
-                </div>
-                ${warningText ? `<div style="background-color: #fff3cd; border: 1px solid #ffc107; padding: 10px; margin: 12px 0; border-radius: 6px; font-size: 0.9em; box-sizing: border-box; width: 100%;">
-                    <strong>⚠️ ${_('dataFolderMigrationWarningTitle') || 'Note'}:</strong> ${warningText}
-                </div>` : ''}
-                <div style="border: 1px solid #ddd; padding: 14px 16px; margin: 12px 0; border-radius: 8px; cursor: pointer; background-color: #f9f9f9; box-sizing: border-box; width: 100%; transition: all 0.2s ease;" id="initial-modal-option-1" onmouseenter="this.style.backgroundColor='orange'; this.style.borderColor='black'; this.style.transform='translateY(-1px)';" onmouseleave="this.style.backgroundColor='#f9f9f9'; this.style.borderColor='#ddd'; this.style.transform='none';">
-                    <strong style="font-size: 1.05em; display: block; margin-bottom: 4px; color: #1a73e8;">✓ ${option1Text}</strong>
-                    <p style="margin: 0; font-size: 0.9em; color: #555; line-height: 1.4;">${option1Desc}</p>
-                </div>
-            </div>
-        `;
-        const cleanup = () => {
-            popup.classList.remove('show');
-            okButton.style.display = 'inline-block';
-            document.getElementById('initial-modal-option-1')?.removeEventListener('click', onOption1);
-            document.getElementById('initial-modal-option-2')?.removeEventListener('click', onOption2);
-        };
-        const onOption1 = () => {
-            cleanup();
-            localStorage.setItem('folderSetupMode', 'import_migrate');
-            folderSetupMode = 'import_migrate';
-            resolve('option_1');
-        };
-        const onOption2 = () => {
-            cleanup();
-            localStorage.setItem('folderSetupMode', 'create_empty');
-            folderSetupMode = 'create_empty';
-            resolve('option_2');
-        };
-        document.getElementById('initial-modal-option-1')?.addEventListener('click', onOption1);
-        document.getElementById('initial-modal-option-2')?.addEventListener('click', onOption2);
-        if (loaderContainer) loaderContainer.style.display = 'none';
-        popup.classList.add('show');
-    });
-}
-
-
-// =====================================================================
-// MIGRATION BLOCK: AppDataFolder → CX-Notes  (еднократна, може да се
-// премахне/коментира след като всички потребители са мигрирали)
-// =====================================================================
-/*async function migrateAppDataFolderToCXNotes() {
-    const MIGRATION_KEY = 'appdata_to_cxnotes_migration_done';
-    if (localStorage.getItem(MIGRATION_KEY) === 'true') return false;
-    if (localStorage.getItem('active_folder_name') !== 'AppDataFolder') return false;
-    console.log('[Migration] Detected legacy AppDataFolder user. Starting migration to CX-Notes...');
-    const loaderTitle = document.getElementById('loader-title');
-    const loaderTextEl = typeof loaderText !== 'undefined' ? loaderText : document.getElementById('loader-text');
-    if (loaderTitle) loaderTitle.textContent = _('migratingData') || 'Migrating data...';
-    if (loaderTextEl) loaderTextEl.textContent = 'AppDataFolder → CX-Notes';
-    try {
-        // 1. Зареждаме данните от AppDataFolder в паметта (без запис в DB)
-        const result = await fetchAllData('appDataFolder', null);
-        if (!result || result.error) {
-            console.error('[Migration] Failed to load data from AppDataFolder.');
-            localStorage.setItem(MIGRATION_KEY, 'true'); // Пропускаме при следващо зареждане
-            return false;
-        }
-        // 2. Намираме или създаваме CX-Notes папка
-        let cxNotesId = await getFolderIDByName('CX-Notes');
-        if (!cxNotesId) cxNotesId = await createNewGDriveFolder('CX-Notes');
-        if (!cxNotesId) {
-            console.error('[Migration] Cannot find or create CX-Notes folder.');
-            return false;
-        }
-        // 3. Копираме данните в CX-Notes чрез съществуващата функция
-        const migrationSuccess = await migrateDataToNewFolder(cxNotesId);
-        if (!migrationSuccess) {
-            console.error('[Migration] migrateDataToNewFolder failed.');
-            return false;
-        }
-        // 4. Обновяваме localStorage и паметта
-        localStorage.setItem('active_folder_name', 'CX-Notes');
-        activeFolderName = 'CX-Notes';
-        setCachedMainFolderId('CX-Notes', cxNotesId);
-        cachedMainFolderId = cxNotesId;
-        localStorage.setItem('activeFolderId', cxNotesId);
-        localStorage.setItem('folderSetupDone', 'true');
-        localStorage.setItem('folderSetupMode', 'create_empty');
-        localStorage.setItem('initial_setup_complete', 'true');
-        const folderNames = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]')
-            .filter(n => n && n !== 'AppDataFolder');
-        if (!folderNames.includes('CX-Notes')) folderNames.push('CX-Notes');
-        localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-        // 5. Записваме конфигурацията в AppDataFolder (source of truth)
-        await writeFolderConfigToAppData({ activeFolderId: cxNotesId, folderSetupMode: 'create_empty', folderSetupDone: true });
-        // 6. Маркираме миграцията като завършена
-        localStorage.setItem(MIGRATION_KEY, 'true');
-        console.log('[Migration] Done. CX-Notes ID: ' + cxNotesId + '. AppDataFolder kept as backup.');
-        if (typeof showToast === 'function') showToast(_('migrationSuccess') || 'Data migrated to CX-Notes.', 6000);
-        return true; // → caller прави location.reload()
-    } catch (e) {
-        console.error('[Migration] Unexpected error:', e);
-        return false;
-    }
-}*/
-// =====================================================================
-// END MIGRATION BLOCK
-// =====================================================================
-
-/**
- * Търси папка по име с втора проба. Едно неуспешно запитване към Drive
- * (току-що изтекъл токен, единичен мрежов отказ) не бива да води до извод
- * "папката не съществува" — заради това излизаше екранът за първо стартиране.
- */
-async function findExistingFolderId(name) {
-    try {
-        const first = await getFolderIDByName(name);
-        if (first) return first;
-    } catch (e) {
-        console.warn('[findExistingFolderId] First attempt for "' + name + '" failed:', e);
-    }
-    try {
-        const refresh = await refreshAuthToken(false);
-        if (refresh && refresh.pass) delete cachedFolderIdsByName[name];
-    } catch (e) {
-        console.warn('[findExistingFolderId] Token refresh failed:', e);
-    }
-    try {
-        return await getFolderIDByName(name);
-    } catch (e) {
-        console.warn('[findExistingFolderId] Second attempt for "' + name + '" failed:', e);
-        return null;
-    }
-}
-
-/**
- * Връща true само ако сме сигурни, че в папката НЯМА нито един board.txt.
- * При грешка или неуспешна проверка връща false: когато не можем да
- * потвърдим, че папката е празна, в нея не се копира.
- */
-async function isFolderConfirmedEmpty(folderId) {
-    if (!folderId || folderId === 'appDataFolder') return false;
-    try {
-        const existing = await findGDFileByName(folderId, 'board.txt');
-        if (existing && existing.length > 0) return false;
-        // findGDFileByName връща null и при празна папка, и при грешка.
-        // Затова проверяваме изрично, че папката съществува и е достъпна.
-        const tokenData = getStoredTokenData();
-        if (!tokenData || !tokenData.access_token) return false;
-        const resp = await fetch('https://www.googleapis.com/drive/v3/files/' + folderId + '?fields=id,trashed', {
-            headers: { 'Authorization': 'Bearer ' + tokenData.access_token }
-        });
-        if (!resp.ok) return false;
-        const data = await resp.json();
-        return !data.trashed;
-    } catch (e) {
-        console.warn('[isFolderConfirmedEmpty] Error:', e);
-        return false;
-    }
-}
-
-/**
- * Завършва първоначалното съзнаване на папката
- */
-async function completeInitialFolderSetup() {
-    let appConfig = null;
-    try {
-        appConfig = await readFolderConfigFromAppData();
-    } catch (e) {
-        console.warn('[Initial Setup] Error reading AppDataFolder config:', e);
-    }
-    if (appConfig && appConfig.activeFolderId && appConfig.folderSetupDone) {
-        console.log('[Initial Setup] Found existing config in AppDataFolder, verifying folder exists...');
-        let folderIsValid = false;
-        try {
-            const tokenData = getStoredTokenData();
-            if (tokenData && tokenData.access_token) {
-                const verifyResp = await fetch(
-                    `https://www.googleapis.com/drive/v3/files/${appConfig.activeFolderId}?fields=id,trashed`,
-                    { headers: { 'Authorization': `Bearer ${tokenData.access_token}` } }
-                );
-                if (verifyResp.ok) {
-                    const verifyData = await verifyResp.json();
-                    folderIsValid = !verifyData.trashed;
-                }
-            }
-        } catch (e) {
-            console.warn('[Initial Setup] Error verifying folder ID from AppDataFolder config:', e);
-        }
-        if (folderIsValid) {
-            console.log('[Initial Setup] Folder verified. Restoring config...');
-            sessionStorage.removeItem('_folder_not_found_reload');
-            cachedMainFolderId = appConfig.activeFolderId;
-            setCachedMainFolderId('CX-Notes', appConfig.activeFolderId);
-            activeFolderName = 'CX-Notes';
-            localStorage.setItem('active_folder_name', 'CX-Notes');
-            localStorage.setItem('activeFolderId', appConfig.activeFolderId);
-            localStorage.setItem('folderSetupDone', 'true');
-            localStorage.setItem('folderSetupMode', appConfig.folderSetupMode || 'create_empty');
-            localStorage.setItem('initial_setup_complete', 'true');
-            return;
-        }
-        console.warn('[Initial Setup] Folder from AppDataFolder config not found in Drive (deleted?). Falling through to name search...');
-    }
-    let existingCxNotesId = await findExistingFolderId('CX-Notes');
-    if (existingCxNotesId) {
-        console.log('[Initial Setup] Found existing CX-Notes folder:', existingCxNotesId);
-        sessionStorage.removeItem('_folder_not_found_reload');
-        cachedMainFolderId = existingCxNotesId;
-        setCachedMainFolderId('CX-Notes', existingCxNotesId);
-        activeFolderName = 'CX-Notes';
-        localStorage.setItem('active_folder_name', 'CX-Notes');
-        localStorage.setItem('activeFolderId', existingCxNotesId);
-        localStorage.setItem('folderSetupDone', 'true');
-        localStorage.setItem('folderSetupMode', 'create_empty');
-        localStorage.setItem('initial_setup_complete', 'true');
-        const folderNames = ['CX-Notes'];
-        localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-        const config = { activeFolderId: existingCxNotesId, folderSetupMode: 'create_empty', folderSetupDone: true };
-        await writeFolderConfigToAppData(config);
-        return;
-    }
-    const choice = await showInitialDataFolderModal();
-    const mode = choice === 'option_1' ? 'import_migrate' : 'create_empty';
-    if (loaderContainer) loaderContainer.style.display = 'block';
-    const loaderFolderInfoEl = document.getElementById('loader-folder-info');
-    if (loaderFolderInfoEl) loaderFolderInfoEl.textContent = '(CX-Notes)';
-    if (mode === 'import_migrate') {
-        if (typeof tokenClient !== 'undefined') {
-            await new Promise((resolve) => {
-                tokenClient.callback = async (resp) => {
-                    if (resp && resp.access_token) {
-                        const tokenWithTimestamp = { ...resp, issued_at: Date.now() };
-                        const rememberMe = document.getElementById('rememberMe')?.checked;
-                        const storage = rememberMe ? localStorage : sessionStorage;
-                        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                        authToken = tokenWithTimestamp;
-                        resolve(tokenWithTimestamp);
-                    } else {
-                        resolve(null);
-                    }
-                };
-                tokenClient.requestAccessToken({ prompt: 'consent', scope: SCOPES_BASE + ' ' + SCOPES_READONLY });
-            });
-        }
-        if (loaderText) loaderText.textContent = _('migratingData') || 'Copying data from multinotes_data to CX-Notes...';
-        let multinotesId = null;
-        try {
-            multinotesId = await getFolderIDByName('multinotes_data');
-        } catch (e) {
-            console.warn('[Initial Setup] Error searching for multinotes_data:', e);
-        }
-        let targetFolderId = await findExistingFolderId('CX-Notes');
-        if (!targetFolderId) {
-            targetFolderId = await createNewGDriveFolder('CX-Notes');
-        }
-        let migrationDone = false;
-        // ЗАЩИТА: никога не копираме в CX-Notes, ако там вече има данни (board.txt).
-        // Ако не успеем да потвърдим, че папката е празна, също не копираме.
-        // Прикачените файлове и самите бордове не се пипат.
-        const targetFolderEmpty = await isFolderConfirmedEmpty(targetFolderId);
-        if (!targetFolderEmpty) {
-            console.warn('[Initial Setup] Copy from multinotes_data skipped: CX-Notes already has data (or could not be verified empty). Existing data is kept as it is.');
-            if (typeof showToast === 'function') {
-                showToast(_('copySkippedCXNotesHasData') || 'CX Notes already contains notes. Nothing was copied; the existing data is kept.', 9000);
-            }
-        }
-        if (targetFolderEmpty && multinotesId && targetFolderId) {
-            try {
-                const fetchResult = await fetchAllData(multinotesId, false);
-                if (fetchResult && !fetchResult.error) {
-                    const migrationSuccess = await migrateDataToNewFolder(targetFolderId);
-                    if (migrationSuccess) {
-                        migrationDone = true;
-                        console.log('[Initial Setup] Data successfully migrated from multinotes_data to CX-Notes');
-                        if (typeof showToast === 'function') showToast(_('migrationSuccess') || 'Data copied successfully to CX-Notes', 5000);
-                    }
-                }
-            } catch (e) {
-                console.error('[Initial Setup] Error during data migration:', e);
-            }
-        }
-        if (!migrationDone && targetFolderId) {
-            try {
-                const existingMainBoards = await findGDFileByName(targetFolderId, 'board.txt');
-                if (!existingMainBoards || existingMainBoards.length === 0) {
-                    const now = Date.now();
-                    boardIdCounter = 1;
-                    localStorage.setItem('boardIdCounter', '1');
-                    const boardToSave = { "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50", "colorfont": "#000", "datemod": now, "gdid": "", "id": 1, "numord": 1, "status": 0, "title": "Main" };
-                    const gdid = await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave));
-                    if (gdid) {
-                        boardToSave.gdid = gdid;
-                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                        localStorage.setItem('startBoard_CX-Notes', gdid);
-                    }
-                }
-            } catch (e) {
-                console.warn('[Initial Setup] Error creating fallback Main board:', e);
-            }
-        }
-        if (targetFolderId) {
-            cachedMainFolderId = targetFolderId;
-            setCachedMainFolderId('CX-Notes', targetFolderId);
-            if (multinotesId) setCachedMainFolderId('multinotes_data', multinotesId);
-            activeFolderName = 'CX-Notes';
-            localStorage.setItem('active_folder_name', 'CX-Notes');
-            const folderNames = ['CX-Notes'];
-            if (multinotesId) folderNames.push('multinotes_data');
-            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-            const config = {
-                activeFolderId: targetFolderId,
-                folderSetupMode: mode,
-                folderSetupDone: true
-            };
-            localStorage.setItem('activeFolderId', targetFolderId);
-            localStorage.setItem('folderSetupDone', 'true');
-            localStorage.setItem('folderSetupMode', mode);
-            localStorage.setItem('initial_setup_complete', 'true');
-            localStorage.removeItem('pendingImportSetup');
-            await writeFolderConfigToAppData(config);
-            try {
-                await syncGlobalFoldersJson();
-                await saveSettingsToGDrive(true);
-            } catch (e) {
-                console.warn('[Initial Setup] Error saving settings/folders:', e);
-            }
-        }
-        return;
-    } else {
-        if (loaderText) loaderText.textContent = _('creatingFolder') || 'Creating CX-Notes folder...';
-        let newFolderId = await findExistingFolderId('CX-Notes');
-        if (!newFolderId) {
-            newFolderId = await createNewGDriveFolder('CX-Notes');
-        }
-        if (newFolderId) {
-            cachedMainFolderId = newFolderId;
-            setCachedMainFolderId('CX-Notes', newFolderId);
-            activeFolderName = 'CX-Notes';
-            localStorage.setItem('active_folder_name', 'CX-Notes');
-            try {
-                const existingMainBoards = await findGDFileByName(newFolderId, 'board.txt');
-                if (!existingMainBoards || existingMainBoards.length === 0) {
-                    const now = Date.now();
-                    boardIdCounter = 1;
-                    localStorage.setItem('boardIdCounter', '1');
-                    const boardToSave = { "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50", "colorfont": "#000", "datemod": now, "gdid": "", "id": 1, "numord": 1, "status": 0, "title": "Main" };
-                    const gdid = await createGDriveFile(newFolderId, 'board.txt', JSON.stringify(boardToSave));
-                    if (gdid) {
-                        boardToSave.gdid = gdid;
-                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                        localStorage.setItem('startBoard_CX-Notes', gdid);
-                    }
-                }
-            } catch (e) {
-                console.warn('[Initial Setup] Error creating Main board:', e);
-            }
-            const folderNames = ['CX-Notes'];
-            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-            const config = {
-                activeFolderId: newFolderId,
-                folderSetupMode: mode,
-                folderSetupDone: true
-            };
-            localStorage.setItem('activeFolderId', newFolderId);
-            localStorage.setItem('folderSetupDone', 'true');
-            localStorage.setItem('folderSetupMode', mode);
-            localStorage.setItem('initial_setup_complete', 'true');
-            await writeFolderConfigToAppData(config);
-            try {
-                await syncGlobalFoldersJson();
-                await saveSettingsToGDrive(true);
-            } catch (e) {
-                console.warn('[Initial Setup] Error saving settings/folders:', e);
-            }
-            console.log(`[Initial Setup] Successfully configured CX-Notes folder: ${newFolderId}`);
-        } else {
-            console.error('[Initial Setup] Failed to create CX-Notes folder');
-        }
-        return;
-    }
-}
-
-// =================================================================================
-async function authCallback(tokenResponse) {
-    if (tokenResponse && tokenResponse.access_token) {
-        const tokenWithTimestamp = { ...tokenResponse, issued_at: Date.now() };
-        const rememberMe = document.getElementById('rememberMe')?.checked;
-        const storage = rememberMe ? localStorage : sessionStorage;
-        storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-        try {
-            console.log('Fetching user info...');
-            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
-            });
-            console.log('User info response status:', userInfoResponse.status);
-            if (userInfoResponse.ok) {
-                const userInfo = await userInfoResponse.json();
-                console.log('User info received:', userInfo.email);
-                const previousEmail = localStorage.getItem('google_login_hint');
-                if (previousEmail && previousEmail !== userInfo.email) {
-                    resetAccountFolderSettings();
-                }
-                // Базата не се трие тук: userCheck() в mainLogic сверява проверения имейл с userEmail в базата
-                // и при разлика показва екрана за смяна на акаунт (изтриване само след ОК).
-                if (userInfo.email) sessionStorage.setItem(VERIFIED_EMAIL_KEY, userInfo.email);
-                sessionStorage.setItem('google_auth_email_hint', userInfo.email);
-                localStorage.setItem('google_login_hint', userInfo.email);
-                localStorage.setItem('cached_whitelist_email', userInfo.email);
-                cachedLicenseData = null;
-            } else {
-                console.warn('User info response not OK:', await userInfoResponse.text());
-            }
-        } catch (error) {
-            console.log('Failed to fetch user info:', error);
-        }
-        sessionStorage.removeItem('logout_flag');
-        isSyncSuspended = false;
-        // Флагът падна — прерисуваме иконата, за да махнем ⚠ още преди startApp
-        updateModeButton();
-        scheduleProactiveTokenRefresh();
-        document.getElementById('login-page').hidden = true;
-        sessionStorage.setItem('isExplicitLogin', 'true');
-        startApp(true);
-    } else {
-        console.log('Failed to get access token');
-        alert(_('authFailed'));
-    }
-}
-
-async function gisLoaded() {
-    await setLanguage(currentLang);
-    const sessionToken = sessionStorage.getItem('google_auth_token');
-    const localToken = localStorage.getItem('google_auth_token');
-
-    // =========================================================================
-    // STAGE 1: Determine initial state from localStorage ONLY (no token needed)
-    // =========================================================================
-    // This is the FIRST determination - no AppDataFolder read yet
-    // localStorage is the working cache layer
-    let needsSetup = needsInitialFolderSetup();
-
-    console.log(`[gisLoaded] Stage 1 - localStorage check: needsSetup=${needsSetup}, hasToken=${!!sessionToken || !!localToken}`);
-
-    // =========================================================================
-    // STAGE 2: Load stored config if not needing setup
-    // =========================================================================
-    if (!needsSetup) {
-        const storedMode = localStorage.getItem('folderSetupMode');
-        if (storedMode) {
-            const requiredScopes = getRequiredScopes(storedMode);
-            console.log(`[gisLoaded] Stage 2 - Using stored mode "${storedMode}", scopes: ${requiredScopes}`);
-            Object.defineProperty(window, 'SCOPES', {
-                value: requiredScopes,
-                writable: false,
-                configurable: true
-            });
-        }
-    }
-
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: async (tokenResponse) => {
-            await authCallback(tokenResponse);
-        },
-        error_callback: (error) => {
-            console.log("GSI Error:", error);
-            alert(_('authFailed') + `\n\nError: ${error.type}`);
-        }
-    });
-    const loginBox = document.querySelector('.login-box');
-    const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-    const isLogout = sessionStorage.getItem('logout_flag') === 'true';
-
-    if (isLogout) {
-        if (loginBox) loginBox.style.visibility = 'visible';
-        const authBtn = document.getElementById('authorize_button');
-        if (authBtn) authBtn.disabled = false;
-    } else {
-        // Ако няма токен и е необходимо първоначално съзнаване, показваме модал ПО-РАНО
-        if (!hasToken && needsSetup) {
-            if (loginBox) loginBox.style.visibility = 'visible';
-            const authBtn = document.getElementById('authorize_button');
-            if (authBtn) authBtn.disabled = false;
-            // Модалът ще се покаже при клик на бутона (в handleAuthClick)
-        } else {
-            // Keep login box hidden during background auth attempt to prevent flashing buttons
-            if (loginBox && hasToken) loginBox.style.visibility = 'hidden';
-            await startApp();
-            if (!hasToken && loginBox) {
-                loginBox.style.visibility = 'visible';
-                const authBtn = document.getElementById('authorize_button');
-                if (authBtn) authBtn.disabled = false;
-            }
-        }
-    }
-}
-
-// --- КОРЕКЦИЯ: Зареждаме състоянието на "Запомни ме" при стартиране ---
-document.addEventListener('DOMContentLoaded', async () => {
-    const rememberMeCheckbox = document.getElementById('rememberMe');
-    if (rememberMeCheckbox) {
-        rememberMeCheckbox.checked = localStorage.getItem('rememberMe') === 'true';
-    }
-    const kbFabButton = document.getElementById('kb-fab');
-    if (kbFabButton) {
-        kbFabButton.addEventListener('click', onKBFabClick);
-    }
-    if (localStorage.getItem('hideAssistant') === 'true') {
-        const fabButton = document.getElementById('kb-fab');
-        if (fabButton) {
-            fabButton.style.display = 'none';
-        }
-    }
-    const emptyTrashFab = document.getElementById('empty-trash-fab');
-    if (emptyTrashFab) {
-        emptyTrashFab.innerHTML = emptyTrashIconSvg;
-        emptyTrashFab.addEventListener('click', emptyTrash);
-    }
-    initHeaderFullscreen();
-});
-
-// Добави този код в началото или края на main.js
-// Динамично зареждане на Google Identity Services скрипта с retry логика
-function loadGoogleIdentityServices(retries = 3) {
-    if (IS_DEMO_MODE) {
-        // Демото не зарежда GIS: иначе скриптът от accounts.google.com тръгва още при отваряне.
-        console.log('[Demo] Google Identity Services is not loaded in demo mode.');
-        return;
-    }
-    if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
-        return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => { gisLoaded(); };
-    script.onerror = () => {
-        if (retries > 0) {
-            setTimeout(() => loadGoogleIdentityServices(retries - 1), 2000);
-        }
-    };
-    document.head.appendChild(script);
-}
-
-// =================================================================================
-// II. ДЕМО РЕЖИМ — подготовка, лента, изход
-// =================================================================================
-// Демото минава по съществуващия офлайн път: checkAuth пропуска без мрежа при
-// isOffline + isExplicitLogin, а mainLogic има офлайн клон, който рисува от IndexedDB.
-// Затова не са нужни токен, имейл или лиценз — само собствена база и никаква мрежа.
-
-/**
- * Подготвя демото преди старта на приложението: локален източник на данни в собствената
- * база и лента в хедъра. Бариерата пред fetch вече е вдигната.
- */
-async function prepareDemoMode() {
-    installDemoNetworkBarrier();
-    applyDemoDataSource();
-    await seedDemoContent();
-    // Минаваме по офлайн пътя: без мрежа, без проверка на лиценз и без логин страница.
-    isOffline = true;
-    showDemoBanner();
-    console.log(`[Demo] Demo mode is on: database "${NOTES_DB_NAME}", no network.`);
-}
-
-/**
- * Демото е само локална база. Истинските настройки на браузъра се запазват, за да се
- * върнат при изход от демо.
- */
-function applyDemoDataSource() {
-    try {
-        if (localStorage.getItem(DEMO_MODE_STORAGE_KEY) !== '1') {
-            const previous = {};
-            DEMO_DATA_SOURCE_KEYS.forEach(key => { previous[key] = localStorage.getItem(key); });
-            sessionStorage.setItem(DEMO_FLAGS_SNAPSHOT_KEY, JSON.stringify(previous));
-        }
-        localStorage.setItem(DEMO_MODE_STORAGE_KEY, '1');
-        localStorage.setItem('useGoogleDb', 'false');
-        localStorage.setItem('useIndexedDb', 'true');
-        localStorage.setItem('useLocalDb', 'false');
-        localStorage.setItem('useArhDb', 'false');
-    } catch (e) {
-        console.warn('[Demo] Could not apply the demo data-source flags:', e);
-    }
-    updateGlobalStateFlags();
-}
-
-/**
- * Началното съдържание на демото: един борд и една бележка „welcome“.
- *
- * Демото няма как да дойде с празна база: без нито един борд екранът е празен и
- * няма къде да се създаде бележка. Затова при първо влизане се слага точно един
- * борд с една бележка. Ако демо базата вече има борд, нищо не се пипа — иначе
- * всяко презареждане триеше създаденото от човека.
- */
-async function seedDemoContent() {
-    try {
-        const existingBoards = await countFromDB(BOARD_STORE_NAME);
-        if (existingBoards > 0) return;
-
-        const now = Date.now();
-        const board = {
-            "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
-            "colorfont": "#000", "datemod": now, "gdid": "demo-board-welcome",
-            "id": 1, "numord": 1, "status": 0, "title": _('demoWelcomeBoard') || 'Welcome'
-        };
-        const note = {
-            "alarm_type": -1, "boardid": board.gdid, "calendarDate": 0,
-            "color": getDefaultNoteBgValue(), "date": now, "datemod": now,
-            "eventId": 0, "gdid": "demo-note-welcome", "id": 1,
-            "notetxt": _('demoWelcomeNote') || 'welcome',
-            "numord": 1, "pass": false, "sellist": 0, "status": 0,
-            "text_span": "", "timer": 0, "timer_type": -1, "timer_val": 1,
-            "title_span": "", "type": 0, "version": 243
-        };
-
-        await bulkPutDB(BOARD_STORE_NAME, [board], true);
-        await bulkPutDB(NOTE_STORE_NAME, [note], true);
-        console.log('[Demo] Seeded one board and one welcome note.');
-    } catch (e) {
-        console.warn('[Demo] Could not seed the demo content:', e);
-    }
-}
-
-/** Показва тънката лента „Демо режим“ под хедъра. */
-function showDemoBanner() {
-    const banner = document.getElementById('demo-banner');
-    if (banner) banner.hidden = false;
-}
-
-/**
- * Изходът от демо връща към началния екран (чисто) — без автоматичен опит за вход с
- * Google. Демо базата остава, за да не се губи при следващо влизане в демото.
- */
-async function exitDemoMode() {
-    try {
-        localStorage.removeItem(DEMO_MODE_STORAGE_KEY);
-        // Интрото остава отбелязано: то е само за първото влизане в демо, не за всяко.
-        const raw = sessionStorage.getItem(DEMO_FLAGS_SNAPSHOT_KEY);
-        if (raw) {
-            const previous = JSON.parse(raw);
-            DEMO_DATA_SOURCE_KEYS.forEach(key => {
-                const value = previous[key];
-                if (value === null || value === undefined) localStorage.removeItem(key);
-                else localStorage.setItem(key, value);
-            });
-            sessionStorage.removeItem(DEMO_FLAGS_SNAPSHOT_KEY);
-        }
-    } catch (e) {
-        console.warn('[Demo] Could not restore the settings on exit:', e);
-    }
-    const url = new URL(window.location.href);
-    url.searchParams.delete('demo');
-    window.location.replace(url.toString());
-}
-
-/** Бутонът на началния екран, предупреждението и изходът от лентата. */
-function initDemoModeUI() {
-    // Идемпотентно: извиква се веднага (елементите вече са в DOM, main.js е в края на body)
-    // и повторно при DOMContentLoaded, без да дублира слушателите.
-    if (window.__cxDemoUIReady) return;
-    window.__cxDemoUIReady = true;
-    const startBtn = document.getElementById('demo-start-btn');
-    const banner = document.getElementById('demo-banner');
-
-    // Потвърждение от самия браузър: демото не носи свой прозорец.
-    if (startBtn) {
-        startBtn.addEventListener('click', () => {
-            if (!confirm(_('demoConfirm'))) return;
-            try { localStorage.setItem(DEMO_MODE_STORAGE_KEY, '1'); } catch (e) { }
-            const url = new URL(window.location.href);
-            url.searchParams.set('demo', '1');
-            window.location.href = url.toString();
-        });
-    }
-    // Лентата се показва само когато демото е активно (иначе остава скрита).
-    if (IS_DEMO_MODE && banner) {
-        showDemoBanner();
-    } else if (banner) {
-        banner.hidden = true;
-    }
-}
-
-// Веднага: main.js се зарежда след началния екран, значи елементите вече съществуват и
-// бутонът работи още преди края на парсването на страницата.
-initDemoModeUI();
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initDemoModeUI);
-}
-
-// Стартирай зареждането в зависимост от състоянието
-(async () => {
-    await setLanguage(currentLang);
-    // Демото се подготвя преди самото стартиране: собствена база и офлайн път.
-    // Няма GIS, няма логин страница.
-    if (IS_DEMO_MODE) await prepareDemoMode();
-    dbExists = await checkDbExists(NOTES_DB_NAME);
-    const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-    await goOffline();
-    if (isOffline) {
-        // В демо входът е явен: checkAuth пропуска без мрежа и без токен.
-        startApp(IS_DEMO_MODE);
-    } else if (hasToken) {
-        loadGoogleIdentityServices();
-        startApp();
-    } else {
-        initLoginPage();
-        loadGoogleIdentityServices();
-    }
-})();
-
-// ---------- Calendar ----------------------------
 function renderCalendarView() {
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
@@ -4447,15 +1442,7 @@ async function moveNoteToTrash(noteGdid, noteId, options = {}) {
     const boardIdOfNote = noteToUpdate.boardid;
     noteToUpdate.status = 1;
     noteToUpdate.datemod = Date.now();
-    const updateGDriveNow = useGoogleDb && !isOffline;
-    if (!updateGDriveNow) {
-        noteToUpdate.type = -1; // Маркираме за офлайн синхронизация
-    }
-    if (updateGDriveNow && noteToUpdate.gdid && !isOffline && typeof updateGDriveFile === 'function') {
-        const actualGdid = noteToUpdate.gdid;
-        await updateGDriveFile(actualGdid, JSON.stringify(noteToUpdate));
-        console.log("Updating GD with actual ID:", actualGdid);
-    }
+    noteToUpdate.type = -1; // локален режим: бележката живее само в базата
 
 
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
@@ -4468,10 +1455,6 @@ async function moveNoteToTrash(noteGdid, noteId, options = {}) {
         });
     }
 
-    const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
-    if (doLocal && noteGdid && typeof updateLocalFile === 'function') {
-        await updateLocalFile(noteGdid, JSON.stringify(noteToUpdate));
-    }
     // Обновяваме DOM елемента (ако съществува) вместо да го премахваме
     const noteEl = document.querySelector(`.note[data-g="${noteGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
@@ -4489,44 +1472,10 @@ async function moveNoteToTrash(noteGdid, noteId, options = {}) {
             renderWeeklyCalendarView(currentWeeklyViewDate);
         }
         updateReloadButtonState();
-        scheduleGcalSync(); // бележка в кошчето → събитието се трие
     }
     if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: изчезва от индекса за търсене по смисъл
     return true;
 }
-/**
- * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
- */
-/**
- * Грешка от Drive, при която си струва повторен опит (лимит на заявките, сървърна грешка, мрежа).
- */
-function isRetryableDriveError(error) {
-    const msg = String((error && error.message) || error || '');
-    return /\b(429|500|502|503|504)\b/.test(msg) || /Failed to fetch|NetworkError|network error|timeout/i.test(msg);
-}
-/**
- * Изтрива файл от Drive с до 3 опита и нарастващо изчакване при 429/5xx.
- * Връща true (изтрит) или false (вече го нямаше - 404); хвърля при окончателен провал.
- */
-async function deleteGDriveFileWithRetry(fileId, attempts = 3) {
-    let lastError = null;
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-            return await deleteGDriveFile(fileId);
-        } catch (error) {
-            lastError = error;
-            if (!isRetryableDriveError(error) || attempt === attempts - 1) break;
-            const wait = 400 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
-            console.warn(`[Trash] Drive delete failed (attempt ${attempt + 1}/${attempts}), retrying in ${wait}ms:`, (error && error.message) || error);
-            await new Promise(resolve => setTimeout(resolve, wait));
-        }
-    }
-    throw lastError || new Error('Drive delete failed');
-}
-/**
- * Трие ключ от IndexedDB през вече отворена връзка (една връзка за цялата партида).
- * Връща true при успех, false при грешка.
- */
 function deleteKeyFromDBHandle(db, storeName, key) {
     return new Promise((resolve) => {
         let transaction;
@@ -4551,32 +1500,15 @@ function deleteKeyFromDBHandle(db, storeName, key) {
     });
 }
 /**
- * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
- * Връща { ok, gdriveDeleted, localDeleted, error }. ok === false значи, че бележката е още
- * някъде (най-често в Drive) и ще се върне при следваща синхронизация - затова остава в паметта
- * и на екрана, вместо да изчезне и да се появи отново.
+ * Изтрива бележка окончателно от базата, прикачените ѝ файлове и паметта.
+ * Връща { ok, error }. ok === false значи, че бележката е още в базата и остава в паметта.
  * @param {object} opts - { db }: отворена IndexedDB връзка за партидно триене.
  */
 async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false, opts = {}) {
-    const updateGDriveNow = useGoogleDb && !isOffline;
     const noteToDelete = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
     const actualGdid = noteToDelete ? noteToDelete.gdid : noteGdid;
 
-    // 1. Drive е източникът, от който бележката се връща при следваща синхронизация или презареждане.
-    let gdriveDeleted = false;
-    if (updateGDriveNow && actualGdid && !isOffline && typeof deleteGDriveFile === 'function') {
-        try {
-            await deleteGDriveFileWithRetry(actualGdid); // false = вече го нямаше (404), също е успех
-            gdriveDeleted = true;
-        } catch (e) {
-            // Локалните копия НЕ се пипат: иначе бележката изчезва от екрана, а после се връща.
-            console.warn("GDrive deletion failed, note kept for retry:", e);
-            if (!skipUI) showToast((_('trashDeleteFailed') || "Бележката не е изтрита - няма връзка с Google Drive."), 5000);
-            return { ok: false, gdriveDeleted: false, localDeleted: false, error: e };
-        }
-    }
-
-    // 2. Локална база - през общата връзка на партидата, ако е подадена.
+    // 1. Локална база - през общата връзка на партидата, ако е подадена.
     let localDeleted = false;
     if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
         const dbKey = (noteToDelete && noteToDelete.gdid) || noteGdid || noteId;
@@ -4593,25 +1525,20 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false, opts = {}
         }
         if (!dbOk) {
             if (!skipUI) showToast((_('trashDeleteFailed') || "Бележката не е изтрита - грешка в локалната база."), 5000);
-            return { ok: false, gdriveDeleted, localDeleted: false, error: new Error('IndexedDB delete failed') };
-        }
-        localDeleted = true;
-    }
-
-    // 3. Локална папка (огледално копие; липсващ файл не е грешка).
-    const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
-    if (doLocal && actualGdid && typeof deleteLocalFile === 'function') {
-        try {
-            if (await deleteLocalFile(actualGdid)) localDeleted = true;
-        } catch (e) {
-            console.warn("Local file delete failed:", e);
+            return { ok: false, error: new Error('IndexedDB delete failed') };
         }
     }
 
-    // 4. Памет и екран - само след като източниците са изчистени.
+    // 2. Прикачените файлове на бележката (blob-овете в store `files`) отиват с нея.
+    try {
+        await deleteFilesForNote(actualGdid);
+    } catch (e) {
+        console.warn("Attachment blob delete failed:", e);
+    }
+
+    // 3. Памет и екран - само след като източниците са изчистени.
     const midx = allNotesData.findIndex(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId) || (actualGdid && n.gdid === actualGdid));
     if (midx !== -1) allNotesData.splice(midx, 1);
-    scheduleGcalSync(); // изтрита бележка → събитието се трие (изпразването на кошчето дава една сверка)
     const noteEl = document.querySelector(`.note[data-g="${actualGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
     if (noteEl) noteEl.remove();
@@ -4626,7 +1553,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false, opts = {}
             renderWeeklyCalendarView(currentWeeklyViewDate);
         }
     }
-    return { ok: true, gdriveDeleted, localDeleted };
+    return { ok: true };
 }
 /**
  * UI обвивка: показва потвърждение и извиква moveNoteToTrash или permanentlyDeleteNote.
@@ -4635,23 +1562,14 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false, opts = {}
  * @param {boolean} fromModal - Дали се извиква от модалния прозорец.
  */
 async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
-    // Демо бележка на водач: потвърждението се показва, но нищо не стига до Drive/IndexedDB
-    if (allNotesData.some(n => n.guideDemo && ((noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId)))) {
-        if (await showConfirmation(_('confirmNoteMoveToTrash') || _('confirmNoteDelete'))) window.guideDemoDiscard?.();
-        return;
-    }
-    const updateGDriveNow = useGoogleDb && !isOffline;
-    const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
-    if (!useIndexedDb && !updateGDriveNow && !doLocal) return;
+    if (!useIndexedDb) return;
     if (fromModal) {
         document.getElementById('content-modal').classList.remove('visible');
         await new Promise(resolve => setTimeout(resolve, 150));
     }
     const noteData = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
     const isInTrash = currentBoardFilter === 'trash' || (noteData && noteData.status === 1);
-    const confirmMsgKey = isInTrash
-        ? ((updateGDriveNow || doLocal) ? 'confirmNoteDeleteSync' : 'confirmNoteDelete')
-        : 'confirmNoteMoveToTrash';
+    const confirmMsgKey = isInTrash ? 'confirmNoteDelete' : 'confirmNoteMoveToTrash';
     const confirmed = await showConfirmation(_(confirmMsgKey) || _('confirmNoteDelete'));
     if (!confirmed) return;
     try {
@@ -4659,12 +1577,8 @@ async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
             await moveNoteToTrash(noteGdid, noteId);
             showToast(_('noteMovedToTrash') || 'Бележката е преместена в Кошче', 3000);
         } else {
-            const result = await permanentlyDeleteNote(noteGdid, noteId);
-            let msgKey = 'noteDeletedSuccess';
-            if (result.gdriveDeleted && result.localDeleted) msgKey = 'noteDeletedSuccessBoth';
-            else if (result.gdriveDeleted) msgKey = 'noteDeletedSuccessGDrive';
-            else if (result.localDeleted) msgKey = 'noteDeletedSuccessLocal';
-            showToast(_(msgKey), 3000);
+            await permanentlyDeleteNote(noteGdid, noteId);
+            showToast(_('noteDeletedSuccess'), 3000);
         }
     } catch (error) {
         console.error("Failed to delete note:", error);
@@ -4840,61 +1754,12 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId, options = {}) {
 
         const targetBoardTitle = targetBoard.title;
         noteToMove.datemod = Date.now();
-        const updateGDriveNow = useGoogleDb && !isOffline;
-        const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
-        if (!updateGDriveNow && !updateLocalFolderNow) {
-            noteToMove.type = -1; // Маркираме за офлайн синхронизация
-        }
+        noteToMove.type = -1; // локален режим: бележката живее само в базата
         // Update DB
         if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
             await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
         }
 
-        // --- GDrive Sync ---
-        if (updateGDriveNow) {
-            const isTempGdid = !noteToMove.gdid || String(noteToMove.gdid) === String(noteToMove.id);
-            if (isTempGdid) {
-                const folderId = await getFolderID();
-                if (folderId) {
-                    const fileContent = JSON.stringify(noteToMove);
-                    try {
-                        const newGdid = await createGDriveFile(folderId, 'note.txt', fileContent);
-                        if (newGdid) {
-                            const oldGdid = noteToMove.gdid;
-                            noteToMove.gdid = newGdid;
-                            if (useIndexedDb) {
-                                await bulkPutDB(NOTE_STORE_NAME, [noteToMove], true);
-                                if (oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Failed to create GDrive file during move", e);
-                    }
-                }
-            } else {
-                try {
-                    await updateGDriveFile(noteToMove.gdid, JSON.stringify(noteToMove));
-                } catch (err) {
-                    console.error("GDrive move update failed:", err);
-                    showToast(_('gdriveUpdateError').replace('{error}', err.message), 5000);
-                }
-            }
-        }
-
-        // --- Local Folder Sync ---
-        if (updateLocalFolderNow) {
-            try {
-                const isTempGdid = !noteToMove.gdid || String(noteToMove.gdid) === String(noteToMove.id);
-                if (isTempGdid && !updateGDriveNow) {
-                    noteToMove.gdid = `L${Date.now()}`;
-                }
-                if (noteToMove.gdid) {
-                    await updateLocalFile(noteToMove.gdid, JSON.stringify(noteToMove));
-                }
-            } catch (e) {
-                console.error("Local move update failed:", e);
-            }
-        }
 
         if (!batch) showToast(_('noteMovedSuccess').replace('{boardName}', targetBoardTitle), 3000);
         const noteElementInDom = document.querySelector(`.note[data-g="${noteGdid}"]`) || document.querySelector(`.note[data-i="${noteId}"]`);
@@ -4915,7 +1780,6 @@ async function moveNoteToBoard(noteGdid, noteId, newBoardId, options = {}) {
             updateBoardCounterUI('trash');
             filterNotesByBoard(currentBoardFilter, false);
             updateReloadButtonState();
-            scheduleGcalSync(); // възстановена от кошчето → събитието се връща
             if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
         }
         return true;
@@ -4980,6 +1844,9 @@ function openNotesDB() {
                 }
                 if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
                     db.createObjectStore(CONFIG_STORE_NAME);
+                }
+                if (!db.objectStoreNames.contains(FILES_STORE_NAME)) {
+                    db.createObjectStore(FILES_STORE_NAME, { keyPath: 'key' });
                 }
                 console.log("NotesDB structure is up to date.");
             };
@@ -5399,7 +2266,6 @@ async function handleShareTarget(externalData = null) {
     // Подготвяме нова бележка (копирано от createNewNote логиката)
     noteId++;
     noteNumord++;
-    syncFolderDataAsync();
     const now = Date.now();
     // Определяме борда: ако сме в системен борд, ползваме 'Main' или първия наличен
     let boardId = currentBoardFilter;
@@ -5448,83 +2314,40 @@ async function handleShareTarget(externalData = null) {
         }
         showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
         // --- Качваме всички споделени файлове асинхронно (не блокираме UI) ---
-        if (sharedFiles.length > 0 && !isOffline) {
+        if (sharedFiles.length > 0) {
             const targetNoteId = noteId; // Capture the local ID for closures
-            // Стартираме качването на заден план - не await-ваме
             (async () => {
                 try {
-                    showToast(_('uploadingSharedImage') || '📤 Uploading files...', 5000);
-                    const folderId = await getFolderID();
-                    if (!folderId) throw new Error('Folder ID not available');
                     for (let i = 0; i < sharedFiles.length; i++) {
                         const { blob, filename, mimeType } = sharedFiles[i];
                         try {
                             const fileType = mimeType.startsWith('video') ? 'Video' : (mimeType.startsWith('audio') ? 'Sound' : 'Images');
-                            let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
-                            if (!targetFolderId) {
-                                targetFolderId = await createNewGDriveFolder(fileType, folderId);
-                                if (targetFolderId) {
-                                    folderIds[fileType] = targetFolderId;
-                                    localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
-                                }
-                            }
-                            if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
-                            const fileGdid = await uploadBlobToGDrive(targetFolderId, filename, blob, mimeType);
-                            if (!fileGdid) throw new Error(`Upload failed: ${filename}`);
-                            // Изчакваме бележката да получи gdid (до 30 мин)
-                            const noteGdid = await new Promise(resolve => {
-                                const check = (attempts = 0) => {
-                                    const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
-                                    if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                        resolve(noteInData.gdid);
-                                    } else if (attempts < 3600) {
-                                        setTimeout(() => check(attempts + 1), 500);
-                                    } else {
-                                        resolve(null);
-                                    }
-                                };
-                                check();
-                            });
-                            if (!noteGdid) {
-                                console.warn(`[ShareTarget] Note gdid timeout for ${filename}`);
-                                showToast((_('attachLinkFailedMsg') || '⚠️ {name} uploaded, but link to note failed.').replace('{name}', filename), 7000);
-                                continue;
-                            }
-                            const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
+                            const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : 4);
+                            const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
+                            if (!noteInData) throw new Error('Note not found');
+                            const fileKey = await saveBlobToFiles(filename, blob, mimeType);
                             const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
                             const mediaEntry = {
-                                datemod: now,
+                                datemod: Date.now(),
                                 description: '',
-                                gdid: '',
+                                gdid: localUuid(),
                                 id: maxMediaId + 1,
-                                noteid: noteGdid,
+                                noteid: noteInData.gdid,
                                 path: filename,
-                                pathGD: fileGdid,
+                                pathGD: fileKey,
                                 type: mediaTypeNum
                             };
-                            const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                            if (mediaFileGdid) {
-                                mediaEntry.gdid = mediaFileGdid;
-                                await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                                mediaData.push(mediaEntry);
-                                if (useIndexedDb) {
-                                    await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                                }
-                                showToast((_('attachSuccessMsg') || '✅ Attached: {name}').replace('{name}', filename), 3000);
-                                if (typeof refreshNoteUI === 'function') {
-                                    await refreshNoteUI(noteGdid);
-                                } else {
-                                    renderNotes();
-                                }
-                            }
+                            mediaData.push(mediaEntry);
+                            await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                            showToast((_('attachSuccessMsg') || '✅ Attached: {name}').replace('{name}', filename), 3000);
                         } catch (fileErr) {
                             console.error(`[ShareTarget] Error processing file ${filename}:`, fileErr);
                             showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', fileErr.message), 5000);
                         }
                     }
+                    await renderUI({ boardParseError: false });
                 } catch (e) {
-                    console.error('[ShareTarget] Error in upload loop:', e);
-                    showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message), 5000);
+                    console.error('[ShareTarget] Error saving shared files:', e);
                 }
             })();
         }
@@ -5549,211 +2372,60 @@ if ('launchQueue' in window) {
 }
 
 // --- Основна стартова функция ---
-async function startApp(isExplicitLogin = false) {
+async function startApp() {
     if (isAppStarted) return;
     isAppStarted = true;
 
-    // --- КОРЕКЦИЯ: Показваме лоудъра ВЕДНАГА при стартиране ---
     const lc = document.getElementById('loader-container');
     if (lc) lc.style.display = 'block';
 
-    // --- Поддръжка за URL параметър ?offline ---
-    const urlParams = new URLSearchParams(window.location.search);
-    const forceOfflineParam = urlParams.has('offline') || urlParams.get('mode') === 'offline';
-
-    let hasLocalDataOrCache = false;
-    try {
-        const cache = await caches.open('app-cache');
-        const cachedResponse = await cache.match('s');
-        hasLocalDataOrCache = !!cachedResponse;
-        if (!hasLocalDataOrCache && typeof checkDbExists === 'function') {
-            hasLocalDataOrCache = await checkDbExists(NOTES_DB_NAME);
-        }
-    } catch (e) {
-        console.warn("Error checking cache/db for offline capability:", e);
-    }
-
-    if (forceOfflineParam) {
-        if (hasLocalDataOrCache) {
-            console.log("[Offline] Force offline mode enabled via URL parameter.");
-            isOffline = true;
-            isExplicitLogin = true;
-        } else {
-            console.warn("[Offline] URL parameter ?offline specified, but no local cache/data found. Falling back to online mode.");
-            showToast(_('offlineNoCacheWarning') || "За офлайн работа е необходимо поне едно онлайн стартиране.", 6000);
-        }
-    }
-
-    // --- Автоматична проверка за режим Online/Offline ---
-    if (!isOffline) {
-        if (!navigator.onLine) {
-            isOffline = true;
-            isExplicitLogin = true;
-        } else {
-            await goOffline();
-            if (isOffline) isExplicitLogin = true;
-        }
-    }
-    // --- Активна проверка за реална мрежова свързаност (non-blocking) ---
-    // Стартираме пробата паралелно с другата инициализация. Ще изчакаме резултата само ако е нужен.
-    let networkProbePromise = null;
-    if (!isOffline) {
-        networkProbePromise = fetch('https://www.googleapis.com/generate_204', {
-            method: 'HEAD', mode: 'no-cors', cache: 'no-store'
-        }).catch(() => null);
-    }
+    // Локален режим: няма вход, няма проверки за мрежа - всичко е в браузъра.
+    isOffline = true;
 
     // --- Graceful fallback for KB Assistant ---
-    // kb-assistant.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
-    // до тогава - или ако зареждането се провали - тук стои този заместител.
-    // Той има само init/showGuide/terminateGuide/updateLanguage/isInitialized.
     if (typeof window.kbAssistant === 'undefined') {
-        console.log("Knowledge Base Assistant is loaded on first use. Using a placeholder object until then.");
         window.kbAssistant = {
-            init: () => Promise.resolve(false), // init is async, return false on failure
+            init: () => Promise.resolve(false),
             showGuide: () => { console.warn("KB Assistant not loaded."); },
             terminateGuide: () => { },
             updateLanguage: () => { },
-            isInitialized: false // This is important for conditional UI features
+            isInitialized: false
         };
     }
     try {
-        // ts = await getFirstStartEncoded(); // Move to after UI prep if needed, but it's fine here
         console.log('First start:', Date.now());
         ts = await getFirstStartEncoded();
-        console.log('First start in cache:', ts);
-        // Преводите вече са заредени от IIFE — не дублираме setLanguage()
         initApp(); // Инициализира UI елементите и event listeners
 
         const lt = document.getElementById('loader-title');
-        if (lt) {
-            const isInitialSetup = !isOffline && (typeof needsInitialFolderSetup === 'function' && needsInitialFolderSetup());
-            const isExplicit = isExplicitLogin || sessionStorage.getItem('isExplicitLogin') === 'true';
-            sessionStorage.removeItem('isExplicitLogin');
-            const welcomePrefix = isExplicit || isInitialSetup ? ((typeof currentLang !== 'undefined' && currentLang.startsWith('bg')) ? 'Добре дошли в ' : 'Welcome to ') : '';
-            if (isExplicit || isInitialSetup) {
-                lt.innerHTML = welcomePrefix + (_('dataFolderSelectionTitle') || '<b><big>CX Notes</big></b>') + '!';
-            } else {
-                lt.textContent = _('initialDataLoad') || 'Initial Data Load';
-            }
-        }
+        if (lt) lt.textContent = _('initialDataLoad') || 'Data loading...';
 
-        // --- КОРЕКЦИЯ: Осигуряваме наличност на имейла при безшумен старт ---
-        // Използваме САМО записания от логина hint (ако е избрано 'Запомни ме'),
-        // за да избегнем несъответствие с лицензния имейл.
-        // Това копие може да е остаряло и НЕ е доказателство за акаунта: userCheck() разчита
-        // само на VERIFIED_EMAIL_KEY (имейл от прясно userinfo запитване).
-        if (!sessionStorage.getItem('google_auth_email_hint')) {
-            const emailHint = localStorage.getItem('google_login_hint');
-            if (emailHint) {
-                sessionStorage.setItem('google_auth_email_hint', emailHint);
-            }
-        }
-        // --- Задаване на настройки по подразбиране при първо стартиране ---
-        // Ако никога не са задавани настройки за източник на данни,
-        // избираме Google Drive + База данни по подразбиране.
-        if (localStorage.getItem('useGoogleDb') === null && localStorage.getItem('useLocalDb') === null) {
-            localStorage.setItem('useGoogleDb', 'true');
-            localStorage.setItem('useIndexedDb', 'true');
-        }
-        // --- Проверяваме за базата данни (нужно за userCheck) ---
         if (dbExists === null || typeof dbExists === 'undefined') {
             dbExists = await checkDbExists(NOTES_DB_NAME);
         }
-        const hasLocalBoards = !!dbExists && localStorage.getItem('useIndexedDb') !== 'false' && (await countFromDB(BOARD_STORE_NAME)) > 0;
-        // --- Мрежовата проба (кап 3 сек) се чака само ако няма локални данни ---
-        if (networkProbePromise) {
-            const cappedProbe = Promise.race([networkProbePromise, new Promise(r => setTimeout(() => r(null), 3000))]);
-            const onProbeResult = (probeResult) => {
-                if (probeResult === null && !isOffline) {
-                    console.log('Network probe failed — switching to offline mode.');
-                    isOffline = true;
-                    isExplicitLogin = true;
-                    if (hasLocalBoards) updateModeButton();
-                }
-            };
-            if (hasLocalBoards) cappedProbe.then(onProbeResult);
-            else onProbeResult(await cappedProbe);
-        }
-        // --- ЦЕНТРАЛИЗИРАНО УДОСТОВЕРЯВАНЕ И ПРОВЕРКА НА ПОТРЕБИТЕЛ ---
-        const authResult = await checkAuth(isExplicitLogin);
-        if (!authResult || !authResult.pass) {
-            if (isLoadCancelled) return; // Не прави нищо, ако е отказано
-            loaderContainer.style.display = 'none';
-            // checkAuth вече е показал грешка или е пренасочил
-            isAppStarted = false; // Allow re-try
-            return;
-        }
-        authToken = authResult.tokenData;
-        scheduleProactiveTokenRefresh();
-        // Скриваме логин страницата, ако е била показана
-        document.getElementById('login-page').hidden = true;
-        document.getElementById('login-page').style.display = 'none';
-        // --- WHITELIST CHECK (On every login) ---
-        checkWhitelist(true); // Delayed background check to log session and update state
-        // Обновяваме глобалните флагове веднага, за да отразим настройките по подразбиране
-        updateGlobalStateFlags();
-
-        // --- PRE-LOAD START BOARD SETTING ---
-        // Avoid FOUC by setting currentBoardFilter immediately from storage
-        const savedStartBoard = localStorage.getItem('startBoard');
-        if (savedStartBoard && (isDbOwner || savedStartBoard === 'all')) {
-            currentBoardFilter = savedStartBoard;
-        }
         await createBoardsUI([], false);
         initHeaderFullscreen();
-        await createSettingsUI([], false); // Предварително създава UI на настройките
-        // Проверката за потребител и основната логика се извикват директно.
-        // mainLogic ще се погрижи за автентикацията и зареждането на Google API,
-        // само ако е необходимо.
-        // Инициализация на draggable бутони
+        await createSettingsUI([], false);
+
         const initDraggableButtons = () => {
-            // ScrollTop Button
             const scrollTopBtnElement = document.getElementById('scrollTopBtn');
-            if (scrollTopBtnElement) {
-                makeElementDraggable(scrollTopBtnElement, 'scrollTopBtnPosition');
-            }
-            // KB Assistant Button (wait for it if necessary)
-            // Since KBUI might initialize later, we attempt to find it
+            if (scrollTopBtnElement) makeElementDraggable(scrollTopBtnElement, 'scrollTopBtnPosition');
             const initKbFab = () => {
                 const kbFab = document.getElementById('kb-fab');
-                if (kbFab) {
-                    makeElementDraggable(kbFab, 'kbFabPosition');
-                } else {
-                    // Retry once after a short delay in case of async rendering
-                    setTimeout(() => {
-                        const kbFabRetry = document.getElementById('kb-fab');
-                        if (kbFabRetry) makeElementDraggable(kbFabRetry, 'kbFabPosition');
-                    }, 1000);
-                }
+                if (kbFab) makeElementDraggable(kbFab, 'kbFabPosition');
             };
             initKbFab();
         };
         initDraggableButtons();
+
         await mainLogic();
         handleShareTarget();
-        verifyGcalOnStart(); // Календарът „CX Notes“: тиха проверка на заден план
     } catch (err) {
         console.error("Error in startApp:", err);
-        // Fallback for network errors during mainLogic
-        if (err.message === 'Failed to fetch' || err instanceof TypeError || (err.message && err.message.includes('Google libraries'))) {
-            const hasS = await checkDbExists(NOTES_DB_NAME) || await caches.open('app-cache').then(c => c.match('s'));
-            if (hasS) {
-                const promptMsg = (typeof _ === 'function' ? (_('errorGoogleLibs') + "\n\n" + (_('offlineStartPrompt') || "Do you want to start in Offline Mode?")) : "Network error. Do you want to start in Offline Mode?");
-                if (confirm(promptMsg)) {
-                    isOffline = true;
-                    // Reset UI and restart
-                    if (loaderContainer) loaderContainer.style.display = 'none';
-                    isAppStarted = false;
-                    startApp();
-                    return;
-                }
-            }
-        }
+        showAppUI();
     }
 }
 
-// Записва timestamp като кодиран низ (Base64) при поискване
 async function getFirstStartEncoded(shouldSave = false) {
     const cache = await caches.open('app-cache');
     const cachedResponse = await cache.match('s'); // /firstStart.json
@@ -6362,17 +3034,12 @@ function initApp() {
     if (localStorage.getItem('showWeeklyCalendar') === null) {
         localStorage.setItem('showWeeklyCalendar', 'true');
     }
-    // Set default updateGDrive to true if not set
-    // Removed updateGDrive default check
     // Set default useIndexedDb to true if not set
     if (localStorage.getItem('useIndexedDb') === null) {
         localStorage.setItem('useIndexedDb', 'true');
     }
     // Инициализация на DOM елементи
-    signoutButton = document.getElementById('signout_button');
-    if (signoutButton) {
-        signoutButton.addEventListener('click', handleSignoutClick);
-    }
+    signoutButton = null; // локален режим: няма акаунт, няма изход
     reloadButton = document.getElementById('reload_button');
     settingsButton = document.getElementById('settings_button');
     notesContainer = document.getElementById('notes-container');
@@ -6427,8 +3094,7 @@ function initApp() {
         loaderTitle.after(loaderFolderInfo);
     }
     if (loaderFolderInfo) {
-        const isInitialSetup = !isOffline && (typeof needsInitialFolderSetup === 'function' && needsInitialFolderSetup());
-        loaderFolderInfo.textContent = isInitialSetup ? '' : `(${activeFolderName})`;
+        loaderFolderInfo.textContent = '';
     }
     // --- Add Cancel Button to Loader (Idempotent) ---
     let cancelButton = document.getElementById('cancel-load-btn');
@@ -6503,29 +3169,9 @@ function initApp() {
         e.stopPropagation();
         return false;
     });
-    reloadButton.addEventListener('click', (e) => {
-        const isForceSync = Boolean(e && (e.ctrlKey || e.shiftKey));
-        // При спряна синхронизация първо възстановяваме входа (както иконата на източника) — без токен
-        // синхронизацията не може да тръгне, значи преди клона за мръсни бележки; важи и при Ctrl/Shift.
-        if (isSyncSuspended && !isOffline) {
-            const modeBtn = document.getElementById('mode_button');
-            if (modeBtn) {
-                modeBtn.click();
-                return;
-            }
-        }
-        // В демо режим бутонът само презарежда от демо базата — не търси синхронизация,
-        // защото офлайн бележките (type = -1) иначе дават само toast „няма мрежа“.
-        const hasDirtyNotes = !IS_DEMO_MODE && allNotesData && allNotesData.some(n => n.type === -1);
-        if (hasDirtyNotes && !isForceSync) {
-            if (isOffline) {
-                showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
-            } else {
-                syncDirtyNotes();
-            }
-        } else {
-            mainLogic(isForceSync);
-        }
+    reloadButton.addEventListener('click', () => {
+        // Локален режим: презареждаме всичко от IndexedDB.
+        mainLogic();
     });
 
     function toggleAdvancedSettings(forceState = null) {
@@ -6547,12 +3193,6 @@ function initApp() {
         } else {
             localStorage.setItem('showAdvancedSettings', 'true');
             if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
-            populateFoldersDropdown();
-            if (!isOffline) {
-                loadGlobalFoldersJson().then(changed => {
-                    if (changed) populateFoldersDropdown();
-                });
-            }
             if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
             if (accordionHeader && accordionHeader.parentElement) {
                 const accordion = accordionHeader.parentElement;
@@ -6577,14 +3217,6 @@ function initApp() {
         const accordionHeader = document.querySelector('.accordion-header');
         if (localStorage.getItem('showAdvancedSettings') === 'true') {
             if (advancedSettingsSpan) advancedSettingsSpan.removeAttribute('hidden');
-            populateFoldersDropdown();
-            if (!isOffline) {
-                loadGlobalFoldersJson().then(changed => {
-                    if (changed) {
-                        populateFoldersDropdown();
-                    }
-                });
-            }
         } else {
             if (advancedSettingsSpan) advancedSettingsSpan.setAttribute('hidden', '');
             if (accordionHeader && accordionHeader.parentElement) {
@@ -6595,32 +3227,9 @@ function initApp() {
         }
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките
         // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
-        const useGDCheckbox = document.getElementById('use-google-db-checkbox');
-        const useLocCheckbox = document.getElementById('use-local-db-checkbox');
-        const useArhCheckbox = document.getElementById('use-arh-db-checkbox');
-        const useIdbCheckbox = document.getElementById('use-indexeddb-checkbox');
-        if (useGDCheckbox) useGDCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
-        if (useLocCheckbox) useLocCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
-        if (useArhCheckbox) useArhCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
-        if (useIdbCheckbox) useIdbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-        settingsInitialState = {
-            useGoogleDb: useGDCheckbox ? useGDCheckbox.checked : true,
-            useLocalDb: useLocCheckbox ? useLocCheckbox.checked : false,
-            useArhDb: useArhCheckbox ? useArhCheckbox.checked : false,
-            useIndexedDb: useIdbCheckbox ? useIdbCheckbox.checked : false
-        };
+        settingsInitialState = {};
         document.getElementById('settings-modal').classList.add('visible');
         if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
-        // ВИНАГИ попълваме dropdown-а при отваряне на настройките
-        populateFoldersDropdown();
-        // Ако Разширени настройки вече са видими, актуализираме gdrive_folder_names от folders.json
-        const advSpanOnOpen = document.getElementById('advanced-settings-span');
-        if (advSpanOnOpen && !advSpanOnOpen.hasAttribute('hidden') && !isOffline) {
-            loadGlobalFoldersJson().then(changed => {
-                if (changed) populateFoldersDropdown();
-            });
-        }
-        // if (guide) showStep(4); // Настройки
     });
 
     const scrollHandler = function () {
@@ -6643,36 +3252,8 @@ function initApp() {
     };
     window.onscroll = scrollHandler;
 
-    // --- Listener for Online/Offline Status (Added for Offline Mode) ---
-    let offlineTimeout;
-    window.addEventListener('online', () => {
-        clearTimeout(offlineTimeout);
-        if (isOffline) {
-            isOffline = false;
-            updateModeButton();
-            if (typeof showToast === 'function') showToast("Online mode restored", 2000);
-        }
-        if (isSyncSuspended && pendingBackgroundSync) startBackgroundTokenRefresh();
-        // Отложена проверка на акаунта (pendingAccountReset) - при първото връщане онлайн
-        if (!sessionStorage.getItem(VERIFIED_EMAIL_KEY) && (dbExists || readPendingAccountReset())) verifyAccountInBackground();
-    });
-    window.addEventListener('offline', () => {
-        clearTimeout(offlineTimeout);
-        offlineTimeout = setTimeout(async () => {
-            let reallyOnline = false;
-            try {
-                const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
-                reallyOnline = response.ok;
-            } catch (e) { }
+    // Локален режим: няма мрежа за следене и няма синхронизация.
 
-            if (!reallyOnline) {
-                isOffline = true;
-                updateModeButton();
-                if (typeof showToast === 'function') showToast("Offline mode active", 2000);
-            }
-        }, 3000);
-    });
-    scrollTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     // --- Search Box Enhancements ---
     const searchWrapper = document.getElementById('search-wrapper');
     // 1. Static Search Icon (Left) — кликаем за превключване режим на търсене
@@ -6962,7 +3543,6 @@ function initApp() {
         if (!isOffline) {
             const advSpan = document.getElementById('advanced-settings-span');
             if (advSpan && !advSpan.hasAttribute('hidden')) {
-                syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
             }
         }
     });
@@ -6995,7 +3575,6 @@ function initApp() {
                     if (!isOffline) {
                         const advSpan = document.getElementById('advanced-settings-span');
                         if (advSpan && !advSpan.hasAttribute('hidden')) {
-                            syncGlobalFoldersJson().catch(e => console.warn('Auto-sync folders error:', e));
                         }
                     }
                 }
@@ -7084,188 +3663,29 @@ function initApp() {
         });
     }
 
-    // Click handler
-    modeButton.addEventListener('click', async (e) => {
-        if (isSyncSuspended) {
-            // Флагът се сваля чак в authCallback, когато токенът наистина дойде;
-            // иначе отказан/затворен вход маха ⚠, а синхронизацията остава мъртва.
-            isOffline = false;
-            isAppStarted = false;
-            handleAuthClick();
-            return;
-        }
-        if (isOffline) {
-            const checkingMsg = _('checkingnetwork') || _('checkingNetwork') || "Проверка на мрежовата връзка...";
-            if (typeof showToast === 'function') showToast(checkingMsg, 2000);
-            let reallyOnline = false;
-            if (navigator.onLine) {
-                try {
-                    const probe = await fetch('https://www.googleapis.com/generate_204', {
-                        method: 'HEAD', mode: 'no-cors', cache: 'no-store'
-                    });
-                    reallyOnline = true;
-                } catch (err) {
-                    try {
-                        const res = await fetch(window.location.origin + window.location.pathname + '?_=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
-                        reallyOnline = res.ok;
-                    } catch (e2) { }
-                }
-            }
-
-            if (reallyOnline) {
-                isOffline = false;
-                isSyncSuspended = false;
-                // Премахваме ?offline от URL адреса, за да не се задейства при презареждане
-                const url = new URL(window.location.href);
-                if (url.searchParams.has('offline') || url.searchParams.get('mode') === 'offline') {
-                    url.searchParams.delete('offline');
-                    url.searchParams.delete('mode');
-                    window.history.replaceState({}, document.title, url.pathname + url.search);
-                }
-                updateModeButton();
-                const restoredMsg = _('onlineRestored') || _('onlinerestored') || "Възстановен е онлайн режим";
-                if (typeof showToast === 'function') showToast(restoredMsg, 3000);
-                // Стартираме онлайн автентикация и синхронизация
-                isAppStarted = false;
-                await startApp(true);
-            } else {
-                showToast(_('offlineModeMessage') || "Няма връзка с мрежата. Синхронизацията е невъзможна.", 3000);
-            }
-            return;
-        }
-        updateGlobalStateFlags();
-        const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-        if (isDbOnlyMode && dbExists) {
-            triggerSync();
-        } else {
-            document.getElementById('settings_button').click();
-        }
+    // Локален режим: режимът не се сменя. Бутонът само казва къде живеят данните.
+    modeButton.addEventListener('click', () => {
+        showToast(_('localModeToast') || 'Локален режим: бележките са само в тази база (IndexedDB).', 4000);
     });
-
-    async function triggerSync(forceFullSync = false) {
-        updatedNoteGdims = []; // Clear previous updates
-        loaderContainer.style.display = 'block'; // Показваме статус панела
-        const dbSource = await getConfig('dbSource');
-        let updatedCount = 0;
-        loaderContainer.style.display = 'block';
-        const loaderTitle = document.getElementById('loader-title');
-        if (dbSource === 1) { // Базата е създадена от Google Drive
-            try {
-                if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
-                    await loadGoogleApis();
-                }
-                if (typeof gapi !== 'undefined' && gapi.client) {
-                    gapi.client.setToken({ access_token: authToken.access_token });
-                }
-            } catch (error) {
-                throw new Error(_('errorGoogleLibs'));
-            }
-            console.log("Triggering Google Drive sync, forceFullSync:", forceFullSync);
-            console.trace("[Sync-Trace] triggerSync called");
-            if (loaderTitle) loaderTitle.textContent = _('syncTitleGD');
-            try {
-                updatedCount = await runGoogleDriveSync(forceFullSync);
-            } catch (err) {
-                console.warn("GD Sync failed, attempting token refresh...", err);
-                const refreshResult = await refreshAuthToken();
-                if (refreshResult && refreshResult.pass) {
-                    authToken = refreshResult.tokenData;
-                    if (typeof gapi !== 'undefined' && gapi.client) {
-                        gapi.client.setToken({ access_token: authToken.access_token });
-                    }
-                    updatedCount = await runGoogleDriveSync(forceFullSync);
-                } else {
-                    showToast(_('errorSessionExpired'));
-                    loaderContainer.style.display = 'none';
-                    return;
-                }
-            }
-            showToast(updatedCount > 0 ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('gdriveNoUpdates'), 5000);
-        } else if (dbSource === 2) { // Базата е създадена от Локална папка
-            console.log("Triggering Local Folder sync, forceFullSync:", forceFullSync);
-            if (loaderTitle) loaderTitle.textContent = _('syncTitleLocal');
-            updatedCount = await runLocalSync(forceFullSync);
-            showToast(updatedCount > 0 ? _('localUpdatesFound').replace('{count}', updatedCount) : _('localNoUpdates'), 5000);
-        } else {
-            loaderContainer.style.display = 'none';
-            return;
-        }
-        // --- НОВА, ПО-ЕФИКАСНА ЛОГИКА ЗА ОБНОВЯВАНЕ ---
-        if (updatedCount > 0) {
-            // 1. Извличаме само новите бележки от базата данни
-            const newNotesContent = await Promise.all(
-                updatedNoteGdims.map(gdid => getFromDB(NOTE_STORE_NAME, gdid))
-            );
-            const validNewNotes = newNotesContent.filter(Boolean);
-            // 2. Обновяваме данните в паметта и DOM-а
-            for (const newNote of validNewNotes) {
-                // A. Обновяване на данните
-                const existingIndex = allNotesData.findIndex(n => n.gdid === newNote.gdid);
-                if (existingIndex !== -1) {
-                    allNotesData[existingIndex] = newNote; // Заместваме старата версия
-                } else {
-                    allNotesData.push(newNote); // Добавяме, ако е нова
-                }
-                // B. Обновяване на DOM-а
-                // Първо премахваме съществуващия елемент, ако има такъв
-                const existingEl = document.querySelector(`.note[data-g="${newNote.gdid}"]`);
-                if (existingEl) {
-                    existingEl.remove();
-                }
-                // Създаваме и добавяме новия елемент
-                const newEl = await createNoteElement(newNote);
-                if (newEl) {
-                    notesContainer.prepend(newEl);
-                }
-            }
-            trackMaxIds(validNewNotes);
-            // 4. Обновяваме броячите и менюто с бордове
-            currentBoardFilter = 'new-updates'; // Switch to New board
-            await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-            applyFilters(); // Прилагаме филтрите отново
-        }
-        loaderContainer.style.display = 'none';
-    }
+    renderLocalModeBadge();
 
     // Добавяме event listener за показване на системна информация при клик на брояча
     const noteCounter = document.getElementById('note-counter');
     noteCounter.addEventListener('click', async () => {
         if (isLoadCancelled) return;
         try {
-            const dbOwnerEmail = await getConfig('userEmail') || _('noData');
-            const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || _('noData');
-            const lastGDTimestamp = await getConfig('lastGDTimestamp');
-            const lastLocalTimestamp = await getConfig('lastLocalTimestamp');
-            const dbNoteIdType = await getConfig('dbNoteIdType') || _('noData');
-            const dbSourceValue = await getConfig('dbSource');
-            let dbSourceText = _('noData');
-            if (dbSourceValue === 1) { // Google Drive
-                dbSourceText = _('sourceGoogleDrive');
-            } else if (dbSourceValue === 2) {
-                dbSourceText = _('sourceLocalFolder');
-            } else if (dbSourceValue === 3) {
-                dbSourceText = _('sourceArchive');
-            }
-            const dbCreatedTimestamp = await getConfig('dbCreatedTimestamp');
-            const dbCreatedFolderName = await getConfig('dbCreatedFolderName') || '';
-            const gdDate = lastGDTimestamp ? formatDateTime(lastGDTimestamp) : _('noData');
-            const localDate = lastLocalTimestamp ? formatDateTime(lastLocalTimestamp) : _('noData');
-            const dbCreatedDate = dbCreatedTimestamp ? formatDateTime(dbCreatedTimestamp) : '';
-            const loadTimeDate = initialLoadTimestamp ? formatDateTime(initialLoadTimestamp) : '';
-
-            // Създаваме съдържанието без начални отстояния, за да се подравни правилно в модала.
+            const boardsCount = (boardsData || []).length;
+            const notesCount = (allNotesData || []).length;
+            const dbSource = await getConfig('dbSource');
+            const dbNoteIdType = await getConfig('dbNoteIdType');
             const content = [
-                `${_('activeFolderLabel')} ${activeFolderName}`,
-                `${_('sysInfoLoadTime')}: ${initialLoadTime ? initialLoadTime + ' s' + (loadTimeDate ? ' (' + loadTimeDate + ')' : '') : _('noData')}`,
+                `${_('sysInfoBoards')}: ${boardsCount}`,
+                `${_('sysInfoNotes')}: ${notesCount}`,
                 ``,
-                `${_('sysInfoUser')}: ${currentUserEmail}`,
-                `${_('sysInfoDbOwner')}: ${dbOwnerEmail}`,
-                `${_('sysInfoDbCreatedFrom')}: ${dbSourceText}${dbCreatedFolderName ? ' (' + dbCreatedFolderName + ')' : ''}${dbCreatedDate ? ' (' + dbCreatedDate + ')' : ''}`,
-                `${_('sysInfoLastLocalSync')}: ${localDate}`,
-                `${_('sysInfoLastGDSync')}: ${gdDate}`,
-                `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType}`,
-                ``,
-                ...(tokenRemainingDays !== null ? [`${_('remainingDays')}: ${tokenRemainingDays}`] : []),
+                `${_('sysInfoDb')} NotesDB v${NOTES_DB_VERSION}`,
+                `${_('sysInfoMode')}: IndexedDB (локално)`,
+                `${_('sysInfoSource')}: ${dbSource ?? '-'}`,
+                `${_('sysInfoAttachmentLinks')}: ${dbNoteIdType || 'gdid'}`,
             ].join('\n');
             showModal({ raw: content, color: '#f0f0f0', readonly: true });
         } catch (error) {
@@ -7317,30 +3737,14 @@ function saveSearchTerm(term) {
         savedSearches = [];
     }
     localStorage.setItem('savedSearches', JSON.stringify(savedSearches));
-    if (!isOffline) {
-        saveSettingsToGDrive(true).catch(e => console.warn("Failed to auto-save settings on search save:", e));
-    }
 }
 
 
 // Проверяваме дали има токен преди да стартираме приложението
 // Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
 (async () => {
-    const cache = await caches.open('app-cache');
-    const cachedResponse = await cache.match('s');
-    if (!cachedResponse) {
-        initLoginPage();
-        return;
-    }
-    const sessionToken = sessionStorage.getItem('google_auth_token');
-    const localToken = localStorage.getItem('google_auth_token');
-    if (sessionToken || localToken) {
-        startApp();
-    } else {
-        // Няма токен - показваме login страницата веднага и инициализираме event listeners
-        initLoginPage();
-        // gisLoaded() ще инициализира Google authentication когато се зареди
-    }
+    // Локален режим: стартираме веднага, без вход и без проверка за токен.
+    startApp();
     // --- Selection Locking Logic ---
     // Persistent lock strategy: Lock strictly enforces selection on the active note. 
     // It remains active until the user clicks somewhere else.
@@ -7375,794 +3779,6 @@ function saveSearchTerm(term) {
 
 // След успешно удостоверяване gisLoaded() ще извика startApp()
 
-// Функция за инициализация на login страницата
-async function initLoginPage() {
-    if (IS_DEMO_MODE) {
-        // В демо няма логин страница: няма акаунт, лиценз и уайтлист за проверка.
-        console.log('[Demo] Login page skipped in demo mode.');
-        return;
-    }
-    document.getElementById('login-page').hidden = false;
-    document.getElementById('login-page').style.display = 'block';
-    updateSearchPlaceholder();
-    const loginBox = document.querySelector('.login-box');
-    const authBtn = document.getElementById("authorize_button");
-    const trialBtn = document.getElementById("trialBtn");
-    if (loginBox) loginBox.style.display = 'block';
-    let hasS = false;
-    try {
-        const cache = await caches.open('app-cache');
-        const cachedResponse = await cache.match('s');
-        hasS = !!cachedResponse;
-    } catch (e) {
-        console.warn("Error checking cache in initLoginPage:", e);
-    }
-    const licenseData = await decryptLicenseToken();
-    const isLicenseExpired = hasS && !licenseData.pass;
-    window.isAppErrorState = isLicenseExpired;
-    const rememberMeCheck = document.getElementById('rememberMe');
-    if (isLicenseExpired) {
-        const loginPrompt = document.querySelector('[data-key="loginPrompt"]');
-        if (loginPrompt) {
-            loginPrompt.setAttribute('data-key', 'invalidCertificate');
-            loginPrompt.innerHTML = _('invalidCertificate');
-        }
-        if (rememberMeCheck && rememberMeCheck.parentElement) {
-            rememberMeCheck.parentElement.style.display = (isOffline && isLicenseExpired) ? 'none' : 'block';
-        }
-    } else {
-        const loginPrompt = document.querySelector('[data-key="loginPrompt"], [data-key="invalidCertificate"]');
-        if (loginPrompt) {
-            loginPrompt.setAttribute('data-key', 'loginPrompt');
-            loginPrompt.innerHTML = _('loginPrompt');
-        }
-        if (rememberMeCheck && rememberMeCheck.parentElement) {
-            rememberMeCheck.parentElement.style.display = 'block';
-        }
-    }
-    if (hasS) {
-        if (trialBtn) trialBtn.style.display = 'none';
-        if (authBtn) {
-            authBtn.style.display = (isOffline && isLicenseExpired) ? 'none' : 'inline-block';
-            authBtn.disabled = false;
-            authBtn.textContent = isOffline ? ((typeof _ === 'function') ? _('offlineStartButton') : "Start Offline") : ((typeof _ === 'function') ? _('authorizeButton') : "Authorize with Google");
-        }
-    } else {
-        if (authBtn) authBtn.style.display = 'none';
-        if (trialBtn) {
-            trialBtn.style.display = isOffline ? 'none' : 'inline-block';
-            trialBtn.textContent = (typeof _ === 'function') ? _('trialButton') : "Start 30-day trial period";
-        }
-    }
-    const switchLanguage = async (lang) => {
-        localStorage.setItem('language', lang);
-        // Профилът в Drive се обновява след старта (loadSettingsFromGDrive), не тук - презареждаме веднага
-        localStorage.setItem(PENDING_LANG_SYNC_KEY, lang);
-        location.reload();
-    };
-    if (typeof renderLanguageSwitchers === 'function') renderLanguageSwitchers(switchLanguage);
-    if (trialBtn && trialBtn.parentNode) {
-        const newTrialBtn = trialBtn.cloneNode(true);
-        trialBtn.parentNode.replaceChild(newTrialBtn, trialBtn);
-        newTrialBtn.addEventListener("click", async (e) => {
-            console.log("Trial button clicked");
-            e.preventDefault();
-            sessionStorage.setItem('isTrialStart', 'true');
-            await getFirstStartEncoded(true);
-            console.log("Starting Google authorization...");
-            handleAuthClick();
-        });
-    }
-    const rememberMeCheckbox = document.getElementById('rememberMe');
-    if (rememberMeCheckbox) {
-        rememberMeCheckbox.addEventListener('change', () => {
-            localStorage.setItem('rememberMe', rememberMeCheckbox.checked);
-        });
-    }
-    const authorizeBtn = document.getElementById('authorize_button');
-    if (authorizeBtn) {
-        authorizeBtn.addEventListener('click', handleAuthClick);
-    }
-    if (loginBox) loginBox.style.visibility = 'visible';
-    showAppUI();
-}
-
-function updateSignoutTooltip() {
-    const email = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
-    const signoutBtn = document.getElementById('signout_button');
-    if (signoutBtn && IS_DEMO_MODE) {
-        // В демо бутонът не излиза от акаунт, а от демо режима.
-        signoutBtn.title = _('demoExitTooltip');
-    } else if (signoutBtn) {
-        const baseTooltip = _('signoutButtonTooltip');
-        if (email) {
-            const username = email.split('@')[0];
-            let tooltipText = `${baseTooltip} (${username})`;
-            if (tokenRemainingDays !== null) {
-                tooltipText += ` [${tokenRemainingDays}]`;
-            }
-            signoutBtn.title = tooltipText;
-        } else {
-            signoutBtn.title = baseTooltip + (tokenRemainingDays !== null ? ` [${tokenRemainingDays}]` : '');
-        }
-    }
-}
-
-// =================================================================================
-// III. GOOGLE DRIVE АВТЕНТИКАЦИЯ И API
-// =================================================================================
-async function handleAuthClick() {
-    if (isOffline) {
-        document.getElementById('login-page').hidden = true;
-        sessionStorage.setItem('isExplicitLogin', 'true');
-        startApp(true);
-        return;
-    }
-    const requiredScopes = getActiveRequiredScopes();
-    SCOPES = requiredScopes;
-    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: async (resp) => {
-                if (resp.error) throw (resp);
-                await authCallback(resp);
-            },
-            error_callback: (error) => {
-                console.log("GSI Error:", error);
-                alert(_('authFailed') + `\n\nError: ${error.type}`);
-            }
-        });
-    }
-    if (tokenClient) {
-        const rememberMe = localStorage.getItem('rememberMe') === 'true';
-        const loginHint = localStorage.getItem('google_login_hint');
-        if (rememberMe && loginHint) {
-            tokenClient.requestAccessToken({ hint: loginHint, scope: SCOPES });
-        } else {
-            tokenClient.requestAccessToken({ prompt: 'select_account', scope: SCOPES });
-        }
-    } else {
-        console.warn("Google Identity Services not loaded. Checking for offline capability...");
-        let hasS = false;
-        try {
-            const cache = await caches.open('app-cache');
-            const cachedResponse = await cache.match('s');
-            hasS = !!cachedResponse;
-        } catch (e) { console.warn(e); }
-        if (hasS) {
-            if (confirm("Google services could not be loaded (likely due to connection issues).\n\nDo you want to start in Offline Mode?")) {
-                isOffline = true;
-                document.getElementById('login-page').hidden = true;
-                document.getElementById('login-page').style.display = 'none';
-                startApp(true);
-                return;
-            }
-        }
-        console.error("Google Identity Services not loaded.");
-        alert("Google services are not loaded yet. Please check your connection and reload via F5.");
-    }
-}
-
-async function checkWhitelist(delayed = false) {
-    if (isOffline) return null;
-    if (delayed) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-    const isTrialStart = sessionStorage.getItem('isTrialStart') === 'true';
-    const action = isTrialStart ? 'log' : 'check';
-    let currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint') || localStorage.getItem('cached_whitelist_email');
-    if (!currentUserEmail && typeof getConfig === 'function') {
-        try {
-            currentUserEmail = await getConfig('userEmail');
-        } catch (e) { }
-    }
-    if (currentUserEmail && !sessionStorage.getItem('google_auth_email_hint')) {
-        sessionStorage.setItem('google_auth_email_hint', currentUserEmail);
-    }
-    console.log('>>> Executing whitelist check (action: ' + action + ')...');
-    console.log('>>> Email for whitelist:', currentUserEmail);
-    if (!currentUserEmail) return null;
-    const url = 'https://script.google.com/macros/s/AKfycbwvVxJAkMvrsoCAJiKTiRwXtH7K49WgNbXBT4ndOe0sB_40ikfnPV2_FF4uNfDy3vbD/exec';
-    const maxAttempts = 2;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            const response = await fetch(url, {
-                method: 'POST',
-                mode: 'cors',
-                credentials: 'omit',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({
-                    email: currentUserEmail,
-                    action: action
-                })
-            });
-            if (response.ok) {
-                const data = await response.json();
-                console.log('>>> Whitelist response:', data);
-                if (isTrialStart) {
-                    sessionStorage.removeItem('isTrialStart');
-                    console.log('>>> Trial registered for:', currentUserEmail);
-                }
-                return data;
-            }
-            console.log(`>>> Whitelist check attempt ${attempt} HTTP status: ${response.status}`);
-        } catch (err) {
-            console.log(`>>> Whitelist check attempt ${attempt} network error:`, err.message || err);
-        }
-        if (attempt < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-        }
-    }
-    return null;
-}
-
-async function checkAuth(isExplicitLogin = false) {
-    console.log("checkAuth");
-    const searchInput = document.getElementById('search-box');
-    if (searchInput) {
-        const val = searchInput.value.trim();
-        // По-толерантен regex: приема ?token= или само token=
-        const tokenMatch = val.match(/^\??token=(.+)$/);
-        if (tokenMatch) {
-            const tokenValue = tokenMatch[1].trim();
-            if (tokenValue) {
-                localStorage.setItem('urlToken', tokenValue);
-                searchInput.value = '';
-                cachedLicenseData = null; // Изчистваме кеша за лиценза
-                if (saveSearchBtn) saveSearchBtn.style.display = 'none';
-            }
-        }
-    }
-    const sessionToken = sessionStorage.getItem('google_auth_token');
-    const localToken = localStorage.getItem('google_auth_token');
-    const storedTokenString = sessionToken || localToken;
-    if (isOffline && (storedTokenString || isExplicitLogin)) return { pass: true };
-    if (!storedTokenString) {
-        await initLoginPage();
-        window.authListenersAdded = true;
-        return { pass: false };
-    }
-    const tokenData = JSON.parse(storedTokenString);
-    if (isSyncSuspended) {
-        console.log("Sync suspended: staying in local mode, skipping token refresh attempts.");
-        return { pass: true, syncSuspended: true, tokenData: tokenData };
-    }
-    if (window.gapi && window.gapi.client && tokenData.access_token) window.gapi.client.setToken(tokenData);
-    tokenData.email_hint = sessionStorage.getItem('google_auth_email_hint');
-    const isExpired = (Date.now() - tokenData.issued_at) / 1000 > (tokenData.expires_in - 60);
-    if (isExpired) {
-        console.log("Token expired. Refreshing auth token...");
-        if (useIndexedDb || localStorage.getItem('useIndexedDb') !== 'false') {
-            try {
-                if (dbExists === null || typeof dbExists === 'undefined') {
-                    dbExists = await checkDbExists(NOTES_DB_NAME);
-                }
-                if (dbExists) {
-                    const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                    if (boardsInDb && boardsInDb.length > 0) {
-                        isSyncSuspended = true;
-                        console.warn("Session expired, but local data exists. Entering local mode, refreshing the token in the background.");
-                        startBackgroundTokenRefresh();
-                        updateModeButton();
-                        return { pass: true, syncSuspended: true, tokenData: tokenData };
-                    }
-                }
-            } catch (dbErr) {
-                console.warn("Could not inspect IndexedDB for optimistic start:", dbErr);
-            }
-        }
-        try {
-            let refreshResult = await refreshAuthToken(false, true);
-            if (refreshResult && refreshResult.pass) return refreshResult;
-        } catch (authErr) {
-            console.warn("Auth refresh failed or was closed:", authErr);
-        }
-        // Няма локални данни — почистваме изтеклия токен и показваме логин формата
-        sessionStorage.removeItem('google_auth_token');
-        localStorage.removeItem('google_auth_token');
-        initLoginPage();
-        return { pass: false };
-    }
-    const licenseData = await decryptLicenseToken();
-    tokenRemainingDays = licenseData.remainingDays;
-    pass = licenseData.pass;
-    if (licenseData.pass) {
-        console.log(`tokenRemainingDays: ${tokenRemainingDays}`);
-        if (typeof updateSignoutTooltip === 'function') updateSignoutTooltip();
-    } else {
-        console.warn("License required. Showing login page.");
-        initLoginPage();
-        return null;
-    }
-    return { tokenData, pass };
-}
-
-function loadScript(src) {
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = src;
-        script.onload = resolve;
-        script.onerror = reject;
-        script.async = true;
-        script.defer = true;
-        document.head.appendChild(script);
-    });
-}
-
-async function loadGoogleApis() {
-    if (isOffline) return;
-    if (typeof gapi !== 'undefined' && gapi.client) return;
-    try {
-        await loadScript('https://apis.google.com/js/api.js');
-        await new Promise(resolve => gapi.load('client', resolve));
-        await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
-    } catch (error) {
-        throw new Error(_('errorGoogleLibs'));
-    }
-}
-
-function handleSignoutClick() {
-    // В демо няма акаунт, от който да се излезе: бутонът за изход в хедъра извежда от демото.
-    if (IS_DEMO_MODE) {
-        exitDemoMode();
-        return;
-    }
-    // Премахваме ключовете, свързани с удостоверяването
-    localStorage.removeItem('google_auth_token');
-    sessionStorage.removeItem('google_auth_token');
-    sessionStorage.removeItem('google_auth_email_hint');
-    sessionStorage.removeItem(VERIFIED_EMAIL_KEY);
-    sessionStorage.removeItem(ACCOUNT_SWITCH_DONE_KEY);
-    localStorage.removeItem('google_login_hint');
-    clearCachedMainFolderId();
-    localStorage.removeItem('activeFolderId');
-    localStorage.removeItem('folderSetupDone');
-    localStorage.removeItem('folderSetupMode');
-    localStorage.removeItem('gdrive_folder_id_Other');
-    localStorage.removeItem('gdrive_folder_id_Sound');
-    localStorage.removeItem('gdrive_folder_id_Video');
-    localStorage.removeItem('gdrive_folder_id_Images');
-    sessionStorage.setItem('logout_flag', 'true');
-    window.location.reload();
-}
-
-// --- Смяна на акаунт ---
-// Доказателство за текущия акаунт е САМО имейл от прясно userinfo запитване (VERIFIED_EMAIL_KEY).
-// Указателите google_login_hint / google_auth_email_hint може да са останали от стария акаунт.
-const VERIFIED_EMAIL_KEY = 'google_verified_email';
-// { confirmed, dbEmail, newEmail, at } - намерение за изтриване, което преживява затваряне/презареждане
-const PENDING_ACCOUNT_RESET_KEY = 'pendingAccountReset';
-// Защита от цикъл: изтриването при смяна на акаунт се прави най-много веднъж на сесия
-const ACCOUNT_SWITCH_DONE_KEY = 'accountSwitchDone';
-let accountSwitchNoticeShown = false;
-let accountVerification = null;
-
-function readPendingAccountReset() {
-    try {
-        return JSON.parse(localStorage.getItem(PENDING_ACCOUNT_RESET_KEY)) || null;
-    } catch (e) {
-        return null;
-    }
-}
-
-function sameEmail(a, b) {
-    return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-}
-
-/**
- * Проверен имейл (от userinfo): сверява го с userEmail в базата.
- * При разлика записва потвърденото намерение и показва екрана за смяна на акаунт.
- * @returns {Promise<boolean>} true при потвърдена смяна на акаунт
- */
-async function onVerifiedAccount(email) {
-    if (!email) return false;
-    sessionStorage.setItem(VERIFIED_EMAIL_KEY, email);
-    if (dbExists === null || typeof dbExists === 'undefined') {
-        dbExists = await checkDbExists(NOTES_DB_NAME);
-    }
-    if (!dbExists) {
-        localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
-        return false;
-    }
-    const storedUserEmail = await getConfig('userEmail');
-    if (storedUserEmail && !sameEmail(storedUserEmail, email)) {
-        localStorage.setItem(PENDING_ACCOUNT_RESET_KEY, JSON.stringify({ confirmed: true, dbEmail: storedUserEmail, newEmail: email, at: Date.now() }));
-        showAccountSwitchNotice(storedUserEmail, email);
-        return true;
-    }
-    localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
-    return false;
-}
-
-/**
- * Акаунтът не може да се потвърди (офлайн или неуспешен фонов вход): нищо не се трие,
- * записва се pendingAccountReset и проверката се повтаря при първото връщане онлайн.
- */
-async function markAccountUnverified() {
-    const pending = readPendingAccountReset();
-    if (pending && pending.confirmed) return;
-    let dbEmail = null;
-    try { dbEmail = await getConfig('userEmail'); } catch (e) { }
-    localStorage.setItem(PENDING_ACCOUNT_RESET_KEY, JSON.stringify({ confirmed: false, dbEmail, at: Date.now() }));
-}
-
-/**
- * Фонова проверка на акаунта - тръгва СЛЕД първото рисуване от локалната база и не го забавя.
- * Едно userinfo запитване с наличния токен; при изтекъл токен - тихото опресняване (то само проверява userinfo).
- * @returns {Promise<boolean>} true при потвърдена смяна на акаунт
- */
-function verifyAccountInBackground() {
-    if (accountVerification) return accountVerification;
-    accountVerification = (async () => {
-        if (!dbExists) return false;
-        const known = sessionStorage.getItem(VERIFIED_EMAIL_KEY);
-        if (known) return onVerifiedAccount(known);
-        if (isOffline || !navigator.onLine) {
-            await markAccountUnverified();
-            return false;
-        }
-        let email = null;
-        let tokenData = null;
-        try { tokenData = JSON.parse(sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token')); } catch (e) { }
-        const isExpired = !tokenData || !tokenData.access_token || !tokenData.issued_at ||
-            (Date.now() - tokenData.issued_at) / 1000 > ((tokenData.expires_in || 0) - 60);
-        if (!isExpired) {
-            try {
-                const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                    headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
-                });
-                if (resp.ok) email = (await resp.json()).email || null;
-            } catch (e) {
-                console.warn('[AccountCheck] userinfo request failed:', e);
-            }
-        }
-        if (!email && tokenData) {
-            // refreshAuthToken проверява userinfo и извиква onVerifiedAccount
-            await (isSyncSuspended ? startBackgroundTokenRefresh() : refreshAuthToken(false, true)).catch(() => null);
-            email = sessionStorage.getItem(VERIFIED_EMAIL_KEY);
-        }
-        if (!email) {
-            console.warn('[AccountCheck] Could not verify the current account. Nothing is deleted; will retry when online.');
-            await markAccountUnverified();
-            return false;
-        }
-        return onVerifiedAccount(email);
-    })().catch(e => {
-        console.warn('[AccountCheck] Error:', e);
-        return false;
-    }).finally(() => {
-        accountVerification = null;
-    });
-    return accountVerification;
-}
-
-/**
- * Бележки от локалната база, по-нови от последната синхронизация (същото сравнение като при конфликт).
- * Без база за сравнение (базата не е от Drive) се връщат всички - по-добре повече, отколкото загуба.
- */
-async function getUnsyncedLocalNotes() {
-    const notes = (await getAllFromDB(NOTE_STORE_NAME)) || [];
-    const lastSyncTimestamp = parseInt(await getConfig('lastGDTimestamp'), 10) || 0;
-    if (!lastSyncTimestamp) return notes;
-    return notes.filter(n => (parseInt(n.datemod, 10) || 0) > lastSyncTimestamp);
-}
-
-function downloadAccountBackup(dbEmail, notes, boards) {
-    const payload = { account: dbEmail, exportedAt: new Date().toISOString(), boards: boards || [], notes };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cx-notes-${String(dbEmail || 'backup').replace(/[^\w.@-]+/g, '_')}-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-// Резерва за екрана за смяна на акаунт - буквално същите низове като в lang/i18n-bg.json и lang/i18n-en.json
-const ACCOUNT_SWITCH_TEXTS = {
-    accountSwitchTitle: {
-        bg: 'Открит е друг акаунт',
-        en: 'A different account was detected'
-    },
-    accountSwitchText: {
-        bg: 'Влязъл си с {new}, а на устройството има копие на бележките от {old}. Приложението не може да стартира с чужди бележки: копието ще бъде изтрито и бележките ще се заредят наново от Google Drive за новия акаунт.',
-        en: "You signed in as {new}, but this device holds a copy of the notes of {old}. The app cannot start with another account's notes: the copy will be deleted and the notes will be loaded again from Google Drive for the new account."
-    },
-    accountSwitchRepeatText: {
-        bg: 'Влязъл си с {new}, а локалната база все още е от {old}, въпреки че вече беше изтрита веднъж в тази сесия. За да не се получи цикъл, приложението няма да стартира. ОК ще те изведе от акаунта.',
-        en: 'You signed in as {new}, but the local database still belongs to {old}, although it was already deleted once in this session. To avoid a loop, the app will not start. OK will sign you out.'
-    },
-    accountSwitchNotesHidden: {
-        bg: 'Докато този екран стои, бележките от стария акаунт не се показват. Изтриването започва едва след натискане на ОК.',
-        en: "While this screen is open, the old account's notes are not shown. Deletion starts only after you press OK."
-    },
-    accountSwitchUnsynced: {
-        bg: 'На устройството има {count} несинхронизирани бележки. Преди изтриването те ще бъдат изтеглени като файл.',
-        en: 'This device has {count} unsynced notes. They will be downloaded as a file before the deletion.'
-    },
-    accountSwitchNeedsOnline: {
-        bg: 'Няма връзка с интернет. Базата ще бъде изтрита, когато връзката се възстанови.',
-        en: 'No internet connection. The database will be deleted once the connection is back.'
-    },
-    okButton: {
-        bg: 'ОК',
-        en: 'OK'
-    }
-};
-
-/**
- * Низ за екрана за смяна на акаунт: от езиковия файл, ако е зареден;
- * иначе двуезично (български, празен ред, английски) от ACCOUNT_SWITCH_TEXTS.
- */
-function acctText(key) {
-    const t = translationsFallback[currentLang] ? '' : _(key);
-    if (t) return t;
-    const r = ACCOUNT_SWITCH_TEXTS[key];
-    if (!r) return '';
-    if (key === 'okButton') return r.bg;
-    return r.bg + '\n\n' + r.en;
-}
-
-// Опреснява стоящия екран за смяна на акаунт, когато преводите пристигнат след показването му
-let accountSwitchNoticeRefresh = null;
-
-/**
- * Екранът при потвърдена смяна на акаунт: бележките от чуждата база се махат от екрана,
- * остава само съобщение с един бутон (ОК). Изтриването тръгва при натискането;
- * затваряне без натискане не трие нищо и екранът идва пак при следващо отваряне (pendingAccountReset).
- */
-function showAccountSwitchNotice(dbEmail, newEmail) {
-    if (accountSwitchNoticeShown) return;
-    accountSwitchNoticeShown = true;
-    isLoadCancelled = true;
-    pendingBackgroundSync = null;
-    allNotesData = [];
-    boardsData = [];
-    mediaData = [];
-    if (notesContainer) notesContainer.innerHTML = '';
-    const bmc = document.getElementById('boards-menu-container');
-    if (bmc) bmc.innerHTML = '';
-    document.querySelectorAll('.note, .note-item').forEach(el => el.remove());
-    const loader = document.getElementById('loader-container');
-    if (loader) loader.style.display = 'none';
-    const addNoteFab = document.getElementById('add-note-fab');
-    if (addNoteFab) addNoteFab.style.display = 'none';
-
-    // Повторна смяна в същата сесия: не трием пак (защита от цикъл) - ОК излиза от акаунта
-    const alreadySwitched = sessionStorage.getItem(ACCOUNT_SWITCH_DONE_KEY) === '1';
-    const fill = (text) => String(text || '').replace(/\{new\}/g, newEmail || '').replace(/\{old\}/g, dbEmail || '');
-
-    const overlay = document.createElement('div');
-    overlay.id = 'account-switch-notice';
-    overlay.className = 'folder-id-prompt-popup show';
-    overlay.style.zIndex = '100000';
-    const content = document.createElement('div');
-    content.className = 'popup-content';
-    content.style.maxWidth = '460px';
-    // pre-line: двуезичната резерва е на два реда (празен ред между езиците)
-    const title = document.createElement('h3');
-    title.style.whiteSpace = 'pre-line';
-    const text = document.createElement('p');
-    text.style.whiteSpace = 'pre-line';
-    const hidden = document.createElement('p');
-    hidden.style.fontSize = '0.9em';
-    hidden.style.whiteSpace = 'pre-line';
-    const unsynced = document.createElement('p');
-    unsynced.style.fontSize = '0.9em';
-    unsynced.style.whiteSpace = 'pre-line';
-    unsynced.style.display = 'none';
-    const okButton = document.createElement('button');
-    okButton.id = 'account-switch-ok';
-    okButton.className = 'zoom-btn';
-    let unsyncedCount = 0;
-    const renderTexts = () => {
-        title.textContent = acctText('accountSwitchTitle');
-        text.textContent = fill(acctText(alreadySwitched ? 'accountSwitchRepeatText' : 'accountSwitchText'));
-        hidden.textContent = acctText('accountSwitchNotesHidden');
-        if (unsyncedCount) unsynced.textContent = acctText('accountSwitchUnsynced').replace(/\{count\}/g, unsyncedCount);
-        okButton.textContent = acctText('okButton');
-    };
-    renderTexts();
-    accountSwitchNoticeRefresh = renderTexts;
-    content.append(title, text, hidden, unsynced, okButton);
-    overlay.appendChild(content);
-    document.body.appendChild(overlay);
-
-    if (!alreadySwitched) {
-        getUnsyncedLocalNotes().then(list => {
-            if (list.length) {
-                unsyncedCount = list.length;
-                renderTexts();
-                unsynced.style.display = '';
-            }
-        }).catch(() => { });
-    }
-
-    okButton.addEventListener('click', async () => {
-        if (alreadySwitched) {
-            handleSignoutClick();
-            return;
-        }
-        // Офлайн не се трие: новият акаунт не може да се изгради наново без Drive
-        if (isOffline || !navigator.onLine) {
-            const msg = acctText('accountSwitchNeedsOnline');
-            const toast = document.getElementById('toastNotification');
-            if (toast && msg.includes('\n')) {
-                toast.style.whiteSpace = 'pre-line';
-                setTimeout(() => { toast.style.whiteSpace = ''; }, 6500);
-            }
-            showToast(msg, 6000);
-            return;
-        }
-        okButton.disabled = true;
-        try {
-            const unsyncedNotes = await getUnsyncedLocalNotes();
-            if (unsyncedNotes.length) {
-                const boards = (await getAllFromDB(BOARD_STORE_NAME)) || [];
-                downloadAccountBackup(dbEmail, unsyncedNotes, boards);
-            }
-        } catch (e) {
-            console.warn('[AccountSwitch] Could not export unsynced notes:', e);
-        }
-        const deleted = await handleAccountSwitchReset(dbEmail, newEmail);
-        if (!deleted) {
-            // Базата остава, намерението също - екранът идва пак при следващо отваряне
-            okButton.disabled = false;
-            return;
-        }
-        sessionStorage.setItem(ACCOUNT_SWITCH_DONE_KEY, '1');
-        localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
-        sessionStorage.setItem('google_auth_email_hint', newEmail);
-        localStorage.setItem('google_login_hint', newEmail);
-        location.reload();
-    });
-}
-
-function resetAccountFolderSettings() {
-    localStorage.removeItem('active_folder_name');
-    clearCachedMainFolderId();
-    localStorage.removeItem('activeFolderId');
-    localStorage.removeItem('folderSetupDone');
-    localStorage.removeItem('folderSetupMode');
-    localStorage.removeItem('initial_setup_complete');
-    localStorage.removeItem('settings_multinotes_data');
-    localStorage.removeItem('gdrive_folder_names');
-    sessionStorage.removeItem('first_run_lock');
-    ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
-    activeFolderName = 'CX-Notes';
-    cachedMainFolderId = null;
-    folderIds = {};
-}
-
-/**
- * Изчиства старото състояние и изтрива старата локална база при смяна на акаунта.
- * Извиква се само от екрана за смяна на акаунт (след ОК).
- * @returns {Promise<boolean>} true ако базата е изтрита
- */
-async function handleAccountSwitchReset(previousEmail, newEmail) {
-    console.warn(`[AccountSwitch] Account changed from ${previousEmail} to ${newEmail}. Resetting state and deleting old local database.`);
-    resetAccountFolderSettings();
-    allNotesData = [];
-    boardsData = [];
-    mediaData = [];
-    if (typeof noteBgCache !== 'undefined' && noteBgCache && noteBgCache.clear) {
-        noteBgCache.clear();
-    }
-    try {
-        const deleted = await deleteNotesDB();
-        if (deleted) dbExists = false;
-        return deleted;
-    } catch (e) {
-        console.warn('Error deleting old NotesDB on account switch:', e);
-        return false;
-    }
-}
-
-// =================================================================================
-// IV. ЧЕТЕНЕ НА ДАННИ ОТ GOOGLE DRIVE
-// =================================================================================
-// --- GDrive Data Loading logic moved to load.js ---
-/**
- * Проверява дали текущият потребител съвпада със собственика на локалната база данни.
- * Ако има несъответствие, нулира старата база за новия потребител.
- */
-async function userCheck() {
-    if (!dbExists) {
-        isDbOwner = true;
-        localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
-        return false;
-    }
-    // Сравнява се само с проверен акаунт (userinfo) - не с указателя от localStorage, който може да е остарял.
-    // Без мрежа: ако смяната вече е била потвърдена (pendingAccountReset), екранът се показва веднага.
-    const storedUserEmail = await getConfig('userEmail');
-    const verifiedEmail = sessionStorage.getItem(VERIFIED_EMAIL_KEY);
-    const pending = readPendingAccountReset();
-    let newEmail = null;
-    if (storedUserEmail && verifiedEmail) {
-        if (!sameEmail(storedUserEmail, verifiedEmail)) newEmail = verifiedEmail;
-        else localStorage.removeItem(PENDING_ACCOUNT_RESET_KEY);
-    } else if (storedUserEmail && pending && pending.confirmed && sameEmail(pending.dbEmail, storedUserEmail)) {
-        newEmail = pending.newEmail;
-    }
-    if (newEmail) {
-        showAccountSwitchNotice(storedUserEmail, newEmail);
-        isDbOwner = false;
-        return true; // сигнализира смяна на акаунт
-    } else {
-        isDbOwner = true;
-        const dbFolderName = await getConfig('dbCreatedFolderName');
-        if (dbFolderName && !localStorage.getItem('active_folder_name')) {
-            localStorage.setItem('active_folder_name', dbFolderName);
-            activeFolderName = dbFolderName;
-        }
-        return false;
-    }
-}
-
-/**
- * Обработва случая на несъответствие на потребители.
- * Показва съобщение и заключва настройките за управление на данни.
- */
-async function handleUserMismatch(storedUser) {
-    // --- КОРЕКЦИЯ: Добавяме динамичен източник към съобщението ---
-    let sourceName = '';
-    if (localStorage.getItem('useGoogleDb') !== 'false') {
-        sourceName = _('sourceGoogleDrive');
-    } else if (localStorage.getItem('useLocalDb') === 'true') {
-        sourceName = _('sourceLocalFolder');
-    } else if (localStorage.getItem('useArhDb') === 'true') {
-        sourceName = _('sourceArchive');
-    } else {
-        // Fallback, ако нищо не е избрано, въпреки че не би трябвало да се случва
-        sourceName = _('sourceGoogleDrive');
-    }
-    showToast(_('userMismatchWarning').replace('{user}', storedUser).replace('{source}', sourceName), 15000);
-    // Принудително превключваме към режим "Google Drive" без IndexedDB
-    localStorage.setItem('useIndexedDb', 'false');
-    localStorage.setItem('useGoogleDb', 'true');
-    localStorage.setItem('useLocalDb', 'false');
-    localStorage.setItem('useArhDb', 'false'); // Добавяме и архива
-    updateGlobalStateFlags();
-    updateModeButton();
-    // Деактивираме контролите в настройките
-    const settingsModal = document.getElementById('settings-modal');
-    // Проверяваме дали модалът за настройки изобщо съществува в DOM
-    if (!settingsModal) return;
-    const controlsToDisable = [
-        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-        'create-db-btn', // 'delete-db-btn',
-        'select-folder-btn', 'select-arh-btn'
-    ];
-    controlsToDisable.forEach(id => {
-        const el = settingsModal.querySelector(`#${id}`);
-        if (el) {
-            // Ако елементът е чекбокс, първо го изключваме
-            if (el.type === 'checkbox') {
-                el.checked = false;
-            }
-            el.disabled = true;
-        }
-    });
-    // Деактивираме и целия акордеон за разширени настройки
-    const accordionHeader = settingsModal.querySelector('.accordion-header');
-    if (accordionHeader) {
-        accordionHeader.style.pointerEvents = 'none';
-        accordionHeader.style.opacity = '0.5';
-    }
-    const googleDbCheckbox = settingsModal.querySelector('#use-google-db-checkbox');
-    googleDbCheckbox.checked = true; // Маркираме го
-    // --- КОРЕКЦИЯ: Заключваме и него, за да е ясно, че режимът е принудителен ---
-    // googleDbCheckbox.disabled = false; // Оставяме го активно, но заключено
-    // googleDbCheckbox.disabled = true;
-}
-
-/**
- * Активира контролите в настройките, които може да са били деактивирани
- * от `handleUserMismatch`. Извиква се след изтриване на базата данни.
- */
 function enableSettingsControls() {
     const settingsModal = document.getElementById('settings-modal');
     if (!settingsModal) return;
@@ -8185,493 +3801,14 @@ function enableSettingsControls() {
     console.log("Settings controls have been re-enabled after DB deletion.");
 }
 
-/**
- * Създава или пресъздава цялата база данни от данните, заредени в паметта.
- * @returns {Promise<boolean>} Връща true при успех и false при грешка.
- */
-async function createDatabaseFromMemory({ suppressEmptyDataToast = false } = {}) {
-    if (boardsData.length === 0 && allNotesData.length === 0) {
-        if (!suppressEmptyDataToast) showToast(_('dbCreateFailedNoData'), 10000);
-        return false;
-    }
-    try {
-        // --- КЛЮЧОВА КОРЕКЦИЯ: Осигуряваме gdid за IndexedDB (особено за архиви) ---
-        // Тъй като базата използва 'gdid' като keyPath, ако полето е празно (както е в архивите),
-        // всички записи ще се презаписват един друг.
-        const ensureGdid = (data) => data.map(item => {
-            // АКО СМЕ В РЕЖИМ АРХИВ: Винаги използваме цифровия 'id' като основен ключ 'gdid' за базата.
-            // Това гарантира, че връзките в архива ще работят правилно в IndexedDB.
-            // if (useArhDb && item.id !== undefined) {
-            //    return { ...item, gdid: String(item.id) };
-            // }
-            // ЗА ДРУГИ РЕЖИМИ: Само ако gdid липсва, ползваме id като резервен вариант.
-            if ((!item.gdid || item.gdid === "") && item.id !== undefined) {
-                return { ...item, gdid: String(item.id) };
-            }
-            return item;
-        });
-        // Почистване на временни полета преди запис
-        const cleanItem = (item) => {
-            const cleaned = { ...item };
-            delete cleaned.noteCount;
-            delete cleaned.reminderNoteCount;
-            delete cleaned.calendarNoteCount;
-            return cleaned;
-        };
-        const preparedBoards = ensureGdid(boardsData).map(cleanItem);
-        const preparedMedia = ensureGdid(mediaData);
-        const preparedNotes = ensureGdid(allNotesData);
-        await bulkPutDB(BOARD_STORE_NAME, preparedBoards);
-        await bulkPutDB(MEDIA_STORE_NAME, preparedMedia);
-        await bulkPutDB(NOTE_STORE_NAME, preparedNotes);
-        const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-        if (currentUserEmail) {
-            await saveConfig('userEmail', currentUserEmail);
-        }
-        // ЗАПИСВАМЕ ТИПА НА ВРЪЗКАТА (КЛЮЧОВА СТЪПКА) - използваме глобалните флагове
-        const noteIdType = useArhDb ? 'id' : 'gdid';
-        await saveConfig('dbNoteIdType', noteIdType);
-        const dbSource = useArhDb ? 3 : (useLocalFolder ? 2 : 1);
-        // Запазваме timestamp само за източника, от който създаваме базата.
-        // Ако е от архив, не записваме нищо, за да може следващата синхронизация да е пълна.
-        const now = Date.now();
-        if (dbSource === 1) { // Google Drive
-            await saveConfig('lastGDTimestamp', now); // В IndexedDB
-        } else if (dbSource === 2) { // Local Folder
-            await saveConfig('lastLocalTimestamp', now);
-        }
-        await saveConfig('dbSource', dbSource);
-        await saveConfig('dbCreatedFolderName', activeFolderName);
-        // Записваме кога е създадена базата
-        await saveConfig('dbCreatedTimestamp', now);
-        // --- IMMEDIATELY UPDATE GLOBALS FOR CURRENT SESSION ---
-        dbSourceGlobal = dbSource;
-        dbNoteIdTypeGlobal = noteIdType;
-        console.log(`[createDatabaseFromMemory] Session globals updated: Source=${dbSourceGlobal}, IdType=${dbNoteIdTypeGlobal}`);
-        dbExists = true; // Маркираме, че базата вече съществува
-        return true;
-    } catch (error) {
-        console.log("Failed to create/recreate DB from memory:", error);
-        return false;
-    }
-}
-/**
- * Проверява дали е първото стартиране и настройва приложението.
- * 1. Създава борд Main в CX-Notes и го задава като стартов борд
- * 2. Създава folders.json
- * 3. Задава активна папка (CX-Notes или multinotes_data)
- * 4. Създава folders.json и settings.json с профил Default
- * @returns {boolean} true ако е извършена първоначална настройка, false ако не е необходима
- */
-async function handleFirstRunSetup() {
-    if (isOffline) return false;
-    if (localStorage.getItem('initial_setup_complete') === 'true' || sessionStorage.getItem('first_run_lock')) return false;
-    if (localStorage.getItem('gdrive_folder_names') || localStorage.getItem('active_folder_name')) {
-        localStorage.setItem('initial_setup_complete', 'true');
-        return false;
-    }
-    const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
-    if (hasLocalSettings) return false;
-    const isFreshLocalSetup = localStorage.getItem('initial_setup_complete') !== 'true';
-    sessionStorage.setItem('first_run_lock', 'true');
-    try {
-        const appSettingsFolderId = await getAppSettingsFolderId();
-        if (!appSettingsFolderId) return false;
-        const settingsFiles = await findGDFileByName(appSettingsFolderId, 'settings.json');
-        const foldersFiles = await findGDFileByName(appSettingsFolderId, 'folders.json');
-        if ((settingsFiles && settingsFiles.length > 0) || (foldersFiles && foldersFiles.length > 0)) {
-            if (isFreshLocalSetup) {
-                let folderNames = [];
-                try {
-                    const savedFolderNames = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]');
-                    folderNames = Array.isArray(savedFolderNames) ? savedFolderNames : [];
-                } catch (e) {
-                    console.warn('[FirstRun] Invalid saved folder list:', e);
-                }
-                const multinotesId = await getFolderIDByName('multinotes_data');
-                if (!multinotesId) {
-                    activeFolderName = 'CX-Notes';
-                    localStorage.setItem('active_folder_name', activeFolderName);
-                    clearCachedMainFolderId();
-                    cachedMainFolderId = null;
-                    const normalizedFolderNames = folderNames.includes('multinotes_data')
-                        ? folderNames.filter(name => name !== 'multinotes_data')
-                        : folderNames;
-                    if (!normalizedFolderNames.includes('CX-Notes')) normalizedFolderNames.push('CX-Notes');
-                    localStorage.setItem('gdrive_folder_names', JSON.stringify(normalizedFolderNames));
-                    const loaderFolderInfo = document.getElementById('loader-folder-info');
-                    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-                    if (typeof showToast === 'function') showToast(_('firstRunAppDataFolderSelected'), 7000);
-                } else {
-                    setCachedMainFolderId('multinotes_data', multinotesId);
-                }
-            }
-            localStorage.setItem('initial_setup_complete', 'true');
-            return false;
-        }
-    } catch (e) {
-        console.warn('[FirstRun] Error checking AppSettings:', e);
-        return false;
-    }
-    console.log('[FirstRun] First-time setup detected. Starting initial configuration...');
-    if (typeof loaderText !== 'undefined') loaderText.textContent = _('firstRunSetup');
-    let chosenFolder = 'CX-Notes';
-    let multinotesFound = false;
-    let multinotesId = null;
-    let userChoice = 'fresh';
-    try {
-        multinotesId = await getFolderIDByName('multinotes_data');
-        if (multinotesId) {
-            multinotesFound = true;
-            setCachedMainFolderId('multinotes_data', multinotesId);
-        }
-    } catch (e) {
-        console.warn('[FirstRun] Error checking for multinotes_data:', e);
-    }
-    activeFolderName = chosenFolder;
-    localStorage.setItem('active_folder_name', chosenFolder);
-    cachedMainFolderId = null;
-    const loaderFolderInfo = document.getElementById('loader-folder-info');
-    if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-    console.log('[FirstRun] Active folder selected:', chosenFolder);
-    const folderNames = ['CX-Notes'];
-    if (multinotesFound) folderNames.push('multinotes_data');
-    localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-    if (userChoice === 'copy' && multinotesId) {
-        try {
-            console.log('[FirstRun] Copying data from multinotes_data to CX-Notes...');
-            if (typeof loaderText !== 'undefined') loaderText.textContent = _('migratingData') || 'Copying data...';
-            let targetFolderId = await getFolderIDByName('CX-Notes');
-            if (!targetFolderId) {
-                targetFolderId = await createNewGDriveFolder('CX-Notes');
-            }
-            // ЗАЩИТА: не копираме върху съществуващи данни и не трием нищо в CX-Notes.
-            // Ако там вече има board.txt (или не можем да потвърдим, че папката е празна),
-            // копирането се пропуска и съществуващите данни остават както са.
-            const targetFolderEmpty = await isFolderConfirmedEmpty(targetFolderId);
-            const result = targetFolderEmpty ? await fetchAllData(multinotesId, false) : null;
-            if (!targetFolderEmpty) {
-                console.warn('[FirstRun] Copy skipped: CX-Notes already has data (or could not be verified empty).');
-                if (typeof showToast === 'function') {
-                    showToast(_('copySkippedCXNotesHasData') || 'CX Notes already contains notes. Nothing was copied; the existing data is kept.', 9000);
-                }
-                userChoice = 'fresh';
-            } else if (result && !result.error && targetFolderId) {
-                const migrationSuccess = await migrateDataToNewFolder(targetFolderId);
-                if (migrationSuccess) {
-                    cachedMainFolderId = targetFolderId;
-                    setCachedMainFolderId('CX-Notes', targetFolderId);
-                    console.log('[FirstRun] Data copied successfully to CX-Notes.');
-                    if (typeof showToast === 'function') showToast(_('migrationSuccess'), 5000);
-                } else {
-                    console.error('[FirstRun] Migration failed, falling back to fresh start.');
-                    userChoice = 'fresh';
-                }
-            } else {
-                console.error('[FirstRun] Could not load data from multinotes_data, falling back to fresh start.');
-                userChoice = 'fresh';
-            }
-        } catch (e) {
-            console.error('[FirstRun] Error copying data from multinotes_data:', e);
-            userChoice = 'fresh';
-        }
-    }
-    if (chosenFolder === 'CX-Notes' && userChoice !== 'copy') {
-        try {
-            console.log('[FirstRun] Creating Main board in CX-Notes...');
-            let targetFolderId = await getFolderIDByName('CX-Notes');
-            if (!targetFolderId) {
-                targetFolderId = await createNewGDriveFolder('CX-Notes');
-            }
-            if (targetFolderId) {
-                cachedMainFolderId = targetFolderId;
-                setCachedMainFolderId('CX-Notes', targetFolderId);
-                const existingMainBoards = await findGDFileByName(targetFolderId, 'board.txt');
-                if (existingMainBoards && existingMainBoards.length > 0) {
-                    console.log('[FirstRun] Main board already exists in CX-Notes');
-                    localStorage.setItem('startBoard_CX-Notes', existingMainBoards[0].id);
-                } else {
-                    const now = Date.now();
-                    boardIdCounter = 1;
-                    localStorage.setItem('boardIdCounter', '1');
-                    const boardToSave = {
-                        "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
-                        "colorfont": "#000", "datemod": now, "gdid": "", "id": 1,
-                        "numord": 1, "status": 0, "title": "Main"
-                    };
-                    const gdid = await createGDriveFile(targetFolderId, 'board.txt', JSON.stringify(boardToSave));
-                    if (gdid) {
-                        boardToSave.gdid = gdid;
-                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                        console.log('[FirstRun] Main board created in CX-Notes');
-                        localStorage.setItem('startBoard_CX-Notes', gdid);
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('[FirstRun] Error creating Main board in CX-Notes:', e);
-        }
-    }
-    try {
-        if (typeof boardsData !== 'undefined' && boardsData.length === 0) {
-            const startBoardId = localStorage.getItem('startBoard_' + chosenFolder) || localStorage.getItem('startBoard_CX-Notes') || localStorage.getItem('startBoard_AppDataFolder');
-            if (startBoardId) {
-                boardsData = [{ id: 1, title: 'Main', gdid: startBoardId, numord: 1 }];
-            }
-        }
-        await syncGlobalFoldersJson();
-        console.log('[FirstRun] folders.json created.');
-    } catch (e) {
-        console.warn('[FirstRun] Error creating folders.json:', e);
-    }
-    try {
-        await saveSettingsToGDrive(true);
-        console.log('[FirstRun] settings.json created with Default profile.');
-    } catch (e) {
-        console.warn('[FirstRun] Error creating settings.json:', e);
-    }
-    if (typeof showToast === 'function') showToast(_('firstRunComplete'), 5000);
-    localStorage.setItem('initial_setup_complete', 'true');
-    console.log('[FirstRun] First-time setup complete.');
-    return true;
-}
-
-/**
- * Финализира процеса по създаване на база данни, като записва
- * необходимата конфигурация (timestamps, потребител).
- */
-async function finalizeDbCreation() {
-    const now = Date.now();
-    await saveConfig('lastGDTimestamp', now);
-    await saveConfig('lastLocalTimestamp', now);
-    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint');
-    if (currentUserEmail) {
-        await saveConfig('userEmail', currentUserEmail);
-    }
-}
-
-function areBoardsIdentical(memBoards, dbBoards) {
-    if (!memBoards || memBoards.length === 0 || !dbBoards || dbBoards.length === 0) return true; // Празни данни не са несъответствие в този контекст
-
-    const dbGdidSet = new Set(dbBoards.map(b => String(b.gdid)));
-    const dbTitleSet = new Set(dbBoards.map(b => String(b.title || '').trim().toLowerCase()));
-
-    // Проверяваме дали всички бордове от паметта присъстват в базата
-    for (const mb of memBoards) {
-        const memGdid = mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null);
-        const memTitle = String(mb.title || '').trim().toLowerCase();
-
-        if (memGdid !== null && !dbGdidSet.has(memGdid) && !dbTitleSet.has(memTitle)) {
-            console.warn(`Mismatch: Memory board "${mb.title}" (ID: ${memGdid}) not in DB.`);
-            return false;
-        }
-    }
-
-    // Проверяваме и обратното (само ако имаме бордове в базата)
-    if (dbBoards.length > 0) {
-        const memGdidSet = new Set(memBoards.map(mb => mb.gdid ? String(mb.gdid) : (mb.id !== undefined ? String(mb.id) : null)));
-        const memTitleSet = new Set(memBoards.map(mb => String(mb.title || '').trim().toLowerCase()));
-
-        for (const db of dbBoards) {
-            const dbGdid = String(db.gdid);
-            const dbTitle = String(db.title || '').trim().toLowerCase();
-            if (!memGdidSet.has(dbGdid) && !memTitleSet.has(dbTitle)) {
-                console.warn(`Mismatch: DB board "${db.title}" (GDID: ${dbGdid}) not in memory.`);
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
-/**
- * Актуализира иконата и tooltip-а на бутона за режим, за да покаже текущия източник на данни.
- */
-function updateModeButton() {
-    // Тази функция се извиква преди mainLogic, затова трябва да прочете актуалните стойности.
-    const currentUseGoogleDb = localStorage.getItem('useGoogleDb') !== 'false';
-    const currentUseLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-    const currentUseArhDb = localStorage.getItem('useArhDb') === 'true';
-    const currentUseIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-    const modeButton = document.getElementById('mode_button');
-    if (!modeButton) return;
-    let iconWrapper = modeButton.querySelector('.mode-icon-wrapper');
-    if (!iconWrapper) {
-        iconWrapper = document.createElement('div');
-        iconWrapper.className = 'mode-icon-wrapper';
-        modeButton.prepend(iconWrapper);
-    }
-    let iconSrc = '';
-    let title = '';
-    // --- РАЗШИРЕНА ЛОГИКА: Проверяваме за всяка комбинация с база данни ---
-    const isCombinedWithDb = currentUseIndexedDb && (currentUseGoogleDb || currentUseLocalFolder || currentUseArhDb);
-
-    if (!modeButton.querySelector('#mode-button-loading-icon')) {
-        const loadingIcon = document.createElement('img');
-        loadingIcon.src = 'Refresh.png';
-        loadingIcon.id = 'mode-button-loading-icon';
-        modeButton.appendChild(loadingIcon);
-    }
-
-    if (isOffline) {
-        iconSrc = 'Database.png';
-        title = _('offlineMode') || "Offline Mode";
-        // Ensure overlay is hidden in offline mode unless we want to show it's disabled?
-        // For now, let's keep it simple or maybe show a 'OFF' overlay?
-    } else if (isCombinedWithDb) {
-        // Когато имаме комбинация, базата е основна
-        iconSrc = 'Database.png';
-        if (currentUseGoogleDb) title = _('modeDbAndDrive');
-        else if (currentUseLocalFolder) title = _('modeDbAndLocal');
-        else if (currentUseArhDb) title = _('modeDbAndArchive');
-    } else if (currentUseArhDb) {
-        iconSrc = 'Zip.png';
-        title = _('modeArchiveTitle');
-    } else if (currentUseLocalFolder) {
-        iconSrc = 'Folder.png';
-        title = _('modeLocalTitle');
-    } else if (currentUseGoogleDb) {
-        iconSrc = 'GDrive.png';
-        title = _('modeDrive');
-    } else if (currentUseIndexedDb) {
-        iconSrc = 'Database.png';
-        title = _('modeDb');
-    } else {
-        // Fallback: Ако няма избран източник
-        iconSrc = 'Database.png';
-        title = _('noData');
-    }
-    iconWrapper.innerHTML = '';
-    const mainIcon = document.createElement('img');
-    mainIcon.src = iconSrc;
-    mainIcon.alt = title;
-    mainIcon.style.width = '24px';
-    mainIcon.style.height = '24px';
-    iconWrapper.appendChild(mainIcon);
-    // Добавяме иконата за наслагване
-    let overlaySrc = '';
-    let overlayAlt = '';
-    if (isOffline) {
-        // overlaySrc = 'Offline.png'; overlayAlt = 'Offline Mode';
-        overlaySrc = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAAERElEQVR4nO2YW2hcVRSGT1pFBS/4JGqb2WsSSGIlFWvO6IMo1JkMSuYkMTU++OKlVIvYh0LVGIngrdpWDZ21xlFRES8Y6YsXUoIKal8KovggUvGCivUWSmatSYXmsmWfSew0c+bMmWQymYH5YcPMnL33Wd/Ze/9rnbGshhpaHdmxvs1WvSoSSzxpxxKzkXjPHVY9Bh/pdrRpdQfRFXWucoNeAHAhup2ZSMwZtOpFdjyxzQ06H6LeVsJuQNQRxMaD05cplEEg2atIDinib4BkEkiyQKIXmvk8aa6ZPkDyTIjk9g2p6cvXCMKZu3LXq+MK5Ye8IJfbfgTiF0KUudbSuql6EPE+3TE0vtLg9ZL2E5Dsbh2dvLBiwV+R/Ot8QHm8/ZGJbCTer6sAoRVJRqE8HU6fuGj5kWvdBCTbFPIvixO3D3+sqwUBuTapUHZZY3p9WbE3p7OXKuQJr0mLQWza/c5RQH7YQANOdzXTVNjMAy/LJe7ng9mrw8j9CnmPIn5bEf9Wxop8oZInQ4GCD2PmFkXyt9+EBsKO982v1GJb01MtBnrBufwhUKaM2/lOqEgeAOK5EhMdAcz0dN3ce1sl80QLTW8B5DcU8YwvDPKop1sByrMlAj8aejFz3WonO5XKbgbiT0tAvF5wLlSKdwDyvMeArLlWzKO9LbZXdzz0YRaQZ91GckKhfA/E40C8TyXZaaapi/1ATKIz47wB5LEi9EsgkL9SlGnz7Dym10OSBxTJ+21DEzPlupNCPqWQPzL7+oYRfZbXLVrw5EYg+SxQ8IsC5Lvdc4B8uO2Vfy4o6DCi16kkb89l0NLuFMRilbFq5J1eIOY3IEnn3IhHrCAKpeRGL+819gjEX/u504ryBMq3QHx9QUBaN4WTstVatkb0OiAeMsteKoiVQ/CsInmq2LYqW62j+hxAfjfAjf81e9qAdm7fv9eOOWe+2cWcuc776E1F8p7x9ADzHfbcwuXKOEYRd1rIkiYJZe5aWoD5Waz7UIhvVSif+54N436VkJfFKuJfjdX5lcB2NDFQKk9ASqK5vR/QKisBoZDfClopBoEIvabPBeTnVy34fAhF/GCx6znf5nvcYg3liEleiuRYx54PvrPjvSVrpzBm7lTEj1rVFqB0AsmY31lpH/6k0J1ia/yO7S49yUt+gdcsxIYD+jxF/GUgb69VCFgsO+oZQhVYLP9hSvNQMhtvScqmEHIHkNykSJ4AlJ/zIezu3rmagAgh3+tWl8TDZmsV67clrc+GlNxvsrbJ2HYAi62azB9cy+lr1xLEcmXXGsTpzGrOAx9XxM+Z3+oGAvLLgtO104FS4+xagXCffOFb159Bxtq1AOEFAMS/Bx1vrzWE2S4eAPvKmSMScwaXQkS6E6eu2doftlZb5sC6EMjH3UOMvN+8xJQ7j33mSsxH4s5Oq95kRxMD5snXZfCLsqM98P+XhhqyKqr/AEJezD2/ik84AAAAAElFTkSuQmCC'; overlayAlt = 'Offline Mode';
-    } else if (isCombinedWithDb) {
-        if (currentUseGoogleDb) {
-            overlaySrc = 'GDrive.png'; overlayAlt = 'Google Drive Sync';
-        } else if (currentUseLocalFolder) {
-            overlaySrc = 'Folder.png'; overlayAlt = 'Local Folder Sync';
-        } else if (currentUseArhDb) {
-            overlaySrc = 'Zip.png'; overlayAlt = 'Archive Source';
-        }
-    }
-    if (overlaySrc) {
-        const overlay = document.createElement('div');
-        overlay.className = 'mode-db-overlay';
-        const filterStyle = isOffline ? ' style="filter: brightness(0);"' : '';
-        overlay.innerHTML = `<img src="${overlaySrc}" alt="${overlayAlt}"${filterStyle}>`;
-        iconWrapper.appendChild(overlay);
-    }
-    if (isSyncSuspended) {
-        title = (_('syncSuspendedTooltip') || 'Sync suspended. Click to connect.');
-        iconWrapper.style.position = 'relative';
-        const warnBadge = document.createElement('span');
-        warnBadge.textContent = '⚠️';
-        warnBadge.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:12px;line-height:1;';
-        iconWrapper.appendChild(warnBadge);
-    }
-    modeButton.title = title;
-}
-
-/**
- * Обновява глобалните променливи за режим на работа от localStorage.
- * Извиква се, за да се синхронизира състоянието на приложението с настройките.
- */
 function updateGlobalStateFlags() {
-    useGoogleDb = localStorage.getItem('useGoogleDb') !== 'false'; // true по подразбиране
-    useLocalFolder = localStorage.getItem('useLocalDb') === 'true';
-    useArhDb = localStorage.getItem('useArhDb') === 'true';
-    useIndexedDb = localStorage.getItem('useIndexedDb') !== 'false'; // true по подразбиране
-    automatedTimer = localStorage.getItem('automatedTimer') !== 'false'; // true по подразбиране
-    updateLocalFolder = localStorage.getItem('updateLocalFolder') === 'true';
-}
-
-/**
- * Проверява дали е избран поне един източник на данни.
- * Ако не е, показва съобщение и отваря настройките.
- * @returns {boolean} Връща true, ако има избран източник, и false, ако няма.
- */
-function validateDataSourceSelection() {
-    if (!useGoogleDb && !useLocalFolder && !useArhDb && !useIndexedDb) {
-        showToast(_('errorNoDataSourceSelected'), 15000);
-        document.getElementById('settings-modal').classList.add('visible');
-        const advancedSettingsSpan = document.getElementById('advanced-settings-span');
-        if (advancedSettingsSpan) {
-            advancedSettingsSpan.removeAttribute('hidden');
-            localStorage.setItem('showAdvancedSettings', 'true');
-        }
-        setTimeout(() => {
-            const accordionHeader = document.querySelector('.accordion-header');
-            if (accordionHeader && accordionHeader.parentElement) {
-                accordionHeader.parentElement.classList.add('active');
-            }
-        }, 100);
-        if (typeof updateAdvancedSettingsVisibility === 'function') updateAdvancedSettingsVisibility();
-        loaderContainer.style.display = 'none'; // Скриваме лоудъра
-        // Изчистваме осиротели файлове при старт
-        // cleanupOrphanedImages();
-        return false; // Сигнализираме, че проверката е неуспешна
-    }
-    return true; // Всичко е наред
-}
-
-/**
- * Отчита проблеми с целостта на данните (липсващи или дублирани ID-та).
- */
-async function goOffline() {
-    if (isOfflineChecked) return;
-    isOfflineChecked = true;
-    let hasS = false;
-    try {
-        const cache = await caches.open('app-cache');
-        const cachedResponse = await cache.match('s');
-        hasS = !!cachedResponse;
-    } catch (e) {
-        console.warn("Error checking app-cache for 's':", e);
-    }
-    if (isOffline) return;
-
-    let reallyOnline = true;
-    if (!navigator.onLine && hasS) {
-        try {
-            const response = await fetch('/favicon.ico?_=' + new Date().getTime(), { method: 'HEAD', cache: 'no-store' });
-            reallyOnline = response.ok;
-        } catch (e) {
-            reallyOnline = false;
-        }
-    }
-
-    if (!reallyOnline && hasS) {
-        isOffline = true;
-        console.warn("Working in offline mode (s-record found).");
-        if (document.querySelector('.login-box')) {
-            document.querySelector('.login-box').style.display = 'block';
-        }
-        if (dbExists) {
-            try {
-                const boardsInDb = await getAllFromDB(BOARD_STORE_NAME);
-                if (boardsInDb && boardsInDb.length > 0) {
-                    localStorage.setItem('useIndexedDb', 'true');
-                    localStorage.setItem('useGoogleDb', 'false');
-                    localStorage.setItem('forceGDriveRead', 'false');
-                    updateGlobalStateFlags();
-                }
-            } catch (e) {
-                console.error("Error checking DB in goOffline:", e);
-            }
-        }
-    } else {
-        isOffline = false;
-    }
+    // Локален режим: няма Drive, няма локална папка, няма архив. Само базата.
+    useGoogleDb = false;
+    useLocalFolder = false;
+    useArhDb = false;
+    useIndexedDb = true;
+    automatedTimer = localStorage.getItem('automatedTimer') !== 'false';
+    updateLocalFolder = false;
 }
 
 function reportDataIntegrityIssues() {
@@ -8708,38 +3845,10 @@ function reportDataIntegrityIssues() {
     }
 }
 
-/**
- * Филтрира бележките, за да остави само по 5 за всеки борд (за демо версия).
- */
-function filterNotesForDemo() {
-    if (!DEMO_MODE) return; // Изпълнява се само ако демо флагът е активен
-    console.log("DEMO MODE: Filtering notes to 5 per board.");
-    if (!boardsData || boardsData.length === 0 || !allNotesData || allNotesData.length === 0) {
-        return;
-    }
-    const filteredNotes = new Set();
-    const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-    boardsData.forEach(board => {
-        const boardIdToMatch = isArh ? board.id : board.gdid;
-        const notesForBoard = allNotesData
-            .filter(note => note.boardid == boardIdToMatch)
-            .sort((a, b) => (a.numord || 0) - (b.numord || 0)) // Сортираме за консистентност
-            .slice(0, DEMO_NOTE_LIMIT); // Взимаме броя бележки от константата
-        notesForBoard.forEach(note => filteredNotes.add(note));
-    });
-    const originalCount = allNotesData.length;
-    allNotesData = Array.from(filteredNotes);
-    console.log(`DEMO MODE: Notes reduced from ${originalCount} to ${allNotesData.length}.`);
-}
-
-
-async function mainLogic(forceFullSync = false) {
+async function mainLogic() {
     if (!appTranslations[currentLang]) {
         await loadTranslations(currentLang);
     }
-    const isInitialSetupNeeded = !isOffline && (typeof needsInitialFolderSetup === 'function' && needsInitialFolderSetup());
-    const loaderFolderInfo = document.getElementById('loader-folder-info');
-    if (loaderFolderInfo) loaderFolderInfo.textContent = isInitialSetupNeeded ? '' : `(${activeFolderName})`;
     const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
     if (settingsOverride) {
         localStorage.removeItem('settings_json_full_override');
@@ -8756,620 +3865,127 @@ async function mainLogic(forceFullSync = false) {
                 });
                 console.log("[Settings-Override] Applied settings for device:", currentDevice);
             }
-            if (!isOffline) {
-                (async () => {
-                    try {
-                        const folderId = await getFolderIDByName('multinotes_data');
-                        if (folderId) {
-                            const existingFiles = await findGDFileByName(folderId, 'settings.json');
-                            if (existingFiles && existingFiles.length > 0) {
-                                await updateGDriveFile(existingFiles[0].id, settingsOverride);
-                                console.log("[Settings-Override] Pushed to GDrive.");
-                            }
-                        }
-                    } catch (err) {
-                        console.error("GDrive push error for settings override:", err);
-                    }
-                })();
-            }
         } catch (e) {
             console.error("Error applying settings override:", e);
         }
     }
-    if (isOffline) {
-        console.log("Working in offline mode. Skipping sync.");
-        loaderText.textContent = _('loadingFromLocal');
 
-        // --- КОРЕКЦИЯ: Инициализация на състоянието и в офлайн режим ---
-        updateGlobalStateFlags();
-        if (useArhDb) {
-            dbSourceGlobal = 3; dbNoteIdTypeGlobal = 'id';
-        } else if (useLocalFolder) {
-            dbSourceGlobal = 2; dbNoteIdTypeGlobal = 'gdid';
-        } else if (useGoogleDb) {
-            dbSourceGlobal = 1; dbNoteIdTypeGlobal = 'gdid';
-        }
-        updateModeButton();
-        initializeLoad(); // Нулираме контейнерите и подготвяме за нови данни
-        // Потвърдена по-рано смяна на акаунт: чуждите бележки не се рисуват и офлайн
-        if (await userCheck()) {
-            showAppUI();
-            return;
-        }
+    // --- Локален режим: зареждане само от IndexedDB ---
+    isOffline = true;
+    updateGlobalStateFlags();
+    dbSourceGlobal = null;
+    dbNoteIdTypeGlobal = 'gdid';
+    isLoadCancelled = false;
+    updatedNoteGdims = [];
+    dataIntegrityIssues = [];
+    isInitialLoad = true;
+    initializeLoad();
+    if (loaderText) loaderText.textContent = _('loadingFromLocal') || 'Loading from the local database...';
 
-        try {
-            await fetchAllDataLocal();
-            await renderUI({ boardParseError: false });
-        } catch (e) {
-            console.error("Error loading local data in offline mode:", e);
-        }
-        // Офлайн акаунтът не може да се потвърди: само се записва pendingAccountReset, нищо не се трие
-        verifyAccountInBackground();
-
-        // --- КОРЕКЦИЯ: Осигуряваме видимост на UI елементите ---
-        showAppUI();
-
-        if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
-            const addNoteFab = document.getElementById('add-note-fab');
-            if (addNoteFab) addNoteFab.style.display = 'flex';
-        }
-
-        // Показваме бутона за инсталиране, ако има такъв
-        if (window.showInstallButton) window.showInstallButton();
-
-        // Демо режимът минава по този клон и не стига до интрото в онлайн finally-то.
-        // Затова то се пуска тук — веднъж на влизане в демо.
-        if (IS_DEMO_MODE) {
-            setTimeout(startDemoAssistantIntro, DEMO_INTRO_DELAY_MS);
-        }
-
-        return;
-    }
-    if (isMainLogicRunning) {
-        console.log("mainLogic is already running, skipping...");
-        return;
-    }
-    isMainLogicRunning = true;
     try {
-        dbSourceGlobal = null; // Нулираме глобалните променливи
-        isLoadCancelled = false; // Нулираме флага за отказ при всяко ново зареждане
-        updatedNoteGdims = []; // Изчистваме масива с обновени бележки при всяко зареждане
-        dataIntegrityIssues = []; // Reset integrity report
-        isInitialLoad = true; // --- КОРЕКЦИЯ: Нулираме флага, за да работи скролирането при презареждане ---
-        updateGlobalStateFlags();
-        enableSettingsControls();
-        // Извикваме новата функция за валидация
-        if (!validateDataSourceSelection()) return;
-        // --- ЗАДАВАНЕ НА ГЛОБАЛЕН ИЗТОЧНИК И ТИП ВРЪЗКА ЗА ТЕКУЩАТА СЕСИЯ ---
-        // Това е необходимо, за да работят коректно функции като createNoteElement,
-        // дори когато не се използва база данни.
-        if (useArhDb) {
-            dbSourceGlobal = 3; // 3: Архив
-            dbNoteIdTypeGlobal = 'id';
-        } else if (useLocalFolder) {
-            dbSourceGlobal = 2; // 2: Локална папка
-            dbNoteIdTypeGlobal = 'gdid';
-        } else if (useGoogleDb) {
-            dbSourceGlobal = 1; // 1: Google Drive
-            dbNoteIdTypeGlobal = 'gdid';
-        }
-        initializeLoad(true); // Resets state and shows the loader screen
-        if (isInitialSetupNeeded) {
-            const loaderTitleEl = document.getElementById('loader-title');
-            if (loaderTitleEl) loaderTitleEl.innerHTML = (_('dataFolderSelectionTitle') || '<b><big>CX Notes</big></b>');
-            if (loaderFolderInfo) loaderFolderInfo.textContent = '';
-        }
-        let hasLocalData = false;
-        let boardsCountInDb = 0;
-        if (useIndexedDb || localStorage.getItem('useIndexedDb') !== 'false') {
-            dbExists = await checkDbExists(NOTES_DB_NAME);
-            if (dbExists) {
-                boardsCountInDb = await countFromDB(BOARD_STORE_NAME);
-                if (boardsCountInDb > 0) {
-                    useIndexedDb = true;
-                    localStorage.setItem('useIndexedDb', 'true');
-                    const dbFolderName = await getConfig('dbCreatedFolderName');
-                    if (dbFolderName && !localStorage.getItem('active_folder_name')) {
-                        localStorage.setItem('active_folder_name', dbFolderName);
-                        activeFolderName = dbFolderName;
-                    }
-                    if (!dbFolderName || !activeFolderName || dbFolderName === activeFolderName) {
-                        hasLocalData = true;
-                        // Ако папката е изтрита от GDrive (flag от предишния reload),
-                        // имаме данни в DB, но трябва да покажем setup модала за нова папка
-                        if (sessionStorage.getItem('_folder_not_found_reload')) {
-                            hasLocalData = false;
-                            localStorage.removeItem('active_folder_name');
-                            localStorage.removeItem('activeFolderId');
-                            localStorage.removeItem('initial_setup_complete');
-                            localStorage.removeItem('folderSetupDone');
-                        }
-                    } else {
-                        console.warn(`[mainLogic] IndexedDB was created for folder "${dbFolderName}", but active folder is "${activeFolderName}". Bypassing local DB cache.`);
-                    }
-                }
-            }
-        }
-        if (!hasLocalData) {
-            if (!authToken) {
-                const authResult = await checkAuth(isExplicitLogin);
-                if (!authResult || !authResult.pass) {
-                    if (isLoadCancelled) return;
-                    showAppUI();
-                    return;
-                }
-                authToken = authResult.tokenData;
-            }
-            // --- MIGRATION BLOCK CALL (премахни заедно с migrateAppDataFolderToCXNotes) ---
-            /*if (!isOffline) {
-                const migrated = await migrateAppDataFolderToCXNotes();
-                if (migrated) {
-                    console.log('[mainLogic] AppDataFolder→CX-Notes migration completed. Reloading...');
-                    location.reload();
-                    return;
-                }
-            }*/
-            // --- END MIGRATION BLOCK CALL ---
-            if (!isOffline) await loadGlobalFoldersJson();
-            if (!isOffline && (needsInitialFolderSetup() || !localStorage.getItem('activeFolderId'))) {
-                await completeInitialFolderSetup();
-            }
-            if (!isOffline) {
-                const wasFirstRun = await handleFirstRunSetup();
-                if (wasFirstRun) {
-                    console.log('[mainLogic] First run setup completed. Reloading to start normal cycle...');
-                    location.reload();
-                    return;
-                }
-            }
-        }
-        if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-        if (loaderContainer) loaderContainer.style.display = 'block';
-        const loaderTitle = document.getElementById('loader-title'); // Element to display loader title
-        updateModeButton(); // Актуализираме иконата за режим веднага
-        if (useIndexedDb && dbExists && boardsCountInDb > 0) {
-            const dbSource = await getConfig('dbSource');
-            const dbNoteIdType = await getConfig('dbNoteIdType');
-            dbSourceGlobal = dbSource;
-            dbNoteIdTypeGlobal = dbNoteIdType;
-            console.log(`[mainLogic] DB Config Loaded: Source=${dbSource}, IdType=${dbNoteIdType}`);
-            if (dbNoteIdType) {
-                const isAnySourceActive = useGoogleDb || useLocalFolder || useArhDb;
-                if (isAnySourceActive) {
-                    if ((dbNoteIdType === 'id' && !useArhDb) || (dbNoteIdType === 'gdid' && useArhDb)) {
-                        console.warn(`[mainLogic] Data source mismatch! DB expects ${dbNoteIdType}, but current mode is different.`);
-                        showToast(_('errorDbSourceMismatch'), 15000);
-                    }
-                }
-            }
-        }
-        // --- КОРЕКЦИЯ: Гарантираме, че dirHandle е зареден в режим "Само база данни" ---
-        // Ако сме в режим "Само база данни" и базата е създадена от локален източник,
-        // трябва да заредим dirHandle, за да работят линковете към прикачени файлове.
-        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsCountInDb > 0) {
-            const dbSource = await getConfig('dbSource');
-            let handleKey = null;
-            if (dbSource === 2) handleKey = 'directoryHandle'; // Локална папка
-            else if (dbSource === 3) handleKey = 'arhHandle';   // Архив
-            if (handleKey) {
-                const handle = await getConfig(handleKey);
-                const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                if (verifiedHandle) {
-                    dirHandle = verifiedHandle; // Задаваме глобалния handle
-                } else {
-                    showToast(_('noUpdateMode'), 10000);
-                }
-            }
-        }
-        const accountSwitched = await userCheck();
-        if (isLoadCancelled) return;
-        // Потвърдена смяна на акаунт: екранът за смяна вече е показан, бележките от базата не се рисуват.
-        // Изтриването и презареждането тръгват само след ОК на този екран.
-        if (accountSwitched) {
-            console.warn('[mainLogic] Account switch detected during mainLogic. Waiting for the user to confirm on the notice screen.');
-            if (loaderContainer) loaderContainer.style.display = 'none';
-            return;
-        }
-        updateGlobalStateFlags();
-        // НОВА ПРОВЕРКА: Ако е избрана само база данни, но тя е празна
-        if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb && dbExists && boardsCountInDb === 0) {
-            showToast(_('errorDbOnlyAndEmpty'), 15000);
-            if (isLoadCancelled) return;
-            document.getElementById('settings-modal').classList.add('visible');
-            loaderContainer.style.display = 'none'; // Скриваме лоудъра
-            return; // Прекратяваме изпълнението
-        }
-        try {
-            // --- УСЛОВНО ЗАРЕЖДАНЕ НА GOOGLE DRIVE API ---
-            // Зареждаме API-то само ако ще работим с Google Drive.
-            if (useGoogleDb) {
-                if (typeof gapi !== 'undefined' && gapi.client) {
-                    gapi.client.setToken({ access_token: authToken.access_token });
-                }
-            }
-            if (useArhDb) {
-                // --- РЕЖИМ 0: Зареждане от Архив ---
-                console.log("Mode: Archive");
-                if (loaderTitle) loaderTitle.textContent = _('arhFolderLabel');
-                // --- КОРЕКЦИЯ: Задаваме правилното заглавие на лоудъра ---
-                // Преди: Показваше "Избери архивна папка", дори когато такава вече е избрана.
-                // Сега: Показва "Зареждане директно от архив", което е по-коректно.
-                if (loaderTitle) {
-                    loaderTitle.textContent = useIndexedDb ? _('dbManagementTitle') : _('loadedFromArhNoDb');
-                }
-                const arhHandle = await getConfig('arhHandle');
-                if (!arhHandle) {
-                    showToast(_('errorArhFolderNotSelected'), 10000);
-                    if (isLoadCancelled) return;
-                    document.getElementById('settings-modal').classList.add('visible');
-                    return; // Stop execution if no archive handle
-                }
-                const verifiedHandle = await verifyPermission(arhHandle);
-                if (isLoadCancelled) return;
-                if (!verifiedHandle) {
-                    showToast(_('permissionDenied'), 10000);
-                    return; // Stop execution if no permission
-                }
-                dirHandle = verifiedHandle; // <-- ДОБАВЕН РЕД
-                if (useIndexedDb) {
-                    // Archive + IndexedDB mode
-                    console.log("Mode: Archive + IndexedDB");
-                    if (!dbExists || boardsCountInDb === 0) {
-                        // DB is empty or does not exist, prompt for creation from archive
-                        const confirmed = await showConfirmation(_('confirmCreateDbFromArh')); // "Искате ли да се създаде локална база?"
-                        if (confirmed) {
-                            loaderText.textContent = _('creatingDbFromArh');
-                            if (isLoadCancelled) return;
-                            const success = await readArh(verifiedHandle); // Read archive into memory
-                            if (success) {
-                                if (isLoadCancelled) return;
-                                const dbCreatedSuccessfully = await createDatabaseFromMemory(); // Create DB from memory
-                                if (dbCreatedSuccessfully) {
-                                    showToast(_('dbCreated'), 10000);
-                                    if (isLoadCancelled) return;
-                                    await fetchAllDataLocal(); // Load from the newly created DB
-                                    await renderUI({ boardParseError: false });
-                                } else {
-                                    showToast(_('dbCreateFailedNoData'), 10000);
-                                    // Fallback to direct archive load if DB creation fails
-                                    await readArh(verifiedHandle); // Re-read archive into memory for direct display
-                                    await renderUI({ boardParseError: false });
-                                }
-                            } else {
-                                // If reading archive failed, cannot create DB.
-                                showToast(_('errorReadArh'), 10000);
-                                // What to do here? Maybe just show an empty UI or an error.
-                            }
-                        } else {
-                            // User declined to create DB, load directly from archive for this session
-                            showToast(_('loadedFromArhNoDb'), 10000);
-                            if (isLoadCancelled) return;
-                            const success = await readArh(verifiedHandle);
-                            if (success) {
-                                await renderUI({ boardParseError: false });
-                            }
-                        }
-                    } else {
-                        // DB exists and has data, load from DB
-                        loaderText.textContent = _('loadingFromDb');
-                        if (isLoadCancelled) return;
-                        await fetchAllDataLocal();
-                        await renderUI({ boardParseError: false });
-                    }
-                } else {
-                    // Archive mode without IndexedDB
-                    console.log("Mode: Archive (no IndexedDB)");
-                    // КЛЮЧОВА СТЪПКА: Задаваме dirHandle и при директно четене
-                    dirHandle = verifiedHandle;
-                    if (isLoadCancelled) return;
-                    const success = await readArh(verifiedHandle);
-                    if (success) {
-                        await renderUI({ boardParseError: false });
-                    }
-                }
-            } else if (!useIndexedDb) {
-                // --- РЕЖИМ 1: Без IndexedDB - Директно зареждане от източник ---
-                console.log("Mode: Direct from source (IndexedDB is OFF)");
-                if (useGoogleDb) {
-                    // Нулираме dirHandle тук, за да сме сигурни, че няма да се използват стари handles от локален/архивен режим
-                    dirHandle = null;
-                    console.log("Source: Google Drive");
-                    if (loaderTitle) loaderTitle.textContent = _('sourceGoogleDrive');
-                    if (isLoadCancelled) return;
-                    const result = await fetchAllData(null, false); // false -> не записвай в DB
-                    if (result.error) return;
-                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                    filterNotesForDemo();
-                    await renderUI({ boardParseError: result.boardParseError });
-                } else if (useLocalFolder) {
-                    console.log("Source: Local Folder");
-                    if (loaderTitle) loaderTitle.textContent = _('sourceLocalFolder');
-                    const { boardParseError } = await fetchAllDataFromLocalFolder();
-                    // Прилагаме филтъра за демо версията ПРЕДИ рендиране
-                    filterNotesForDemo();
-                    await renderUI({ boardParseError });
-                }
-            } else {
-                // --- РЕЖИМ 2: С IndexedDB
-                console.log("Mode: Using IndexedDB");
-                if (!dbExists || boardsCountInDb === 0) {
-                    // Първоначално създаване на базата данни
-                    console.log("DB is empty or does not exist. Performing initial data load.");
-                    if (loaderTitle) loaderTitle.textContent = _('dbManagementTitle');
-                    loaderText.textContent = _('initialDataLoad');
-                    let dbCreatedSuccessfully = false;
-                    if (useGoogleDb) {
-                        console.log("Source for initial load: Google Drive");
-                        if (isLoadCancelled) return;
-                        const result = await fetchAllData(null);
-                        if (result.error) { // Проверяваме за грешка при зареждането
-                            return; // Прекратяваме, ако няма файлове
-                        }
-                        // Разрешаваме дублираните бележки, ако има такива (преди запис в базата)
-                        if (result.duplicates && result.duplicates.length > 0) {
-                            await resolveLoadedConflicts(result.duplicates);
-                        }
-                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
-                        filterNotesForDemo();
-                        dbCreatedSuccessfully = await createDatabaseFromMemory({ suppressEmptyDataToast: true });
-                        await renderUI({ boardParseError: result.boardParseError });
-                    } else if (useLocalFolder) {
-                        console.log("Source for initial load: Local Folder");
-                        const { boardParseError } = await fetchAllDataFromLocalFolder();
-                        // Прилагаме филтъра за демо версията ПРЕДИ създаване на DB и рендиране
-                        filterNotesForDemo();
-                        dbCreatedSuccessfully = await createDatabaseFromMemory({ suppressEmptyDataToast: true });
-                        await renderUI({ boardParseError });
-                    }
-                    if (dbCreatedSuccessfully) showToast(_('dbCreated'), 10000);
-                } else {
-                    // DB exists and has data, load from DB FIRST then sync in background
-                    console.log("[mainLogic] DB exists. Fast loading local data first.");
-                    if (loaderText) loaderText.textContent = _('fetchingFromDb') || 'Loading from local database...';
-                    if (isLoadCancelled) return;
-                    await fetchAllDataLocal();
-                    await renderUI({ boardParseError: false });
-                    loaderContainer.style.display = 'none';
-                    document.getElementById('login-page').style.display = 'none';
-                    document.getElementById('login-page').hidden = true;
-                    showAppUI();
-                    // Проверката на акаунта е фонова - след първото рисуване, не го чака
-                    verifyAccountInBackground();
-                    const updateFromSource = localStorage.getItem('updateFromSource') !== 'false';
-                    if (updateFromSource && !isOffline) {
-                        const runBackgroundSync = async () => {
-                            try {
-                                if (hasLocalData) {
-                                    if (!authToken) {
-                                        const authResult = await checkAuth(isExplicitLogin);
-                                        if (authResult && authResult.pass) {
-                                            authToken = authResult.tokenData;
-                                        }
-                                    }
-                                    if (authToken) {
-                                        if (useGoogleDb && typeof gapi !== 'undefined' && gapi.client) {
-                                            gapi.client.setToken({ access_token: authToken.access_token });
-                                        }
-                                        // Не синхронизираме чужд акаунт в базата: първо проверката на акаунта
-                                        if (await verifyAccountInBackground()) return;
-                                        await loadGlobalFoldersJson();
-                                        if (await userCheck()) return;
-                                        updateGlobalStateFlags();
-                                    } else {
-                                        return;
-                                    }
-                                }
-                                console.log("[mainLogic] Starting background sync task...");
-                                let updatedCount = 0;
-                                if (useGoogleDb) {
-                                    if (!isDbOwner) {
-                                        console.log("[mainLogic] User mismatch detected! Fetching notes directly from Google Drive...");
-                                        const result = await fetchAllData(null, false);
-                                        if (result && !result.error) {
-                                            filterNotesForDemo();
-                                            await renderUI({ boardParseError: result.boardParseError });
-                                        }
-                                        /*} else if (activeFolderName === 'AppDataFolder') {
-                                            // AppDataFolder потребители → мигрираме към CX-Notes
-                                            const migrated = await migrateAppDataFolderToCXNotes();
-                                            if (migrated) {
-                                                console.log('[mainLogic] AppDataFolder→CX-Notes migration completed. Reloading...');
-                                                location.reload();
-                                                return;
-                                            }*/
-                                    } else {
-                                        updatedCount = await runGoogleDriveSync(forceFullSync);
-                                    }
-                                } else if (useLocalFolder) {
-                                    updatedCount = await runLocalSync(forceFullSync);
-                                }
-                                if (forceFullSync) {
-                                    console.log("[mainLogic] Force full sync finished, refreshing UI...");
-                                    if (useIndexedDb) {
-                                        await fetchAllDataLocal();
-                                        await renderUI({ boardParseError: false });
-                                        showToast(_('dbRebuilt') || 'Local database rebuilt successfully.', 5000);
-                                    } else {
-                                        await renderUI({ boardParseError: false });
-                                        showToast(_('syncSuccess') || 'Successfully synced', 3000);
-                                    }
-                                } else if (updatedCount > 0) {
-                                    console.log(`[mainLogic] Background sync finished: ${updatedCount} updates found.`);
-                                    await fetchAllDataLocal();
-                                    if (updatedNoteGdims.length > 0 && !document.getElementById('modal-body')) {
-                                        currentBoardFilter = 'new-updates';
-                                    }
-                                    await renderUI({ boardParseError: false });
-                                    showToast(useGoogleDb ? _('gdriveUpdatesFound').replace('{count}', updatedCount) : _('localUpdatesFound').replace('{count}', updatedCount), 5000);
-                                } else {
-                                    console.log("[mainLogic] Background sync finished. No new updates.");
-                                }
-                            } catch (e) {
-                                console.error("[mainLogic] Background sync error:", e);
-                            }
-                        };
-                        if (!isSyncSuspended) runBackgroundSync();
-                        else pendingBackgroundSync = runBackgroundSync;
-                    }
-                }
-            }
-            reportDataIntegrityIssues(); // Generate report before finishing loading
-        } catch (err) {
-            console.log("Error in mainLogic:", err);
-            showToast(_('errorProcessingFiles'));
-            loaderContainer.style.display = 'none'; // Скриваме лоудъра при грешка
-        } finally {
-            if (isLoadCancelled) return; // Не скриваме лоудъра, ако е отказано, за да не "премигне"
-            // Изчистваме текстовете в лоудъра, преди да го скрием
-            const loaderTitle = document.getElementById('loader-title');
-            if (loaderTitle) loaderTitle.textContent = '';
-            const loaderFolderInfo = document.getElementById('loader-folder-info');
-            if (loaderFolderInfo) loaderFolderInfo.textContent = '';
-            loaderText.textContent = ''; // Изчистваме текста за прогреса
-            updateSearchPlaceholder();
-            document.body.style.backgroundImage = `url('Board.png')`; // Reset background
-            // renderUI() uses two frames before revealing the prepared note cards.
-            // Keep the loader over the board until that reveal has happened.
-            await new Promise(resolve => requestAnimationFrame(() => {
-                requestAnimationFrame(resolve);
-            }));
-            // Скриваме лоудъра и логин страницата
-            loaderContainer.style.display = 'none';
-            document.getElementById('login-page').style.display = 'none';
-            document.getElementById('login-page').hidden = true;
-            // Показваме основните елементи, след като всичко е заредено
-            document.querySelector('header').style.visibility = 'visible';
-            document.querySelector('#search-wrapper').style.display = 'flex';
-            // renderUI() показва бележките едва след като фоновете им са готови.
-            // Не отменяме това тук, за да не се види текстът преди изображенията.
-            isMainLogicRunning = false;
+        dbExists = await checkDbExists(NOTES_DB_NAME);
+        await fetchAllDataLocal();
+        await renderUI({ boardParseError: false });
+    } catch (e) {
+        console.error("Error loading local data:", e);
+    }
 
-            if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
-                const addNoteFab = document.getElementById('add-note-fab');
-                if (addNoteFab) addNoteFab.style.display = 'flex';
-            }
-            if (window.showInstallButton) window.showInstallButton();
-            if (!isOffline) loadSettingsFromGDrive(true);
-            if (guide && localStorage.getItem('initial_setup_complete') === 'true') {
-                const startAssistantGuideOnLoad = async () => {
-                    // Водачът зарежда асистента сам (без "какво ново" - то е при отваряне на панела)
-                    await startAssistantGuide();
-                };
-                setTimeout(startAssistantGuideOnLoad, 1500);
-            }
-        }
-    } finally {
-        // Изчистваме осиротели файлове след зареждане на всичко
-        // cleanupOrphanedImages();
-        isMainLogicRunning = false;
+    showAppUI();
+
+    if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
+        const addNoteFab = document.getElementById('add-note-fab');
+        if (addNoteFab) addNoteFab.style.display = 'flex';
+    }
+    if (window.showInstallButton) window.showInstallButton();
+}
+
+
+// =================================================================================
+// IV.a.2. ЛОКАЛНИ ФАЙЛОВЕ (store `files`) — картинки, звук, видео, прикачени
+// =================================================================================
+/**
+ * Локален ключ за нов запис: борд, бележка или файл. Идва от crypto.randomUUID,
+ * за да не съвпадне с нищо друго в базата.
+ */
+function localUuid() {
+    try {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    } catch (e) { /* остава резервният вариант */ }
+    return 'local-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+/** Записва blob в store `files` и връща ключа му. */
+async function saveBlobToFiles(name, blob, mimeType, noteGdid = null) {
+    const key = localUuid();
+    const record = {
+        key: key,
+        name: name || 'file',
+        mime: mimeType || (blob && blob.type) || 'application/octet-stream',
+        size: blob ? blob.size : 0,
+        noteid: noteGdid || null,
+        datemod: Date.now(),
+        blob: blob
+    };
+    await bulkPutDB(FILES_STORE_NAME, [record], true);
+    return key;
+}
+
+/** Чете един запис от store `files` по ключ. */
+async function getFileRecord(key) {
+    if (!key) return null;
+    try {
+        return await getFromDB(FILES_STORE_NAME, key);
+    } catch (e) {
+        console.warn('Could not read file record', key, e);
+        return null;
     }
 }
 
-/**
- * Зарежда всички данни директно от локална папка, без да използва IndexedDB.
- * Аналогична на fetchAllData, но за локален източник.
- */
-async function fetchAllDataFromLocalFolder() {
-    console.log("--- Local Folder fetch sequence started ---");
-    const startTime = performance.now();
-    const handle = await getDirectoryHandle();
-    if (!handle) {
-        window.wasOpenedForMissingFolder = true; // Вдигаме флага
-        showToast(_('errorLocalFolderNotSelected'), 10000);
-        document.getElementById('settings-modal').classList.add('visible');
-        return { boardParseError: false };
-    }
-    let localBoards = [];
-    let localMedia = [];
-    let localNotes = [];
-    let boardParseError = false;
-    const gdidMap = new Map(); // To track duplicates for processing
-    localFileMap.clear(); // Изчистваме глобалната карта преди ново зареждане
-    try {
-        const entries = [];
-        for await (const entry of handle.values()) {
-            if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
-                const lowerName = entry.name.toLowerCase();
-                const isBoard = lowerName.includes('board');
-                const isMedia = lowerName.includes('media');
-                const isNote = lowerName.includes('note');
-                if (isBoard || isMedia || isNote) {
-                    entries.push({ entry, lowerName, isBoard, isMedia, isNote });
-                }
-            }
-        }
-        console.log(`[Local Folder] Found ${entries.length} valid .txt files for processing.`);
-        const CHUNK_SIZE = 80; // Balanced parallelism
-        for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
-            const chunk = entries.slice(i, i + CHUNK_SIZE);
-            // Optimize UI updates - only update once per chunk
-            loaderText.textContent = `${_('loadingFile')} (${Math.min(i + CHUNK_SIZE, entries.length)}/${entries.length})`;
-            await Promise.all(chunk.map(async (item) => {
-                try {
-                    const file = await item.entry.getFile();
-                    const content = await file.text();
-                    const fileObject = JSON.parse(content);
-                    if (!fileObject.gdid) {
-                        const error = `[Missing ID] File '${item.entry.name}' is missing 'gdid' property.`;
-                        console.warn(error);
-                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, gdid: null });
-                    } else {
-                        if (gdidMap.has(fileObject.gdid)) {
-                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
-                            console.error(error);
-                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name });
-                        } else {
-                            gdidMap.set(fileObject.gdid, item.entry.name);
-                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
-                        }
-                    }
-                    if (item.isBoard) {
-                        localBoards.push(fileObject);
-                    } else if (item.isMedia) {
-                        localMedia.push(fileObject);
-                    } else if (item.isNote) {
-                        localNotes.push(fileObject);
-                    }
-                } catch (e) {
-                    console.log(`Failed to process ${item.entry.name}:`, e);
-                }
-            }));
-        }
-    } catch (err) {
-        if (err.name === 'NotFoundError') {
-            console.log("Local folder not found:", err);
-            showToast(_('errorLocalFolderNotFound'), 15000);
-            // Изчистваме невалидния handle от базата данни
-            await saveConfig('directoryHandle', null);
-            // Отваряме настройките, за да може потребителят да избере нова папка
-            document.getElementById('settings-modal').classList.add('visible');
-            // Нулираме и UI елемента, показващ името на папката
-            const folderNameDisplay = document.getElementById('local-sync-folder-name');
-            if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
-        } else {
-            console.log("Error parsing local files:", err);
-            showToast(_('errorNoteParse'));
-        }
-        boardParseError = true; // Вдигаме флага за грешка и в двата случая
-    }
-    // Зареждаме данните в глобалните променливи
-    boardsData = localBoards.flat(); // .flat() за всеки случай, ако някой файл съдържа масив
-    mediaData = localMedia.flat();
-    allNotesData = localNotes;
-    trackMaxIds(allNotesData);
-    trackMaxBoardIds(boardsData);
-    const endTime = performance.now();
-    console.log(`--- Local Folder fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
-    console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
-    return { boardParseError };
+/** Връща object URL за файл по ключ (или null). Извикващият пуска URL-а след употреба. */
+async function getFileObjectUrl(key) {
+    const record = await getFileRecord(key);
+    if (!record || !record.blob) return null;
+    return URL.createObjectURL(record.blob);
 }
 
-// =================================================================================
-// IV.a. ЛОКАЛНИ ДАННИ (INDEXEDDB)
-// =================================================================================
-/**
- * Зарежда всички данни (boards, media, notes) от локалната IndexedDB.
- */
+/** Трие един файл по ключ. */
+async function deleteFileRecord(key) {
+    if (!key) return;
+    try {
+        await deleteFromDB(FILES_STORE_NAME, key);
+    } catch (e) {
+        console.warn('Could not delete file record', key, e);
+    }
+}
+
+/** Трие всички файлове, прикачени към бележка (media.pathGD сочи към ключа в store `files`). */
+async function deleteFilesForNote(noteGdid) {
+    if (!noteGdid) return 0;
+    const related = (mediaData || []).filter(m => m.noteid === noteGdid || String(m.noteid) === String(noteGdid));
+    let deleted = 0;
+    for (const media of related) {
+        if (media.pathGD) { await deleteFileRecord(media.pathGD); deleted++; }
+        const idx = mediaData.indexOf(media);
+        if (idx !== -1) mediaData.splice(idx, 1);
+        try { await deleteFromDB(MEDIA_STORE_NAME, media.gdid || media.id); } catch (e) { }
+    }
+    return deleted;
+}
+
+/** Значката в хедъра: къде живеят данните. Иконата на режима не се сменя повече. */
+function renderLocalModeBadge() {
+    const badge = document.getElementById('mode-badge');
+    if (badge && typeof _ === 'function') {
+        badge.textContent = _('localModeBadge') || 'локално · IndexedDB';
+    }
+    const overlay = document.querySelector('#mode_button .mode-db-overlay');
+    if (overlay) overlay.hidden = true;
+    const modeButtonHtml = document.getElementById('mode_button');
+    if (modeButtonHtml) {
+        modeButtonHtml.title = _('localModeTooltip') || 'Локален режим: данните са в този браузър';
+    }
+}
+
 async function fetchAllDataLocal() {
     console.log("Fetching all data from local IndexedDB...");
     const [bData, mData, nData, dbSource, dbNoteIdType] = await Promise.all([
@@ -9384,265 +4000,11 @@ async function fetchAllDataLocal() {
     mediaData = mData || [];
     allNotesData = nData || [];
     trackMaxIds(allNotesData);
-    dbSourceGlobal = dbSource;
-    dbNoteIdTypeGlobal = dbNoteIdType;
+    dbSourceGlobal = dbSource ?? null;
+    dbNoteIdTypeGlobal = dbNoteIdType || 'gdid';
     console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
-    console.log(`[fetchAllDataLocal] dbSourceGlobal: ${dbSourceGlobal}, dbNoteIdTypeGlobal: ${dbNoteIdTypeGlobal}`);
 }
 
-/**
- * Управлява процеса на локална синхронизация с файловата система.
- */
-async function runLocalSync(forceFullSync = false) {
-    const useIndexedDb = localStorage.getItem('useIndexedDb') === 'true';
-    if (!useIndexedDb) {
-        console.log("Skipping local sync because IndexedDB is disabled for this mode.");
-        return 0;
-    }
-    if (forceFullSync) {
-        console.log("[runLocalSync] forceFullSync active: clearing DB stores for full rebuild...");
-        await clearDbStores();
-        boardsData = [];
-        mediaData = [];
-        allNotesData = [];
-    }
-    const lastLocalTimestamp = forceFullSync ? null : await getConfig('lastLocalTimestamp');
-    const updateDate = lastLocalTimestamp ? new Date(lastLocalTimestamp) : null;
-    let updatedCount = 0;
-    const handle = await getDirectoryHandle();
-    if (!handle) return 0;
-    loaderText.innerText = updateDate
-        ? _('updatingFilesSince').replace('{date}', updateDate.toLocaleString())
-        : _('performingFullSync');
-    // Коригирана проверка: използваме 'updateFromSource' вместо старата 'updateIndexedDb'
-    if (localStorage.getItem('updateFromSource') !== 'false') {
-        updatedCount = await processDirectoryContent(lastLocalTimestamp);
-        await saveConfig('lastLocalTimestamp', Date.now());
-    } else {
-        console.log("Skipping local file scan because IndexedDB update is disabled.");
-        loaderText.textContent = _('skippedFileScan');
-    }
-    // Show toast only for incremental updates (not the very first sync)
-    if (updateDate) {
-        const message = updatedCount > 0
-            ? _('localUpdatesFound').replace('{count}', updatedCount)
-            : _('localNoUpdates');
-        showToast(message, 3000);
-    }
-    return updatedCount;
-}
-
-/**
- * Проверява дали избраната папка съдържа само файлове от очаквания тип.
- * Функцията проверява дали файловете в основната директория започват с 'note', 'media', или 'board' и завършват на '.txt'.
- * Игнорира под-директории и скрити файлове (започващи с точка).
- * @param {FileSystemDirectoryHandle} directoryHandle - Handle на папката за проверка.
- * @returns {Promise<{isValid: boolean, invalidFile: string|null}>} 
- * Връща обект, който показва дали папката е валидна (`isValid`) 
- * и името на първия невалиден файл (`invalidFile`), ако такъв е намерен.
- */
-async function validateFolderContent(directoryHandle) {
-    const boardPattern = /^board.*\.txt$/i;
-    const notePattern = /^note.*\.txt$/i;
-    let boardFileCount = 0;
-    let noteFileCount = 0;
-    try {
-        for await (const entry of directoryHandle.values()) {
-            if (entry.kind === 'file') {
-                if (boardPattern.test(entry.name)) {
-                    boardFileCount++;
-                } else if (notePattern.test(entry.name)) {
-                    noteFileCount++;
-                }
-                // Прекъсваме проверката веднага щом условията са изпълнени
-                if (boardFileCount >= 1 && noteFileCount >= 3) {
-                    console.log(`Validation successful: Found at least 1 board file and 3 note files.`);
-                    return { isValid: true, reason: null };
-                }
-            }
-        }
-    } catch (error) {
-        console.log("Error during folder validation:", error);
-        return { isValid: false, reason: 'error' };
-    }
-    // Ако цикълът приключи без да са изпълнени условията
-    console.log(`Validation failed: Found ${boardFileCount} board file(s) and ${noteFileCount} note file(s). Required: >=1 board, >=3 notes.`);
-    return { isValid: false, reason: 'criteria_not_met' };
-}
-
-async function validateArhFolderContent(directoryHandle) {
-    const boardPattern = /^boards.*\.bcp$/i;
-    const notePattern = /^notes.*\.bcp$/i;
-    let boardsFile = false;
-    let notesFile = false
-    try {
-        for await (const entry of directoryHandle.values()) {
-            if (entry.kind === 'file') {
-                if (boardPattern.test(entry.name)) {
-                    boardsFile = true;
-                } else if (notePattern.test(entry.name)) {
-                    notesFile = true;
-                }
-                // Прекъсваме проверката веднага щом условията са изпълнени
-                if (boardsFile && notesFile) {
-                    console.log(`Arh validation successful: Found files.`);
-                    return { isValid: true, reason: null };
-                }
-            }
-        }
-    } catch (error) {
-        console.log("Error during arh folder validation:", error);
-        return { isValid: false, reason: 'error' };
-    }
-    // Ако цикълът приключи без да са изпълнени условията
-    console.log('Arh validation failed: Not found boards.bcp or notes.bcp.');
-    return { isValid: false, reason: 'criteria_not_met' };
-}
-/**
- * Взима handle на директория - от паметта, от IndexedDB или чрез избор от потребителя.
- * @param {boolean} promptUser - Дали да се покаже диалог за избор, ако няма запазен handle.
- * @returns {Promise<FileSystemDirectoryHandle|null>}
- */
-async function getDirectoryHandle(promptUser = false) {
-    try {
-        // Определяме кой handle да заредим въз основа на активната настройка в localStorage
-        const useLocal = localStorage.getItem('useLocalDb') === 'true';
-        const useArh = localStorage.getItem('useArhDb') === 'true';
-        const configKey = useLocal ? 'directoryHandle' : (useArh ? 'arhHandle' : null);
-        const savedHandle = configKey ? await getConfig(configKey) : null;
-        if (savedHandle) {
-            const verifiedHandle = await verifyPermission(savedHandle);
-            if (verifiedHandle) {
-                dirHandle = verifiedHandle;
-                return dirHandle;
-            }
-        }
-        if (promptUser) {
-            const newHandle = await window.showDirectoryPicker();
-            // Запазването ще се случи в извикващата функция СЛЕД валидация.
-            // dirHandle = newHandle; // Глобалната променлива също ще се зададе там.
-            return newHandle;
-        }
-        if (localStorage.getItem('useLocalDb') === 'true') showToast(_('errorLocalFolderNotSelected'), 10000);
-        return null;
-    } catch (error) {
-        if (error.name !== 'AbortError') console.log("Error getting directory handle:", error);
-        return null;
-    }
-}
-
-/**
- * Проверява и иска разрешение за достъп до handle на директория.
- * @param {FileSystemDirectoryHandle} handle
- * @returns {Promise<FileSystemDirectoryHandle|null>}
- */
-async function verifyPermission(handle) {
-    const options = { mode: 'readwrite' };
-    if (await handle.queryPermission(options) === 'granted') return handle;
-    if (await handle.requestPermission(options) === 'granted') return handle;
-    return null;
-}
-
-/**
- * Обхожда избраната локална директория и обновява IndexedDB.
- * @param {Date} [minModificationDate] - Минимална дата на модификация за инкрементално обновяване.
- */
-async function processDirectoryContent(minModificationDate) {
-    // --- КЛЮЧОВА ПРОВЕРКА ---
-    // Ако опцията за използване на IndexedDB е изключена, не трябва да записваме нищо.
-    if (localStorage.getItem('useIndexedDb') !== 'true') {
-        console.log("Skipping processDirectoryContent because useIndexedDb is disabled.");
-        return 0; // Връщаме 0, защото нищо не е обновено.
-    }
-    const minTimestamp = minModificationDate || 0;
-    console.log(`--- Local Folder sync sequence started (minTimestamp: ${minTimestamp}) ---`);
-    const startTime = performance.now();
-    const handle = await getDirectoryHandle();
-    if (!handle) return 0;
-    const stores = {
-        [BOARD_STORE_NAME]: [],
-        [MEDIA_STORE_NAME]: [],
-        [NOTE_STORE_NAME]: []
-    };
-    let updatedCount = 0;
-    let skippedNotesCount = 0;
-    const entries = [];
-    for await (const entry of handle.values()) {
-        if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.txt')) {
-            const lowerName = entry.name.toLowerCase();
-            const isBoard = lowerName.includes('board');
-            const isMedia = lowerName.includes('media');
-            const isNote = lowerName.includes('note');
-            if (isBoard || isMedia || isNote) {
-                entries.push({ entry, lowerName, isBoard, isMedia, isNote });
-            }
-        }
-    }
-    console.log(`[Local Sync] Found ${entries.length} valid .txt files for sync check.`);
-    const CHUNK_SIZE = 80;
-    const gdidMap = new Map(); // Track duplicates during sync
-    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
-        const chunk = entries.slice(i, i + CHUNK_SIZE);
-        loaderText.textContent = _('checkedFilesCount').replace('{count}', Math.min(i + CHUNK_SIZE, entries.length));
-        await Promise.all(chunk.map(async (item) => {
-            try {
-                const file = await item.entry.getFile();
-                if (file.lastModified >= minTimestamp) {
-                    updatedCount++;
-                    const content = await file.text();
-                    const fileObject = JSON.parse(content);
-                    if (fileObject.gdid) {
-                        if (gdidMap.has(fileObject.gdid)) {
-                            const error = `[Duplicate ID] GDID '${fileObject.gdid}' found in multiple files during sync: '${gdidMap.get(fileObject.gdid)}' and '${item.entry.name}'`;
-                            console.error(error);
-                            dataIntegrityIssues.push({ type: 'duplicate', gdid: fileObject.gdid, file1: gdidMap.get(fileObject.gdid), file2: item.entry.name, mode: 'sync' });
-                        } else {
-                            gdidMap.set(fileObject.gdid, item.entry.name);
-                            localFileMap.set(fileObject.gdid, item.entry.name); // Попълваме глобалната карта
-                        }
-                        if (item.isBoard) {
-                            stores[BOARD_STORE_NAME].push(fileObject);
-                        } else if (item.isMedia) {
-                            stores[MEDIA_STORE_NAME].push(fileObject);
-                        } else if (item.isNote) {
-                            stores[NOTE_STORE_NAME].push(fileObject);
-                            const localNote = allNotesData.find(n => n.gdid == fileObject.gdid);
-                            if (!localNote || (parseInt(fileObject.datemod, 10) > (parseInt(localNote.datemod, 10) || 0))) {
-                                if (!updatedNoteGdims.includes(fileObject.gdid)) {
-                                    updatedNoteGdims.push(fileObject.gdid);
-                                }
-                            } else {
-                                skippedNotesCount++;
-                            }
-                        }
-                    } else {
-                        const error = `[Missing ID] File '${item.entry.name}' skipped: missing 'gdid' property.`;
-                        console.warn(error);
-                        dataIntegrityIssues.push({ type: 'missing', file: item.entry.name, mode: 'sync' });
-                    }
-                }
-            } catch (error) {
-                console.log(`Error processing local file '${item.entry.name}':`, error);
-            }
-        }));
-    }
-    for (const storeName in stores) {
-        if (stores[storeName].length > 0) {
-            await bulkPutDB(storeName, stores[storeName], true); // Use incremental put
-        }
-    }
-    const endTime = performance.now();
-    console.log(`--- Local Folder sync sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
-    console.log(`[Summary] Updated items: ${updatedCount} (Boards: ${stores[BOARD_STORE_NAME].length}, Media: ${stores[MEDIA_STORE_NAME].length}, Notes: ${stores[NOTE_STORE_NAME].length})`);
-    console.log("[Local Sync] Updated objects:", stores);
-    return Math.max(0, updatedCount - skippedNotesCount);
-}
-
-/**
- * Показва модален прозорец на цял екран за преглед на изображение или видео.
- * @param {string} src - URL адресът на медийния файл.
- * @param {boolean} isVideo - True, ако файлът е видео.
- */
 function showImageVideoOverlay(src, isVideo = false) {
     const overlay = document.createElement('div');
     overlay.className = 'fullscreen-preview-overlay';
@@ -9664,57 +4026,6 @@ function showImageVideoOverlay(src, isVideo = false) {
     document.body.appendChild(overlay);
 }
 
-/**
- * Извлича URL за преглед от Google Drive и показва овърлей.
- * @param {string} fileId - ID на файла в Google Drive.
- * @param {boolean} isVideo - True, ако файлът е видео.
- */
-async function showGdrivePreview(fileId, isVideo = false) {
-    if (!fileId) throw new Error("No file ID provided for Google Drive preview.");
-
-    const sendRequest = async (token) => {
-        return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink,webContentLink`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) throw new Error(_('errorTokenMissing'));
-        let tokenData = JSON.parse(storedTokenString);
-
-        let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401) {
-            let refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                tokenData = refresh.tokenData;
-                resp = await sendRequest(tokenData.access_token);
-            }
-        }
-
-        if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
-        const result = await resp.json();
-        const thumbnailUrl = result.thumbnailLink;
-
-        if (thumbnailUrl) {
-            showImageVideoOverlay(thumbnailUrl.replace(/=s\d+/, '=s1600'), isVideo);
-        } else {
-            throw new Error(_(isVideo ? 'noVideoPreview' : 'noImgPreview'));
-        }
-    } catch (e) {
-        console.error("showGdrivePreview error:", e);
-        throw e;
-    }
-}
-
-/**
- * Показва преглед на изображение/видео в рамките на самата бележка.
- * @param {HTMLElement} noteElement - DOM елементът на бележката.
- * @param {Array} attachments - Масив с прикачени файлове.
- * @param {number} startIndex - Начален индекс.
- * @param {string} sourceMode - 'gdrive', 'local' или 'archive'.
- * @param {boolean} isVideo - Дали файлът е видео.
- */
 async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
     if (!noteElement) return;
     // Support legacy calls with single string fileId instead of attachments array
@@ -9836,92 +4147,16 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         const isActuallyVideo = attachment.type === 4 || isVideo;
         const isActuallySound = attachment.type === 2;
         const folderName = isActuallyVideo ? 'Video' : (isActuallySound ? 'Sound' : 'Images');
-        const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
-        let mediaUrl;
-        try {
-            if (sourceMode === 'gdrive') {
-                if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
-                    await loadGoogleApis();
+            const fileKey = attachment.pathGD || attachment.path;
+            let mediaUrl;
+            try {
+                // Локален режим: файлът е blob в store `files`, ключът му е в pathGD.
+                const record = await getFileRecord(fileKey);
+                if (!record || !record.blob) {
+                    throw new Error(_('errorOpenFile') ? _('errorOpenFile').replace('{filename}', attachment.path || fileKey) : 'File not found');
                 }
-                // Check if token is valid or expired using the actual authToken object
-                let isTokenExpired = true;
-                if (authToken && authToken.issued_at) {
-                    const elapsedSeconds = (Date.now() - authToken.issued_at) / 1000;
-                    const expiresIn = authToken.expires_in || 3599;
-                    if (elapsedSeconds < (expiresIn - 300)) { // Refresh if less than 5 mins remaining
-                        isTokenExpired = false;
-                    }
-                }
-                if (!authToken || isTokenExpired) {
-                    console.log("Token expired or missing in preview, refreshing...");
-                    const newToken = await checkAuth(); // checkAuth handles the actual refresh logic
-                    if (newToken) {
-                        authToken = newToken;
-                        // Update gapi client if needed
-                        if (typeof gapi !== 'undefined' && gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
-                    }
-                }
-                const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken :
-                    ((typeof gapi !== 'undefined' && gapi.auth) ? gapi.auth.getToken() : null);
-                if (!tokenObj) throw new Error(_('errorTokenMissing'));
-                if (isActuallyVideo || isActuallySound) {
-                    try {
-                        const mediaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
-                            headers: {
-                                'Authorization': `Bearer ${tokenObj.access_token}`,
-                                'Range': 'bytes=0-10000000'
-                            }
-                        });
-                        if (!mediaResponse.ok) throw new Error(`Media fetch failed: ${mediaResponse.status}`);
-                        const mediaBlob = await mediaResponse.blob();
-                        mediaUrl = URL.createObjectURL(mediaBlob);
-                        overlay.mediaUrlToRevoke = mediaUrl;
-                    } catch (err) {
-                        console.log("Failed to load GDrive media blob:", err);
-                        throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
-                    }
-                } else {
-                    // Image high-res thumbnail
-                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`, {
-                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
-                    });
-                    if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
-                    const fileMetadata = await response.json();
-                    const thumbnailUrl = fileMetadata.thumbnailLink;
-                    if (!thumbnailUrl) throw new Error(_('noImgPreview'));
-                    mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
-                }
-            } else { // 'local' or 'archive'
-                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-                if (isDbOnlyMode && !dirHandle && (sourceMode === 'local' || sourceMode === 'archive')) {
-                    const dbSource = await getConfig('dbSource');
-                    let handleKey = null;
-                    if (dbSource === 2) handleKey = 'directoryHandle';
-                    else if (dbSource === 3) handleKey = 'arhHandle';
-                    if (handleKey) {
-                        const handle = await getConfig(handleKey);
-                        const verifiedHandle = handle ? await verifyPermission(handle) : null;
-                        if (verifiedHandle) {
-                            dirHandle = verifiedHandle;
-                        } else {
-                            showToast(_('noUpdateMode'), 10000);
-                            cleanup();
-                            return;
-                        }
-                    }
-                }
-                let fileHandle;
-                const fileName = fileIdOrPath.split('/').pop();
-                if (sourceMode === 'local') {
-                    const folderHandle = await dirHandle.getDirectoryHandle(folderName, { create: false });
-                    fileHandle = await folderHandle.getFileHandle(fileName);
-                } else { // 'archive'
-                    fileHandle = await dirHandle.getFileHandle(fileName);
-                }
-                const file = await fileHandle.getFile();
-                mediaUrl = URL.createObjectURL(file);
+                mediaUrl = URL.createObjectURL(record.blob);
                 overlay.mediaUrlToRevoke = mediaUrl;
-            }
             // Remove spinner
             if (spinner.parentNode) spinner.remove();
             let mediaElement;
@@ -10006,10 +4241,7 @@ let floatingPositionSettingsSaveTimer = null;
 function scheduleFloatingPositionSettingsSave() {
     clearTimeout(floatingPositionSettingsSaveTimer);
     floatingPositionSettingsSaveTimer = setTimeout(() => {
-        if (isOffline || typeof saveSettingsToGDrive !== 'function') return;
-        saveSettingsToGDrive(true).catch(error => {
-            console.warn('Failed to sync floating-button position to Google Drive:', error);
-        });
+        // Позициите на плаващите бутони се пазят в localStorage (виж makeElementDraggable).
     }, 600);
 }
 
@@ -11469,84 +5701,8 @@ function initNoteWindows() {
 // sync does it (refreshNoteWindowsAfterSync) - no page reload, no timer, only the open notes.
 let noteWindowsDriveCheck = null;
 let noteWindowsDriveCheckAt = 0;
-function checkOpenNoteWindowsOnDrive() {
-    if (document.visibilityState === 'hidden') return;
-    if (!useGoogleDb || isOffline) return;
-    // focus and visibilitychange arrive together: one check for both
-    if (noteWindowsDriveCheck || Date.now() - noteWindowsDriveCheckAt < 1500) return;
-    const targets = getOpenNoteWindows()
-        .map(w => ({ id: w.body.dataset.id || '', gdid: w.body.dataset.gdid || '' }))
-        .filter(t => t.gdid && t.gdid !== t.id && t.id !== 'promo'); // a temporary gdid is not on Drive yet
-    if (!targets.length) return;
-    noteWindowsDriveCheckAt = Date.now();
-    noteWindowsDriveCheck = (async () => {
-        const fetched = await Promise.all(targets.map(async t => {
-            try {
-                const raw = await fetchGDriveFileContent(t.gdid);
-                if (!raw) return null;
-                const data = JSON.parse(raw);
-                const sNote = Array.isArray(data) ? data[0] : data;
-                return (sNote && typeof sNote === 'object') ? { t, sNote } : null;
-            } catch (e) {
-                console.warn('[NoteWindows] Drive check failed:', t.gdid, e);
-                return null;
-            }
-        }));
-        const changed = [], quiet = [];
-        fetched.forEach(item => {
-            if (!item) return;
-            const { t, sNote } = item;
-            if (!sNote.gdid) sNote.gdid = t.gdid;
-            const local = allNotesData.find(n => (n.gdid && String(n.gdid) === String(t.gdid)) || (t.id && n.id && String(n.id) === String(t.id)));
-            const known = local || {};
-            const differs = (sNote.notetxt || '') !== (known.notetxt || '') || (sNote.text_span || '') !== (known.text_span || '')
-                || (sNote.title_span || '') !== (known.title_span || '') || sNote.color !== known.color;
-            const newer = (parseInt(sNote.datemod, 10) || 0) > (parseInt(known.datemod, 10) || 0);
-            // Само uiState (място/размер от друго устройство, datemod не е пипан): приема се тихо -
-            // без покана, без пре-рендер на отвореното съдържание и на картата.
-            if (!differs && local && (Number(sNote.version) || 0) > (Number(local.version) || 0)
-                && JSON.stringify(getNoteUiState(sNote.uiState)) !== JSON.stringify(getNoteUiState(local.uiState))) {
-                local.uiState = sNote.uiState;
-                local.version = sNote.version;
-                quiet.push(local);
-                return;
-            }
-            if (!differs || !newer) return; // same text, or the local copy is the newer one (not uploaded yet)
-            if (local) Object.assign(local, sNote);
-            else allNotesData.push(sNote);
-            changed.push(local || sNote);
-        });
-        if (quiet.length && useIndexedDb) {
-            try { await bulkPutDB(NOTE_STORE_NAME, quiet, true); } catch (e) { console.warn('[NoteWindows] DB update failed:', e); }
-        }
-        if (!changed.length) return;
-        if (useIndexedDb) {
-            try { await bulkPutDB(NOTE_STORE_NAME, changed, true); } catch (e) { console.warn('[NoteWindows] DB update failed:', e); }
-        }
-        refreshNoteWindowsAfterSync(changed);
-        for (const note of changed) {
-            const noteEl = document.querySelector(`.note[data-g="${note.gdid}"]`) || document.querySelector(`.note[data-i="${note.id}"]`);
-            if (!noteEl) continue;
-            try {
-                const updatedEl = await createNoteElement(note);
-                if (updatedEl) {
-                    updatedEl.style.display = noteEl.style.display; // createNoteElement hands the card back hidden
-                    noteEl.replaceWith(updatedEl);
-                }
-            } catch (e) { console.warn('[NoteWindows] Card refresh failed:', e); }
-        }
-    })().finally(() => { noteWindowsDriveCheck = null; });
-}
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkOpenNoteWindowsOnDrive();
-});
-window.addEventListener('pageshow', () => checkOpenNoteWindowsOnDrive());
-window.addEventListener('focus', () => checkOpenNoteWindowsOnDrive());
-
-// Draws a note into its window (showModal picks the window; it is the active one meanwhile).
 function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, fresh = false) {
     let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
-    const updateGDrive = useGoogleDb && !isOffline;
     if (typeof options === 'string') {
         rawContent = options;
         options = {}; // Ensure options is an object
@@ -12173,18 +6329,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     // Проверяваме дали имаме ID-та, за да търсим прикачени файлове
     if (noteId || noteGdid) {
         // --- Логика за показване на бутона за изтриване ---
-        let attachments = [];
-        if (useIndexedDb) {
-            const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid';
-            if (dbNoteIdType === 'id') {
-                attachments = mediaData.filter(media => +media.noteid === +noteId);
-            } else { // 'gdid'
-                attachments = mediaData.filter(media => media.noteid === noteGdid);
-            }
-        } else {
-            if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
-            else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
+        // Локален режим: media.noteid е локалният ключ на бележката.
+        let attachments = mediaData.filter(media => media.noteid === noteGdid || String(media.noteid) === String(noteId));
         if (attachments.length > 0) {
             const separator = document.createElement('hr');
             separator.style.marginTop = '10px';
@@ -12198,13 +6344,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
                 attachmentWrapper.style.marginTop = '5px';
-                if (useArhDb) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
-                } else if (useLocalFolder) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
-                } else {
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
-                }
+                await handleLocalAttachment(attachment, attachmentWrapper, iconData, true);
                 modalBody.appendChild(attachmentWrapper);
             });
 
@@ -12232,7 +6372,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         oldCalRow.remove();
     }
 
-    const canEdit = (useIndexedDb || (updateGDrive && (options.gdid || options.isNewNote)) || useLocalFolder) && !isPromo && !options.readonly;
+    const canEdit = useIndexedDb && !isPromo && !options.readonly;
     let footerToolbar = modalContentBox.querySelector('.modal-footer-toolbar');
     if (!footerToolbar && (canEdit || isPromo) && !options.readonly) { // Create toolbar if needed or for date
         footerToolbar = document.createElement('div');
@@ -12318,7 +6458,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
 
     // Показваме/скриваме бутона за изтриване
     // --- КОРЕКЦИЯ: Разрешаваме изтриване и в режим "Локална папка" ---
-    if ((useIndexedDb || updateGDrive || useLocalFolder) && (currentNoteObj || noteElement) && !isPromo && !options.readonly) {
+    if (useIndexedDb && (currentNoteObj || noteElement) && !isPromo && !options.readonly) {
         deleteBtn.style.display = 'flex';
         // Премахваме стари event listeners и добавяме нов
         const newDeleteBtn = deleteBtn.cloneNode(true);
@@ -12473,7 +6613,6 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
             }
             noteId = maxExistingId + 1;
             noteNumord++;
-            syncFolderDataAsync();
             const newId = noteId;
             const newNumord = noteNumord;
 
@@ -12987,12 +7126,6 @@ async function handleSearchCommand(commandText) {
         else if (typeof filterNotesByBoard === 'function') filterNotesByBoard('calendar');
         return true;
     }
-    if (cmd === '/out' || cmd === '/5' || cmd === '/logout') {
-        const btn = document.getElementById('signout_button');
-        if (btn) btn.click();
-        else if (typeof handleSignoutClick === 'function') handleSignoutClick();
-        return true;
-    }
     if (cmd === '/info' || cmd === '/2') {
         const counter = document.getElementById('note-counter');
         if (counter) counter.click();
@@ -13499,19 +7632,11 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     // Ако boardId не е специален изглед ('all', 'calendar', 'reminder', 'new-updates')
     // и не съществува в boardsData, превключваме към 'all'.
     if (!specialBoards.includes(boardId)) {
-        // --- КОРЕКЦИЯ ЗА РЕЖИМИ НА РАБОТА ---
-        // В режим "Архив" (useArhDb), бележките се свързват с борда по числов `id`.
-        // В другите режими - по текстов `gdid`.
-        // Бутоните за филтриране винаги подават `gdid`.
-        // Тази логика проверява дали бордът съществува и задава правилния
-        // идентификатор за филтриране (`currentBoardFilter`).
         let boardToFilter = null;
-        // Търсим борда по gdid или id, който идва от клик на бутон
+        // Локален режим: връзката е по gdid на борда.
         const board = boardsData.find(b => b.gdid == boardId || b.id == boardId);
         if (board) {
-            // Ако сме в режим Архив, ще филтрираме по числовото `id`.
-            // В противен случай - по `gdid`.
-            boardToFilter = useArhDb ? board.id : board.gdid;
+            boardToFilter = board.gdid || board.id;
         }
         // Проверяваме дали сме намерили борд. `boardId` е оригиналният gdid/id от бутона.
         const boardExists = boardsData.some(b => b.gdid == boardId || b.id == boardId);
@@ -13566,10 +7691,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const clearBtn = document.querySelector('.search-btn-clear');
         if (clearBtn) clearBtn.style.display = 'none';
     }
-    // Задаваме правилния филтър (числов id за Архив/ID-базирана база, gdid за другите)
-    // Използваме dbNoteIdTypeGlobal, ако е налично, за да определим типа на връзката
-    const useIdFilter = (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id') || useArhDb;
-    currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
+    currentBoardFilter = specialBoards.includes(boardId) ? boardId : boardId;
     // --- Скриваме контейнера с бележки преди смяна на борда, за да избегнем мигане ---
     notesContainer.style.visibility = 'hidden';
     // --- Маркираме избрания бутон и задаваме визуалното състояние (active + height). ---
@@ -13596,40 +7718,23 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         let newBackground = 'Board.png';
         const board = boardsData.find(b => b.gdid === boardId || b.id == boardId);
 
-        if (board && board.backpath && !board.backpath.includes('/')) {
+        if (board && board.backpath) {
+            // Локален режим: фонът е blob в store `files`, ключът му е в backpath.
             const cacheKey = board.backpath;
             if (customBgCache.has(cacheKey)) {
                 document.body.style.backgroundImage = `url('${customBgCache.get(cacheKey)}')`;
             } else {
-                const loadCustomBg = async () => {
-                    const url = `https://www.googleapis.com/drive/v3/files/${board.backpath}?alt=media`;
-                    try {
-                        const cache = await caches.open('app-cache');
-                        let response = await cache.match(url);
-                        if (!response) {
-                            const token = (typeof authToken !== 'undefined' && authToken) ? authToken.access_token : null;
-                            if (!token) throw new Error("No token");
-                            response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-                            if (response.ok) {
-                                cache.put(url, response.clone());
-                            } else {
-                                console.warn("Failed to fetch custom bg, reverting to default");
-                                board.backpath = "";
-                                board.backnum = 0;
-                                document.body.style.backgroundImage = `url('Board.png')`;
-                                return;
-                            }
-                        }
-                        const blob = await response.blob();
-                        const objectUrl = URL.createObjectURL(blob);
+                getFileRecord(cacheKey).then(record => {
+                    if (record && record.blob) {
+                        const objectUrl = URL.createObjectURL(record.blob);
                         customBgCache.set(cacheKey, objectUrl);
                         document.body.style.backgroundImage = `url('${objectUrl}')`;
-                    } catch (e) {
-                        console.warn("Error loading custom bg:", e);
+                    } else {
+                        board.backpath = "";
+                        board.backnum = 0;
                         document.body.style.backgroundImage = `url('Board.png')`;
                     }
-                };
-                loadCustomBg();
+                });
             }
         } else if (board && board.backnum) {
             switch (board.backnum) {
@@ -14161,8 +8266,7 @@ function applyFilters() {
 
         // --- Individual Board Sort Override ---
         if (noteSortingEnabled && currentBoardFilter && currentBoardFilter !== 'trash' && currentBoardFilter !== 'reminder' && currentBoardFilter !== 'all') {
-            const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
-            const boardToMatch = boardsData.find(b => (isArh ? b.id : b.gdid) == currentBoardFilter);
+            const boardToMatch = boardsData.find(b => (b.gdid || b.id) == currentBoardFilter);
             if (boardToMatch && boardToMatch.status >= 10) {
                 const statStr = String(boardToMatch.status);
                 const baseStat = parseInt(statStr.substring(0, 2));
@@ -14647,26 +8751,8 @@ document.addEventListener('keydown', (e) => {
 
 /** Записва възстановена бележка по същите пътища, по които върви триенето/преместването. */
 async function persistRestoredNote(note) {
-    const updateGDriveNow = useGoogleDb && !isOffline;
-    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
-    if (!updateGDriveNow && !updateLocalFolderNow) note.type = -1; // за офлайн синхронизация
-    if (useIndexedDb && typeof bulkPutDB === 'function' && typeof NOTE_STORE_NAME !== 'undefined') {
-        await bulkPutDB(NOTE_STORE_NAME, [note], true);
-    }
-    if (updateGDriveNow && note.gdid && typeof updateGDriveFile === 'function') {
-        try {
-            await updateGDriveFile(note.gdid, JSON.stringify(note));
-        } catch (err) {
-            console.error('GDrive undo update failed:', err);
-        }
-    }
-    if (updateLocalFolderNow && note.gdid && typeof updateLocalFile === 'function') {
-        try {
-            await updateLocalFile(note.gdid, JSON.stringify(note));
-        } catch (e) {
-            console.error('Local undo update failed:', e);
-        }
-    }
+    note.type = -1; // локален режим
+    await bulkPutDB(NOTE_STORE_NAME, [note], true);
 }
 
 /** Едно пре-рисуване и едни броячи за цялата партида. */
@@ -14683,7 +8769,6 @@ function refreshAfterBatch(boardIds) {
         renderWeeklyCalendarView(currentWeeklyViewDate);
     }
     updateReloadButtonState();
-    scheduleGcalSync();
     if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
 }
 
@@ -15418,1334 +9503,37 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     contentWrapper.appendChild(scrollWrapper);
     return boardsNote;
 }
-// Езикът е сменен, но профилът в Drive още не е обновен: при старта изборът печели пред профилната снимка
-const PENDING_LANG_SYNC_KEY = 'pending_language_sync';
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'singleNoteMode', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg',
-    'gcalNotes', 'gcalCalendarId', 'gcalState',
-    'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
-    'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
+    'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
-    'folderId', 'language', 'rememberMe',
+    'language',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
     'enableNoteSorting', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
-    'gdrive_folder_names', 'deviceName',
+    'deviceName',
     'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
 ];
-async function findGDFileByName(folderId, fileName) {
-    if (isOffline || !folderId) return null;
-    const sendRequest = async (token) => {
-        const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}' and trashed = false`);
-        const isAppDataChild = folderId === 'appDataFolder' ||
-            (cachedFolderIdsByName['appDataFolder:AppSettings'] && folderId === cachedFolderIdsByName['appDataFolder:AppSettings']);
-        const spacesParam = isAppDataChild ? '&spaces=appDataFolder' : '&spaces=drive';
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc${spacesParam}`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) return null;
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401) {
-            const refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) {
-                resp = await sendRequest(refresh.tokenData.access_token);
-            }
-        }
-        if (!resp.ok) return null;
-        const result = await resp.json();
-        return result.files && result.files.length > 0 ? result.files : null;
-    } catch (e) {
-        console.error("findGDFileByName error:", e);
-        return null;
-    }
-}
-
-// --- Запис в Google Календар (CX Notes), етап 1 (b2.07) ------------------------------
-// gcalNotes ('true'/'false') е ключът в Настройки, gcalCalendarId помни кой е календарът „CX Notes“,
-// gcalState е 'ok' | 'deleted'. И трите са в appSettingsKeys, значи профилът ги носи (като defaultNoteBg).
-// b2.08: ключът е включен по подразбиране (липсващ gcalNotes = включен; изключването пише 'false').
-// gcalLastError е последната причина за неуспех — само локално, НЕ е в appSettingsKeys.
-// ID-то се пази и във файла calendar.json до settings.json — за другото устройство, когато профилната
-// секция е различна. С обхвата calendar.app.created календарите не могат да се изброят, затова нищо не се
-// търси по име: локалният ключ → calendar.json → (при включен ключ) нов календар, веднъж.
-// В този етап НЯМА събития: само обхватът, календарът и състоянието му.
-const GCAL_API_BASE = 'https://www.googleapis.com/calendar/v3';
-const GCAL_CALENDAR_SUMMARY = 'CX Notes';
-const GCAL_DRIVE_FILE = 'calendar.json';
-
-function isGcalNotesOn() {
-    return localStorage.getItem('gcalNotes') !== 'false';
-}
-
-function getGcalTimeZone() {
-    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
-}
-
-// Формата на заявките е в чисти помощници: тестовете ги викат с подменен fetch
-function buildGcalGetCalendarRequest(accessToken, calendarId) {
-    return {
-        url: `${GCAL_API_BASE}/calendars/${encodeURIComponent(calendarId)}`,
-        init: { method: 'GET', headers: { 'Authorization': `Bearer ${accessToken}` } }
-    };
-}
-function buildGcalCreateCalendarRequest(accessToken, timeZone) {
-    return {
-        url: `${GCAL_API_BASE}/calendars`,
-        init: {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ summary: GCAL_CALENDAR_SUMMARY, timeZone: timeZone || getGcalTimeZone() })
-        }
-    };
-}
-
-function getGcalAccessToken() {
-    if (authToken && authToken.access_token) return authToken.access_token;
-    try {
-        const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        return stored ? (JSON.parse(stored).access_token || null) : null;
-    } catch (e) { return null; }
-}
-
-// 'has' | 'lacks' | 'unknown' — дали текущият токен вече носи обхвата за календара
-// gcalScopeStale: Google върна, че токенът няма обхвата — важи повече от authToken.scope до успешен опит
-function getGcalTokenScopeState() {
-    if (localStorage.getItem('gcalScopeStale') === 'true') return 'lacks';
-    const scope = authToken && authToken.scope;
-    if (!scope) return 'unknown';
-    return splitScopeTokens(scope).includes(CALENDAR_APP_SCOPE) ? 'has' : 'lacks';
-}
-
-// Един ред в конзолата при всяко решение за обхвата: какво има в токена и какво следва
-function logGcalScopeDecision(where, decision) {
-    const scope = authToken && authToken.scope;
-    const calendarTokens = splitScopeTokens(scope).filter(t => t.includes('/auth/calendar'));
-    console.log(`[gcal] scope (${where}): state=${getGcalTokenScopeState()}, stale=${localStorage.getItem('gcalScopeStale') === 'true'}, ` +
-        `token calendar scopes=[${calendarTokens.join(' ')}]${scope ? '' : ' (no scope field)'} → ${decision}`);
-}
-
-// Съгласието се иска синхронно, още в жеста на потребителя: попъп, отворен след await, браузърът го блокира.
-// requestAdditionalScopes стига до tokenClient.requestAccessToken без await. Връща Promise<boolean>.
-function startGcalConsent(where) {
-    const force = localStorage.getItem('gcalScopeStale') === 'true';
-    const state = getGcalTokenScopeState();
-    logGcalScopeDecision(where, state === 'has' && !force ? 'skip consent (token has the scope)' : 'request consent');
-    return requestAdditionalScopes(CALENDAR_APP_SCOPE, { force });
-}
-
-// Заявка към Calendar API; при 401 токенът се опреснява веднъж, както при Drive заявките
-async function gcalApiFetch(buildRequest) {
-    let req = buildRequest(getGcalAccessToken());
-    let resp = await fetch(req.url, req.init);
-    if (resp.status === 401 && typeof refreshAuthToken === 'function') {
-        const refresh = await refreshAuthToken(false);
-        if (refresh && refresh.pass) {
-            req = buildRequest(refresh.tokenData.access_token);
-            resp = await fetch(req.url, req.init);
-        }
-    }
-    return resp;
-}
-
-// Тялото на грешката от Google: {"error":{"code":403,"message":"...","errors":[{"reason":"..."}],"status":"..."}}
-// Връща {reason, message} (низове, до 400 знака) или null; никога не хвърля
-async function readGcalErrorDetail(resp) {
-    if (!resp) return null;
-    try {
-        let body = null;
-        if (typeof resp.clone === 'function') body = await resp.clone().json();
-        else if (typeof resp.json === 'function') body = await resp.json();
-        const err = body && typeof body === 'object' ? body.error : null;
-        if (!err || typeof err !== 'object') return null;
-        const first = Array.isArray(err.errors) && err.errors[0] && typeof err.errors[0] === 'object' ? err.errors[0] : {};
-        const pick = (...values) => {
-            for (const v of values) {
-                if ((typeof v === 'string' && v.trim()) || typeof v === 'number') return String(v).trim().slice(0, 400);
-            }
-            return '';
-        };
-        const reason = pick(first.reason, err.status, err.code);
-        const message = pick(err.message, first.message);
-        // Само кодът (без причина и съобщение) повтаря HTTP статуса и не казва нищо ново
-        if (!message && !pick(first.reason, err.status)) return null;
-        return { reason, message };
-    } catch (e) {
-        return null;
-    }
-}
-
-// Не-ok отговор: detail от тялото; 403 с липсващ обхват → 'scope-missing' и следващият клик иска съгласие наново
-async function gcalHttpFailure(resp, calendarId) {
-    const detail = await readGcalErrorDetail(resp);
-    const scopeMissing = resp.status === 403 && detail &&
-        (detail.reason === 'insufficientPermissions' || detail.reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT');
-    if (scopeMissing) localStorage.setItem('gcalScopeStale', 'true');
-    const result = { ok: false, calendarId, reason: scopeMissing ? 'scope-missing' : `http-${resp.status}` };
-    if (detail) result.detail = detail;
-    return result;
-}
-
-// calendar.json в папката на settings.json: {"id":"<calendarId>"}
-async function readGcalIdFromDrive() {
-    if (isOffline) return null;
-    try {
-        const folderId = await getAppSettingsFolderId();
-        if (!folderId) return null;
-        const files = await findGDFileByName(folderId, GCAL_DRIVE_FILE);
-        if (!files || files.length === 0) return null;
-        const content = await fetchGDriveFileContent(files[0].id);
-        if (!content) return null;
-        const id = JSON.parse(content).id;
-        return typeof id === 'string' && id ? id : null;
-    } catch (e) {
-        console.warn('[gcal] calendar.json read failed:', e);
-        return null;
-    }
-}
-async function writeGcalIdToDrive(calendarId) {
-    if (isOffline) return false;
-    try {
-        const folderId = await getAppSettingsFolderId();
-        if (!folderId) return false;
-        const content = JSON.stringify({ id: calendarId || null });
-        const files = await findGDFileByName(folderId, GCAL_DRIVE_FILE);
-        if (files && files.length > 0) {
-            await updateGDriveFile(files[0].id, content);
-            for (let i = 1; i < files.length; i++) {
-                deleteGDriveFile(files[i].id).catch(e => console.warn('[gcal] Error deleting duplicate calendar.json:', e));
-            }
-        } else {
-            await createGDriveFile(folderId, GCAL_DRIVE_FILE, content);
-        }
-        return true;
-    } catch (e) {
-        console.warn('[gcal] calendar.json write failed:', e);
-        return false;
-    }
-}
-
-// Календарът е изтрит в Google: ключът се изключва и нищо не се създава пак само
-function forgetGcalCalendar() {
-    localStorage.removeItem('gcalCalendarId');
-    localStorage.setItem('gcalNotes', 'false');
-    localStorage.setItem('gcalState', 'deleted');
-}
-
-let _gcalEnsurePromise = null;
-let _gcalEnsureQuiet = false; // текущият опит е тихата проверка при старт (без съгласие)
-// {ok, calendarId, reason, detail?}; reason: 'no-auth' | 'scope-denied' | 'scope-missing' | 'calendar-deleted' | 'network' | 'http-<код>'
-// quiet (при старт): прозорецът за съгласие никога не се отваря (браузърът го блокира без жест);
-// ако токенът явно няма обхвата, връща reason 'scope-needed' и съгласието чака първия клик
-async function ensureGcalCalendar(options = {}) {
-    // Тече опит от потребителя: съгласието вече е поискано; второ не се отваря (GIS има един callback)
-    // и две извиквания наведнъж не създават два календара
-    if (_gcalEnsurePromise && !_gcalEnsureQuiet) return _gcalEnsurePromise;
-    // Опит от потребителя: съгласието се иска веднага, синхронно в жеста (преди всеки await)
-    const consent = !options.quiet && getGcalAccessToken() ? startGcalConsent(options.where || 'user action') : null;
-    if (_gcalEnsurePromise && !consent) return _gcalEnsurePromise;
-    // Ако тече тиха проверка, опитът с вече поисканото съгласие продължава след нея, вместо да се изгуби
-    const previous = _gcalEnsurePromise;
-    const attempt = (async () => {
-        if (previous) await previous.catch(() => null);
-        localStorage.removeItem('gcalLastError'); // нов опит: старата причина не важи
-        localStorage.removeItem('gcalLastErrorDetail');
-        const result = await ensureGcalCalendarOnce({ ...options, consent });
-        // Причината се помни за реда под ключа; изтрит календар си има свой ред, а 'scope-needed' чака клик
-        if (result.ok) {
-            localStorage.removeItem('gcalLastError');
-            localStorage.removeItem('gcalLastErrorDetail');
-            localStorage.removeItem('gcalScopeStale');
-        } else if (result.reason && result.reason !== 'calendar-deleted' && result.reason !== 'scope-needed') {
-            localStorage.setItem('gcalLastError', result.reason);
-            // Точният отговор на Google (само локално, не е в appSettingsKeys)
-            if (result.detail) localStorage.setItem('gcalLastErrorDetail', JSON.stringify(result.detail));
-        }
-        return result;
-    })().finally(() => { if (_gcalEnsurePromise === attempt) _gcalEnsurePromise = null; });
-    _gcalEnsurePromise = attempt;
-    _gcalEnsureQuiet = !!options.quiet;
-    return attempt;
-}
-async function ensureGcalCalendarOnce({ quiet = false, consent = null } = {}) {
-    if (!getGcalAccessToken()) return { ok: false, calendarId: null, reason: 'no-auth' };
-    if (quiet) {
-        const lacks = getGcalTokenScopeState() === 'lacks';
-        logGcalScopeDecision('start check', lacks ? 'wait for first click to request consent' : 'no consent (quiet), check the calendar');
-        if (lacks) return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-needed' };
-    }
-    if (!quiet && !(await (consent || startGcalConsent('user action')))) {
-        localStorage.setItem('gcalNotes', 'false');
-        return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-denied' };
-    }
-    let calendarId = localStorage.getItem('gcalCalendarId') || null;
-    let idFromDrive = false;
-    if (!calendarId) {
-        calendarId = await readGcalIdFromDrive();
-        idFromDrive = !!calendarId;
-    }
-    if (calendarId) {
-        let resp;
-        try {
-            resp = await gcalApiFetch(token => buildGcalGetCalendarRequest(token, calendarId));
-        } catch (e) {
-            console.warn('[gcal] calendars.get failed:', e);
-            return { ok: false, calendarId, reason: 'network' };
-        }
-        if (resp.ok) {
-            localStorage.setItem('gcalCalendarId', calendarId);
-            localStorage.setItem('gcalState', 'ok');
-            return { ok: true, calendarId, reason: null };
-        }
-        if (resp.status === 404 || resp.status === 410) {
-            forgetGcalCalendar();
-            // Файлът се чисти само ако още сочи изтрития календар (друго устройство може да е записало нов)
-            const driveId = idFromDrive ? calendarId : await readGcalIdFromDrive();
-            if (driveId === calendarId) await writeGcalIdToDrive(null);
-            return { ok: false, calendarId: null, reason: 'calendar-deleted' };
-        }
-        return gcalHttpFailure(resp, calendarId);
-    }
-    // Няма ID нито локално, нито в Drive: нов календар „CX Notes“
-    let resp;
-    try {
-        resp = await gcalApiFetch(token => buildGcalCreateCalendarRequest(token, getGcalTimeZone()));
-    } catch (e) {
-        console.warn('[gcal] calendars.insert failed:', e);
-        return { ok: false, calendarId: null, reason: 'network' };
-    }
-    if (!resp.ok) return gcalHttpFailure(resp, null);
-    let created = null;
-    try { created = await resp.json(); } catch (e) { created = null; }
-    if (!created || !created.id) return { ok: false, calendarId: null, reason: 'http-' + resp.status };
-    localStorage.setItem('gcalCalendarId', created.id);
-    localStorage.setItem('gcalState', 'ok');
-    await writeGcalIdToDrive(created.id);
-    return { ok: true, calendarId: created.id, reason: null };
-}
-
-// Редът под ключа: подсказка, „свързан“ или „изтрит“ — един ред, ключът е в data-key за смяната на езика
-function getGcalErrorKey(reason) {
-    if (reason === 'http-403') return 'gcalStatusApiDisabled';
-    if (reason === 'scope-missing') return 'gcalStatusScopeMissing';
-    if (reason === 'no-auth') return 'gcalStatusNoAuth';
-    if (reason === 'http-401') return 'gcalStatusAuthExpired';
-    return 'gcalStatusHttp';
-}
-function getGcalStatusKey() {
-    const on = isGcalNotesOn();
-    const state = localStorage.getItem('gcalState');
-    const lastError = localStorage.getItem('gcalLastError');
-    if (on && lastError) return getGcalErrorKey(lastError);
-    if (!on && state === 'deleted') return 'gcalStatusDeleted';
-    if (on && state === 'ok' && localStorage.getItem('gcalCalendarId')) return 'gcalStatusOk';
-    return 'gcalNotesHint';
-}
-function applyGcalNotesSetting() {
-    const checkbox = document.getElementById('gcal-notes-checkbox');
-    if (checkbox) checkbox.checked = isGcalNotesOn();
-    const line = document.getElementById('gcal-notes-status');
-    if (line) {
-        const key = getGcalStatusKey();
-        line.setAttribute('data-key', key);
-        line.innerHTML = _(key);
-        // Под реда за грешка: точният отговор на Google, ако е записан (строи се тук, за да следва езика)
-        const detail = isGcalNotesOn() && localStorage.getItem('gcalLastError') ? getGcalLastErrorDetail() : null;
-        if (detail) {
-            const text = [detail.reason, detail.message].filter(Boolean).join(': ');
-            line.innerHTML += '<span style="display:block;margin-top:2px;font-size:0.85em;opacity:.75;word-break:break-word;">' +
-                _('gcalStatusGoogleDetail') + ' ' + escapeHtml(text) + '</span>';
-        }
-        // Обхождането след включване: брояч и лента в същия ред (етап 3)
-        const progress = isGcalNotesOn() && typeof _gcalSyncProgress !== 'undefined' ? _gcalSyncProgress : null;
-        if (progress && progress.total > 0) {
-            const pct = Math.round(100 * Math.min(progress.done, progress.total) / progress.total);
-            line.innerHTML += '<span class="gcal-sync-progress"><span class="gcal-sync-progress-text">' +
-                escapeHtml((_(progress.skipped > 0 ? 'gcalSyncProgressSkipped' : 'gcalSyncProgress') || '')
-                    .replace('{done}', progress.done).replace('{total}', progress.total).replace('{skipped}', progress.skipped || 0)) +
-                '</span><span class="gcal-sync-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="' + progress.total +
-                '" aria-valuenow="' + progress.done + '"><span style="width:' + pct + '%"></span></span></span>';
-        }
-    }
-}
-function getGcalLastErrorDetail() {
-    try {
-        const d = JSON.parse(localStorage.getItem('gcalLastErrorDetail') || 'null');
-        if (!d || typeof d !== 'object') return null;
-        const reason = typeof d.reason === 'string' ? d.reason : '';
-        const message = typeof d.message === 'string' ? d.message : '';
-        return reason || message ? { reason, message } : null;
-    } catch (e) { return null; }
-}
-function initGcalNotesCheckbox() {
-    const checkbox = document.getElementById('gcal-notes-checkbox');
-    if (!checkbox || checkbox.dataset.gcalBound) return;
-    checkbox.dataset.gcalBound = '1';
-    applyGcalNotesSetting();
-    checkbox.addEventListener('change', async () => {
-        if (!checkbox.checked) {
-            // Изключване: нищо в Google не се трие, календарът остава
-            localStorage.setItem('gcalNotes', 'false');
-            applyGcalNotesSetting();
-            showToast(_('settingSaved'), 2000);
-            return;
-        }
-        localStorage.setItem('gcalNotes', 'true');
-        if (localStorage.getItem('gcalState') === 'deleted') localStorage.removeItem('gcalState');
-        checkbox.disabled = true;
-        let result;
-        try {
-            result = await ensureGcalCalendar({ where: 'toggle' });
-        } catch (e) {
-            console.warn('[gcal] ensureGcalCalendar failed:', e);
-            result = { ok: false, calendarId: null, reason: 'network' };
-        } finally {
-            checkbox.disabled = false;
-        }
-        reportGcalResult(result);
-        // Включен ключ: всички бележки с дата получават събития (обхождането се помни, ако прекъсне)
-        if (result.ok) syncGcalEvents({ backfill: true }).catch(e => console.warn('[gcal] backfill failed:', e));
-    });
-}
-
-// След опит от потребителя: отметката остава каквато е (отказано съгласие и изтрит календар я изключват
-// сами в ensureGcalCalendarOnce), а всяка грешка дава тост и ред под ключа с причината
-function reportGcalResult(result) {
-    if (!result.ok && result.reason !== 'calendar-deleted') {
-        if (result.reason === 'scope-denied') showToast(_('gcalScopeDenied'), 4000);
-        else if (result.reason === 'network') showToast(_('offlineModeMessage'), 3000);
-        else {
-            console.warn(`[gcal] calendar not available: ${result.reason}`);
-            showToast(_(getGcalErrorKey(result.reason)), 6000);
-        }
-    }
-    applyGcalNotesSetting();
-}
-
-// Съгласието за календара иска потребителски жест: при старт само се закачва еднократен слушател.
-// Събитието е 'click': pointerdown от докосване не е жест за браузъра и попъпът на Google се блокира
-let _gcalConsentListener = null;
-function armGcalConsentOnFirstClick() {
-    if (_gcalConsentListener) return;
-    _gcalConsentListener = () => {
-        _gcalConsentListener = null; // once: не се възстановява
-        if (!isGcalNotesOn()) return;
-        if (getGcalTokenScopeState() === 'has') { logGcalScopeDecision('first click', 'skip consent (token has the scope)'); return; }
-        ensureGcalCalendar({ where: 'first click' })
-            .then(result => { reportGcalResult(result); if (result.ok) scheduleGcalSync(0); })
-            .catch(e => console.warn('[gcal] consent on first click failed:', e));
-    };
-    document.addEventListener('click', _gcalConsentListener, { capture: true, once: true });
-}
-
-// При старт: тиха проверка, само ако ключът е включен; грешка не спира старта и не пипа ключа
-function verifyGcalOnStart() {
-    if (!isGcalNotesOn() || isOffline) return;
-    if (getGcalTokenScopeState() === 'lacks') {
-        logGcalScopeDecision('start', 'wait for first click to request consent');
-        armGcalConsentOnFirstClick();
-        return;
-    }
-    ensureGcalCalendar({ quiet: true })
-        .then(result => {
-            if (result.reason === 'scope-needed') armGcalConsentOnFirstClick();
-            else if (!result.ok) console.warn('[gcal] start check:', result.reason);
-            applyGcalNotesSetting();
-            if (result.ok) scheduleGcalSync(); // сверката при отваряне
-        })
-        .catch(e => console.warn('[gcal] start check failed:', e));
-}
-
-// --- Събитията в календара „CX Notes“, етап 3 (b2.11) ---------------------------------
-// Огледало в една посока: бележката е мястото на истината, промени в Google не се връщат.
-// Сверката (syncGcalEvents) обхожда allNotesData и я сравнява с локалния индекс gcalEventIndex:
-// {cal, f: {<папка>: {<cxNotesId>: {e: <id на събитието>, h: <отпечатък на тялото>}}}}.
-// Всяко събитие носи в extendedProperties.private белега cxNotesId (gdid на бележката), папката
-// (cxNotesFolder) и cxNotesHash. Без индекс (друго устройство, загубен EvId, нов календар) връзката се
-// възстановява с едно обхождане на календара по папката — затова няма дублирани събития, а
-// прекъснато обхождане продължава оттам, където е спряло (индексът се пише след всяко събитие).
-// В бележката: uiState.EvId (id на събитието) и uiState.SynAt (кога е писано в Google, ms).
-// Бележката се пише в Drive само когато EvId се смени; datemod не се пипа.
-// Сверката тръгва при старт (след проверката на календара) и ~2 с след запис/триене; никога при
-// изключен ключ. Мрежова грешка не пипа бележката — събитието се наваксва при следващата сверка.
-const GCAL_EVENT_INDEX_KEY = 'gcalEventIndex';
-const GCAL_BACKFILL_KEY = 'gcalBackfill'; // '1' докато обхождането след включване не е стигнало до края
-const GCAL_SYNC_DELAY_MS = 2000;
-const GCAL_EVENT_MINUTES = 30;            // събитие с час: край = начало + 30 мин
-const GCAL_TIMED_REMINDER_MINUTES = 30;   // етап 4 ще ги направи настройки
-const GCAL_ALL_DAY_REMINDER_HOUR = 9;
-const GCAL_TITLE_MAX = 120;
-const GCAL_DESCRIPTION_MAX = 8000;
-const GCAL_EVENT_FORMAT = 1;              // смяна на формата на тялото → всички събития се обновяват
-// Цветовете на събитията в Google (colors.get → event)
-const GCAL_EVENT_COLORS = {
-    '1': '#a4bdfc', '2': '#7ae7bf', '3': '#dbadff', '4': '#ff887c', '5': '#fbd75b', '6': '#ffb878',
-    '7': '#46d6db', '8': '#e1e1e1', '9': '#5484ed', '10': '#51b749', '11': '#dc2127'
-};
-const RRULE_FREQ = { daily: 'DAILY', weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' };
-
-// Белегът на бележката: gdid, щом е истински (временният gdid е равен на id и се сменя при първия запис)
-function getGcalNoteKey(note) {
-    if (!note || note.guideDemo) return null;
-    const gdid = note.gdid === undefined || note.gdid === null ? '' : String(note.gdid);
-    if (!gdid || gdid === String(note.id)) return null;
-    return gdid;
-}
-
-// Папката по име (същото на всяко устройство): събитията на друга папка не се трият оттук
-function getGcalFolderKey() {
-    const name = typeof activeFolderName !== 'undefined' && activeFolderName ? String(activeFolderName) : '';
-    return (name || localStorage.getItem('active_folder_name') || 'default').toLowerCase().slice(0, 200);
-}
-
-function isGcalNoteWanted(note) {
-    return !!note && Number(note.calendarDate) > 0 && note.status !== 1 && !!getGcalNoteKey(note);
-}
-
-// Стара дата (CX, 2026-10-10): последната поява е преди днес — денят без повторение, или „до“ при
-// повторение; повторение без край не е старо
-function isGcalNoteOldDate(note, now = new Date()) {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const repeat = getNoteCalRepeat(note.uiState);
-    if (repeat) {
-        if (!repeat.u) return false;
-        const [y, mo, d] = repeat.u.split('-').map(Number);
-        return new Date(y, mo - 1, d).getTime() < today;
-    }
-    const day = new Date(Number(note.calendarDate));
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime() < today;
-}
-
-// Обхождането не качва стари дати: бележка със стара дата и още без събитие се прескача, освен ако е
-// записана днес (обикновеният запис / редакция на бележка с минала дата пише събитието както досега).
-// Без състояние — същото решение на всяко устройство, затова другото не качва прескочените.
-function isGcalNoteSkippedOld(note, now = new Date()) {
-    if (!isGcalNoteOldDate(note, now)) return false;
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    return (Number(note.datemod) || 0) < today;
-}
-
-// Текстът на бележката: заглавието преди „|“ е първи ред
-function getGcalNotePlainText(note) {
-    const txt = String((note && note.notetxt) || '');
-    const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
-    return pIdx !== -1 ? txt.slice(0, pIdx) + '\n' + txt.slice(pIdx + 1) : txt;
-}
-
-// Първият непразен ред (до 120 знака); празна бележка → „Бележка от CX Notes“
-function buildGcalEventTitle(text) {
-    const line = String(text || '').split(/\r?\n/).map(l => l.trim()).find(Boolean) || '';
-    if (!line) return _('gcalEventDefaultTitle') || 'Note from CX Notes';
-    return line.length > GCAL_TITLE_MAX ? line.slice(0, GCAL_TITLE_MAX - 1).trimEnd() + '…' : line;
-}
-
-// Най-близкият цвят на Google до фона на бележката; бележка без цвят → без цвят
-function getGcalEventColorId(color) {
-    if (color === undefined || color === null || color === '') return null;
-    const css = String(getNoteColorCss(color, '') || '');
-    const m = /^#?([0-9a-f]{6})$/i.exec(css.trim());
-    if (!m) return null;
-    const rgb = hex => [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
-    const [r, g, b] = rgb(m[1]);
-    let best = null, bestDist = Infinity;
-    Object.keys(GCAL_EVENT_COLORS).forEach(id => {
-        const [r2, g2, b2] = rgb(GCAL_EVENT_COLORS[id].slice(1));
-        const dist = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2;
-        if (dist < bestDist) { bestDist = dist; best = id; }
-    });
-    return best;
-}
-
-function gcalPad2(n) { return String(n).padStart(2, '0'); }
-function gcalYmd(d) { return `${d.getFullYear()}-${gcalPad2(d.getMonth() + 1)}-${gcalPad2(d.getDate())}`; }
-function gcalLocalDateTime(d) { return `${gcalYmd(d)}T${gcalPad2(d.getHours())}:${gcalPad2(d.getMinutes())}:00`; }
-
-// RRULE: целодневно UNTIL=YYYYMMDD; с час — краят на деня „до“ в UTC (RFC 5545 при начало с часова зона).
-// Крайна дата преди началото → без повторение (само самото събитие).
-function buildGcalRecurrence(repeat, startDate, allDay) {
-    if (!repeat || !RRULE_FREQ[repeat.f]) return null;
-    let rule = `RRULE:FREQ=${RRULE_FREQ[repeat.f]}`;
-    if (repeat.u) {
-        const [y, mo, d] = repeat.u.split('-').map(Number);
-        const until = new Date(y, mo - 1, d);
-        const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-        if (until < startDay) return null;
-        if (allDay) rule += `;UNTIL=${repeat.u.replace(/-/g, '')}`;
-        else rule += `;UNTIL=${new Date(y, mo - 1, d, 23, 59, 59).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`;
-    }
-    return [rule];
-}
-
-// Напомняне: 30 мин преди събитие с час. Целодневно: Google приема само минути ≥ 0 преди полунощ на
-// деня (отрицателни → 400), затова 9:00 е най-близкото възможно — предния ден в 9:00 (900 мин).
-function getGcalReminderMinutes(allDay) {
-    return allDay ? (24 - GCAL_ALL_DAY_REMINDER_HOUR) * 60 : GCAL_TIMED_REMINDER_MINUTES;
-}
-
-// FNV-1a, 32 бита: отпечатък на тялото, по който сверката разбира, че събитието трябва да се обнови
-function gcalHash(str) {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-    return h.toString(16).padStart(8, '0');
-}
-
-// Тялото на събитието от бележката (без заявка): {body, hash}
-function buildGcalEventBody(note, folderKey = getGcalFolderKey(), timeZone = getGcalTimeZone()) {
-    const day = new Date(Number(note.calendarDate));
-    const time = getNoteCalTime(note.uiState);
-    const repeat = getNoteCalRepeat(note.uiState);
-    const allDay = !time;
-    // Скрита бележка (с парола): текстът ѝ не излиза в Google
-    const text = note.pass ? '' : getGcalNotePlainText(note);
-    const body = { summary: buildGcalEventTitle(text), description: text.slice(0, GCAL_DESCRIPTION_MAX) };
-    let start = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-    if (allDay) {
-        const next = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
-        body.start = { date: gcalYmd(start) };
-        body.end = { date: gcalYmd(next) };
-    } else {
-        const [hh, mm] = time.split(':').map(Number);
-        start = new Date(start.getFullYear(), start.getMonth(), start.getDate(), hh, mm);
-        const end = new Date(start.getTime());
-        end.setMinutes(end.getMinutes() + GCAL_EVENT_MINUTES);
-        body.start = { dateTime: gcalLocalDateTime(start), timeZone };
-        body.end = { dateTime: gcalLocalDateTime(end), timeZone };
-    }
-    const recurrence = buildGcalRecurrence(repeat, start, allDay);
-    if (recurrence) body.recurrence = recurrence;
-    body.reminders = { useDefault: false, overrides: [{ method: 'popup', minutes: getGcalReminderMinutes(allDay) }] };
-    const colorId = getGcalEventColorId(note.color);
-    if (colorId) body.colorId = colorId;
-    const key = getGcalNoteKey(note);
-    const hash = gcalHash(JSON.stringify([GCAL_EVENT_FORMAT, key, folderKey, body]));
-    body.extendedProperties = { private: { cxNotesId: key, cxNotesFolder: folderKey, cxNotesHash: hash } };
-    return { body, hash };
-}
-
-function gcalEventsUrl(calendarId, eventId) {
-    return `${GCAL_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events` + (eventId ? `/${encodeURIComponent(eventId)}` : '');
-}
-function buildGcalInsertEventRequest(accessToken, calendarId, body) {
-    return {
-        url: gcalEventsUrl(calendarId),
-        init: { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    };
-}
-function buildGcalUpdateEventRequest(accessToken, calendarId, eventId, body) {
-    return {
-        url: gcalEventsUrl(calendarId, eventId),
-        init: { method: 'PUT', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    };
-}
-function buildGcalDeleteEventRequest(accessToken, calendarId, eventId) {
-    return { url: gcalEventsUrl(calendarId, eventId), init: { method: 'DELETE', headers: { 'Authorization': `Bearer ${accessToken}` } } };
-}
-// Събитията на папката, страница по страница (само id и белезите)
-function buildGcalListEventsRequest(accessToken, calendarId, folderKey, pageToken) {
-    const params = new URLSearchParams({
-        privateExtendedProperty: `cxNotesFolder=${folderKey}`,
-        maxResults: '2500',
-        showDeleted: 'false',
-        fields: 'items(id,status,extendedProperties),nextPageToken'
-    });
-    if (pageToken) params.set('pageToken', pageToken);
-    return { url: `${gcalEventsUrl(calendarId)}?${params.toString()}`, init: { method: 'GET', headers: { 'Authorization': `Bearer ${accessToken}` } } };
-}
-
-function loadGcalEventIndex(calendarId) {
-    let idx = null;
-    try { idx = JSON.parse(localStorage.getItem(GCAL_EVENT_INDEX_KEY) || 'null'); } catch (e) { idx = null; }
-    // Друг календар (изтрит и създаден наново) → старите id не важат
-    if (!idx || typeof idx !== 'object' || idx.cal !== calendarId || !idx.f || typeof idx.f !== 'object') idx = { cal: calendarId, f: {} };
-    return idx;
-}
-function saveGcalEventIndex(idx) {
-    try { localStorage.setItem(GCAL_EVENT_INDEX_KEY, JSON.stringify(idx)); } catch (e) { console.warn('[gcal] index save failed:', e); }
-}
-
-// EvId / SynAt в бележката: IndexedDB винаги; Drive и локалната папка — само при смяна на EvId
-async function persistGcalNoteLink(note, evIdChanged) {
-    try {
-        if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') await bulkPutDB(NOTE_STORE_NAME, note, true);
-        if (!evIdChanged) return;
-        const gdid = String(note.gdid || '');
-        if (useGoogleDb && !isOffline && gdid && !gdid.startsWith('L')) await updateGDriveFile(gdid, JSON.stringify(note));
-        if (localStorage.getItem('updateLocalFolder') === 'true' && gdid && typeof updateLocalFile === 'function') {
-            await updateLocalFile(gdid, JSON.stringify(note));
-        }
-    } catch (e) {
-        console.warn('[gcal] note link save failed:', e);
-    }
-}
-function setGcalNoteLink(note, eventId) {
-    const u = { ...getNoteUiState(note.uiState) };
-    const changed = (u.EvId || null) !== (eventId || null);
-    if (eventId) { u.EvId = eventId; u.SynAt = Date.now(); } else { delete u.EvId; delete u.SynAt; }
-    note.uiState = u;
-    return changed;
-}
-
-// Без заявки, ако ключът е изключен, няма календар, токен или обхват
-function canSyncGcalEvents() {
-    return isGcalNotesOn() && !isOffline && !!getGcalAccessToken() && localStorage.getItem('gcalState') === 'ok' &&
-        !!localStorage.getItem('gcalCalendarId') && getGcalTokenScopeState() !== 'lacks';
-}
-
-let _gcalSyncTimer = null;
-let _gcalSyncPromise = null;
-let _gcalSyncAgain = false;
-let _gcalSyncProgress = null; // {done, total} по време на обхождането след включване
-
-// След запис / триене: сверка след ~2 с (поредица промени дава една сверка)
-function scheduleGcalSync(delay = GCAL_SYNC_DELAY_MS) {
-    if (!canSyncGcalEvents()) return;
-    clearTimeout(_gcalSyncTimer);
-    _gcalSyncTimer = setTimeout(() => {
-        _gcalSyncTimer = null;
-        syncGcalEvents().catch(e => console.warn('[gcal] sync failed:', e));
-    }, delay);
-}
-
-// Една сверка наведнъж; поискана по време на друга → още една след нея
-function syncGcalEvents(options = {}) {
-    if (options.backfill) localStorage.setItem(GCAL_BACKFILL_KEY, '1');
-    if (_gcalSyncPromise) { _gcalSyncAgain = true; return _gcalSyncPromise; }
-    _gcalSyncPromise = (async () => {
-        let result;
-        do {
-            _gcalSyncAgain = false;
-            result = await syncGcalEventsOnce();
-        } while (_gcalSyncAgain && result.ok);
-        return result;
-    })().finally(() => { _gcalSyncPromise = null; });
-    return _gcalSyncPromise;
-}
-
-// Всички събития на папката: Map cxNotesId → [{id, h}] или {fail: resp|'network'}
-async function listGcalFolderEvents(calendarId, folderKey) {
-    const map = new Map();
-    let pageToken = null;
-    for (let page = 0; page < 100; page++) {
-        let resp;
-        try {
-            resp = await gcalApiFetch(token => buildGcalListEventsRequest(token, calendarId, folderKey, pageToken));
-        } catch (e) {
-            console.warn('[gcal] events.list failed:', e);
-            return { fail: 'network' };
-        }
-        if (!resp.ok) return { fail: resp };
-        let data = null;
-        try { data = await resp.json(); } catch (e) { data = null; }
-        const items = data && Array.isArray(data.items) ? data.items : [];
-        items.forEach(ev => {
-            const p = ev && ev.extendedProperties && ev.extendedProperties.private;
-            if (!ev || !ev.id || ev.status === 'cancelled' || !p || !p.cxNotesId) return;
-            if (!map.has(p.cxNotesId)) map.set(p.cxNotesId, []);
-            map.get(p.cxNotesId).push({ id: ev.id, h: p.cxNotesHash || '' });
-        });
-        pageToken = data && data.nextPageToken;
-        if (!pageToken) return { map };
-    }
-    return { map };
-}
-
-// Календарът е изтрит в Google по време на сверка: като при проверката — ключът се изключва
-async function onGcalCalendarGone(calendarId) {
-    forgetGcalCalendar();
-    localStorage.removeItem(GCAL_EVENT_INDEX_KEY);
-    localStorage.removeItem(GCAL_BACKFILL_KEY);
-    try {
-        if ((await readGcalIdFromDrive()) === calendarId) await writeGcalIdToDrive(null);
-    } catch (e) { console.warn('[gcal] calendar.json cleanup failed:', e); }
-    showToast(_('gcalStatusDeleted'), 5000);
-}
-
-// Не-ok отговор, който спира сверката: 401/403 остават в реда под ключа; квота/5xx — само в конзолата
-async function onGcalSyncHttpFailure(resp, calendarId) {
-    const failure = await gcalHttpFailure(resp, calendarId);
-    const transient = resp.status === 429 || resp.status >= 500 || (failure.detail &&
-        ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded'].includes(failure.detail.reason));
-    if (!transient && (resp.status === 401 || resp.status === 403)) {
-        localStorage.setItem('gcalLastError', failure.reason);
-        if (failure.detail) localStorage.setItem('gcalLastErrorDetail', JSON.stringify(failure.detail));
-        else localStorage.removeItem('gcalLastErrorDetail');
-    }
-    console.warn(`[gcal] sync stopped: ${failure.reason}`);
-    return { ok: false, reason: transient ? 'transient' : failure.reason };
-}
-
-function setGcalSyncProgress(progress) {
-    _gcalSyncProgress = progress;
-    applyGcalNotesSetting();
-}
-
-async function syncGcalEventsOnce() {
-    if (!canSyncGcalEvents()) return { ok: false, reason: 'off' };
-    const calendarId = localStorage.getItem('gcalCalendarId');
-    const folderKey = getGcalFolderKey();
-    const timeZone = getGcalTimeZone();
-    const index = loadGcalEventIndex(calendarId);
-    // Първа сверка за тази папка и календар (ключът е включен по подразбиране от b2.08 и мнозина няма
-    // да го включват наново) също е обхождане: лента, прескочени стари дати, тост накрая
-    const firstRun = !index.f[folderKey];
-    const backfill = localStorage.getItem(GCAL_BACKFILL_KEY) === '1' || firstRun;
-    if (backfill) localStorage.setItem(GCAL_BACKFILL_KEY, '1');
-    const known = index.f[folderKey] || (index.f[folderKey] = {});
-    const notesLoaded = Array.isArray(allNotesData) && allNotesData.length > 0;
-
-    const wanted = new Map();
-    const present = new Set(); // бележки в паметта (и без дата): EvId-то им се чисти при триене
-    (allNotesData || []).forEach(note => {
-        const key = getGcalNoteKey(note);
-        if (!key) return;
-        present.add(key);
-        if (isGcalNoteWanted(note)) wanted.set(key, { note, ...buildGcalEventBody(note, folderKey, timeZone) });
-    });
-
-    // Индексът не познава бележка (или EvId в нея е друг) → едно обхождане на календара възстановява връзката
-    // Прескочена стара бележка без EvId не пуска обхождане (иначе всяка сверка би обхождала календара)
-    const extraDeletes = [];
-    const now = new Date();
-    const needList = firstRun || [...wanted].some(([key, w]) => {
-        const evId = getNoteUiState(w.note.uiState).EvId;
-        if (evId) return !known[key] || evId !== known[key].e;
-        return !known[key] && !isGcalNoteSkippedOld(w.note, now);
-    });
-    if (needList) {
-        const listed = await listGcalFolderEvents(calendarId, folderKey);
-        if (listed.fail === 'network') return { ok: false, reason: 'network' };
-        if (listed.fail) {
-            if (listed.fail.status === 404 || listed.fail.status === 410) { await onGcalCalendarGone(calendarId); return { ok: false, reason: 'calendar-deleted' }; }
-            return onGcalSyncHttpFailure(listed.fail, calendarId);
-        }
-        Object.keys(known).forEach(key => { if (!listed.map.has(key)) delete known[key]; });
-        listed.map.forEach((events, key) => {
-            // Предпочита събитието, което бележката помни; останалите със същия белег са дубликати
-            const evId = wanted.has(key) ? getNoteUiState(wanted.get(key).note.uiState).EvId : null;
-            const keep = events.find(ev => ev.id === evId) || events.find(ev => known[key] && ev.id === known[key].e) || events[0];
-            known[key] = { e: keep.id, h: keep.h };
-            events.forEach(ev => { if (ev.id !== keep.id) extraDeletes.push({ key: null, eventId: ev.id }); });
-        });
-        saveGcalEventIndex(index);
-    }
-
-    const ops = [];
-    let skippedOld = 0;
-    wanted.forEach((w, key) => {
-        const cur = known[key];
-        if (!cur && isGcalNoteSkippedOld(w.note, now)) {
-            skippedOld++;
-            // EvId към събитие, което вече го няма в Google: чисти се, иначе всяка сверка би обхождала
-            if (getNoteUiState(w.note.uiState).EvId) ops.push({ type: 'link', key, w, eventId: null });
-            return;
-        }
-        if (!cur) ops.push({ type: 'insert', key, w });
-        else if (cur.h !== w.hash) ops.push({ type: 'update', key, w, eventId: cur.e });
-        else if (getNoteUiState(w.note.uiState).EvId !== cur.e) ops.push({ type: 'link', key, w, eventId: cur.e });
-    });
-    // Бележките още не са заредени → нищо не се трие
-    if (notesLoaded) {
-        Object.keys(known).forEach(key => { if (!wanted.has(key)) ops.push({ type: 'delete', key, eventId: known[key].e }); });
-        extraDeletes.forEach(d => ops.push({ type: 'delete', key: d.key, eventId: d.eventId }));
-    }
-
-    const requests = ops.filter(op => op.type !== 'link').length;
-    const showProgress = backfill && requests > 0;
-    let done = 0;
-    if (showProgress) setGcalSyncProgress({ done, total: requests, skipped: skippedOld });
-    const findNote = key => (allNotesData || []).find(n => getGcalNoteKey(n) === key);
-    let stop = null;
-    try {
-        for (const op of ops) {
-            if (!canSyncGcalEvents()) { stop = { ok: false, reason: 'off' }; break; } // изключен по време на сверката
-            if (op.type === 'link') {
-                await persistGcalNoteLink(op.w.note, setGcalNoteLink(op.w.note, op.eventId));
-                continue;
-            }
-            let resp;
-            try {
-                if (op.type === 'delete') {
-                    resp = await gcalApiFetch(token => buildGcalDeleteEventRequest(token, calendarId, op.eventId));
-                } else if (op.type === 'update') {
-                    resp = await gcalApiFetch(token => buildGcalUpdateEventRequest(token, calendarId, op.eventId, op.w.body));
-                    // Събитието е изтрито в Google → ново
-                    if (resp.status === 404 || resp.status === 410) op.type = 'insert';
-                }
-                if (op.type === 'insert') resp = await gcalApiFetch(token => buildGcalInsertEventRequest(token, calendarId, op.w.body));
-            } catch (e) {
-                console.warn(`[gcal] events.${op.type} failed:`, e);
-                stop = { ok: false, reason: 'network' };
-                break;
-            }
-            if (op.type === 'delete') {
-                // 404/410: вече го няма — същият резултат
-                if (resp.ok || resp.status === 404 || resp.status === 410) {
-                    if (op.key) {
-                        delete known[op.key];
-                        const note = present.has(op.key) ? findNote(op.key) : null;
-                        if (note && getNoteUiState(note.uiState).EvId) await persistGcalNoteLink(note, setGcalNoteLink(note, null));
-                    }
-                } else {
-                    stop = await onGcalSyncHttpFailure(resp, calendarId);
-                    break;
-                }
-            } else if (resp.ok) {
-                let ev = null;
-                try { ev = await resp.json(); } catch (e) { ev = null; }
-                const eventId = (ev && ev.id) || op.eventId;
-                if (eventId) {
-                    known[op.key] = { e: eventId, h: op.w.hash };
-                    await persistGcalNoteLink(op.w.note, setGcalNoteLink(op.w.note, eventId));
-                }
-            } else if (op.type === 'insert' && (resp.status === 404 || resp.status === 410)) {
-                await onGcalCalendarGone(calendarId);
-                stop = { ok: false, reason: 'calendar-deleted' };
-                break;
-            } else if (resp.status === 400) {
-                // Това събитие Google не го приема: следващите продължават, опит пак при следваща промяна
-                console.warn(`[gcal] events.${op.type} rejected for ${op.key}:`, await readGcalErrorDetail(resp));
-            } else {
-                stop = await onGcalSyncHttpFailure(resp, calendarId);
-                break;
-            }
-            if (stop) break;
-            if (localStorage.getItem('gcalCalendarId') === calendarId) saveGcalEventIndex(index);
-            done++;
-            if (showProgress) setGcalSyncProgress({ done, total: requests, skipped: skippedOld });
-        }
-    } finally {
-        if (showProgress) setGcalSyncProgress(null);
-    }
-    if (stop) {
-        applyGcalNotesSetting();
-        return { ...stop, done, skipped: skippedOld };
-    }
-    if (requests > 0 || needList) {
-        localStorage.removeItem('gcalLastError');
-        localStorage.removeItem('gcalLastErrorDetail');
-        localStorage.removeItem('gcalScopeStale');
-        applyGcalNotesSetting();
-    }
-    // Стигнато до края: обхождането след включване е завършено
-    if (backfill) {
-        saveGcalEventIndex(index);
-        localStorage.removeItem(GCAL_BACKFILL_KEY);
-        const written = ops.filter(op => op.type === 'insert' || op.type === 'update').length;
-        if (written > 0 || skippedOld > 0) {
-            const msg = skippedOld > 0 ? (_('gcalSyncDoneSkipped') || '').replace('{skipped}', skippedOld) : (_('gcalSyncDone') || '');
-            showToast(msg.replace('{count}', written), 5000);
-        }
-    }
-    return { ok: true, reason: null, done, skipped: skippedOld };
-}
-
-async function syncGlobalFoldersJson() {
-    if (isOffline || !useGoogleDb) return;
-    try {
-        const folderNamesStr = localStorage.getItem('gdrive_folder_names');
-        if (!folderNamesStr) return;
-        const folderNames = JSON.parse(folderNamesStr).filter(n => n && n !== 'AppDataFolder');
-        if (!Array.isArray(folderNames)) return;
-        const currentEmail = sessionStorage.getItem('google_auth_email_hint') || '';
-        const activeFolderCurrent = localStorage.getItem('active_folder_name') || '';
-        const folders = folderNames.map(name => {
-            const entry = { name };
-            // Per-folder start board: use the dedicated key, or for the active folder use the global startBoard
-            const perFolderSB = localStorage.getItem('startBoard_' + name);
-            if (perFolderSB) {
-                entry.startBoard = perFolderSB;
-            } else if (name === activeFolderCurrent) {
-                const globalSB = localStorage.getItem('startBoard');
-                if (globalSB) entry.startBoard = globalSB;
-            }
-            // Per-folder data: boardMenuOrder, lastNoteId, lastBoardId
-            if (name === activeFolderCurrent) {
-                const bmo = localStorage.getItem('boardMenuOrder');
-                if (bmo) {
-                    try {
-                        entry.boardMenuOrder = JSON.parse(bmo);
-                    } catch (e) { }
-                }
-                if (typeof noteId !== 'undefined') entry.lastNoteId = noteId;
-                if (typeof noteNumord !== 'undefined') entry.lastNoteNumord = noteNumord;
-                const bic = localStorage.getItem('boardIdCounter');
-                if (bic !== null) entry.lastBoardId = parseInt(bic, 10);
-            } else {
-                // Запазваме вече записаните стойности от предишни сесии
-                const perBmo = localStorage.getItem('boardMenuOrder_' + name);
-                if (perBmo) try { entry.boardMenuOrder = JSON.parse(perBmo); } catch (e) { }
-                const perNid = localStorage.getItem('lastNoteId_' + name);
-                if (perNid !== null) entry.lastNoteId = parseInt(perNid, 10);
-                const perNord = localStorage.getItem('lastNoteNumord_' + name);
-                if (perNord !== null) entry.lastNoteNumord = parseInt(perNord, 10);
-                const perBid = localStorage.getItem('lastBoardId_' + name);
-                if (perBid !== null) entry.lastBoardId = parseInt(perBid, 10);
-            }
-            return entry;
-        });
-        const data = {
-            email: currentEmail,
-            activeFolder: activeFolderCurrent,
-            folders
-        };
-        const content = JSON.stringify(data, null, 2);
-        // Push only to the main 'AppSettings' folder in AppDataFolder
-        try {
-            const fID = await getAppSettingsFolderId();
-            if (fID) {
-                const existingFiles = await findGDFileByName(fID, 'folders.json');
-                if (existingFiles && existingFiles.length > 0) {
-                    // Ако има дубликати на folders.json, почистваме старите
-                    if (existingFiles.length > 1) {
-                        for (let i = 1; i < existingFiles.length; i++) {
-                            deleteGDriveFile(existingFiles[i].id).catch(e => console.warn("[Sync] Error deleting duplicate folders.json:", e));
-                        }
-                    }
-                    await updateGDriveFile(existingFiles[0].id, content);
-                } else {
-                    await createGDriveFile(fID, 'folders.json', content);
-                }
-            }
-        } catch (e) {
-            console.warn("Failed to sync folders.json to AppSettings", e);
-        }
-    } catch (e) {
-        console.warn("syncGlobalFoldersJson error:", e);
-    }
-}
-
-/**
- * Асинхронно записва per-folder данни (boardMenuOrder, noteId, boardIdCounter) във folders.json.
- * Извиква се след промяна на тези стойности.
- */
-let _syncFolderDataTimer = null;
-function syncFolderDataAsync() {
-    if (_syncFolderDataTimer) clearTimeout(_syncFolderDataTimer);
-    _syncFolderDataTimer = setTimeout(() => {
-        _syncFolderDataTimer = null;
-        syncGlobalFoldersJson();
-    }, 2000);
-}
-
-async function loadGlobalFoldersJson() {
-    console.log('[DEBUG] loadGlobalFoldersJson() called. isOffline:', isOffline);
-    if (isOffline) return false;
-    try {
-        const folderId = await getAppSettingsFolderId();
-        console.log('[DEBUG] loadGlobalFoldersJson(): getAppSettingsFolderId returned:', folderId);
-        if (!folderId) return false;
-        const existingFiles = await findGDFileByName(folderId, 'folders.json');
-        console.log('[DEBUG] loadGlobalFoldersJson(): findGDFileByName returned existingFiles length:', existingFiles ? existingFiles.length : 0);
-        if (!existingFiles || existingFiles.length === 0) return false;
-        const content = await fetchGDriveFileContent(existingFiles[0].id);
-        console.log('[DEBUG] loadGlobalFoldersJson(): fetchGDriveFileContent returned content length:', content ? content.length : 0);
-        if (!content) return false;
-        sessionStorage.setItem('full_folders_json', content); // Уверяваме се, че set.html също ще ги види
-        const parsed = JSON.parse(content);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            console.warn('folders.json has unexpected format, skipping.');
-            return false;
-        }
-        let remoteFolderNames = [];
-        let remoteActiveFolder = null;
-        let remoteFolderStartBoards = {};
-        // Validate email ownership
-        const currentEmail = sessionStorage.getItem('google_auth_email_hint') || '';
-        if (parsed.email && currentEmail && parsed.email !== currentEmail) {
-            console.log('folders.json belongs to another user (' + parsed.email + '), skipping.');
-            return false;
-        }
-        let remoteFolderData = {}; // Per-folder boardMenuOrder, lastNoteId, lastBoardId
-        if (Array.isArray(parsed.folders)) {
-            remoteFolderNames = parsed.folders.map(f => f && f.name).filter(Boolean);
-            parsed.folders.forEach(f => {
-                if (f && f.name && f.startBoard) {
-                    remoteFolderStartBoards[f.name] = f.startBoard;
-                }
-                if (f && f.name) {
-                    remoteFolderData[f.name] = {
-                        boardMenuOrder: (f.boardMenuOrder && Array.isArray(f.boardMenuOrder)) ? f.boardMenuOrder : null,
-                        lastNoteId: (typeof f.lastNoteId !== 'undefined') ? f.lastNoteId : null,
-                        lastNoteNumord: (typeof f.lastNoteNumord !== 'undefined') ? f.lastNoteNumord : null,
-                        lastBoardId: (typeof f.lastBoardId !== 'undefined') ? f.lastBoardId : null
-                    };
-                }
-            });
-        }
-        if (parsed.activeFolder) {
-            remoteActiveFolder = parsed.activeFolder;
-        }
-        if (remoteFolderNames.length === 0) return false;
-        let changed = false;
-        // Merge folder names
-        const localFolderNamesStr = localStorage.getItem('gdrive_folder_names');
-        // При чиста локална инсталация не добавяме multinotes_data по
-        // подразбиране. Тя се включва само ако е записана в folders.json или
-        // действително е открита при първоначалната настройка.
-        const localFolderNames = localFolderNamesStr ? JSON.parse(localFolderNamesStr) : [];
-
-        // Пречистваме remote names от дубликати и празни
-        const cleanRemote = [...new Set(remoteFolderNames.filter(Boolean))];
-        const merged = [...new Set([...localFolderNames, ...cleanRemote])];
-
-        const mergedStr = JSON.stringify(merged);
-        if (mergedStr !== localFolderNamesStr) {
-            localStorage.setItem('gdrive_folder_names', mergedStr);
-            changed = true;
-        }
-        // Apply per-folder start boards
-        Object.entries(remoteFolderStartBoards).forEach(([folderName, startBoard]) => {
-            const key = 'startBoard_' + folderName;
-            if (!localStorage.getItem(key)) {
-                localStorage.setItem(key, startBoard);
-                changed = true;
-            }
-        });
-        // Apply active folder if no local value is set
-        if (remoteActiveFolder && !localStorage.getItem('active_folder_name')) {
-            localStorage.setItem('active_folder_name', remoteActiveFolder);
-            activeFolderName = remoteActiveFolder;
-            // Ако кешът на ID не съответства на новата активна папка, го изчистваме,
-            // за да се преизчисли по име при следващото зареждане на данни.
-            if (localStorage.getItem('gdrive_multinotes_data_id_folder') !== remoteActiveFolder) {
-                clearCachedMainFolderId();
-            }
-            const loaderFolderInfo = document.getElementById('loader-folder-info');
-            if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-            changed = true;
-        }
-        // Apply per-folder data for the active folder
-        const activeF = localStorage.getItem('active_folder_name') || 'multinotes_data';
-        const activeFolderData = remoteFolderData[activeF];
-        if (activeFolderData) {
-            if (activeFolderData.boardMenuOrder && Array.isArray(activeFolderData.boardMenuOrder) && activeFolderData.boardMenuOrder.length > 0) {
-                const localBmo = localStorage.getItem('boardMenuOrder');
-                if (!localBmo || localBmo === '[]') {
-                    localStorage.setItem('boardMenuOrder', JSON.stringify(activeFolderData.boardMenuOrder));
-                    changed = true;
-                }
-            }
-            if (activeFolderData.lastNoteId !== null && typeof activeFolderData.lastNoteId !== 'undefined') {
-                const remoteNoteId = parseInt(activeFolderData.lastNoteId, 10);
-                if (!isNaN(remoteNoteId) && remoteNoteId > noteId) {
-                    noteId = remoteNoteId;
-                    changed = true;
-                }
-            }
-            if (activeFolderData.lastNoteNumord !== null && typeof activeFolderData.lastNoteNumord !== 'undefined') {
-                const remoteNoteNumord = parseInt(activeFolderData.lastNoteNumord, 10);
-                if (!isNaN(remoteNoteNumord) && remoteNoteNumord > noteNumord) {
-                    noteNumord = remoteNoteNumord;
-                    changed = true;
-                }
-            }
-            if (activeFolderData.lastBoardId !== null && typeof activeFolderData.lastBoardId !== 'undefined') {
-                boardIdCounter = activeFolderData.lastBoardId;
-                localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-
-                changed = true;
-            }
-        }
-        // Запазваме per-folder данните за всички папки (за бъдещо превключване)
-        Object.entries(remoteFolderData).forEach(([folderName, fdata]) => {
-            if (folderName === activeF) return; // Вече приложено
-            if (fdata.boardMenuOrder) localStorage.setItem('boardMenuOrder_' + folderName, JSON.stringify(fdata.boardMenuOrder));
-            if (fdata.lastNoteId !== null) localStorage.setItem('lastNoteId_' + folderName, fdata.lastNoteId.toString());
-            if (fdata.lastNoteNumord !== null) localStorage.setItem('lastNoteNumord_' + folderName, fdata.lastNoteNumord.toString());
-            if (fdata.lastBoardId !== null) localStorage.setItem('lastBoardId_' + folderName, fdata.lastBoardId.toString());
-        });
-        return changed;
-    } catch (e) {
-        console.warn("loadGlobalFoldersJson error:", e);
-    }
-    return false;
-}
-async function saveSettingsToGDrive(silent = false) {
-    if (!silent && typeof showToast === 'function') showToast(_('savingProfile'));
-    const currentDevice = localStorage.getItem('deviceName') || 'Default';
-    const settings = {};
-    appSettingsKeys.forEach(key => {
-        const val = localStorage.getItem(key);
-        if (val !== null) {
-            if ((val.startsWith('[') && val.endsWith(']')) || (val.startsWith('{') && val.endsWith('}'))) {
-                try {
-                    let parsedVal = JSON.parse(val);
-                    if (key.endsWith('Position') && parsedVal && typeof parsedVal === 'object') {
-                        Object.keys(parsedVal).forEach(posKey => {
-                            if (typeof parsedVal[posKey] === 'string' && parsedVal[posKey].endsWith('px')) {
-                                const num = parseFloat(parsedVal[posKey]);
-                                if (!isNaN(num)) {
-                                    parsedVal[posKey] = Math.round(num) + 'px';
-                                }
-                            } else if (typeof parsedVal[posKey] === 'number') {
-                                parsedVal[posKey] = Math.round(parsedVal[posKey]);
-                            }
-                        });
-                    }
-                    settings[key] = parsedVal;
-                } catch (e) {
-                    settings[key] = val;
-                }
-            } else {
-                settings[key] = val;
-            }
-        }
-    });
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('board_')) {
-            const val = localStorage.getItem(key);
-            if (val && ((val.startsWith('[') && val.endsWith(']')) || (val.startsWith('{') && val.endsWith('}')))) {
-                try { settings[key] = JSON.parse(val); } catch (e) { settings[key] = val; }
-            } else {
-                settings[key] = val;
-            }
-        }
-    }
-    const contentLocal = JSON.stringify(settings, null, 2);
-    localStorage.setItem('settings_multinotes_data', contentLocal);
-    if (!isOffline) {
-        const folderId = await getAppSettingsFolderId();
-        if (folderId) {
-            const fileName = 'settings.json';
-            try {
-                const existingFiles = await findGDFileByName(folderId, fileName);
-                if (debug) console.log("[ProfileSync] existingFiles found:", existingFiles ? existingFiles.length : 0);
-                let finalObject = {};
-                let targetId = null;
-                if (existingFiles && existingFiles.length > 0) {
-                    // Почистваме дубликати на settings.json
-                    if (existingFiles.length > 1) {
-                        for (let i = 1; i < existingFiles.length; i++) {
-                            deleteGDriveFile(existingFiles[i].id).catch(e => console.warn("[ProfileSync] Error deleting duplicate settings.json:", e));
-                        }
-                    }
-                    targetId = existingFiles[0].id;
-                    const existingContent = await fetchGDriveFileContent(targetId);
-                    try {
-                        const parsed = JSON.parse(existingContent);
-                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                            const topLevelKeys = Object.keys(parsed);
-                            const looksOld = topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
-                            if (looksOld) {
-                                finalObject = { 'Default': parsed };
-                            } else {
-                                finalObject = parsed;
-                            }
-                        }
-                    } catch (e) {
-                        console.warn("Could not parse existing settings.json, starting fresh.");
-                    }
-                }
-                finalObject[currentDevice] = settings;
-                const finalContent = JSON.stringify(finalObject, null, 2);
-                if (existingFiles && existingFiles.length > 0) {
-                    await updateGDriveFile(existingFiles[0].id, finalContent);
-                    for (let j = 1; j < existingFiles.length; j++) {
-                        await deleteGDriveFile(existingFiles[j].id);
-                    }
-                } else {
-                    await createGDriveFile(folderId, fileName, finalContent);
-                }
-                // Записът е минал: маркерът за смяна на езика се чисти, само ако още отговаря на избора
-                if (localStorage.getItem(PENDING_LANG_SYNC_KEY) === localStorage.getItem('language')) localStorage.removeItem(PENDING_LANG_SYNC_KEY);
-            } catch (err) {
-                console.error("Save settings to GDrive error:", err);
-            }
-        }
-    }
-    if (!silent) showToast(_('settingsSavedSuccess'));
-}
-
-async function loadSettingsFromGDrive(silent = false) {
-    if (!silent && typeof showToast === 'function') showToast(_('loadingProfiles'));
-    let content = null;
-    if (!isOffline) {
-        try {
-            const folderId = await getAppSettingsFolderId();
-            if (folderId) {
-                const existingFiles = await findGDFileByName(folderId, 'settings.json');
-                if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
-            }
-        } catch (err) {
-            if (err instanceof TypeError || (err.message && err.message.includes('Failed to fetch'))) {
-                console.log('loadSettingsFromGDrive: Network unavailable, using local settings.');
-                isOffline = true;
-            } else {
-                console.error("Load settings error:", err);
-            }
-        }
-    }
-    if (!content) content = localStorage.getItem('settings_multinotes_data');
-    if (content) {
-        try {
-            let settings = JSON.parse(content);
-            const currentDevice = localStorage.getItem('deviceName') || 'Default';
-            if (settings && typeof settings === 'object' && !Array.isArray(settings)) {
-                const topLevelKeys = Object.keys(settings);
-                const looksOld = topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
-                if (!looksOld) {
-                    if (settings[currentDevice]) settings = settings[currentDevice];
-                    else if (settings['Default']) settings = settings['Default'];
-                    else if (!silent) { showToast("Settings for device '" + currentDevice + "' not found."); return; }
-                }
-            }
-            const pendingLang = localStorage.getItem(PENDING_LANG_SYNC_KEY);
-            if (pendingLang) {
-                localStorage.setItem('language', pendingLang);
-                currentLang = pendingLang;
-            }
-            const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id', 'folderId', 'deviceName'];
-            if (window.hasUrlLanguage || pendingLang) preservedKeys.push('language');
-            Object.keys(settings).forEach(key => {
-                const isBoardKey = key.startsWith('board_');
-                if (appSettingsKeys.includes(key) || isBoardKey) {
-                    if (!preservedKeys.includes(key)) {
-                        let val = settings[key];
-                        if (key === 'boardMenuOrder' && (!val || (Array.isArray(val) && val.length === 0))) return;
-                        if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
-                        localStorage.setItem(key, val);
-                    }
-                }
-            });
-            applySingleNoteModeSetting();
-            applyGcalNotesSetting();
-            // Току-що сменен език: профилът се обновява на заден план, стартът не го чака
-            if (pendingLang) saveSettingsToGDrive(true).catch(e => console.warn('Background profile sync after language change failed:', e));
-            initHeaderFullscreen();
-            if (silent) {
-                await renderUI({ rerenderOnlyMenu: true });
-                restoreAllFloatingPositions();
-            } else {
-                setTimeout(async () => {
-                    const confirmed = await showConfirmation(_('settingsLoadedSuccess'));
-                    if (confirmed) location.reload();
-                }, 100);
-            }
-        } catch (err) { console.error("Parse error:", err); if (!silent) showToast(_('errorLoadSettings')); }
-    } else if (!silent) showToast(_('errorLoadSettings'));
-}
 async function createSettingsUI(boardsData, boardParseError) {
     const settingsModalBody = document.getElementById('settings-modal-body');
     if (!settingsModalBody.dataset.initializedListeners) {
-        const saveSettingsBtn = document.getElementById('save-settings-btn');
-        const loadSettingsBtn = document.getElementById('load-settings-btn');
-        if (saveSettingsBtn) {
-            saveSettingsBtn.onclick = null;
-            saveSettingsBtn.addEventListener('click', () => {
-                saveSettingsToGDrive();
-            });
+        // Резервно копие: експорт и импорт на JSON файл (без мрежа, без папки).
+        const exportBackupBtn = document.getElementById('export-backup-btn');
+        const importBackupBtn = document.getElementById('import-backup-btn');
+        const importBackupInput = document.getElementById('import-backup-input');
+        if (exportBackupBtn) {
+            exportBackupBtn.onclick = null;
+            exportBackupBtn.addEventListener('click', () => { backupExport(); });
         }
-        if (loadSettingsBtn) {
-            loadSettingsBtn.onclick = null;
-            loadSettingsBtn.addEventListener('click', () => {
-                loadSettingsFromGDrive();
-            });
+        if (importBackupBtn && importBackupInput) {
+            importBackupBtn.onclick = null;
+            importBackupBtn.addEventListener('click', () => importBackupInput.click());
+            importBackupInput.onchange = (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) backupImport(file);
+                importBackupInput.value = '';
+            };
         }
         const showSettingsBtn = document.getElementById('show-settings-btn');
         if (showSettingsBtn) {
@@ -16787,8 +9575,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             settingsLangSelect.addEventListener('change', async () => {
                 const newLang = settingsLangSelect.value;
                 localStorage.setItem('language', newLang);
-                // Профилът в Drive се обновява след старта (loadSettingsFromGDrive), не тук - презареждаме веднага
-                localStorage.setItem(PENDING_LANG_SYNC_KEY, newLang);
                 window.location.reload();
             });
         }
@@ -16817,19 +9603,10 @@ async function createSettingsUI(boardsData, boardParseError) {
     const showOtherBoardCheckbox = document.getElementById('show-other-board-checkbox');
     // const startBoardSelect = document.getElementById('start-board-select');
     const maxSearchesInput = document.getElementById('max-searches-input');
-    const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
-    const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
-    const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
     const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-    const updateFromSourceCheckbox = document.getElementById('update-from-source-checkbox');
-    const dbSectionWrapper = document.getElementById('db-section-wrapper');
-    const updateFromSourceWrapper = document.getElementById('update-from-source-wrapper');
-    const selectFolderBtn = document.getElementById('select-folder-btn');
-    const folderNameDisplay = document.getElementById('local-sync-folder-name');
     const clickToEditCheckbox = document.getElementById('click-to-edit-checkbox');
     const hideAssistantCheckbox = document.getElementById('hide-assistant-checkbox'); // New checkbox
     const hideToastCheckbox = document.getElementById('hide-toast-checkbox');
-    const activeFolderSelect = document.getElementById('active-folder-select');
     const deviceNameSelect = document.getElementById('device-name-select');
     const addDeviceBtn = document.getElementById('add-device-btn');
     const deleteDeviceBtn = document.getElementById('delete-device-btn');
@@ -16849,55 +9626,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             } catch (e) { console.warn('[DEBUG] parse error on cachedProfiles:', e); }
         }
         // Always fetch from GDrive in background if not offline to discover new profiles
-        if (!isOffline && (!cachedProfiles || forceRefresh || true)) {
-            (async () => {
-                let content = null;
-                try {
-                    const folderId = await getAppSettingsFolderId();
-                    if (folderId) {
-                        const existingFiles = await findGDFileByName(folderId, 'settings.json');
-                        if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
-                    }
-                } catch (err) { console.error("Error loading profiles:", err); }
-                if (!content) content = localStorage.getItem('settings_multinotes_data');
-                if (content) {
-                    try {
-                        const parsed = JSON.parse(content);
-                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                            const topLevelKeys = Object.keys(parsed);
-                            const isNewFormat = !topLevelKeys.some(k => appSettingsKeys.includes(k) || k.startsWith('board_'));
-                            if (isNewFormat) {
-                                const currentDevice = localStorage.getItem('deviceName') || 'Default';
-                                const mergedDevices = Array.from(new Set([
-                                    'Default',
-                                    currentDevice,
-                                    ...(Array.isArray(devices) ? devices : []),
-                                    ...topLevelKeys
-                                ])).sort((a, b) => {
-                                    if (a === 'Default') return -1;
-                                    if (b === 'Default') return 1;
-                                    return a.localeCompare(b);
-                                });
-                                const newDevicesStr = JSON.stringify(mergedDevices);
-                                if (newDevicesStr !== cachedProfiles) {
-                                    localStorage.setItem('deviceProfilesList', newDevicesStr);
-                                    devices = mergedDevices;
-                                    deviceNameSelect.innerHTML = '';
-                                    devices.forEach(dev => {
-                                        const opt = document.createElement('option');
-                                        opt.value = dev;
-                                        opt.textContent = dev;
-                                        if (dev === currentDevice) opt.selected = true;
-                                        deviceNameSelect.appendChild(opt);
-                                    });
-                                    console.log('[DEBUG] loadDeviceProfiles(): Background fetch discovered new profiles and updated UI:', devices);
-                                }
-                            }
-                        }
-                    } catch (e) { }
-                }
-            })();
-        }
         const currentDevice = localStorage.getItem('deviceName') || 'Default';
         if (!devices.includes(currentDevice)) {
             devices.push(currentDevice);
@@ -16922,7 +9650,6 @@ async function createSettingsUI(boardsData, boardParseError) {
         loadDeviceProfiles();
         deviceNameSelect.addEventListener('change', async () => {
             localStorage.setItem('deviceName', deviceNameSelect.value);
-            await loadSettingsFromGDrive(false);
         });
     }
     if (addDeviceBtn) {
@@ -16931,7 +9658,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             if (newName && newName.trim()) {
                 localStorage.setItem('deviceName', newName.trim());
                 await loadDeviceProfiles();
-                await saveSettingsToGDrive(false);
             }
         });
     }
@@ -16942,30 +9668,20 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast("Не може да изтриете профила Default.");
                 return;
             }
-            if (!await showConfirmation(`Сигурни ли сте, че искате да изтриете профила '${currentDevice}' от облака?`)) return;
-            showToast("Изтриване на профила...");
+            if (!await showConfirmation(`Сигурни ли сте, че искате да изтриете профила '${currentDevice}'?`)) return;
             try {
-                const folderId = await getAppSettingsFolderId();
-                if (folderId) {
-                    const existingFiles = await findGDFileByName(folderId, 'settings.json');
-                    if (existingFiles && existingFiles.length > 0) {
-                        const content = await fetchGDriveFileContent(existingFiles[0].id);
-                        const parsed = JSON.parse(content);
-                        if (parsed && parsed[currentDevice]) {
-                            delete parsed[currentDevice];
-                            await updateGDriveFile(existingFiles[0].id, JSON.stringify(parsed, null, 2));
-                            localStorage.setItem('deviceName', 'Default');
-
-                            // Актуализираме кеша веднага щом изтрием файл
-                            const newDevicesList = Object.keys(parsed);
-                            if (!newDevicesList.includes('Default')) newDevicesList.push('Default');
-                            localStorage.setItem('deviceProfilesList', JSON.stringify(newDevicesList));
-
-                            await loadDeviceProfiles();
-                            showToast("Профилът е изтрит.");
-                        }
-                    }
+                const cached = localStorage.getItem('settings_multinotes_data');
+                const parsed = cached ? JSON.parse(cached) : {};
+                if (parsed && parsed[currentDevice]) {
+                    delete parsed[currentDevice];
+                    localStorage.setItem('settings_multinotes_data', JSON.stringify(parsed));
                 }
+                localStorage.setItem('deviceName', 'Default');
+                const newDevicesList = Object.keys(parsed || {});
+                if (!newDevicesList.includes('Default')) newDevicesList.push('Default');
+                localStorage.setItem('deviceProfilesList', JSON.stringify(newDevicesList));
+                await loadDeviceProfiles();
+                showToast("Профилът е изтрит.");
             } catch (err) {
                 console.error("Delete profile error:", err);
                 showToast("Грешка при изтриване.");
@@ -16975,180 +9691,6 @@ async function createSettingsUI(boardsData, boardParseError) {
     if (!settingsModalBody.dataset.initialized) {
         // Active Folder Logic
         // Active Folder Logic
-        if (activeFolderSelect) {
-            populateFoldersDropdown();
-
-            // Попълването на dropdown-а се прави при Ctrl+click/long press (Разширени настройки)
-
-            activeFolderSelect.addEventListener('change', async () => {
-                const selectedValue = activeFolderSelect.value;
-                let targetFolderName = null;
-                let targetFolderId = null;
-                const folderNamesStr = localStorage.getItem('gdrive_folder_names');
-                const folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
-                if (selectedValue === 'new_folder' || selectedValue === 'select_folder') {
-                    const isNew = selectedValue === 'new_folder';
-                    const promptMsg = isNew ? _('newFolderPrompt') : (_('selectFolderPrompt') || 'Enter existing folder name:');
-                    const folderNameInput = await showPrompt(promptMsg);
-                    if (folderNameInput && folderNameInput.trim()) {
-                        targetFolderName = folderNameInput.trim();
-                        try {
-                            if (isNew) {
-                                if (typeof showToast === 'function') showToast(_('creatingFolder') || 'Creating folder...');
-                                targetFolderId = await createNewGDriveFolder(targetFolderName);
-                                if (targetFolderId) {
-                                    const confirmed = await showConfirmation(_('confirmMigration') || 'Do you want to copy the data from the current folder into the new folder?');
-                                    if (confirmed) {
-                                        await migrateDataToNewFolder(targetFolderId);
-                                        const currentBmo = localStorage.getItem('boardMenuOrder');
-                                        if (currentBmo) localStorage.setItem('boardMenuOrder_' + targetFolderName, currentBmo);
-                                        localStorage.setItem('lastNoteId_' + targetFolderName, noteId.toString());
-                                        localStorage.setItem('lastNoteNumord_' + targetFolderName, noteNumord.toString());
-                                        const currentBic = localStorage.getItem('boardIdCounter');
-                                        if (currentBic) localStorage.setItem('lastBoardId_' + targetFolderName, currentBic);
-                                    }
-                                }
-                            } else {
-                                targetFolderId = await getFolderIDByName(targetFolderName);
-                                if (!targetFolderId) {
-                                    const granted = await requestAdditionalScopes(SCOPES_FULL);
-                                    if (granted) {
-                                        targetFolderId = await getFolderIDByName(targetFolderName);
-                                    }
-                                }
-                                if (!targetFolderId) {
-                                    if (typeof showToast === 'function') showToast(_('errorFolderNotFoundDrive') || 'Folder not found.');
-                                    activeFolderSelect.value = activeFolderName;
-                                    return;
-                                }
-                            }
-                        } catch (e) {
-                            if (typeof showToast === 'function') showToast(isNew ? (_('errorCreateFolder') || 'Error creating folder.') : (_('errorFolderNotFoundDrive') || 'Folder not found.'));
-                            activeFolderSelect.value = activeFolderName;
-                            return;
-                        }
-                    } else {
-                        activeFolderSelect.value = activeFolderName;
-                        return;
-                    }
-                } else {
-                    targetFolderName = selectedValue;
-                }
-                if (targetFolderName === activeFolderName) return;
-                if (targetFolderName === 'multinotes_data') {
-                    const confirmed = await showConfirmation(_('multiNotesSettingsWarn') || 'Warning: Changes in the multinotes_data folder will not automatically reflect in the Android MultiNotes app without a full sync. Are you sure you want to switch to this folder?');
-                    if (!confirmed) {
-                        activeFolderSelect.value = activeFolderName;
-                        return;
-                    }
-                }
-                const settingsModal = document.getElementById('settings-modal');
-                const settings2Modal = document.getElementById('settings2-modal');
-                if (settingsModal) settingsModal.classList.remove('visible');
-                if (settings2Modal) settings2Modal.classList.remove('visible');
-                if (typeof showToast === 'function') showToast((_('settingSaved') || 'Settings saved.') + ' ' + (_('synchronizing') || 'Syncing...'));
-                try {
-                    if (!targetFolderId) {
-                        targetFolderId = await getFolderIDByName(targetFolderName);
-                    }
-                    if (!targetFolderId && targetFolderName !== 'AppDataFolder') {
-                        const granted = await requestAdditionalScopes(SCOPES_FULL);
-                        if (granted) {
-                            targetFolderId = await getFolderIDByName(targetFolderName);
-                        } else {
-                            if (typeof showToast === 'function') showToast(_('permissionDenied') || 'Permission was not granted.', 5000);
-                            activeFolderSelect.value = activeFolderName;
-                            return;
-                        }
-                    }
-                    if (!targetFolderId && targetFolderName !== 'AppDataFolder') {
-                        removeFolderFromList(targetFolderName);
-                        const msg = (_('folderNotFoundRemovedFromList') || `Folder "${targetFolderName}" does not exist in Google Drive and was removed from the list.`)
-                            .replace('{folder}', targetFolderName);
-                        if (typeof showToast === 'function') showToast(msg, 5000);
-                        activeFolderSelect.value = activeFolderName;
-                        return;
-                    }
-                    if (targetFolderId) {
-                        if (selectedValue !== 'new_folder' && targetFolderName !== 'AppDataFolder') {
-                            const [boardFiles, noteFiles] = await Promise.all([
-                                findGDFileByName(targetFolderId, 'board.txt'),
-                                findGDFileByName(targetFolderId, 'note.txt')
-                            ]);
-                            if (!boardFiles && !noteFiles) {
-                                if (typeof showToast === 'function') {
-                                    showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with MultiNotes data.', 7000);
-                                }
-                                activeFolderSelect.value = activeFolderName;
-                                return;
-                            }
-                        }
-                        const oldActiveFolderName = activeFolderName;
-                        console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
-                        if (oldActiveFolderName) {
-                            const currentBmo = localStorage.getItem('boardMenuOrder');
-                            if (currentBmo) localStorage.setItem('boardMenuOrder_' + oldActiveFolderName, currentBmo);
-                            localStorage.setItem('lastNoteId_' + oldActiveFolderName, noteId.toString());
-                            localStorage.setItem('lastNoteNumord_' + oldActiveFolderName, noteNumord.toString());
-                            const currentBic = localStorage.getItem('boardIdCounter');
-                            if (currentBic) localStorage.setItem('lastBoardId_' + oldActiveFolderName, currentBic);
-                        }
-                        activeFolderName = targetFolderName;
-                        localStorage.setItem('active_folder_name', targetFolderName);
-                        const loaderFolderInfo = document.getElementById('loader-folder-info');
-                        if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
-                        setCachedMainFolderId(targetFolderName, targetFolderId);
-                        const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
-                        if (folderStartBoard) {
-                            localStorage.setItem('startBoard', folderStartBoard);
-                        } else {
-                            localStorage.removeItem('startBoard');
-                        }
-                        const newBmo = localStorage.getItem('boardMenuOrder_' + targetFolderName);
-                        if (newBmo) {
-                            localStorage.setItem('boardMenuOrder', newBmo);
-                        } else {
-                            localStorage.removeItem('boardMenuOrder');
-                        }
-                        const newNid = localStorage.getItem('lastNoteId_' + targetFolderName);
-                        const newNord = localStorage.getItem('lastNoteNumord_' + targetFolderName);
-                        if (newNid !== null) noteId = parseInt(newNid, 10);
-                        else noteId = (targetFolderName === 'multinotes_data') ? 1000000 : 0;
-                        if (newNord !== null) noteNumord = parseInt(newNord, 10);
-                        else noteNumord = (targetFolderName === 'multinotes_data') ? 1000000 : 0;
-                        const newBid = localStorage.getItem('lastBoardId_' + targetFolderName);
-                        if (newBid !== null) {
-                            boardIdCounter = parseInt(newBid, 10);
-                            localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-                        } else {
-                            boardIdCounter = (targetFolderName === 'multinotes_data') ? 1000000 : 0;
-                            localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-                        }
-                        if (!folderNames.includes(targetFolderName)) {
-                            folderNames.push(targetFolderName);
-                            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-                        }
-                        localStorage.setItem('useGoogleDb', 'true');
-                        localStorage.setItem('useIndexedDb', 'true');
-                        localStorage.setItem('useLocalDb', 'false');
-                        localStorage.setItem('useArhDb', 'false');
-                        ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
-                        if (typeof NOTES_DB_NAME !== 'undefined') {
-                            indexedDB.deleteDatabase(NOTES_DB_NAME);
-                        } else {
-                            indexedDB.deleteDatabase('multinotes_db');
-                        }
-                        await syncGlobalFoldersJson();
-                        location.reload();
-                    } else {
-                        activeFolderSelect.value = activeFolderName;
-                    }
-                } catch (err) {
-                    console.error("Error switching folder:", err);
-                    activeFolderSelect.value = activeFolderName;
-                }
-            });
-        }
     }
     // Hide Assistant Logic
     if (hideAssistantCheckbox) {
@@ -17243,22 +9785,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
     }
     const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
-    if (updateLocalFolderCheckbox) {
-        updateLocalFolderCheckbox.checked = localStorage.getItem('updateLocalFolder') === 'true';
-        updateLocalFolderCheckbox.addEventListener('change', () => {
-            localStorage.setItem('updateLocalFolder', updateLocalFolderCheckbox.checked);
-            updateLocalFolder = updateLocalFolderCheckbox.checked;
-            showToast(_('settingSaved'), 2000);
-        });
-    }
     const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
-    if (forceGDriveReadCheckbox) {
-        forceGDriveReadCheckbox.checked = localStorage.getItem('forceGDriveRead') === 'true';
-        forceGDriveReadCheckbox.addEventListener('change', () => {
-            localStorage.setItem('forceGDriveRead', forceGDriveReadCheckbox.checked);
-            showToast(_('settingSaved'), 2000);
-        });
-    }
     const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
     if (checkEmptyBoardsCheckbox) {
         checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
@@ -17316,17 +9843,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
     });
     const syncDirtyBtn = document.getElementById('sync-dirty-btn');
-    if (syncDirtyBtn) {
-        syncDirtyBtn.addEventListener('click', () => {
-            syncDirtyNotes();
-        });
-    }
     const saveDbFolderBtn = document.getElementById('save-db-folder-btn');
-    if (saveDbFolderBtn) {
-        saveDbFolderBtn.addEventListener('click', () => {
-            handleSaveDbToFolder();
-        });
-    }
     scaleInput.addEventListener('change', () => {
         const zoomValue = scaleInput.value;
         updateZoom(zoomValue);
@@ -17406,8 +9923,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
         });
     }
-    // Запис в Google Календар (b2.07): включването иска обхвата и създава/проверява календара „CX Notes“
-    initGcalNotesCheckbox();
     // Show 'New' Board Checkbox
     if (showNewBoardCheckbox) {
         showNewBoardCheckbox.checked = localStorage.getItem('showNewBoard') === 'true'; // Default to false
@@ -17668,110 +10183,9 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
         showToast(_('settingSaved'), 2000);
     });
-    // --- New Data Source Selection Logic ---
-    const dataSources = [
-        { checkbox: useGoogleDbCheckbox, key: 'useGoogleDb' },
-        { checkbox: useLocalDbCheckbox, key: 'useLocalDb' },
-        { checkbox: useArhDbCheckbox, key: 'useArhDb' }
-    ];
-    const handleDataSourceChange = (changedCheckbox, changedKey) => {
-        // Ако се опитваме да премахнем отметка и базата данни НЕ съществува
-        if (!changedCheckbox.checked && !dbExists) {
-            showToast(_('errorNoDataSourceSelected'), 5000);
-            // Не позволяваме премахването, като връщаме отметката
-            changedCheckbox.checked = true;
-            return;
-        }
-        if (changedCheckbox.checked) {
-            // Преди да запишем в localStorage, проверяваме дали имаме избрана папка
-            if (changedKey === 'useLocalDb' || changedKey === 'useArhDb') {
-                const display = (changedKey === 'useLocalDb') ?
-                    document.getElementById('local-sync-folder-name') :
-                    document.getElementById('arh-folder-name');
-
-                if (!display || display.textContent === _('folderNotSelected')) {
-                    // Не записваме в localStorage, махаме отметката и отваряме избора на папка
-                    changedCheckbox.checked = false;
-                    const btnId = (changedKey === 'useLocalDb') ? 'select-folder-btn' : 'select-arh-btn';
-                    document.getElementById(btnId).click();
-                    return;
-                }
-            }
-            // Uncheck all other data sources
-            dataSources.forEach(({ checkbox, key }) => {
-                if (key !== changedKey) {
-                    checkbox.checked = false;
-                    localStorage.setItem(key, 'false');
-                }
-            });
-        }
-        // Save the state of the changed checkbox
-        localStorage.setItem(changedKey, changedCheckbox.checked);
-        showToast(_('settingSaved'), 2000);
-        updateModeButton();
-    };
-    dataSources.forEach(({ checkbox, key }) => {
-        checkbox.addEventListener('change', () => handleDataSourceChange(checkbox, key));
-    });
-    // indexedDB
-    // Задаваме първоначалното състояние на чекбокса от localStorage
-    useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
-    // Add event listeners
-    useIndexedDbCheckbox.addEventListener('change', async (e) => {
-        const isChecked = e.target.checked;
-
-        // --- ПРОВЕРКИ ЗА ВАЛИДНОСТ НА БАЗАТА ДАННИ ---
-        if (isChecked && dbExists) {
-            try {
-                // 1. Проверка на папката
-                const dbCreatedFolderName = await getConfig('dbCreatedFolderName');
-                if (dbCreatedFolderName) {
-                    const activeFolder = localStorage.getItem('active_folder_name') || 'multinotes_data';
-                    if (dbCreatedFolderName !== activeFolder) {
-                        const msg = (_('dbFolderMismatch') || 'Внимание: БД е създадена за папка "{dbFolder}", а текущата е "{activeFolder}".')
-                            .replace('{dbFolder}', dbCreatedFolderName)
-                            .replace('{activeFolder}', activeFolder);
-                        showToast(msg, 5000);
-                        // Оставяме отметката включена и не връщаме (return), само информираме
-                    }
-                }
-
-                // 2. Проверка на потребителя (собственика)
-                const dbOwnerEmail = await getConfig('userEmail');
-                if (dbOwnerEmail) {
-                    const currentUserEmail = sessionStorage.getItem('google_auth_email_hint') || localStorage.getItem('google_login_hint');
-                    // Сравняваме само ако имаме и двата имейла. 
-                    if (currentUserEmail && dbOwnerEmail !== currentUserEmail) {
-                        e.target.checked = false;
-                        localStorage.setItem('useIndexedDb', 'false');
-                        const msg = (_('dbOwnerMismatch') || 'Грешка: БД принадлежи на {dbOwner}, а текущият потребител е {currentUser}.')
-                            .replace('{dbOwner}', dbOwnerEmail)
-                            .replace('{currentUser}', currentUserEmail);
-                        showToast(msg, 5000);
-                        return;
-                    }
-                }
-            } catch (err) {
-                console.error("Error validating DB config:", err);
-            }
-        }
-
-        localStorage.setItem('useIndexedDb', isChecked);
-        // --- КОРЕКЦИЯ: Само ако базата НЕ съществува, симулираме клик на "Създай" ---
-        if (isChecked) {
-            if (!dbExists) {
-                document.getElementById('create-db-btn').click();
-            } else {
-                updateGlobalStateFlags();
-                updateModeButton();
-                showToast(_('settingSaved'), 2000);
-            }
-        } else {
-            updateGlobalStateFlags();
-            updateModeButton();
-            showToast(_('settingSaved'), 2000);
-        }
-    });
+    // Базата е единственото хранилище в локален режим: чекбоксът е винаги включен.
+    if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = true;
+    localStorage.setItem('useIndexedDb', 'true');
     // Accordion logic
     const accordionHeader = document.querySelector('.accordion-header');
     if (accordionHeader) {
@@ -17800,25 +10214,12 @@ async function createSettingsUI(boardsData, boardParseError) {
         if (dbExists && boardsInDb.length > 0) {
             // Показваме диалог за потвърждение само ако базата съществува и има данни.
             document.getElementById('settings-modal').classList.remove('visible');
-            updateModeButton();
             await new Promise(resolve => setTimeout(resolve, 150));
             confirmed = await showConfirmation(_('confirmDbRecreate'));
 
             if (!confirmed) {
-                // Ако потребителят откаже презапис, проверяваме дали данните съвпадат
-                const memBoards = (typeof boardsData !== 'undefined') ? boardsData : [];
-                if (!areBoardsIdentical(memBoards, boardsInDb)) {
-                    // Вече само предупреждаваме, без да блокираме
-                    console.warn("DB Identity Check: Some boards in DB not found in current memory. This might be normal during state transitions.");
-                    dbExists = true;
-                    updateGlobalStateFlags();
-                    updateModeButton();
-                    return; // Спираме процеса тук, но не махаме отметката
-                }
-                // Ако са идентични, позволяваме включването без презапис
                 dbExists = true;
                 updateGlobalStateFlags();
-                updateModeButton();
                 return;
             }
         } else {
@@ -17826,85 +10227,28 @@ async function createSettingsUI(boardsData, boardParseError) {
             confirmed = true;
         }
         if (confirmed) {
-            const success = await createDatabaseFromMemory();
-            if (success) {
-                showToast(_('dbCreated'), 10000);
-                dbExists = true;
-                // --- КОРЕКЦИЯ: Автоматично включваме отметката при успешно създаване ---
-                const cb = document.getElementById('use-indexeddb-checkbox');
-                if (cb) {
-                    cb.checked = true;
-                    localStorage.setItem('useIndexedDb', 'true');
-                    updateGlobalStateFlags();
-                    updateModeButton();
-                }
-            }
+            dbExists = await checkDbExists(NOTES_DB_NAME);
+            await mainLogic();
+            showToast(_('dbCreated'), 10000);
         }
     });
     const deleteDbBtn = document.getElementById('delete-db-btn');
     deleteDbBtn.addEventListener('click', async () => {
-        // --- КОРЕКЦИЯ: Запомняме дали сме в режим "Само база данни" ПРЕДИ изтриването ---
-        const isDbOnlyMode =
-            document.getElementById('use-indexeddb-checkbox').checked &&
-            !document.getElementById('use-google-db-checkbox').checked &&
-            !document.getElementById('use-local-db-checkbox').checked &&
-            !document.getElementById('use-arh-db-checkbox').checked;
         // Затваряме настройките, за да се видят диалозите за потвърждение
         document.getElementById('settings-modal').classList.remove('visible');
         // Изчакваме анимацията на затваряне да приключи, преди да покажем новия диалог
         await new Promise(resolve => setTimeout(resolve, 150));
         const confirmedDataDelete = await showConfirmation(_('confirmDbDelete'));
         if (confirmedDataDelete) {
-            const dirH = await getConfig('directoryHandle');
-            const arH = await getConfig('arhHandle');
-            const hasFolderHandles = !!(dirH || arH);
-            let confirmedConfigDelete = false;
-            if (hasFolderHandles) {
-                confirmedConfigDelete = await showConfirmation(_('confirmConfigDelete'), {
-                    backgroundColor: '#lightgreen',
-                    width: '450px'
-                });
-            } else {
-                confirmedConfigDelete = true;
-            }
-            if (confirmedConfigDelete) {
-                // Потребителят иска да изтрие всичко, включително настройките
-                await deleteNotesDB();
-                // Нулираме UI елементите за избраните папки
-                const folderNameDisplay = document.getElementById('local-sync-folder-name');
-                const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-                if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
-                if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
-                dbExists = false; // Актуализираме глобалния флаг
-                // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
-                const localCheckbox = document.getElementById('use-local-db-checkbox');
-                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                if (localCheckbox) localCheckbox.checked = false;
-                if (arhCheckbox) arhCheckbox.checked = false;
-                localStorage.setItem('useLocalDb', 'false');
-                localStorage.setItem('useArhDb', 'false');
-                dirHandle = null; // Нулираме и handle-a в паметта
-            } else {
-                // Потребителят иска да изтрие само данните, но да запази настройките
-                await clearDbStores();
-            }
-            // Изчистваме настройката за стартов борд, тъй като бордовете вече не съществуват
+            await deleteNotesDB();
+            dbExists = false; // Актуализираме глобалния флаг
             localStorage.removeItem('startBoard');
-            // --- НОВА МИНИМАЛНА КОРЕКЦИЯ ---
-            // След успешно изтриване, ВИНАГИ премахваме отметката и обновяваме localStorage.
             showToast(_('dbDeleted'), 5000);
             const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-            useIndexedDbCheckbox.checked = false;
-            localStorage.setItem('useIndexedDb', 'false');
-            // Ако сме били в режим "Само база данни", автоматично включваме Google Drive
-            if (isDbOnlyMode) {
-                localStorage.setItem('useGoogleDb', 'true');
-                document.getElementById('use-google-db-checkbox').checked = true;
-                updateGlobalStateFlags();
-                await mainLogic(); // ПРЕЗАРЕЖДАМЕ ЛОГИКАТА
-            }
-            // --- КОРЕКЦИЯ: Актуализираме иконата за режим веднага ---
-            updateModeButton();
+            if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = true;
+            localStorage.setItem('useIndexedDb', 'true');
+            updateGlobalStateFlags();
+            await mainLogic(); // презареждаме празното приложение
         } else {
             // Ако потребителят откаже изтриването, отваряме настройките отново, за да не остава празен екран.
             document.getElementById('settings-modal').classList.add('visible');
@@ -17913,131 +10257,20 @@ async function createSettingsUI(boardsData, boardParseError) {
         enableSettingsControls();
     });
     // --- Local Sync Folder ---
-    selectFolderBtn.addEventListener('click', async () => {
-        try {
-            const handle = await window.showDirectoryPicker();
-            if (handle) {
-                const validationResult = await validateFolderContent(handle);
-                if (!validationResult.isValid) {
-                    let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
-                    if (validationResult.reason === 'criteria_not_met') {
-                        warningMessage += " " + _('requiredFilesForLocalFolder');
-                    }
-                    showToast(warningMessage, 15000);
-                    return;
-                }
-                await saveConfig('directoryHandle', handle);
-                dirHandle = handle;
-                folderNameDisplay.textContent = handle.name;
-                folderNameDisplay.title = handle.name;
-                showToast(_('folderSelectedForSync').replace('{folderName}', handle.name), 10000);
-
-                // Актуализираме отметката и localStorage
-                const localCheckbox = document.getElementById('use-local-db-checkbox');
-                if (localCheckbox) localCheckbox.checked = true;
-                localStorage.setItem('useLocalDb', 'true');
-
-                // Изключваме другите източници
-                localStorage.setItem('useGoogleDb', 'false');
-                localStorage.setItem('useArhDb', 'false');
-                const googleCheckbox = document.getElementById('use-google-db-checkbox');
-                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                if (googleCheckbox) googleCheckbox.checked = false;
-                if (arhCheckbox) arhCheckbox.checked = false;
-
-                const settingsModal = document.getElementById('settings-modal');
-                const settings2Modal = document.getElementById('settings2-modal');
-                if (settingsModal) settingsModal.classList.remove('visible');
-                if (settings2Modal) settings2Modal.classList.remove('visible');
-
-                updateModeButton();
-                mainLogic();
-            }
-        } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.log("Error selecting directory:", error);
-            }
-        }
-    });
     // --- Archive Folder Setting ---
     const selectArhBtn = document.getElementById('select-arh-btn');
     const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-    selectArhBtn.addEventListener('click', async () => {
-        try {
-            const handle = await window.showDirectoryPicker(); // Prompt user to select
-            if (handle) {
-                const validationArh = await validateArhFolderContent(handle);
-                if (!validationArh.isValid) {
-                    let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
-                    if (validationArh.reason === 'criteria_not_met') {
-                        warningMessage += " " + _('requiredFilesForLocalFolder');
-                    }
-                    showToast(warningMessage, 15000);
-                    return;
-                }
-                arhFolderNameDisplay.textContent = handle.name;
-                arhFolderNameDisplay.title = handle.name;
-                dirHandle = handle; // <--- ДОБАВЕН РЕД
-                await saveConfig('arhHandle', handle); // Запазваме избраната папка
-
-                // Актуализираме отметката и localStorage
-                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                if (arhCheckbox) arhCheckbox.checked = true;
-                localStorage.setItem('useArhDb', 'true');
-
-                // Изключваме другите източници
-                localStorage.setItem('useGoogleDb', 'false');
-                localStorage.setItem('useLocalDb', 'false');
-                const googleCheckbox = document.getElementById('use-google-db-checkbox');
-                const localCheckbox = document.getElementById('use-local-db-checkbox');
-                if (googleCheckbox) googleCheckbox.checked = false;
-                if (localCheckbox) localCheckbox.checked = false;
-
-                const settingsModal = document.getElementById('settings-modal');
-                const settings2Modal = document.getElementById('settings2-modal');
-                if (settingsModal) settingsModal.classList.remove('visible');
-                if (settings2Modal) settings2Modal.classList.remove('visible');
-
-                showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
-                // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
-                updateGlobalStateFlags();
-
-                updateModeButton();
-                // След избор, просто презареждаме основната логика,
-                // която вече ще види, че е избран режим "Архив".
-                mainLogic();
-            }
-        } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.log("Error selecting directory:", error);
-            }
-        }
-    });
     // Close
     document.getElementById('settings-close-btn').addEventListener('click', async (e) => {
         if (e && e.ctrlKey) return; // Allow Ctrl-Click toggle behavior to fire without closing the UI
 
         /* const configData = await exportConfig();
         console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
-        const currentState = {
-            useGoogleDb: document.getElementById('use-google-db-checkbox').checked,
-            useLocalDb: document.getElementById('use-local-db-checkbox').checked,
-            useArhDb: document.getElementById('use-arh-db-checkbox').checked,
-            useIndexedDb: document.getElementById('use-indexeddb-checkbox').checked
-        };
-
-        // --- STRICT VALIDATION FIRST ---
         updateGlobalStateFlags();
-        if (!validateDataSourceSelection()) {
-            // If validation fails, DO NOT close the modal.
-            // toast is shown by validateDataSourceSelection
-            return;
-        }
 
         document.getElementById('settings-modal').classList.remove('visible');
         if (window.kbAssistant) window.kbAssistant.terminateGuide();
         // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
-        updateModeButton();
         const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
         if (window.wasOpenedForMissingFolder) {
             window.wasOpenedForMissingFolder = false; // Нулираме флага
@@ -18050,13 +10283,6 @@ async function createSettingsUI(boardsData, boardParseError) {
 }
 // Always ensure the delete folder button has a listener (outside the initialization guard)
 const deleteFolderBtn = document.getElementById('delete-folder-btn');
-if (deleteFolderBtn) {
-    deleteFolderBtn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showFolderDeletePopup();
-    };
-}
 
 // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
 // Разширените настройки вече са част от settings2-modal и са винаги видими
@@ -18066,52 +10292,6 @@ if (advancedSettings) {
     advancedSettings.removeAttribute('hidden');
 }
 
-// Асинхронно зареждане на името на папката за архив и локална синхронизация
-async function updateSpecialFolderNames() {
-    try {
-        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        if (arhFolderNameDisplay) {
-            const arhHandle = await getConfig('arhHandle');
-            if (arhHandle) {
-                const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
-                if (permission === 'granted') {
-                    arhFolderNameDisplay.textContent = arhHandle.name;
-                    arhFolderNameDisplay.title = arhHandle.name;
-                } else {
-                    arhFolderNameDisplay.textContent = _('permissionDenied');
-                    arhFolderNameDisplay.style.color = 'red';
-                }
-            } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
-        }
-    } catch (err) {
-        console.warn("Could not load archive folder name:", err);
-    }
-
-    try {
-        const folderNameDisplay = document.getElementById('local-sync-folder-name');
-        if (folderNameDisplay) {
-            const syncHandle = await getConfig('directoryHandle');
-            if (syncHandle) {
-                const permission = await syncHandle.queryPermission({ mode: 'readwrite' });
-                if (permission === 'granted') {
-                    folderNameDisplay.textContent = syncHandle.name;
-                    folderNameDisplay.title = syncHandle.name;
-                } else {
-                    folderNameDisplay.textContent = _('permissionDenied');
-                }
-            } else { folderNameDisplay.textContent = _('folderNotSelected'); }
-        }
-    } catch (err) {
-        console.warn("Could not load local sync folder name:", err);
-    }
-}
-
-// Извикваме веднага за първоначално инициализиране, ако базата ги има
-updateSpecialFolderNames();
-
-/**
- * Попълва падащото меню за избор на стартов борд в настройките.
- */
 function populateStartBoardSelect() {
     const startBoardSelect = document.getElementById('start-board-select');
     let savedValue = localStorage.getItem('startBoard');
@@ -18823,13 +11003,11 @@ function toggleDraftPreviewCheckbox(host, input) {
     host.scrollTop = scrollTop;
 }
 
-// Записът след смяна на отметка: обектът, картата, модала (ако показва тази бележка) и източниците
-// (Google Drive / локална папка / IndexedDB) по същия ред като saveEditedNote. Дължината на текста
-// не се сменя ([ ]<->[x], ☐<->☑), затова форматите (text_span/title_span) остават същите.
+// Записът след смяна на отметка: обектът, картата, модала (ако показва тази бележка) и базата.
+// Дължината на текста не се сменя ([ ]<->[x], ☐<->☑), затова форматите (text_span/title_span)
+// остават същите.
 async function saveNoteCheckboxChange(noteObj) {
-    const updateGDriveNow = useGoogleDb && !isOffline;
-    const updateLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
-    const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
+    const useIndexedDbNow = true; // локален режим: единственото хранилище е базата
     noteObj.version = noteObj.version ? parseInt(noteObj.version, 10) + 1 : 1;
     noteObj.datemod = Date.now();
 
@@ -18856,44 +11034,7 @@ async function saveNoteCheckboxChange(noteObj) {
         if (mb.dataset.baseNote) mb.dataset.baseNote = JSON.stringify(noteObj);
     }
 
-    let gdriveOk = updateGDriveNow;
-    if (updateGDriveNow) {
-        const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-        try {
-            if (isTempGdid) {
-                const folderId = await getFolderID();
-                if (folderId) {
-                    const tempGdid = noteObj.gdid;
-                    const newGdid = await createGDriveFile(folderId, 'note.txt', JSON.stringify(noteObj));
-                    if (!newGdid) throw new Error('Failed to create GDrive file');
-                    noteObj.gdid = newGdid;
-                    const el = document.querySelector(`.note[data-i="${noteObj.id}"]`);
-                    if (el) el.dataset.g = newGdid;
-                    if (mb && modalShowsNote) mb.dataset.gdid = newGdid;
-                    await updateGDriveFile(newGdid, JSON.stringify(noteObj));
-                    if (useIndexedDbNow && tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
-                }
-            } else {
-                const success = await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-                if (!success) throw new Error('GDrive update returned false');
-            }
-        } catch (e) {
-            console.error('Failed to save checkbox change to GDrive', e);
-            showToast(_('errorSaveGDrive'));
-            gdriveOk = false;
-        }
-    }
-    if (updateLocalFolderNow) {
-        try {
-            const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-            if (isTempGdid && !updateGDriveNow) noteObj.gdid = `L${Date.now()}`;
-            if (noteObj.gdid) await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
-        } catch (e) {
-            console.error('Failed to save checkbox change to the local folder', e);
-            showToast(_('errorSaveLocalFolder') || 'Грешка при запис в локалната папка');
-        }
-    }
-    if (gdriveOk) noteObj.type = 0;
+    // Локален режим: записът е само в базата.
     else if (useIndexedDbNow) noteObj.type = -1; // за офлайн синхронизация
     if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
     if (typeof updateReloadButtonState === 'function') updateReloadButtonState();
@@ -19275,295 +11416,118 @@ window.copyCode = function (btn) {
 };
 
 /**
- * Обработва и създава UI за прикачен файл от локална папка.
- * @param {object} attachment - Обектът на прикачения файл.
- * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
- * @param {object} iconData - SVG иконата за типа на файла.
+ * Прикачен файл в локален режим: байтовете са blob в store `files`, а
+ * attachment.pathGD е ключът му. Линкът отваря файла в нов раздел, иконата го
+ * показва в самата бележка (снимка / видео).
  */
-async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 'local', isForModal = false) {
+async function handleLocalAttachment(attachment, attachmentWrapper, iconData, isForModal = false) {
     const iconDiv = document.createElement('div');
     iconDiv.innerHTML = iconData.svg;
-    const path = attachment.path || '';
-    const nameOnly = path.split('/').pop();
-    const isSharedResource = nameOnly.startsWith('shared_');
-    const displayLinkText = (isSharedResource || !nameOnly) ? (_('openLink') || 'Open') : nameOnly;
-    const archiveFolderName = dirHandle ? dirHandle.name : '';
-    const createLink = async (folderName, textPrefix) => {
+    const fileKey = attachment.pathGD || attachment.path;
+    const filename = attachment.path || '';
+
+    const openFile = async () => {
+        const url = await getFileObjectUrl(fileKey);
+        if (!url) {
+            showToast((_('errorOpenFile') || 'Файлът не е намерен: {filename}').replace('{filename}', filename));
+            return;
+        }
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
+
+    const buildLink = () => {
         const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
+        if (!isForModal && !oneTapLinksEnabled) {
             const span = document.createElement('span');
-            span.textContent = textPrefix + displayLinkText;
+            span.textContent = filename;
             return span;
         }
         const link = document.createElement('a');
         link.href = '#';
+        link.textContent = filename;
+        link.title = filename;
         link.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            // --- КОРЕКЦИЯ: Зареждаме dirHandle при нужда в режим "Само база данни" ---
-            const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-            if (isDbOnlyMode && !dirHandle) {
-                const dbSource = await getConfig('dbSource');
-                let handleKey = null;
-                if (dbSource === 2) handleKey = 'directoryHandle';
-                else if (dbSource === 3) handleKey = 'arhHandle';
-                if (handleKey) {
-                    const handle = await getConfig(handleKey);
-                    if (handle) {
-                        const verifiedHandle = await verifyPermission(handle);
-                        if (verifiedHandle) dirHandle = verifiedHandle;
-                    }
-                }
-                // Ако и след този опит нямаме handle, показваме съобщение и прекратяваме.
-                if (!dirHandle) {
-                    showToast(_('noUpdateMode'), 5000);
-                    return;
-                }
-            }
-            if (!filename) return;
-            console.log(`Opening file: ${folderName}/${filename}   DirHandle:`, dirHandle);
-            try {
-                const fileHandle = mode === 'local'
-                    ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(filename)
-                    : await dirHandle.getFileHandle(filename); // Винаги използваме filename
-                const file = await fileHandle.getFile();
-                window.open(URL.createObjectURL(file), '_blank');
-            } catch (err) {
-                console.log(`Could not open local file ${folderName}/${filename}`, err);
-                showToast(_('errorOpenFile').replace('{filename}', filename));
-            }
+            await openFile();
         };
-        link.textContent = textPrefix + displayLinkText;
         return link;
     };
-    const appendWithDescription = async (folder, prefix, description) => {
-        const container = document.createElement('div');
-        container.style.flexGrow = '1';
-        container.style.flexShrink = '1';
-        container.style.minWidth = '0';
-        container.appendChild(await createLink(folder, prefix));
-        const line2 = document.createElement('div');
-        line2.textContent = description || '';
-        container.appendChild(line2);
-        attachmentWrapper.appendChild(container);
-    };
-    switch (attachment.type) {
-        case 1: // Image
-            const imgLink = await createLink(mode === 'local' ? 'Images' : '', mode === 'local' ? '' : '');
-            attachmentWrapper.appendChild(imgLink);
-            // Добавяме липсващата логика за преглед при клик на иконата
-            addInNotePreviewListener(iconDiv, attachment.path, mode, false);
-            break;
-        case 2: // Sound
-            await appendWithDescription(
-                mode === 'local' ? 'Sound' : '',
-                mode === 'local' ? '' : '', // `${archiveFolderName}/`
-                attachment.description
-            );
-            break;
-        case 3: // Other
-            attachmentWrapper.appendChild(await createLink(
-                mode === 'local' ? 'Other' : '',
-                mode === 'local' ? '' : '' // `${archiveFolderName}/`
-            ));
-            break;
-        case 4: // Video
-            const videoContainer = document.createElement('div');
-            videoContainer.appendChild(await createLink(mode === 'local' ? 'Video' : '', mode === 'local' ? '' : ''));
-            videoContainer.appendChild(document.createTextNode(attachment.description || ''));
-            attachmentWrapper.appendChild(videoContainer);
-            addInNotePreviewListener(iconDiv, attachment.path, mode, true);
-            break;
-        case 5: // Location
-            const parts = attachment.path.split('|');
-            if (parts.length < 3) break;
-            const [lat, lng, label] = parts;
-            const textContainer = document.createElement('div');
-            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-            const isForModal = !!attachmentWrapper.closest('#modal-body');
-            let linkElement;
-            if (!isForModal && !oneTapLinksEnabled) {
-                linkElement = document.createElement('span');
-                linkElement.textContent = `${lat}, ${lng}`;
-            } else {
-                linkElement = document.createElement('a');
-                linkElement.textContent = `${lat}, ${lng}`;
-                linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                linkElement.target = '_blank';
-                linkElement.rel = 'noopener noreferrer';
-                linkElement.onclick = (e) => e.stopPropagation();
-            }
-            textContainer.appendChild(linkElement);
-            const line2 = document.createElement('div');
-            line2.textContent = label;
-            textContainer.appendChild(line2);
-            attachmentWrapper.appendChild(textContainer);
-            break;
-    }
-    // Добавяме стандартния listener за показване на JSON данни само в дебъг режим
-    if (debug) {
-        iconDiv.style.cursor = 'pointer';
-        iconDiv.addEventListener('click', (e) => {
-            e.stopPropagation();
-            let debugText = JSON.stringify(attachment, null, 2);
-            if (attachment.gdid && localFileMap.has(attachment.gdid)) {
-                debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
-            }
-            showModal(debugText);
-        });
-    }
-    attachmentWrapper.prepend(iconDiv);
-}
 
-/**
- * Обработва и създава UI за прикачен файл от Google Drive.
- * @param {object} attachment - Обектът на прикачения файл.
- * @param {HTMLElement} attachmentWrapper - Елементът, в който да се добави UI.
- * @param {object} iconData - SVG иконата за типа на файла.
- */
-async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, isForModal = false) {
-    const iconDiv = document.createElement('div');
-    iconDiv.innerHTML = iconData.svg;
-    if (!attachment.path) {
+    if (!fileKey) {
         iconDiv.style.cursor = 'pointer';
         iconDiv.addEventListener('click', (e) => {
             e.stopPropagation();
-            let debugText = JSON.stringify(attachment, null, 2);
-            if (attachment.gdid && localFileMap.has(attachment.gdid)) {
-                debugText = `File: ${localFileMap.get(attachment.gdid)}\n\n` + debugText;
-            }
-            showModal(debugText);
+            showModal(JSON.stringify(attachment, null, 2));
         });
         attachmentWrapper.prepend(iconDiv);
         return;
     }
-    const path = attachment.path || '';
-    const filename = path.split('/').pop();
-    const isSharedResource = filename.startsWith('shared_');
-    const displayLinkText = (isSharedResource || !filename) ? (_('openLink') || 'Open') : filename;
-    const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
-    // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
-    const setupLink = (folderName, textPrefix) => {
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-        let linkElement;
-        if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
-            linkElement = document.createElement('span');
-            linkElement.textContent = textPrefix + displayLinkText;
-            return linkElement; // Връщаме span елемента
-        }
-        linkElement = document.createElement('a');
-        linkElement.href = '#'; // href вече не сочи директно към файла.
-        linkElement.textContent = textPrefix + displayLinkText;
-        linkElement.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
-        linkElement.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
-        linkElement.title = `Click to open ${filename} from Google Drive`;
-        linkElement.onclick = async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            // Authentication is handled inside showInNotePreview -> loadMedia, or locally for other files
-            // --- IMPROVED ATTACHMENT OPENING (Avoid Account Prompt) ---
-            if (fileId) {
-                // For media (Images, Sound, Video), use internal authenticated viewer
-                if (attachment.type === 1 || attachment.type === 2 || attachment.type === 4) {
-                    const modalContentBox = linkElement.closest('#content-modal')?.querySelector('.modal-content-box');
-                    let targetEl = linkElement.closest('.note') || modalContentBox || document.getElementById('modal-body') || document.body;
-                    const noteGdid = attachment.noteid || (isForModal && typeof isForModal === 'object' ? isForModal.gdid : null);
-                    if (!noteGdid) {
-                        // Fallback: just preview this single one if we can't find others
-                        showInNotePreview(targetEl, [{ pathGD: fileId, type: attachment.type }], 0, 'gdrive', attachment.type === 4);
-                        return;
-                    }
-                    const attachmentsOfType = mediaData.filter(m => m.noteid === noteGdid && m.type === attachment.type);
-                    const currentIndex = attachmentsOfType.findIndex(m => (m.pathGD || m.path) === fileId);
-                    showInNotePreview(targetEl, attachmentsOfType, currentIndex !== -1 ? currentIndex : 0, 'gdrive', attachment.type === 4);
-                    return;
-                }
-                // For other files, try fetching with token and opening the blob to skip Google Auth prompt
-                showToast(`${_('loadingFile')} ${linkElement.dataset.fileName}...`, 2000);
-                try {
-                    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
-                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-                        headers: { 'Authorization': `Bearer ${tokenObj ? tokenObj.access_token : ''}` }
-                    });
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    const blob = await response.blob();
-                    const blobUrl = URL.createObjectURL(blob);
-                    window.open(blobUrl, '_blank');
-                } catch (error) {
-                    console.warn("Auth-based fetch failed, falling back to direct link:", error);
-                    window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer');
-                }
-            } else {
-                showToast(_('errorFetchFileId').replace('{fileName}', linkElement.dataset.fileName));
-            }
-        };
-        return linkElement; // Връщаме конфигурирания 'a' елемент
-    };
+
     switch (attachment.type) {
         case 1: // Image
-            const imgLink = setupLink('Images', '');
-            addInNotePreviewListener(iconDiv, fileId, 'gdrive', false);
-            attachmentWrapper.appendChild(imgLink);
+            attachmentWrapper.appendChild(buildLink());
+            addInNotePreviewListener(iconDiv, fileKey, 'local', false);
             break;
         case 2: // Sound
-            const soundLink = setupLink('Sound', '');
-            const soundTextContainer = document.createElement('div');
-            soundTextContainer.style.flexGrow = '1';
-            soundTextContainer.style.flexShrink = '1';
-            soundTextContainer.style.minWidth = '0';
-            soundTextContainer.appendChild(soundLink);
-            const soundLine2 = document.createElement('div');
-            soundLine2.textContent = attachment.description || '';
-            soundTextContainer.appendChild(soundLine2);
-            attachmentWrapper.appendChild(soundTextContainer);
+            {
+                const container = document.createElement('div');
+                container.style.flexGrow = '1';
+                container.style.flexShrink = '1';
+                container.style.minWidth = '0';
+                container.appendChild(buildLink());
+                const line2 = document.createElement('div');
+                line2.textContent = attachment.description || '';
+                container.appendChild(line2);
+                attachmentWrapper.appendChild(container);
+            }
             break;
         case 3: // Other
-            const otherLink = setupLink('Other', '');
-            attachmentWrapper.appendChild(otherLink);
+            attachmentWrapper.appendChild(buildLink());
             break;
         case 4: // Video
-            const videoLink = setupLink('Video', '');
-            const videoTextContainer = document.createElement('div');
-            videoTextContainer.style.flexGrow = '1';
-            videoTextContainer.style.flexShrink = '1';
-            videoTextContainer.style.minWidth = '0';
-            videoTextContainer.appendChild(videoLink);
-            const videoLine2 = document.createElement('div');
-            videoLine2.textContent = attachment.description || '';
-            videoTextContainer.appendChild(videoLine2);
-            addInNotePreviewListener(iconDiv, fileId, 'gdrive', true);
-            attachmentWrapper.appendChild(videoTextContainer);
-            break;
-        case 5: // Location
-            const parts = attachment.path.split('|');
-            if (parts.length < 3) break;
-            const [lat, lng, label] = parts;
-            const textContainer = document.createElement('div');
-            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
-            const isForModal = !!attachmentWrapper.closest('#modal-body');
-            let linkElement;
-            if (!isForModal && !oneTapLinksEnabled) {
-                linkElement = document.createElement('span');
-                linkElement.textContent = `${lat}, ${lng}`;
-            } else {
-                linkElement = document.createElement('a');
-                linkElement.textContent = `${lat}, ${lng}`;
-                linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
-                linkElement.target = '_blank';
-                linkElement.rel = 'noopener noreferrer';
-                linkElement.onclick = (e) => e.stopPropagation();
+            {
+                const container = document.createElement('div');
+                container.style.flexGrow = '1';
+                container.style.flexShrink = '1';
+                container.style.minWidth = '0';
+                container.appendChild(buildLink());
+                const line2 = document.createElement('div');
+                line2.textContent = attachment.description || '';
+                container.appendChild(line2);
+                attachmentWrapper.appendChild(container);
+                addInNotePreviewListener(iconDiv, fileKey, 'local', true);
             }
-            textContainer.appendChild(linkElement);
-            const line2 = document.createElement('div');
-            line2.textContent = label;
-            textContainer.appendChild(line2);
-            attachmentWrapper.appendChild(textContainer);
+            break;
+        case 5: // Location (има собствен низ, не файл)
+            {
+                const parts = (attachment.path || '').split('|');
+                if (parts.length < 3) break;
+                const [lat, lng, label] = parts;
+                const textContainer = document.createElement('div');
+                const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+                const inModal = !!attachmentWrapper.closest('#modal-body');
+                let linkElement;
+                if (!inModal && !oneTapLinksEnabled) {
+                    linkElement = document.createElement('span');
+                    linkElement.textContent = `${lat}, ${lng}`;
+                } else {
+                    linkElement = document.createElement('a');
+                    linkElement.textContent = `${lat}, ${lng}`;
+                    linkElement.href = `https://www.google.com/maps?q=${lat},${lng}(${encodeURIComponent(label)})`;
+                    linkElement.target = '_blank';
+                    linkElement.rel = 'noopener noreferrer';
+                    linkElement.onclick = (e) => e.stopPropagation();
+                }
+                textContainer.appendChild(linkElement);
+                const line2 = document.createElement('div');
+                line2.textContent = label;
+                textContainer.appendChild(line2);
+                attachmentWrapper.appendChild(textContainer);
+            }
             break;
     }
-    if (attachment.type !== 1 && attachment.type !== 4) { // Add generic info click for non-preview types
-        iconDiv.style.cursor = 'pointer';
-    }
-    // Винаги добавяме listener за показване на JSON в дебъг режим
     if (debug) {
         iconDiv.style.cursor = 'pointer';
         iconDiv.addEventListener('click', (e) => {
@@ -19964,19 +11928,9 @@ async function createNoteElement(noteContent) {
         renderPreviewContent(displayContent);
     }
     let attachments = [];
-    if (useIndexedDb) {
-        // Когато използваме база данни, трябва да знаем как е създадена.
-        // Използваме глобалната променлива, която е заредена в mainLogic
-        const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid'; // 'gdid' е fallback за стари бази
-        if (dbNoteIdType === 'id') {
-            attachments = mediaData.filter(media => +media.noteid === +noteID);
-        } else { // 'gdid'
-            attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
-    } else {
-        // Когато четем директно, логиката зависи от текущия режим.
-        if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
-        else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
+    {
+        // Локален режим: media.noteid е локалният ключ на бележката.
+        attachments = mediaData.filter(media => media.noteid === noteGdid || String(media.noteid) === String(noteID));
     }
     if (attachments.length > 0) {
         note.dataset.hasAttachments = 'true';
@@ -19985,18 +11939,8 @@ async function createNoteElement(noteContent) {
             note.dataset.hp = '1';
             // --- Store preview data for programmatic access (e.g. Board Previews) ---
             const firstPhoto = attachments.find(att => att.type === 1);
-            let mode = 'gdrive';
-            // Determine mode based on global state, mirroring the attachment rendering logic
-            // Note: DB logic relies on globals set in mainLogic
-            if (useIndexedDb) {
-                if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'id' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 3) mode = 'archive';
-                else if (typeof dbNoteIdTypeGlobal !== 'undefined' && dbNoteIdTypeGlobal === 'gdid' && typeof dbSourceGlobal !== 'undefined' && dbSourceGlobal === 2) mode = 'local';
-            } else if (useArhDb) {
-                mode = 'archive';
-            } else if (useLocalFolder) {
-                mode = 'local';
-            }
-            const fileId = (mode === 'gdrive') ? (firstPhoto.pathGD || firstPhoto.path) : firstPhoto.path;
+            const mode = 'local';
+            const fileId = firstPhoto.pathGD || firstPhoto.path;
             const previewData = {
                 fileId: fileId,
                 mode: mode,
@@ -20033,29 +11977,7 @@ async function createNoteElement(noteContent) {
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
                 attachmentWrapper.dataset.type = attachment.type; // Add type for easy selection
-                const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
-                if (isDbOnlyMode) {
-                    // В режим "Само база данни", логиката зависи ИЗЦЯЛО от произхода на базата.
-                    // Използваме глобалните променливи, зададени в mainLogic.
-                    if (dbNoteIdTypeGlobal === 'id' && dbSourceGlobal === 3) { // Валидна комбинация за Архив
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 2) { // Валидна комбинация за Локална папка
-                        await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                    } else if (dbNoteIdTypeGlobal === 'gdid' && dbSourceGlobal === 1) { // Валидна комбинация за Google Drive
-                        await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                    }
-                    // При невалидна комбинация, не правим нищо и линкове не се създават.
-                    // Съобщението за грешка вече се показва от mainLogic.
-                } else if (useArhDb) {
-                    // --- ЛОГИКА ЗА АРХИВ ---
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive');
-                } else if (useLocalFolder) {
-                    // --- ЛОГИКА ЗА ЛОКАЛНА ПАПКА ---
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local');
-                } else { // По подразбиране, ако не е нито един от горните, е Google Drive
-                    // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
-                }
+                await handleLocalAttachment(attachment, attachmentWrapper, iconData);
                 contentEl.appendChild(attachmentWrapper);
             }));
 
@@ -20105,41 +12027,7 @@ async function createNoteElement(noteContent) {
         if (!e.target.closest('.note-footer')) {
             const currentGdid = noteContent.gdid || note.dataset.g;
 
-            // --- FORCE GDRIVE READ LOGIC ---
-            const forceGDriveRead = localStorage.getItem('forceGDriveRead') === 'true';
-            if (forceGDriveRead && currentGdid) {
-                showToast(_('loadingFromDrive'), 2000);
-                const txt = await fetchGDriveFileContent(currentGdid);
-                if (txt) {
-                    try {
-                        const newItem = JSON.parse(txt);
-                        // Update memory
-                        Object.assign(noteContent, newItem);
-                        // Update critical fields for modal
-                        if (newItem.notetxt !== undefined) fileContent = newItem.notetxt;
-                        else if (newItem.text !== undefined) fileContent = newItem.text;
 
-                        if (newItem.title_span !== undefined) titleSpan = newItem.title_span;
-                        if (newItem.text_span !== undefined) textSpan = newItem.text_span;
-
-                        extraData = { ...noteContent };
-                        delete extraData.notetxt;
-
-                        // Update global data array reference too (find and update)
-                        if (typeof allNotesData !== 'undefined') {
-                            const noteInHeader = allNotesData.find(n => n.gdid === currentGdid);
-                            if (noteInHeader) {
-                                Object.assign(noteInHeader, newItem);
-                            }
-                        }
-
-                    } catch (err) {
-                        console.error("Error parsing GDrive content", err);
-                        showToast(_('errorParsingNote'), 3000);
-                    }
-                }
-            }
-            // --- END FORCE GDRIVE READ LOGIC ---
 
             const noteBgColor = getNoteColorCss(noteColor);
             showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: (function () { try { const _src = (typeof noteContent !== 'undefined' && noteContent) ? noteContent : extraData; const _live = (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) ? allNotesData.find(n => n && (String(n.gdid) === String(_src.gdid) || (n.id !== undefined && _src.id !== undefined && String(n.id) === String(_src.id)))) : null; return (_live && _live.boardid !== undefined) ? _live.boardid : extraData.boardid; } catch (e) { return extraData.boardid; } })(), id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
@@ -20246,22 +12134,10 @@ async function createNoteElement(noteContent) {
                     if (type === 1 || type === 4) {
                         const firstAttachmentOfType = attachments.find(att => att.type === type);
                         if (firstAttachmentOfType) {
-                            let sourceMode = 'gdrive';
-                            if (useArhDb) sourceMode = 'archive';
-                            else if (useLocalFolder) sourceMode = 'local';
-                            else if (useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb) { // Ако е само IndexedDB
-                                if (dbSourceGlobal === 3) sourceMode = 'archive'; // И базата е от архив
-                                else if (dbSourceGlobal === 2) sourceMode = 'local'; // Или базата е от локална папка
-                                // Ако dbSourceGlobal е 1 (Google Drive), sourceMode остава 'gdrive'
-                            }
-                            // Активираме превюто, ако източникът е Google Drive, Локална папка или Архив
-                            // Only add preview listener if we actually found the attachment
-                            if (sourceMode === 'gdrive' || sourceMode === 'local' || sourceMode === 'archive') {
-                                // Filter attachments of this type (already filtered above for counting, but let's be explicit or reuse)
-                                const attachmentsOfType = attachments.filter(att => att.type === type);
-                                const isVideo = type === 4;
-                                addInNotePreviewListener(iconDiv, attachmentsOfType, 0, sourceMode, isVideo);
-                            }
+                            const sourceMode = 'local';
+                            const attachmentsOfType = attachments.filter(att => att.type === type);
+                            const isVideo = type === 4;
+                            addInNotePreviewListener(iconDiv, attachmentsOfType, 0, sourceMode, isVideo);
                         }
                     }
                     footerEl.appendChild(iconDiv);
@@ -20305,29 +12181,13 @@ async function toggleNotePinned(noteGdid, noteId) {
     if (!noteToUpdate) return false;
 
     const wasPinned = Number(noteToUpdate.pinnedAt || 0) > 0;
-    if (noteToUpdate.guideDemo) { // демо бележка на водач: само паметта и борда, без запис
-        if (wasPinned) delete noteToUpdate.pinnedAt;
-        else noteToUpdate.pinnedAt = Date.now();
-        const demoEl = document.querySelector(`.note[data-i="${noteToUpdate.id}"]`);
-        if (demoEl) {
-            const updatedEl = await createNoteElement(noteToUpdate);
-            if (updatedEl) demoEl.replaceWith(updatedEl);
-        }
-        applyFilters();
-        showToast(wasPinned ? (_('noteUnpinned') || 'Note unpinned') : (_('notePinned') || 'Note pinned'), 2000);
-        return true;
-    }
     if (noteToUpdate.version) noteToUpdate.version = parseInt(noteToUpdate.version, 10) + 1;
     else noteToUpdate.version = 1;
     if (wasPinned) delete noteToUpdate.pinnedAt;
     else noteToUpdate.pinnedAt = Date.now();
     noteToUpdate.datemod = Date.now();
 
-    const updateGDriveNow = useGoogleDb && !isOffline;
-    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true' && !isOffline;
-    if (!updateGDriveNow && !updateLocalFolderNow) {
-        noteToUpdate.type = -1;
-    }
+    noteToUpdate.type = -1; // локален режим: бележката живее само в базата
 
     const oldNoteEl = document.querySelector(`.note[data-g="${noteToUpdate.gdid}"]`) ||
         (noteToUpdate.id ? document.querySelector(`.note[data-i="${noteToUpdate.id}"]`) : null);
@@ -20336,34 +12196,6 @@ async function toggleNotePinned(noteGdid, noteId) {
         if (updatedEl) oldNoteEl.replaceWith(updatedEl);
     }
 
-    if (updateGDriveNow) {
-        const isTempGdid = !noteToUpdate.gdid || String(noteToUpdate.gdid) === String(noteToUpdate.id);
-        if (isTempGdid) {
-            const folderId = await getFolderID();
-            if (folderId) {
-                const oldGdid = noteToUpdate.gdid;
-                const newGdid = await createGDriveFile(folderId, 'note.txt', JSON.stringify(noteToUpdate));
-                if (newGdid) {
-                    noteToUpdate.gdid = newGdid;
-                    await updateGDriveFile(newGdid, JSON.stringify(noteToUpdate));
-                    if (useIndexedDb && oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
-                }
-            }
-        } else {
-            await updateGDriveFile(noteToUpdate.gdid, JSON.stringify(noteToUpdate));
-        }
-        noteToUpdate.type = 0;
-    }
-
-    if (updateLocalFolderNow) {
-        const isTempGdid = !noteToUpdate.gdid || String(noteToUpdate.gdid) === String(noteToUpdate.id);
-        if (isTempGdid && !updateGDriveNow) {
-            noteToUpdate.gdid = `L${Date.now()}`;
-        }
-        if (noteToUpdate.gdid) {
-            await updateLocalFile(noteToUpdate.gdid, JSON.stringify(noteToUpdate));
-        }
-    }
 
     if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteToUpdate], true);
     applyFilters();
@@ -20443,12 +12275,6 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         trashCount: 0
     };
 
-    // --- OWNER CHECK ---
-    // If the user is not the owner, force 'all' boards view instead of saved startup board.
-    // Exception: Archive and Local Folder modes often involve shared data, so we don't force 'all' if these modes are active.
-    if (!isDbOwner && !useArhDb && !useLocalFolder) {
-        currentBoardFilter = 'all';
-    }
 
     // Обработка на стартов борд 'Main' (вече и регистронезависимо)
     if (currentBoardFilter === 'Main') {
@@ -20626,25 +12452,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                         if (useIndexedDb && typeof deleteFromDB === 'function') {
                             await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
                         }
-                        // Delete the board file from Google Drive if it has a gdid
-                        const updateGDriveNow = useGoogleDb && !isOffline;
-                        if (updateGDriveNow && board.gdid && typeof deleteGDriveFile === 'function') {
-                            try {
-                                if (await deleteGDriveFile(board.gdid)) {
-                                    console.log(`Deleted board file from GDrive: ${board.gdid}`);
-                                } else {
-                                    console.log(`Board file ${board.gdid} not found on GDrive (already deleted).`);
-                                }
-                            } catch (gdErr) {
-                                console.error(`Failed to delete board file ${board.gdid} from GDrive:`, gdErr);
-                            }
-                        }
-                        // Confirmation toast
                         showToast(_('boardDeletedSuccess').replace('{boardName}', board.title), 2000);
                     }
                 }
-                // Individual board files were already deleted via deleteGDriveFile(board.gdid) above
-                // No need to update a centralized board.txt as boards are stored individually
                 // Finally render the menu (it was hidden initially)
                 renderUI({ rerenderOnlyMenu: true });
                 // Re-apply active state to the board button as it was just rendered
@@ -20696,100 +12506,6 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     updateReloadButtonState();
 }
 
-
-/**
- * Чете архивни данни (boards.bcp, notes.bcp, medias.bcp) от подадена директория
- * и попълва глобалните променливи boardsData, allNotesData и mediaData.
- *
- * @param {FileSystemDirectoryHandle} dirHandle - Handle към директорията, съдържаща .bcp файловете.
- * @returns {Promise<boolean>} Връща true при успех, false при провал.
- */
-async function readArh(dirHandle) {
-    if (!dirHandle) {
-        console.log("readArh: Не е подаден валиден handle на директория.");
-        showToast(_('errorNoArchiveFolderSelected'), 10000);
-        return false;
-    }
-    console.log("--- Archive fetch sequence started ---");
-    const startTime = performance.now();
-    let success = true;
-    // Map usage removed here, now using local maps in validateFileData
-    // const gdidMap = new Map();
-    const validateFileData = (data, fileName) => {
-        const fileMap = new Map();
-        if (Array.isArray(data)) {
-            data.forEach(item => {
-                const itemId = item.id || item.gdid;
-                if (itemId === undefined || itemId === null) {
-                    const error = `[Archive] Item in '${fileName}' is missing ID property.`;
-                    console.warn(error);
-                    dataIntegrityIssues.push({ type: 'missing', file: fileName });
-                } else {
-                    if (fileMap.has(itemId)) {
-                        const error = `[Duplicate ID] ID '${itemId}' found multiple times in '${fileName}'. Conflict within file.`;
-                        console.error(error);
-                        dataIntegrityIssues.push({ type: 'duplicate', gdid: itemId, file1: fileName, file2: fileName, mode: 'archive' });
-                    } else {
-                        fileMap.set(itemId, true);
-                    }
-                }
-            });
-        }
-    };
-    try {
-        // 1. Четене на boards.bcp
-        const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
-        const boardsFile = await boardsFileHandle.getFile();
-        const boardsContent = await boardsFile.text();
-        boardsData = JSON.parse(boardsContent);
-        trackMaxBoardIds(boardsData);
-        validateFileData(boardsData, 'boards.bcp');
-        console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
-        // 2. Четене на notes.bcp
-        const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
-        const notesFile = await notesFileHandle.getFile();
-        const notesContent = await notesFile.text();
-        const notesArray = JSON.parse(notesContent);
-        allNotesData = notesArray;
-        trackMaxIds(allNotesData);
-        validateFileData(allNotesData, 'notes.bcp');
-        console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
-        // 3. Четене на medias.bcp (ако съществува)
-        try {
-            const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
-            const mediaFile = await mediaFileHandle.getFile();
-            const mediaContent = await mediaFile.text();
-            mediaData = JSON.parse(mediaContent);
-            validateFileData(mediaData, 'medias.bcp');
-            console.log(`Успешно заредени ${mediaData.length} медийни файла от medias.bcp.`);
-        } catch (mediaError) {
-            if (mediaError.name === 'NotFoundError') {
-                console.log("Файл 'medias.bcp' не е намерен. Продължаваме без него.");
-                mediaData = [];
-            } else {
-                throw mediaError;
-            }
-        }
-    } catch (error) {
-        success = false;
-        if (error.name === 'NotFoundError') {
-            console.log(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
-            showToast(_('errorRequiredArchiveFileMissing'), 10000);
-        } else if (error instanceof SyntaxError) {
-            console.log("Грешка при парсване на JSON съдържание от архивен файл:", error);
-            showToast(_('errorInvalidArchiveData'), 10000);
-        } else {
-            console.log("Възникна неочаквана грешка при четене на архива:", error);
-            showToast(_('errorReadingArchive'), 10000);
-        }
-    }
-    const endTime = performance.now();
-    if (success) {
-        console.log(`--- Archive fetch sequence completed in ${((endTime - startTime) / 1000).toFixed(2)}s ---`);
-        console.log(`[Summary] Boards: ${boardsData.length}, Media: ${mediaData.length}, Notes: ${allNotesData.length}`);
-    }
-    return success;
-}
 
 async function loadTranslations(lang) {
     if (appTranslations[lang] && !translationsFallback[lang]) return;
@@ -20873,17 +12589,9 @@ async function setLanguage(lang) {
     });
     const mainLangSelect = document.getElementById('main-lang-select');
     if (mainLangSelect) mainLangSelect.value = lang;
-    // Check if updateSignoutTooltip exists before calling it
-    if (typeof updateSignoutTooltip === 'function') {
-        updateSignoutTooltip();
-    }
     // Update KB Assistant Language
     if (window.kbAssistant && typeof window.kbAssistant.updateLanguage === 'function') {
         window.kbAssistant.updateLanguage();
-    }
-    // Update dynamic text that relies on database reads
-    if (typeof updateSpecialFolderNames === 'function') {
-        updateSpecialFolderNames();
     }
 }
 
@@ -20988,32 +12696,6 @@ async function startAssistantGuide(options = {}) {
         guide = false;
     }
     return true;
-}
-
-/**
- * Интро в демо режима: показва се само при първото влизане в демо — после никога,
- * независимо от initial_setup_complete (демото не минава първоначална настройка, значи
- * флагът никога не се вдига) и независимо от флага 'guide'.
- */
-async function startDemoAssistantIntro() {
-    if (!IS_DEMO_MODE) return false;
-    try {
-        // Флагът се вдига веднага, синхронно: иначе две извиквания на mainLogic, чиито
-        // таймери гръмнат в един и същ тик, биха пуснали тура два пъти. При неуспех се
-        // маха, за да опита пак при следващо влизане.
-        if (localStorage.getItem(DEMO_INTRO_STORAGE_KEY) === '1') return false;
-        localStorage.setItem(DEMO_INTRO_STORAGE_KEY, '1');
-        // Офлайн клонът на mainLogic прави return, а finally-то на онлайн клона не се
-        // изпълнява — затова тук чакаме само рамка, за да е готов бордът.
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        const started = await startAssistantGuide({ force: true, persistFlag: false });
-        if (!started) localStorage.removeItem(DEMO_INTRO_STORAGE_KEY);
-        return started;
-    } catch (e) {
-        try { localStorage.removeItem(DEMO_INTRO_STORAGE_KEY); } catch (_) { }
-        console.warn('[Demo] Assistant intro could not be shown:', e);
-        return false;
-    }
 }
 
 function onKBFabClick(e) {
@@ -21402,7 +13084,6 @@ if (settingsCloseX) {
  * Updates the visibility of elements in Advanced Settings based on application state.
  */
 async function updateAdvancedSettingsVisibility() {
-    const saveIndividualWrapper = document.getElementById('save-individual-wrapper');
     const advancedSettingsSpan = document.getElementById('advanced-settings-span');
     if (advancedSettingsSpan) {
         if (localStorage.getItem('showAdvancedSettings') === 'true') {
@@ -21411,17 +13092,8 @@ async function updateAdvancedSettingsVisibility() {
             advancedSettingsSpan.setAttribute('hidden', '');
         }
     }
-    const useArhDbCheckbox = document.getElementById('use-arh-db-checkbox');
-    const useLocalDbCheckbox = document.getElementById('use-local-db-checkbox');
-    const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
     const useIndexedDbCheckbox = document.getElementById('use-indexeddb-checkbox');
-    if (useArhDbCheckbox) useArhDbCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
-    if (useLocalDbCheckbox) useLocalDbCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
-    if (useGoogleDbCheckbox) useGoogleDbCheckbox.checked = localStorage.getItem('useGoogleDb') !== 'false';
-    if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = localStorage.getItem('useIndexedDb') !== 'false';
-    if (saveIndividualWrapper) {
-        saveIndividualWrapper.style.display = (window.showDirectoryPicker) ? 'block' : 'none';
-    }
+    if (useIndexedDbCheckbox) useIndexedDbCheckbox.checked = true; // локален режим: базата е винаги включена
 }
 
 // --- Edit Note on Ctrl+Click (DB Mode) ---
@@ -23622,87 +15294,41 @@ function initNoteEditUI() {
                 showToast((typeof _ === 'function' ? _('uploadingSharedImage') || '📤 Uploading files...' : '📤 Uploading files...'), 5000);
             }
 
-            const folderId = await getFolderID();
-            if (!folderId) {
-                if (typeof showToast === 'function') showToast((typeof _ === 'function' ? _('noGDriveFolderError') || '❌ No Google Drive folder found.' : '❌ No Google Drive folder found.'), 3000);
+            const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
+            if (!noteInData || !noteInData.gdid) {
+                if (typeof showToast === 'function') showToast(_('errorNoteFieldMissing') || 'Note not saved yet.', 4000);
+                attachInput.value = '';
                 return;
             }
 
-            // Process files sequentially in the background
+            // Локален режим: байтовете отиват в store `files`, бележката пази ключа.
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 try {
-                    const fileType = file.type.startsWith('video') ? 'Video' : (file.type.startsWith('audio') ? 'Sound' : 'Images');
-                    let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
-                    if (!targetFolderId) {
-                        targetFolderId = await createNewGDriveFolder(fileType, folderId);
-                        if (targetFolderId) {
-                            folderIds[fileType] = targetFolderId;
-                            localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
-                        }
-                    }
-                    if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
-
-                    const imageGdid = await uploadBlobToGDrive(targetFolderId, file.name, file, file.type);
-                    if (!imageGdid) throw new Error(`File upload failed: ${file.name}`);
-
-                    const waitForNoteGdid = () => {
-                        return new Promise(resolve => {
-                            const check = (attempts = 0) => {
-                                const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
-                                if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                    resolve(noteInData.gdid);
-                                } else if (attempts < 3600) { // Up to 30 mins
-                                    setTimeout(() => check(attempts + 1), 500);
-                                } else {
-                                    resolve(null);
-                                }
-                            };
-                            check();
-                        });
-                    };
-                    const noteGdid = await waitForNoteGdid();
-                    if (!noteGdid) {
-                        console.warn(`[Attachment] Note gdid not available after timeout for ${file.name}. Media entry NOT created.`);
-                        if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', file.name) : `⚠️ Uploaded ${file.name}, but link failed.`), 7000);
-                        continue;
-                    }
-
+                    const fileType = file.type.startsWith('video') ? 4 : (file.type.startsWith('audio') ? 2 : (file.type === 'application/pdf' || file.type.startsWith('text') ? 3 : 1));
+                    const fileKey = await saveBlobToFiles(file.name, file, file.type, noteInData.gdid);
                     const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-                    const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
-                    const now = Date.now();
                     const mediaEntry = {
-                        datemod: now,
+                        datemod: Date.now(),
                         description: '',
-                        gdid: '',
+                        gdid: localUuid(),
                         id: maxMediaId + 1,
-                        noteid: noteGdid,
+                        noteid: noteInData.gdid,
                         path: file.name,
-                        pathGD: imageGdid,
-                        type: mediaTypeNum
+                        pathGD: fileKey,
+                        type: fileType
                     };
-
-                    const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                    if (mediaFileGdid) {
-                        mediaEntry.gdid = mediaFileGdid;
-                        await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                        mediaData.push(mediaEntry);
-                        if (useIndexedDb) {
-                            await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                        }
-                        if (typeof refreshNoteUI === 'function') {
-                            await refreshNoteUI(noteGdid);
-                        } else {
-                            renderNotes();
-                        }
-                        if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name) : `✅ Attached ${file.name}`), 3000);
+                    mediaData.push(mediaEntry);
+                    await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                    if (typeof refreshNoteUI === 'function') {
+                        await refreshNoteUI(noteInData.gdid);
                     }
+                    if (typeof showToast === 'function') showToast((_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name), 3000);
                 } catch (e) {
-                    console.error(`[Attachment] Error processing file ${file.name}:`, e);
-                    if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message) : `❌ Error: ${e.message}`), 5000);
+                    console.error(`[Attachment] Error saving ${file.name}:`, e);
+                    if (typeof showToast === 'function') showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message), 5000);
                 }
             }
-
             attachInput.value = ''; // Reset input
         });
     }
@@ -23762,14 +15388,9 @@ document.addEventListener('click', (e) => {
     // Explicitly ignore clicks on footer or copy button or any other elements appended to modalBody
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer') || e.target.closest('.code-block-copy')) return;
 
-    // Check if Database mode is active OR if GDrive update is enabled
-    const updateGDriveNow = useGoogleDb && !isOffline;
     const noteGdid = modalBodyElem.dataset.gdid;
 
-    if (!useIndexedDb && !updateGDriveNow) {
-        showToast("Editing requires Database Mode or active Google Drive synchronization.", 3000);
-        return;
-    }
+    if (!useIndexedDb) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -23785,11 +15406,10 @@ document.addEventListener('touchstart', (e) => {
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
     if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer') || e.target.closest('.code-block-copy')) return;
  
-    const updateGDriveNow = useGoogleDb && !isOffline;
     const noteGdid = modalBodyElem.dataset.gdid;
  
     // If not editable, just return, don't start timer
-    if (!useIndexedDb && !updateGDriveNow) return;
+    if (!useIndexedDb) return;
  
     editLongPressTriggered = false;
     editLongPressTimer = setTimeout(() => {
@@ -23824,300 +15444,6 @@ document.addEventListener('contextmenu', (e) => {
     }
 });
 
-// --- Three-way Merge & Conflict Resolution ---
-async function fetchGDriveFileContent(fileId) {
-    if (isOffline) return null;
-    const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : (gapi.client.getToken() || gapi.auth.getToken());
-    let accessToken = tokenObj ? tokenObj.access_token : null;
-    if (!accessToken) throw new Error("Missing auth token.");
-    try {
-        // Force reading from server, not cache
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&t=${Date.now()}`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` },
-            cache: 'no-store'
-        });
-        if (!response.ok) {
-            if (response.status === 401) {
-                const refreshed = await refreshAuthToken();
-                if (refreshed && refreshed.pass) {
-                    const retry = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-                        headers: { 'Authorization': `Bearer ${refreshed.tokenData.access_token}` },
-                        cache: 'no-store'
-                    });
-                    if (retry.ok) return await retry.text();
-                }
-            }
-            throw new Error(`HTTP ${response.status}`);
-        }
-        return await response.text();
-    } catch (e) { console.error("Fetch GDrive failed:", e); return null; }
-}
-
-function mergeField(base, local, server) {
-    if (String(local) === String(server)) return local;
-    if (String(local) === String(base)) return server;
-    if (String(server) === String(base)) return local;
-    return { conflict: true, local, server };
-}
-
-function mergeNotes(baseNote, localNote, serverNote) {
-    const result = { ...localNote };
-    const conflicts = {};
-    const splitNote = (txt) => {
-        const textStr = txt || "";
-        const pIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(textStr) : textStr.indexOf('|');
-        if (pIdx !== -1) {
-            return { title: textStr.substring(0, pIdx), body: textStr.substring(pIdx + 1), hasSplit: true };
-        }
-        return { title: textStr, body: "", hasSplit: false };
-    };
-    const b = splitNote(baseNote.notetxt), l = splitNote(localNote.notetxt), s = splitNote(serverNote.notetxt);
-    if (l.hasSplit || s.hasSplit || b.hasSplit) {
-        const mT = mergeField(b.title, l.title, s.title);
-        const mB = mergeField(b.body, l.body, s.body);
-        let fT = mT, fB = mB;
-        if (mT && mT.conflict) { conflicts.title = mT; fT = "<<CONFLICT>>"; }
-        if (mB && mB.conflict) { conflicts.body = mB; fB = "<<CONFLICT>>"; }
-        result.notetxt = fT + '|' + fB;
-    } else {
-        const merged = mergeField(baseNote.notetxt, localNote.notetxt, serverNote.notetxt);
-        if (merged && merged.conflict) { conflicts.notetxt = merged; result.notetxt = "<<CONFLICT>>"; }
-        else result.notetxt = merged;
-    }
-    ['color', 'boardid', 'calendarDate', 'text_span', 'title_span', 'pass'].forEach(key => {
-        if (String(localNote[key]) !== String(baseNote[key]) && String(serverNote[key]) !== String(baseNote[key])) {
-            if (String(localNote[key]) !== String(serverNote[key])) conflicts[key] = { local: localNote[key], server: serverNote[key] };
-        } else if (String(serverNote[key]) !== String(baseNote[key])) result[key] = serverNote[key];
-    });
-    return { result, conflicts };
-}
-
-async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedConflicts) {
-    return new Promise((resolve) => {
-        const overlay = document.createElement('div');
-        overlay.id = 'dual-conflict-overlay';
-        Object.assign(overlay.style, { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' });
-
-        const container = document.createElement('div');
-        const sW = localStorage.getItem('modalWidth') || '400px';
-        const sH = localStorage.getItem('modalHeight') || '300px';
-        Object.assign(container.style, {
-            position: 'relative',
-            width: `min(${sW}, 95vw)`, // Използваме по-малкото от запазената ширина или 95% от ширината на екрана
-            height: sH,
-            display: 'flex', justifyContent: 'center', alignItems: 'center', perspective: '1000px'
-        });
-
-        const renderVersion = (note, zIndex) => {
-            const card = document.createElement('div');
-            card.className = 'modal-content-box';
-            Object.assign(card.style, { position: 'absolute', width: '100%', height: '100%', zIndex: zIndex, transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)', opacity: zIndex > 50 ? '1' : '0.4', transform: zIndex > 50 ? 'scale(1)' : 'scale(0.85) translateY(20px)', pointerEvents: zIndex > 50 ? 'auto' : 'none', margin: '0', display: 'flex', flexDirection: 'column' });
-
-            // Background logic
-            let bgColor = getDefaultNoteBg();
-            if (typeof note.color === 'number') {
-                if (note.color >= 0 && note.color < noteColorMap.length) bgColor = noteColorMap[note.color];
-                else if (note.color < 0) bgColor = colorIntToHex(note.color);
-            } else if (typeof note.color === 'string') {
-                bgColor = note.color;
-            }
-            card.style.backgroundColor = bgColor;
-            if (localStorage.getItem('imgBgrd') !== 'false') card.style.backgroundImage = "url('Note.jpg')";
-
-            // Header: Date only (standard look)
-            const labelEl = document.createElement('div');
-            labelEl.id = 'modal-board-name';
-            labelEl.style.display = 'block'; labelEl.style.left = '15px'; labelEl.style.top = '10px';
-            labelEl.innerHTML = `<span style="font-weight:normal; font-size:11px; opacity:0.6; color:#000;">${new Date(parseInt(note.datemod)).toLocaleString()}</span>`;
-            card.appendChild(labelEl);
-
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'modal-close modal-header-btn';
-            closeBtn.style.right = '10px'; closeBtn.onclick = () => { overlay.remove(); resolve(null); };
-            card.appendChild(closeBtn);
-
-            const bdy = document.createElement('div');
-            bdy.className = 'modal-body'; bdy.style = 'padding:20px; margin-top:40px; overflow-y:auto; flex-grow:1; position:relative;';
-            card.appendChild(bdy);
-
-            // Action Buttons (Bottom Right)
-            const createBtn = (id, icon, right, title) => {
-                const btn = document.createElement('div');
-                btn.innerHTML = icon; btn.title = title;
-                Object.assign(btn.style, { position: 'absolute', bottom: '15px', right: right, width: '40px', height: '40px', backgroundColor: 'darkorange', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', cursor: 'pointer', zIndex: 100 });
-                card.appendChild(btn); return btn;
-            };
-
-            const btnEdit = createBtn('conf-edit', pencilIconSvg, '100px', 'Edit');
-            const btnSave = createBtn('conf-save', diskIconSvg, '50px', 'Use this version');
-            const btnEye = createBtn('conf-eye', eyeIconSvg, '100px', 'Preview');
-            btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
-
-            const refreshContent = (currentNote) => {
-                // Apply to text and formatted element
-                let txt = currentNote.notetxt || '';
-                const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) !== -1 : txt.includes('|');
-                if (hasPipe) {
-                    const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
-                    const tPart = txt.substring(0, pipeIdx);
-                    const bPart = txt.substring(pipeIdx + 1);
-                    const tS = stripLinkMarkersForDisplay(tPart, currentNote.title_span || '');
-                    const bS = stripLinkMarkersForDisplay(bPart, currentNote.text_span || '');
-                    bdy.innerHTML = formatText(tS.text, tS.formatString, true) + '<br>' + formatText(bS.text, bS.formatString, true);
-                } else {
-                    const S = stripLinkMarkersForDisplay(txt, currentNote.text_span || '');
-                    bdy.innerHTML = formatText(S.text, S.formatString, true);
-                }
-                bdy.dataset.id = currentNote.id || '';
-                bdy.dataset.gdid = currentNote.gdid || '';
-                bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
-            };
-
-            btnEdit.onclick = () => {
-                // Remove the ID collision risk: don't use 'modal-body' here
-                bdy.id = 'conflict-modal-body';
-                // Instead of swapping global modalBody, provide it to enableNoteEditing as local param
-                enableNoteEditing(bdy);
-                btnEdit.style.display = 'none'; btnSave.style.right = '50px'; btnEye.style.display = 'flex';
-            };
-
-            btnEye.onclick = () => {
-                const titleArea = bdy.querySelector('#note-edit-title-textarea');
-                let txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
-                if (!titleArea) txtArea = bdy.querySelector('textarea');
-
-                if (txtArea) {
-                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
-                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
-                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
-                    if (titleArea) {
-                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
-                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
-                    }
-                }
-                refreshContent(note);
-                btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
-            };
-
-            btnSave.onclick = async () => {
-                const titleArea = bdy.querySelector('#note-edit-title-textarea');
-                let txtArea = bdy.querySelector('#note-edit-textarea') || bdy.querySelector('textarea:not(#note-edit-title-textarea)');
-                if (!titleArea) txtArea = bdy.querySelector('textarea');
-
-                if (txtArea) {
-                    const masked = bdy.dataset.maskedLinks ? JSON.parse(bdy.dataset.maskedLinks) : [];
-                    const res = postEdit(txtArea.value, parseFormatsString(bdy.dataset.format), masked);
-                    note.notetxt = res.text; note.text_span = stringifyFormatsArray(res.formats);
-                    let removedMarkers = res.removedLinkMarkers;
-                    if (titleArea) {
-                        const tRes = postEdit(titleArea.value, parseFormatsString(bdy.dataset.titleFormat), masked);
-                        note.notetxt = tRes.text + '|' + res.text; note.title_span = stringifyFormatsArray(tRes.formats);
-                        removedMarkers += tRes.removedLinkMarkers;
-                    }
-                    notifyRemovedLinkMarkers(removedMarkers);
-                }
-                note.datemod = Date.now();
-
-                // --- KEY FIX: Update the main modal if it's open for this note ---
-                const mainModalBody = document.getElementById('modal-body');
-                const mainGdid = mainModalBody?.dataset.gdid;
-                if (mainModalBody && mainGdid && String(mainGdid) === String(note.gdid)) {
-                    console.log("[Sync] Updating main modal with resolved version.");
-                    // Update the original modal's object if it has one
-                    if (typeof modalNoteObj !== 'undefined' && modalNoteObj) {
-                        Object.assign(modalNoteObj, note);
-                    }
-                    // Refresh the main modal UI
-                    if (typeof refreshModalContent === 'function') {
-                        refreshModalContent(note);
-                    } else {
-                        // Fallback: manually update textareas in main modal if they exist
-                        const mainTextArea = mainModalBody.querySelector('textarea:not(#note-edit-title-textarea)');
-                        const mainTitleArea = mainModalBody.querySelector('#note-edit-title-textarea');
-                        if (mainTextArea) mainTextArea.value = (note.notetxt.includes('|') ? note.notetxt.split('|')[1] : note.notetxt);
-                        if (mainTitleArea && note.notetxt.includes('|')) mainTitleArea.value = note.notetxt.split('|')[0];
-                    }
-                }
-
-                overlay.remove(); resolve(note);
-            };
-
-            refreshContent(note);
-            return { card, bdy };
-        };
-
-        const local = renderVersion(localNote, 60);
-        const server = renderVersion(serverNote, 40);
-        container.appendChild(server.card); container.appendChild(local.card);
-
-        // Tab-like buttons
-        const tabs = document.createElement('div');
-        Object.assign(tabs.style, { position: 'absolute', bottom: '-65px', display: 'flex', gap: '5px', zIndex: 5 });
-        const createTab = (txt, active) => {
-            const t = document.createElement('button');
-            t.textContent = txt;
-            t.style = `padding:8px 20px; border:none; border-radius:0 0 10px 10px; cursor:pointer; font-weight:bold; background:${active ? 'darkorange' : '#444'}; color:${active ? '#000' : '#fff'}; transition: 0.3s;`;
-            return t;
-        };
-        const tabL = createTab('ЛОКАЛНА (DB)', true);
-        const tabS = createTab('СЪРВЪР (GD)', false);
-
-        const switchView = (isLocal) => {
-            local.card.style.zIndex = isLocal ? 60 : 40; local.card.style.opacity = isLocal ? '1' : '0.4'; local.card.style.transform = isLocal ? 'scale(1)' : 'scale(0.85) translateY(20px)'; local.card.style.pointerEvents = isLocal ? 'auto' : 'none';
-            server.card.style.zIndex = isLocal ? 40 : 60; server.card.style.opacity = isLocal ? '0.4' : '1'; server.card.style.transform = isLocal ? 'scale(0.85) translateY(20px)' : 'scale(1)'; server.card.style.pointerEvents = isLocal ? 'none' : 'auto';
-            tabL.style.background = isLocal ? 'darkorange' : '#444'; tabL.style.color = isLocal ? '#000' : '#fff';
-            tabS.style.background = isLocal ? '#444' : 'darkorange'; tabS.style.color = isLocal ? '#fff' : '#000';
-
-            // Safe ID management: only one element should have 'modal-body' at any time
-            if (isLocal) {
-                server.bdy.id = '';
-                local.bdy.id = 'modal-body';
-            } else {
-                local.bdy.id = '';
-                server.bdy.id = 'modal-body';
-            }
-        };
-
-        tabL.onclick = () => switchView(true);
-        tabS.onclick = () => switchView(false);
-        tabs.appendChild(tabL); tabs.appendChild(tabS);
-        container.appendChild(tabs);
-        overlay.appendChild(container);
-        document.body.appendChild(overlay);
-        switchView(true);
-    });
-}
-
-/**
- * Разрешава конфликти при начално зареждане (дублирани gdid в Google Drive).
- * @param {Array} duplicates - Списък от двойки {localNote, serverNote}
- */
-async function resolveLoadedConflicts(duplicates) {
-    if (!duplicates || duplicates.length === 0) return;
-    const loader = document.getElementById('loader-screen');
-    const wasVisible = loader && loader.style.display !== 'none';
-    if (wasVisible) loader.style.display = 'none';
-
-    for (const pair of duplicates) {
-        // Показваме модала за сливане
-        const resolved = await showNoteConflictModal(null, pair.localNote, pair.serverNote, {});
-        if (resolved) {
-            const gdid = resolved.gdid || resolved.id;
-            const idx = allNotesData.findIndex(n => (n.gdid || n.id).toString() === gdid.toString());
-            if (idx !== -1) allNotesData[idx] = resolved;
-
-            // Ако вече имаме локална база данни, обновяваме я веднага
-            if (useIndexedDb && dbExists) {
-                await bulkPutDB(NOTE_STORE_NAME, [resolved], true);
-            }
-        }
-    }
-
-    if (wasVisible && loader) loader.style.display = 'flex';
-}
-
-// Текстът и форматите, както биха се записали (postEdit) от дадено състояние на редактора.
-// includeTitle: заглавието се съединява с тялото през '|', както е в записа.
 function postEditNoteState(bodyText, bodyFormatStr, titleText, titleFormatStr, includeTitle, maskedLinks) {
     if (includeTitle) {
         const titleRes = postEdit(titleText || "", parseFormatsString(titleFormatStr || ""), maskedLinks);
@@ -24227,9 +15553,7 @@ function saveEditedNote(forceClose = false) {
         const titleTextarea = document.getElementById('note-edit-title-textarea');
         if (!textarea && !modalBodyElem.dataset.draftText) return;
 
-        let updateGDriveNow = useGoogleDb && !isOffline;
-        const updateLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
-        const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
+        const useIndexedDbNow = true; // локален режим: единственото хранилище е базата
 
         // Check if it's a new note (deferred creation)
         let modalGdid = modalBodyElem.dataset.gdid;
@@ -24406,47 +15730,6 @@ function saveEditedNote(forceClose = false) {
         let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
         let newColor = getModalColorValue(modalBodyElem, noteObj ? (noteObj.color || 0) : 0);
 
-        // --- Conflict Resolution Logic ---
-        if (updateGDriveNow && modalGdid && noteObj) {
-
-            try {
-                const serverRaw = await fetchGDriveFileContent(modalGdid);
-
-                if (serverRaw) {
-                    const sData = JSON.parse(serverRaw);
-                    const sNote = Array.isArray(sData) ? sData[0] : sData;
-                    const baseDatemod = parseInt(modalBodyElem.dataset.baseDatemod, 10) || 0;
-                    const baseNoteStr = modalBodyElem.dataset.baseNote;
-                    const baseNote = baseNoteStr ? JSON.parse(baseNoteStr) : noteObj;
-
-                    let dbNote = null;
-                    if (useIndexedDb) {
-                        try { dbNote = await getFromDB(NOTE_STORE_NAME, modalGdid || modalId); } catch (e) { }
-                    }
-
-
-                    if (sNote && sNote.datemod > baseDatemod) {
-                        const lNote = { ...noteObj, notetxt: processedText, text_span: finalFormat, title_span: finalTitleFormat, color: newColor, calendarDate: newCalendarDate };
-                        const { result, conflicts } = mergeNotes(baseNote, lNote, sNote);
-                        if (Object.keys(conflicts).length > 0) {
-                            const resolved = await showNoteConflictModal(baseNote, lNote, sNote, conflicts);
-                            if (!resolved) { return; } // User cancelled
-                            processedText = resolved.notetxt;
-                            finalFormat = resolved.text_span;
-                            finalTitleFormat = resolved.title_span;
-                            newColor = resolved.color;
-                            newCalendarDate = resolved.calendarDate;
-                        } else {
-                            processedText = result.notetxt;
-                            finalFormat = result.text_span;
-                            finalTitleFormat = result.title_span;
-                            newColor = result.color;
-                            newCalendarDate = result.calendarDate;
-                        }
-                    }
-                }
-            } catch (e) { console.error("Conflict check failed:", e); }
-        }
 
         // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
         const hasDrafts = !!modalBodyElem.dataset.draftText;
@@ -24502,90 +15785,15 @@ function saveEditedNote(forceClose = false) {
                 updateBoardCounterUI('reminder');
             }
 
-            // --- Save to Source (GDrive / Local / DB) ---
-            if (updateGDriveNow) {
-                const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-                if (isTempGdid) {
-                    const folderId = await getFolderID();
-                    if (folderId) {
-                        const fileContent = JSON.stringify(noteObj);
-                        const fileName = 'note.txt'; // @@ 
-                        try {
-                            const tempGdid = noteObj.gdid;
-                            const newGdid = await createGDriveFile(folderId, fileName, fileContent);
-                            if (!newGdid) throw new Error("Failed to create GDrive file");
-                            noteObj.gdid = newGdid;
-                            modalBodyElem.dataset.gdid = newGdid;
-                            // Update the DOM element on the board so subsequent clicks/actions use the real ID
-                            const noteEl = document.querySelector(`.note[data-i="${noteObj.id}"]`);
-                            if (noteEl) noteEl.dataset.g = newGdid;
-                            // Synchronize internal GDrive ID inside the file content
-                            await updateGDriveFile(newGdid, JSON.stringify(noteObj));
-
-                            if (useIndexedDb) {
-                                await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
-                                if (tempGdid && tempGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, tempGdid);
-                            }
-
-                        } catch (e) {
-                            console.error("Failed to create GDrive file", e);
-                            showToast(_('errorSaveGDrive'));
-                        }
-                    }
-                } else {
-                    try {
-                        const success = await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-                        if (!success) throw new Error("GDrive update returned false");
-                    } catch (e) {
-                        console.error("Failed to update GDrive file", e);
-                        showToast(`${_('errorSaveGDrive')} for GD: ${noteObj.gdid}. ${e.message}`, 10000);
-                        updateGDriveNow = false; // Маркираме като неуспешно за финалното съобщение
-                    }
-                }
-            }
-
-            if (useLocalFolder) {
-                try {
-                    // Ако бележката е нова и няма gdid (или е временен id), генерираме локален такъв
-                    const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-                    if (isTempGdid && !updateGDriveNow) {
-                        noteObj.gdid = `L${Date.now()}`;
-                        modalBodyElem.dataset.gdid = noteObj.gdid;
-                    }
-                    if (noteObj.gdid) {
-                        await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
-                    }
-                } catch (e) {
-                    console.error("Failed to update local file", e);
-                    showToast(_('errorSaveLocalFolder') || "Грешка при запис в локалната папка");
-                }
-            }
-            if (updateGDriveNow) {
-                noteObj.type = 0;
-            } else if (useIndexedDbNow) {
-                noteObj.type = -1; // Маркираме за офлайн синхронизация
-            }
+            // --- Запис в базата (единственият източник в локален режим) ---
+            noteObj.type = -1;
             if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
 
             const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
             const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
 
-            let msgKey = '';
-            if (useIndexedDbNow && updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll'; // БД, GD и локална папка
-            else if (useIndexedDbNow && updateGDriveNow) msgKey = 'noteSavedInBoth'; // БД и GD
-            else if (useIndexedDbNow && updateLocalFolderNow) msgKey = 'noteSavedInLocal'; // БД и локална папка
-            else if (useIndexedDbNow) msgKey = 'noteSavedInDb'; // БД
-            else {
-                // Само външни източници без БД (режим без кеширане)
-                if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInGDAndLocal';
-                else if (updateGDriveNow) msgKey = 'noteSavedInGD';
-                else if (updateLocalFolderNow) msgKey = 'noteSavedInLocalOnly';
-                else msgKey = 'noteSavedInBoard';
-            }
-
-            showToast(_(msgKey).replace('{boardName}', boardTitle));
+            showToast(_('noteSavedInDb').replace('{boardName}', boardTitle));
             updateReloadButtonState();
-            scheduleGcalSync(); // събитието в Google Календар (етап 3)
         }
 
         // If modal was not closed, refresh its content to show the saved state
@@ -24619,7 +15827,6 @@ function saveEditedNote(forceClose = false) {
             applyFilters();
         }
         if (isNewNote) {
-            syncFolderDataAsync();
         }
     })(); // End of async background function
 }
@@ -24656,60 +15863,15 @@ async function updateNoteCalendarDate(noteRef, selectedDate) {
 // модала): datemod, картата, източниците, броячите, съобщението, сверката с Google Календар и изгледите.
 async function saveNoteCalendarChange(noteObj) {
     noteObj.datemod = Date.now();
+    noteObj.type = -1; // локален режим
     // Update UI (DOM Note)
     const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
     if (noteEl) {
         const updatedEl = await createNoteElement(noteObj);
         if (updatedEl) noteEl.replaceWith(updatedEl);
     }
-    // Save to Source
-    const updateGDriveNow = useGoogleDb && !isOffline;
-    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
-
-    if (updateGDriveNow) {
-        const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-        if (isTempGdid) {
-            const folderId = await getFolderID();
-            if (folderId) {
-                const fileContent = JSON.stringify(noteObj);
-                const fileName = 'note.txt';
-                try {
-                    const newGdid = await createGDriveFile(folderId, fileName, fileContent);
-                    if (newGdid) {
-                        const oldGdid = noteObj.gdid;
-                        noteObj.gdid = newGdid;
-                        if (useIndexedDb) {
-                            await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
-                            if (oldGdid && oldGdid !== newGdid) await deleteFromDB(NOTE_STORE_NAME, oldGdid);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to create GDrive file in calendar update", e);
-                }
-            }
-        } else {
-            try {
-                await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-            } catch (e) {
-                console.error("Failed to update GDrive file in calendar update", e);
-            }
-        }
-    }
-
-    if (updateLocalFolderNow) {
-        try {
-            const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
-            if (isTempGdid && !updateGDriveNow) {
-                noteObj.gdid = `L${Date.now()}`;
-            }
-            if (noteObj.gdid) {
-                await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
-            }
-        } catch (e) {
-            console.error("Failed to update local file in calendar update", e);
-        }
-    }
-    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+    noteObj.type = -1; // локален режим: записът е само в базата
+    await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
     if (typeof updateBoardCounterUI === 'function') {
         updateBoardCounterUI(noteObj.boardid);
         updateBoardCounterUI('reminder');
@@ -24717,13 +15879,7 @@ async function saveNoteCalendarChange(noteObj) {
     const board = boardsData.find(b => String(b.gdid) === String(noteObj.boardid) || String(b.id) === String(noteObj.boardid));
     const boardTitle = board ? board.title : (_(noteObj.boardid) || noteObj.boardid);
 
-    let msgKey = 'noteSavedInDb';
-    if (updateGDriveNow && updateLocalFolderNow) msgKey = 'noteSavedInAll';
-    else if (updateGDriveNow) msgKey = 'noteSavedInBoth';
-    else if (updateLocalFolderNow) msgKey = 'noteSavedInLocal';
-
-    showToast(_(msgKey).replace('{boardName}', boardTitle));
-    scheduleGcalSync(); // събитието в Google Календар (етап 3)
+    showToast(_('noteSavedInDb').replace('{boardName}', boardTitle));
 
     const monthCal = document.getElementById('calendar-container');
     const weekCal = document.getElementById('weekly-calendar-container');
@@ -25380,12 +16536,10 @@ function showBoardReorderPopup() {
             })
             .filter(Boolean);
         localStorage.setItem('boardMenuOrder', JSON.stringify(newOrder));
-        syncFolderDataAsync();
         overlay.remove();
         const boardsNote = document.querySelector('header .boards-note');
         if (boardsNote) boardsNote.remove();
         await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
-        saveSettingsToGDrive(true);
         showToast(_('settingSaved') || 'Запазено', 2000);
     };
     footer.appendChild(saveCloseBtn);
@@ -25407,7 +16561,6 @@ function trackMaxBoardIds(boards) {
     if (currentMax > boardIdCounter) {
         boardIdCounter = currentMax;
         localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-        syncFolderDataAsync();
     }
 }
 
@@ -25595,22 +16748,19 @@ async function showNewBoardModal() {
             selectedBackground = (board.backnum !== undefined) ? Number(board.backnum) : 0;
             if (board.backpath) {
                 selectedBackground = -1;
-                // Attempt to load from cache for preview
-                caches.open('app-cache').then(cache => {
-                    cache.match(`https://www.googleapis.com/drive/v3/files/${board.backpath}?alt=media`)
-                        .then(res => res ? res.blob() : null)
-                        .then(blob => {
-                            if (blob) {
-                                customBgBlob = blob;
-                                customBgMimeType = blob.type;
-                                customBgDataURL = URL.createObjectURL(blob);
-                                renderBackgroundOptions(selectedBackground);
-                                updatePreview();
-                            }
-                        });
+                // Локален режим: фонът е blob в store `files`.
+                getFileRecord(board.backpath).then(record => {
+                    if (record && record.blob) {
+                        customBgBlob = record.blob;
+                        customBgMimeType = record.mime || record.blob.type;
+                        customBgDataURL = URL.createObjectURL(record.blob);
+                        customBgCache.set(board.backpath, customBgDataURL);
+                        renderBackgroundOptions(selectedBackground);
+                        updatePreview();
+                    }
                 });
             }
-            selectedBoardStatus = (board.status !== undefined) ? Number(board.status) : 0;
+
             saveBtn.textContent = _('updateButton') || "Обнови";
             if (editSelect) editSelect.value = (board.gdid || board.id).toString();
             titleInput.disabled = false;
@@ -25930,10 +17080,6 @@ async function showNewBoardModal() {
                         await permanentlyDeleteNote(note.gdid, note.id, true); // skipUI=true за бързина
                     }
 
-                    const updateGDriveNow = useGoogleDb && !isOffline;
-                    if (updateGDriveNow && currentEditingBoard.gdid) {
-                        await deleteGDriveFile(currentEditingBoard.gdid);
-                    }
                     // Премахваме от локалния списък
                     boardsData = (boardsData || []).filter(b => b.id !== currentEditingBoard.id && (b.gdid !== currentEditingBoard.gdid || !b.gdid) && b.title !== currentEditingBoard.title);
                     // Премахваме от IndexedDB
@@ -25947,7 +17093,6 @@ async function showNewBoardModal() {
                             let order = JSON.parse(raw);
                             order = order.filter(title => title !== currentEditingBoard.title);
                             localStorage.setItem('boardMenuOrder', JSON.stringify(order));
-                            syncFolderDataAsync();
                         }
                     } catch (e) { }
                     const boardId = (currentEditingBoard.gdid || currentEditingBoard.id).toString();
@@ -26001,13 +17146,7 @@ async function showNewBoardModal() {
             return;
         }
 
-        // В демо режим бордът се записва само в локалната демо база, затова офлайн
-        // забраната не важи: тя пази синхронизацията с Google Drive, а демото няма такава.
-        if (!currentEditingBoard && isOffline && !IS_DEMO_MODE) {
-            showToast(_('errorOfflineBoardCreate') || "Не може да създавате нов борд в офлайн режим.", 5000);
-            return;
-        }
-
+    
         const now = Date.now();
         isBoardSaveInProgress = true;
         saveBtn.disabled = true;
@@ -26020,7 +17159,6 @@ async function showNewBoardModal() {
             trackMaxBoardIds(boardsData);
             boardIdCounter++;
             localStorage.setItem('boardIdCounter', boardIdCounter.toString());
-            syncFolderDataAsync();
             boardToSave = { "backcolor": 0, "backnum": selectedBackground, "backpath": "", "color": selectedColor, "colorfont": selectedFontColor, "datemod": now, "gdid": "", "id": boardIdCounter, "numord": boardIdCounter, "status": selectedBoardStatus, "title": title };
         }
 
@@ -26047,31 +17185,12 @@ async function showNewBoardModal() {
                         boardToSave.backnum = -1;
                         customBgCache.set(existingBoard.backpath, customBgDataURL);
                     } else {
-                        const folderId = await getFolderID();
-                        if (folderId) {
-                            const uploadedGdid = await uploadBlobToGDrive(folderId, 'board_bg_' + Date.now() + '.png', customBgBlob, customBgMimeType);
-                            if (uploadedGdid) {
-                                boardToSave.backpath = uploadedGdid;
-                                boardToSave.customBgHash = hashHex;
-                                boardToSave.backnum = -1;
-                                customBgCache.set(uploadedGdid, customBgDataURL);
-
-                                // Cache the uploaded image immediately
-                                try {
-                                    const cache = await caches.open('app-cache');
-                                    const url = `https://www.googleapis.com/drive/v3/files/${uploadedGdid}?alt=media`;
-                                    const response = new Response(customBgBlob, {
-                                        headers: {
-                                            'Content-Type': customBgMimeType,
-                                            'Cache-Control': 'public, max-age=31536000'
-                                        }
-                                    });
-                                    await cache.put(url, response);
-                                } catch (e) {
-                                    console.warn("Failed to cache custom bg:", e);
-                                }
-                            }
-                        }
+                        // Локален режим: фонът е blob в store `files`, ключът му влиза в backpath.
+                        const bgKey = await saveBlobToFiles('board_bg_' + Date.now() + '.png', customBgBlob, customBgMimeType);
+                        boardToSave.backpath = bgKey;
+                        boardToSave.customBgHash = hashHex;
+                        boardToSave.backnum = -1;
+                        customBgCache.set(bgKey, customBgDataURL);
                     }
                 } catch (err) {
                     console.error("Failed to upload custom background:", err);
@@ -26085,48 +17204,13 @@ async function showNewBoardModal() {
                 if (boardToSave.customBgHash !== undefined) delete boardToSave.customBgHash;
             }
 
-            // Cleanup orphaned background cache
-            if (oldBackpath && oldBackpath !== boardToSave.backpath && !oldBackpath.includes('/')) {
+            // Изчистваме стария фон, ако вече не се използва от друг борд.
+            if (oldBackpath && oldBackpath !== boardToSave.backpath) {
                 const bId = (boardToSave.gdid || boardToSave.id).toString();
                 const isUsedByOther = boardsData.some(b => b.backpath === oldBackpath && (b.gdid || b.id).toString() !== bId);
                 if (!isUsedByOther) {
                     if (customBgCache.has(oldBackpath)) customBgCache.delete(oldBackpath);
-                    caches.open('app-cache').then(cache => {
-                        cache.delete(`https://www.googleapis.com/drive/v3/files/${oldBackpath}?alt=media`);
-                    }).catch(e => console.warn("Failed to delete orphaned bg from cache:", e));
-
-                    if (useGoogleDb && !isOffline) {
-                        deleteGDriveFile(oldBackpath).catch(e => console.warn("Failed to delete orphaned bg from GDrive:", e));
-                    }
-                }
-            }
-
-            const updateGDriveNow = useGoogleDb && !isOffline;
-            // Без Google Drive ключът на борда (gdid) идва оттам. Офлайн такъв няма и
-            // празен gdid караше всеки нов борд да презаписва предишния — затова тук
-            // бордът получава собствен локален ключ.
-            if (!updateGDriveNow && !boardToSave.gdid) {
-                boardToSave.gdid = 'local-board-' + boardToSave.id;
-            }
-            if (updateGDriveNow) {
-                let updated = false;
-                if (currentEditingBoard && currentEditingBoard.gdid) {
-                    try {
-                        await updateGDriveFile(currentEditingBoard.gdid, JSON.stringify(boardToSave));
-                        updated = true;
-                    } catch (e) {
-                        const is404 = e && (e.status === 404 || String(e.message || '').includes('404') || String(e).includes('404'));
-                        if (!is404) throw e;
-                    }
-                }
-                if (!updated) {
-                    const folderId = await getFolderID();
-                    if (folderId) {
-                        const fileName = `board.txt`;
-                        const gdid = await createGDriveFile(folderId, fileName, JSON.stringify(boardToSave));
-                        boardToSave.gdid = gdid;
-                        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
-                    }
+                    deleteFileRecord(oldBackpath);
                 }
             }
 
@@ -26163,7 +17247,6 @@ async function showNewBoardModal() {
                 order = order.filter(item => item && typeof item === 'string' && item !== 'undefined' && item !== 'null');
 
                 localStorage.setItem('boardMenuOrder', JSON.stringify(order));
-                syncFolderDataAsync();
             } catch (e) {
                 console.error("Error updating boardMenuOrder:", e);
             }
@@ -26220,591 +17303,12 @@ function initFABDragging() {
     });
 }
 
-/**
- * Показва попъп за изтриване на папки от Google Drive.
- */
-function showFolderDeletePopup() {
-    console.log('Deleting folder...');
-    const defaultFolder = 'multinotes_data';
-    let folderNamesStr = localStorage.getItem('gdrive_folder_names');
-    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
-
-    // Филтрираме активната папка и основната папка - те не могат да се трият
-    const currentActive = (typeof activeFolderName !== 'undefined') ? activeFolderName : localStorage.getItem('active_folder_name');
-    let allPossibleFolders = [...folderNames];
-    if (!allPossibleFolders.includes('AppDataFolder')) allPossibleFolders.push('AppDataFolder');
-    const otherFolders = allPossibleFolders.filter(name => name !== currentActive && name !== defaultFolder);
-
-    if (otherFolders.length === 0) {
-        showToast(_('noData') || "Няма други папки за изтриване.");
-        return;
-    }
-
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex !important;align-items:center;justify-content:center;z-index:999999 !important;opacity:1 !important;visibility:visible !important;pointer-events:auto !important;';
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-
-    const box = document.createElement('div');
-    box.className = 'modal-content-box';
-    box.style.cssText = `background-color:#2c2c2c;background-image:url('Frame.jpg');background-size:cover;border-radius:12px;padding:50px 20px 20px 20px;width:320px;max-width:95vw;max-height:80vh;display:flex !important;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,0.6);position:relative;border:1px solid rgba(255,255,255,0.3);opacity:1 !important;visibility:visible !important;transform:none !important;`;
-
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '&times;';
-    closeBtn.className = 'modal-close';
-    closeBtn.style.cssText = `position:absolute;top:10px;right:10px;background:#eee;border:none;border-radius:6px;width:40px;height:40px;cursor:pointer;font-size:32px;display:flex;align-items:center;justify-content:center;color:#333;box-shadow:0 2px 5px rgba(0,0,0,0.4);z-index:10;`;
-    closeBtn.onclick = () => overlay.remove();
-    box.appendChild(closeBtn);
-
-    const title = document.createElement('h3');
-    title.textContent = _('selectFolderToDelete') || 'Изберете папка за изтриване:';
-    title.style.cssText = 'margin:0 0 20px 0;font-size:1.2em;color:#fff;text-shadow:2px 2px 4px rgba(0,0,0,0.9);text-align:center;font-weight:bold;';
-    box.appendChild(title);
-
-    const listContainer = document.createElement('div');
-    listContainer.style.cssText = 'overflow-y:auto;flex:1;padding:4px;display:flex;flex-direction:column;gap:10px;width:100%;';
-
-    otherFolders.forEach(name => {
-        const btn = document.createElement('button');
-        btn.className = 'zoom-btn';
-        btn.style.cssText = 'width:100%; padding:10px; text-align:center; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);';
-        btn.textContent = (name === 'AppDataFolder' && typeof _ === 'function') ? `${name} [${_('emptyFolderBtn')}]` : name;
-        btn.onclick = async () => {
-            const isAppData = (name === 'AppDataFolder');
-            const confirmTemplate = isAppData ? _('confirmEmptyFolder') : _('confirmDeleteFolder');
-            const confirmMsg = (confirmTemplate || 'Сигурни ли сте, че искате да изтриете папка "{folderName}"?').replace('{folderName}', name);
-
-            // Затваряме попъпа с избора, преди да покажем въпроса
-            overlay.remove();
-
-            const confirmed = await showConfirmation(confirmMsg);
-            if (confirmed) {
-                try {
-                    if (typeof showToast === 'function') showToast(_('loadingFile') || 'Изтриване...');
-
-                    if (isAppData) {
-                        await emptyAppDataFolder();
-                    } else {
-                        const folderId = await getFolderIDByName(name);
-                        if (folderId) {
-                            await deleteGDriveFile(folderId);
-                        }
-                    }
-
-                    if (!isAppData) {
-                        // Обновяваме локалния списък (само за нормални папки)
-                        let newFolderNames = folderNames.filter(f => f !== name);
-                        localStorage.setItem('gdrive_folder_names', JSON.stringify(newFolderNames));
-                        localStorage.removeItem('boardMenuOrder_' + name);
-                        localStorage.removeItem('lastNoteId_' + name);
-                        localStorage.removeItem('lastNoteNumord_' + name);
-                        localStorage.removeItem('lastBoardId_' + name);
-                        localStorage.removeItem('startBoard_' + name);
-
-                        // Синхронизираме промяната в останалите папки
-                        await syncGlobalFoldersJson();
-                    }
-
-                    showToast(isAppData ? _('folderEmptiedSuccess') : _('folderDeletedSuccess'));
-
-                    // Обновяваме dropdown-а в настройките без презареждане
-                    if (typeof populateFoldersDropdown === 'function') populateFoldersDropdown();
-                } catch (err) {
-                    console.error("Error deleting folder:", err);
-                    showToast(_('errorDeleteFolder'));
-                }
-            }
-        };
-        listContainer.appendChild(btn);
-    });
-
-    box.appendChild(listContainer);
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-}
-
-/**
- * Премахва несъществуваща папка от gdrive_folder_names и я обновява в падащото меню.
- */
-function removeFolderFromList(folderName) {
-    if (!folderName || folderName === 'AppDataFolder') return;
-    try {
-        let folderNamesStr = localStorage.getItem('gdrive_folder_names');
-        let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
-        if (folderNames.includes(folderName)) {
-            folderNames = folderNames.filter(n => n !== folderName);
-            localStorage.setItem('gdrive_folder_names', JSON.stringify(folderNames));
-            localStorage.removeItem('startBoard_' + folderName);
-            localStorage.removeItem('boardMenuOrder_' + folderName);
-            localStorage.removeItem('lastNoteId_' + folderName);
-            localStorage.removeItem('lastNoteNumord_' + folderName);
-            localStorage.removeItem('lastBoardId_' + folderName);
-            populateFoldersDropdown();
-            if (typeof syncGlobalFoldersJson === 'function') syncGlobalFoldersJson();
-        }
-    } catch (e) {
-        console.warn('Error removing folder from list:', e);
-    }
-}
-
-/**
- * Попълва падащото меню за папки в настройките.
- */
-function populateFoldersDropdown() {
-    console.log('[DEBUG] populateFoldersDropdown() called');
-    const activeFolderSelect = document.getElementById('active-folder-select');
-    if (!activeFolderSelect) {
-        console.log('[DEBUG] populateFoldersDropdown(): activeFolderSelect DOM element NOT FOUND!');
-        return;
-    }
-    if (!activeFolderSelect.querySelector('option[value="select_folder"]')) {
-        const selectOption = document.createElement('option');
-        selectOption.value = 'select_folder';
-        selectOption.textContent = _('selectFolderOption') || 'Select folder...';
-        activeFolderSelect.appendChild(selectOption);
-    }
-    if (!activeFolderSelect.querySelector('option[value="new_folder"]')) {
-        const newOption = document.createElement('option');
-        newOption.value = 'new_folder';
-        newOption.textContent = _('newFolderOption') || 'New folder...';
-        activeFolderSelect.appendChild(newOption);
-    }
-    let folderNamesStr = localStorage.getItem('gdrive_folder_names');
-    let folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
-    folderNames = folderNames.filter(n => n && n !== 'AppDataFolder');
-    if (typeof activeFolderName !== 'undefined' && activeFolderName && activeFolderName !== 'AppDataFolder' && !folderNames.includes(activeFolderName)) {
-        folderNames.push(activeFolderName);
-    }
-    Array.from(activeFolderSelect.options).forEach(opt => {
-        if (opt.value !== 'select_folder' && opt.value !== 'new_folder') {
-            opt.remove();
-        }
-    });
-    const insertBeforeNode = activeFolderSelect.querySelector('option[value="select_folder"]') || activeFolderSelect.firstChild;
-    folderNames.forEach(name => {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
-        if (typeof activeFolderName !== 'undefined' && name === activeFolderName) option.selected = true;
-        activeFolderSelect.insertBefore(option, insertBeforeNode);
-    });
-    if (typeof activeFolderName !== 'undefined' && activeFolderName && activeFolderName !== 'AppDataFolder') {
-        activeFolderSelect.value = activeFolderName;
-    }
-}
-
 function updateReloadButtonState() {
+    // Локален режим: няма какво да се синхронизира, бутонът остава в обичайния си вид.
     const btn = document.getElementById('reload_button');
     if (!btn) return;
-    // В демо режим няма къде да се синхронизира: бележките се маркират с type = -1
-    // (офлайн път), но бутонът не бива да става червен квадрат — остава както е.
-    const hasDirty = !IS_DEMO_MODE && allNotesData && allNotesData.some(n => n.type === -1);
+    btn.style.background = '';
+    btn.style.borderRadius = '';
     const img = btn.querySelector('img');
-    if (hasDirty) {
-        btn.style.background = '#e74c3c';
-        btn.style.borderRadius = '6px';
-        if (img) img.style.filter = 'brightness(0) invert(1)';
-    } else {
-        btn.style.background = '';
-        btn.style.borderRadius = '';
-        if (img) img.style.filter = '';
-    }
+    if (img) img.style.filter = '';
 }
-async function syncDirtyNotes() {
-    if (isOffline) {
-        showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
-        return;
-    }
-
-    const reloadBtn = document.getElementById('reload_button');
-    const reloadImg = reloadBtn?.querySelector('img');
-    if (reloadImg) reloadImg.style.animation = 'spin 1.5s linear infinite';
-    if (reloadBtn) reloadBtn.style.pointerEvents = 'none';
-    try {
-        const dirtyNotes = allNotesData.filter(n => n.type === -1);
-        if (dirtyNotes.length === 0) {
-            showToast(_('noDirtyNotesSync') || "No notes to sync.");
-            if (reloadImg) reloadImg.style.animation = '';
-            if (reloadBtn) reloadBtn.style.pointerEvents = 'auto';
-            return;
-        }
-        const btn = document.getElementById('sync-dirty-btn');
-        let originalHtml = '';
-        if (btn) {
-            originalHtml = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = `<img src="Refresh.png" style="width:20px; height:20px; animation: spin 0.8s linear infinite;"> ` + (_('syncing') || 'Syncing...');
-        }
-
-        let successCount = 0;
-        let errorCount = 0;
-        let skipCount = 0;
-        let mediaNeedsSync = false;
-        let autoApproveAll = false;
-
-        // Помощна функция за обработка на една бележка
-        const processNote = async (note) => {
-            try {
-                if (useIndexedDb && (!note.gdid || note.gdid === "")) {
-                    note.gdid = `L${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-                }
-                const tempGdid = note.gdid;
-                note.type = 0;
-                if (useIndexedDb && note.gdid) {
-                    await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                }
-
-                const success = await syncSingleNoteToGDrive(note);
-                if (success) {
-                    if (useIndexedDb && tempGdid && tempGdid !== note.gdid) {
-                        await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                        await deleteFromDB(NOTE_STORE_NAME, tempGdid);
-                    }
-                    allNotesData = allNotesData.filter(obj =>
-                        !(String(obj.id) === String(note.id) && String(obj.gdid) !== String(note.gdid))
-                    );
-                    if (!allNotesData.includes(note)) allNotesData.push(note);
-
-                    if (tempGdid && tempGdid !== note.gdid) {
-                        for (let m of mediaData) {
-                            if (String(m.noteid) === String(tempGdid)) {
-                                m.noteid = note.gdid;
-                                if (useIndexedDb) await bulkPutDB(MEDIA_STORE_NAME, m, true);
-                                mediaNeedsSync = true;
-                            }
-                        }
-                    }
-                    successCount++;
-                    const el = document.querySelector(`.note[data-i="${note.id}"], .note[data-g="${note.gdid}"], .note[data-g="${tempGdid}"]`);
-                    if (el) {
-                        el.classList.remove('dirty');
-                        el.dataset.s = String(note.status);
-                        if (note.gdid) el.dataset.g = note.gdid;
-                    }
-                } else {
-                    errorCount++;
-                    note.type = -1;
-                    if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-                }
-            } catch (e) {
-                console.error("Sync error for note", note.id, e);
-                errorCount++;
-                note.type = -1;
-                if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, JSON.parse(JSON.stringify(note)), true);
-            }
-        };
-
-        for (let i = 0; i < dirtyNotes.length; i++) {
-            if (isLoadCancelled) break;
-            const note = dirtyNotes[i];
-
-            if (!autoApproveAll) {
-                // Създаване на смислено резюме на бележката
-                let summary = "";
-                if (note.title && note.title.trim() !== "") {
-                    summary = `<strong>${note.title}</strong>`;
-                    if (note.notetxt) {
-                        const snippet = note.notetxt.substring(0, 100).replace(/<[^>]*>/g, '');
-                        summary += `<br><small>${snippet}${note.notetxt.length > 100 ? '...' : ''}</small>`;
-                    }
-                } else if (note.notetxt) {
-                    const snippet = note.notetxt.substring(0, 150).replace(/<[^>]*>/g, '');
-                    summary = snippet + (note.notetxt.length > 150 ? '...' : '');
-                } else {
-                    summary = "ID: " + note.id;
-                }
-
-                // Добавяме gdid за справка
-                if (note.gdid) {
-                    summary += `<div style="margin-top:8px; font-size:10px; color:#888;">GDID: ${note.gdid}</div>`;
-                }
-
-                const choice = await showSyncChoiceModal(summary);
-                if (choice === 'no') {
-                    skipCount++;
-                    continue;
-                } else if (choice === 'all') {
-                    autoApproveAll = true;
-                    // Преминаваме към паралелно изпълнение за оставащите бележки
-                    const remainingNotes = dirtyNotes.slice(i);
-                    const pool = new Set();
-                    const CONCURRENCY_LIMIT = 5; // Леко по-нисък лимит за по-добра стабилност
-                    for (const rNote of remainingNotes) {
-                        if (isLoadCancelled) break;
-                        if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-                        const p = processNote(rNote);
-                        pool.add(p);
-                        p.finally(() => pool.delete(p));
-                    }
-                    await Promise.all(pool);
-                    break; // Излизаме от For цикъла, защото вече сме обработили всичко паралелно
-                }
-            }
-
-            // Последователно изпълнение (ако не е избрано 'all')
-            await processNote(note);
-        }
-
-
-        if (mediaNeedsSync && typeof syncFileWorker === 'function') {
-            try {
-                await syncFileWorker('media.txt', MEDIA_STORE_NAME, false);
-            } catch (e) {
-                console.error("Failed to sync media.txt after updating orphan links", e);
-            }
-        }
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-        }
-        if (errorCount === 0) {
-            showToast(`${_('syncSuccess') || 'Successfully synced'} ${successCount} ${_('notes') || 'notes'}`, 3000);
-        } else {
-            showToast(`${_('syncSuccess') || 'Synced'} ${successCount} ${_('notes') || 'notes.'} ${errorCount} ${_('errorsOccurred') || 'errors occurred.'}`, 5000);
-        }
-        if (reloadImg) reloadImg.style.animation = '';
-        if (reloadBtn) reloadBtn.style.pointerEvents = 'auto';
-        updateReloadButtonState();
-    } catch (e) {
-        console.error("Critical sync error", e);
-        if (reloadImg) reloadImg.style.animation = '';
-        if (reloadBtn) reloadBtn.style.pointerEvents = 'auto';
-        updateReloadButtonState();
-    }
-}
-
-async function syncSingleNoteToGDrive(noteObj, retryCount = 0) {
-    const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id) || String(noteObj.gdid).startsWith('L');
-    try {
-        if (isTempGdid) {
-            const folderId = await getFolderID();
-            if (!folderId) return false;
-            const fileContent = JSON.stringify(noteObj);
-            const newGdid = await createGDriveFile(folderId, 'note.txt', fileContent);
-            if (!newGdid) return false;
-            noteObj.gdid = newGdid;
-            // Тук използваме директен опит за обновяване без рекурсия за вътрешната стъпка
-            try {
-                await updateGDriveFile(newGdid, JSON.stringify(noteObj));
-                return true;
-            } catch (e) {
-                console.warn("[Sync] Internal note update after creation failed (non-critical):", e);
-                return true; // Файлът е създаден успешно, затова връщаме true
-            }
-        } else {
-            try {
-                return await updateGDriveFile(noteObj.gdid, JSON.stringify(noteObj));
-            } catch (e) {
-                // Ако файлът не е намерен (404), го пресъздаваме (само един път)
-                if (retryCount === 0 && e.message && e.message.includes('Status: 404')) {
-                    console.warn(`[Sync] File ${noteObj.gdid} not found on GDrive. Attempting to recreate...`);
-                    noteObj.gdid = "";
-                    return await syncSingleNoteToGDrive(noteObj, 1);
-                }
-                throw e;
-            }
-        }
-    } catch (e) {
-        console.error("syncSingleNoteToGDrive error:", e);
-        return false;
-    }
-}
-
-async function handleSaveDbToFolder() {
-    if (isOffline) {
-        showToast((typeof _ === 'function' ? _('offlineModeMessage') : 'Offline mode'), 3000);
-        return;
-    }
-    const folderId = await getFolderID();
-    if (!folderId) return;
-
-    // --- ПРИНУДИТЕЛНО ЗАРЕЖДАНЕ ОТ IndexedDB: Винаги взимаме данните от базата за най-голяма сигурност ---
-    console.log('[SaveDB] 🔄 Forcing data load from IndexedDB for migration...');
-    try {
-        const dbNotes = await getAllFromDB(NOTE_STORE_NAME);
-        if (dbNotes && dbNotes.length > 0) {
-            allNotesData = dbNotes;
-            console.log('[SaveDB] ✅ Successfully loaded notes from IndexedDB:', allNotesData.length);
-        } else {
-            console.warn('[SaveDB] ⚠️ No notes found in IndexedDB store.');
-        }
-
-        const dbBoards = await getAllFromDB(BOARD_STORE_NAME);
-        if (dbBoards && dbBoards.length > 0) {
-            boardsData = dbBoards;
-            console.log('[SaveDB] ✅ Successfully loaded boards from IndexedDB:', boardsData.length);
-        } else {
-            console.warn('[SaveDB] ⚠️ No boards found in IndexedDB store.');
-        }
-
-        const dbMedia = await getAllFromDB(MEDIA_STORE_NAME);
-        if (dbMedia && dbMedia.length > 0) {
-            mediaData = dbMedia;
-            console.log('[SaveDB] ✅ Successfully loaded media from IndexedDB:', mediaData.length);
-        }
-    } catch (e) {
-        console.error('[SaveDB] ❌ Failed to read from IndexedDB:', e);
-        // Продължаваме с паметта, ако базата е недостъпна
-    }
-
-    // Проверка за празна папка
-    const checkResult = await checkFolderEligibilityForSave(folderId);
-    if (!checkResult.eligible) {
-        let msg = (typeof _ === 'function' ? _('errorFolderNotEmpty') : 'Folder is not empty!');
-        if (checkResult.conflicts && checkResult.conflicts.length > 0) {
-            const conflictNames = checkResult.conflicts.slice(0, 5).join(', ') + (checkResult.conflicts.length > 5 ? '...' : '');
-            msg += ` (${conflictNames})`;
-        }
-        showToast(msg, 7000);
-        return;
-    }
-
-    const confirmed = await showConfirmation((typeof _ === 'function' ? _('confirmSaveDbToFolder') : 'Save data to this folder?'));
-    if (confirmed) {
-        const success = await migrateDataToNewFolder(folderId);
-        if (success) {
-            // Запазваме съществуващата подредба, ако има такава
-            let boardTitles;
-            const existingBmo = localStorage.getItem('boardMenuOrder');
-            if (existingBmo) {
-                try {
-                    const parsed = JSON.parse(existingBmo);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        boardTitles = parsed;
-                    }
-                } catch (e) { /* ignore */ }
-            }
-            // Ако няма съществуваща подредба, създаваме от boardsData
-            if (!boardTitles) {
-                const uniqueBoards = [];
-                const seen = new Set();
-                (boardsData || []).forEach(b => {
-                    if (b.title && !seen.has(b.title)) {
-                        uniqueBoards.push(b);
-                        seen.add(b.title);
-                    }
-                });
-                boardTitles = uniqueBoards
-                    .sort((a, b) => {
-                        const na = a.numord !== undefined && a.numord !== null ? a.numord : Infinity;
-                        const nb = b.numord !== undefined && b.numord !== null ? b.numord : Infinity;
-                        return na - nb;
-                    })
-                    .map(b => String(b.title));
-                localStorage.setItem('boardMenuOrder', JSON.stringify(boardTitles));
-            }
-            // Синхронизираме folders.json с актуалните данни
-            await syncGlobalFoldersJson();
-
-            // Актуализираме времевия маркер, за да предотвратим фалшива индикация за нови файлове след рестарта
-            if (useIndexedDb) {
-                await saveConfig('lastGDTimestamp', Date.now());
-            }
-
-            console.log('[SaveDB] boardMenuOrder synced:', boardTitles);
-            showToast((typeof _ === 'function' ? _('dbSavedToFolderSuccess') : 'Database saved successfully!'), 7000);
-            console.log('%c Migration Complete! Successfully moved data to the new folder. ', 'background: #27ae60; color: white; font-weight: bold; padding: 5px;');
-            setTimeout(() => {
-                location.reload();
-            }, 5000);
-        }
-    }
-}
-
-async function checkFolderEligibilityForSave(folderId) {
-    if (isOffline) return { eligible: false, conflicts: ['Offline mode'] };
-    const sendRequest = async (token) => {
-        let query = `'${folderId}' in parents and trashed = false`;
-        // За AppDataFolder търсим само в неговия контекст
-        const spaces = (folderId === 'appDataFolder') ? 'appDataFolder' : 'drive';
-        return fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&spaces=${spaces}&fields=files(id,name,mimeType)`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-    };
-    try {
-        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-        if (!storedTokenString) return { eligible: false, conflicts: ['No auth token'] };
-        let tokenData = JSON.parse(storedTokenString);
-        let resp = await sendRequest(tokenData.access_token);
-        if (resp.status === 401) {
-            const refresh = await refreshAuthToken(false);
-            if (refresh && refresh.pass) resp = await sendRequest(refresh.tokenData.access_token);
-        }
-        if (!resp.ok) return { eligible: false, conflicts: ['API request failed'] };
-        const result = await resp.json();
-        const files = result.files || [];
-        if (files.length === 0) return { eligible: true, conflicts: [] };
-        // Специално правило за AppDataFolder и AppSettings
-        if (folderId === 'appDataFolder') {
-            const nonSettingsFiles = files.filter(f => !(f.name === 'AppSettings' && f.mimeType === 'application/vnd.google-apps.folder'));
-            if (nonSettingsFiles.length === 0) {
-                return { eligible: true, conflicts: [] };
-            } else {
-                return { eligible: false, conflicts: nonSettingsFiles.map(f => f.name) };
-            }
-        }
-        return { eligible: false, conflicts: files.map(f => f.name) };
-    } catch (e) {
-        console.error("checkFolderEligibilityForSave error:", e);
-        return { eligible: false, conflicts: ['Network or parse error'] };
-    }
-}
-
-/**
- * Изчиства осиротели изображения (файлове в папката Images, които нямат запис в mediaData).
- */
-async function cleanupOrphanedImages() {
-    if (isOffline || isLoadCancelled) return;
-    const mediaPaths = new Set(mediaData.map(m => m.path));
-    const mediaGdidPaths = new Set(mediaData.map(m => m.pathGD).filter(id => !!id));
-    console.log(`[Cleanup] Starting orphaned images check. Known media files: ${mediaPaths.size}`);
-    // --- ЛОКАЛНА ПАПКА ---
-    if (useLocalFolder && typeof dirHandle !== 'undefined' && dirHandle) {
-        try {
-            const imagesHandle = await dirHandle.getDirectoryHandle('Images', { create: false }).catch(() => null);
-            if (imagesHandle) {
-                let deletedCount = 0;
-                for await (const entry of imagesHandle.values()) {
-                    if (entry.kind === 'file' && !mediaPaths.has(entry.name)) {
-                        if (entry.name.startsWith('.') || entry.name === 'media.txt') continue;
-                        console.log(`[Cleanup-Local] Deleting orphaned file: ${entry.name}`);
-                        await imagesHandle.removeEntry(entry.name);
-                        deletedCount++;
-                    }
-                }
-                if (deletedCount > 0) console.log(`[Cleanup-Local] Removed ${deletedCount} files.`);
-            }
-        } catch (e) { console.error("[Cleanup-Local] Error:", e); }
-    }
-    // --- GOOGLE DRIVE ---
-    if (useGoogleDb && typeof authToken !== 'undefined' && authToken) {
-        try {
-            const imagesFolderId = folderIds['Images'] || localStorage.getItem('gdrive_folder_id_Images');
-            if (imagesFolderId) {
-                const response = await fetch(`https://www.googleapis.com/drive/v3/files?q='${imagesFolderId}'+in+parents+and+trashed=false&fields=files(id,name)`, {
-                    headers: { 'Authorization': `Bearer ${authToken.access_token}` }
-                });
-                if (response.ok) {
-                    const result = await response.json();
-                    const files = result.files || [];
-                    let deletedCount = 0;
-                    for (const file of files) {
-                        if (!mediaPaths.has(file.name) && !mediaGdidPaths.has(file.id)) {
-                            console.log(`[Cleanup-GDrive] Deleting orphaned file: ${file.name} (${file.id})`);
-                            if (typeof deleteGDriveFile === 'function') await deleteGDriveFile(file.id);
-                            deletedCount++;
-                        }
-                    }
-                    if (deletedCount > 0) console.log(`[Cleanup-GDrive] Removed ${deletedCount} files.`);
-                }
-            }
-        } catch (e) { console.error("[Cleanup-GDrive] Error:", e); }
-    }
-}
-
-// Задаваме периодична проверка за осиротели изображения
-// setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
-
-// The first (idle) note window, so #content-modal and #modal-body exist from the start.
-initNoteWindows();
