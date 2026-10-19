@@ -20992,14 +20992,19 @@ async function startAssistantGuide(options = {}) {
 async function startDemoAssistantIntro() {
     if (!IS_DEMO_MODE) return false;
     try {
+        // Флагът се вдига веднага, синхронно: иначе две извиквания на mainLogic, чиито
+        // таймери гръмнат в един и същ тик, биха пуснали тура два пъти. При неуспех се
+        // маха, за да опита пак при следващо влизане.
         if (sessionStorage.getItem(DEMO_INTRO_SESSION_KEY) === '1') return false;
+        sessionStorage.setItem(DEMO_INTRO_SESSION_KEY, '1');
         // Офлайн клонът на mainLogic прави return, а finally-то на онлайн клона не се
         // изпълнява — затова тук чакаме само рамка, за да е готов бордът.
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const started = await startAssistantGuide({ force: true, persistFlag: false });
-        if (started) sessionStorage.setItem(DEMO_INTRO_SESSION_KEY, '1');
+        if (!started) sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY);
         return started;
     } catch (e) {
+        try { sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY); } catch (_) { }
         console.warn('[Demo] Assistant intro could not be shown:', e);
         return false;
     }
