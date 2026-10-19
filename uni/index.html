@@ -5,6 +5,25 @@
     <title>CX Notes</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        // Демо режимът (?demo=1 или запазен флаг) трябва да е известен още преди първия
+        // външен ресурс на страницата - иначе widget-ът на Ko-fi тръгва към външен адрес.
+        (function () {
+            var on = false;
+            try {
+                var raw = new URLSearchParams(window.location.search).get('demo');
+                if (raw !== null) {
+                    var value = String(raw).toLowerCase();
+                    on = (value === '1' || value === 'true' || value === 'yes' || value === 'on');
+                    if (value === '0' || value === 'false' || value === 'no' || value === 'off') {
+                        localStorage.removeItem('cxNotesDemoMode');
+                    }
+                }
+                if (!on && localStorage.getItem('cxNotesDemoMode') === '1') on = true;
+            } catch (e) { }
+            window.__cxDemoMode = on;
+        })();
+    </script>
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.webmanifest">
@@ -87,6 +106,11 @@
     </script -->
 
     <header>
+        <!-- Лента на демо режима: трайна, с изход. Показва се само в демо (виж showDemoBanner). -->
+        <div id="demo-banner" class="demo-banner" hidden>
+            <span class="demo-banner-label" data-key="demoBannerLabel">Демо режим · без интернет</span>
+            <button type="button" class="demo-banner-exit" id="demo-banner-exit" data-key="demoExit">Изход от демо</button>
+        </div>
         <div style="display: flex; align-items: center;">
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
             <h1 ID="app-title" data-key="appTitle">CX Notes</h1>
@@ -167,6 +191,10 @@
                     style="margin: 8px auto 0 auto; width: 100%; max-width: 260px; display: block; cursor: pointer; box-sizing: border-box;"
                     data-key="requestAccessBtn">Заяви достъп</button>
             </div>
+
+            <!-- Демо режимът стои извън .login-box: онзи блок е скрит при част от състоянията,
+                 а демото трябва да е достъпно винаги. -->
+            <button id="demo-start-btn" type="button" class="demo-start-btn" data-key="demoButton">Демо режим</button>
         </div>
 
         <div class="login-box"
@@ -1127,14 +1155,25 @@
     </button>
 
     <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
-        <script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
+        <!-- Демо режимът не тегли нищо от външен адрес: widget-ът на Ko-fi се зарежда само извън демо. -->
         <script>
-            kofiWidgetOverlay.draw('multinotes', {
-                'type': 'floating-chat',
-                'floating-chat.donateButton.text': '',
-                'floating-chat.donateButton.background-color': 'transparent',
-                'floating-chat.donateButton.text-color': '#323842'
-            });
+            (function () {
+                if (window.__cxDemoMode) return;
+                var s = document.createElement('script');
+                s.src = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
+                s.async = true;
+                s.onload = function () {
+                    try {
+                        kofiWidgetOverlay.draw('multinotes', {
+                            'type': 'floating-chat',
+                            'floating-chat.donateButton.text': '',
+                            'floating-chat.donateButton.background-color': 'transparent',
+                            'floating-chat.donateButton.text-color': '#323842'
+                        });
+                    } catch (e) { console.warn('[Ko-fi] overlay not available:', e); }
+                };
+                document.head.appendChild(s);
+            })();
         </script>
     </div>
 
