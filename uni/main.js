@@ -1,11 +1,4 @@
-// https://multinotes.app/gdviewer
-// terser main.js --compress --mangle --toplevel --output mainn.js
-// terser mainAll.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output mainn.js
-// terser db.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output dbb.js
-// terser calendar.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true  --output calendarr.js
-// node -e "const fs=require('fs'); const T=require('terser'); (async()=>{ const code=fs.readFileSync('main.js','utf8'); const result=await T.minify(code,{ compress:{ arrows:true, booleans:true, collapse_vars=true, comparisons:true, dead_code=true, drop_console=true, hoist_funs=true, if_return=true, passes:3, pure_funcs:['console.log'] }, mangle:{ reserved:['gisLoaded'], keep_fnames: /^gisLoaded$/ }, toplevel:true, ecma:2020, module:true, format:{ wrap_iife:true } }); fs.writeFileSync('mainn.js',result.code); })();"
 
-// terser main.js  --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
 // App version: идва от CACHE_NAME на service worker-а ('cx-notes-b1.67' -> 'Beta 1.67').
 // null, докато не се разбере; ако не се разбере изобщо, надписът се скрива.
@@ -274,80 +267,6 @@ let SUPPORTED_LANGUAGES = [
     { id: 'en', label: 'EN' },
     { id: 'bg', label: 'BG' }
 ];
-
-function renderLanguageSwitchers(onChangeCallback) {
-    const build = (languages) => {
-        let container = document.getElementById('lang-switcher-main');
-        if (!container) return;
-
-        // Ако браузърът е кеширал стар HTML, в който контейнерът е select (а не div):
-        if (container.tagName.toLowerCase() === 'select') {
-            container.innerHTML = '';
-            container.style.cssText = 'font-size: 16px; padding: 6px 30px 6px 12px; border-radius: 6px; background: #afbac6; border: 1px solid #ccc; cursor: pointer; outline: none; margin-bottom: 15px; color: #333;';
-            languages.forEach(lang => {
-                const option = document.createElement('option');
-                option.value = lang.id;
-                option.textContent = lang.label;
-                if (lang.id === currentLang) option.selected = true;
-                container.appendChild(option);
-            });
-            // Remove old listeners by cloning
-            const newSelect = container.cloneNode(true);
-            container.parentNode.replaceChild(newSelect, container);
-            if (typeof onChangeCallback === 'function') {
-                newSelect.addEventListener('change', async (e) => {
-                    const lang = e.target.value;
-                    localStorage.setItem('language', lang);
-                    onChangeCallback(lang);
-                });
-            }
-            return;
-        }
-
-        // Стандартно рендиране в div контейнер
-        container.innerHTML = '';
-        const select = document.createElement('select');
-        select.id = 'main-lang-select';
-        select.className = 'lang-select';
-        select.style.cssText = 'font-size: 16px; padding: 6px 30px 6px 12px; border-radius: 6px; background: #afbac6; border: 1px solid #ccc; cursor: pointer; outline: none; margin-bottom: 0px; color: #333;';
-
-        languages.forEach(lang => {
-            const option = document.createElement('option');
-            option.value = lang.id;
-            option.textContent = lang.label;
-            if (lang.id === currentLang) option.selected = true;
-            select.appendChild(option);
-        });
-
-        if (typeof onChangeCallback === 'function') {
-            select.addEventListener('change', async (e) => {
-                const lang = e.target.value;
-                localStorage.setItem('language', lang);
-                onChangeCallback(lang);
-            });
-        }
-        container.appendChild(select);
-    };
-
-    // Предварително рисуване
-    build(SUPPORTED_LANGUAGES);
-
-    // Фонов ъпдейт
-    fetch('languages.json', { cache: 'no-store' })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-            if (data && Array.isArray(data) && data.length > 0) {
-                const isDifferent = JSON.stringify(data) !== JSON.stringify(SUPPORTED_LANGUAGES);
-                if (isDifferent) {
-                    SUPPORTED_LANGUAGES = data;
-                    build(SUPPORTED_LANGUAGES);
-                }
-            }
-        })
-        .catch(err => console.warn('languages.json fallback to default', err));
-}
-
-let currentLang = localStorage.getItem('language') || 'en';
 
 function applyLanguageFromUrl() {
     const search = window.location.search.toLowerCase();
@@ -3740,10 +3659,8 @@ function saveSearchTerm(term) {
 }
 
 
-// Проверяваме дали има токен преди да стартираме приложението
-// Ако няма токен, ще изчакаме gisLoaded() да покаже login страницата
+// Стартираме приложението веднага: локален режим, без вход и без проверка за токен.
 (async () => {
-    // Локален режим: стартираме веднага, без вход и без проверка за токен.
     startApp();
     // --- Selection Locking Logic ---
     // Persistent lock strategy: Lock strictly enforces selection on the active note. 
@@ -3777,14 +3694,11 @@ function saveSearchTerm(term) {
     // By keeping the lock, we force the selection to stay contained.
 })();
 
-// След успешно удостоверяване gisLoaded() ще извика startApp()
-
 function enableSettingsControls() {
     const settingsModal = document.getElementById('settings-modal');
     if (!settingsModal) return;
     const controlsToEnable = [
-        'use-indexeddb-checkbox', 'use-local-db-checkbox', 'use-arh-db-checkbox',
-        'create-db-btn', 'select-folder-btn', 'select-arh-btn'
+        'use-indexeddb-checkbox', 'create-db-btn', 'delete-db-btn'
     ];
     controlsToEnable.forEach(id => {
         const el = settingsModal.querySelector(`#${id}`);
@@ -3983,6 +3897,134 @@ function renderLocalModeBadge() {
     const modeButtonHtml = document.getElementById('mode_button');
     if (modeButtonHtml) {
         modeButtonHtml.title = _('localModeTooltip') || 'Локален режим: данните са в този браузър';
+    }
+}
+
+// =================================================================================
+// IV.b. РЕЗЕРВНО КОПИЕ (експорт / импорт на JSON файл)
+// =================================================================================
+// Без Drive няма облак: резервното копие е файл, който потребителят избира къде да
+// запази. Файлът съдържа бордовете, бележките и медийните записи; байтовете на
+// прикачените файлове влизат като base64, за да е пълно копието.
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            resolve(result.substring(result.indexOf(',') + 1));
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+    });
+}
+
+function base64ToBlob(base64, mime) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime || 'application/octet-stream' });
+}
+
+/** Експорт на цялата база в един JSON файл. */
+async function backupExport() {
+    try {
+        const boards = await getAllFromDB(BOARD_STORE_NAME);
+        const notes = await getAllFromDB(NOTE_STORE_NAME);
+        const media = await getAllFromDB(MEDIA_STORE_NAME);
+        let files = [];
+        try { files = await getAllFromDB(FILES_STORE_NAME); } catch (e) { files = []; }
+
+        const filesOut = [];
+        for (const record of (files || [])) {
+            if (!record || !record.blob) continue;
+            try {
+                filesOut.push({
+                    key: record.key,
+                    name: record.name,
+                    mime: record.mime,
+                    size: record.size,
+                    noteid: record.noteid,
+                    datemod: record.datemod,
+                    data: await blobToBase64(record.blob)
+                });
+            } catch (e) {
+                console.warn('Could not encode attachment for export:', record.key, e);
+            }
+        }
+
+        const payload = {
+            app: 'CX Notes',
+            format: 'cx-notes-backup',
+            version: NOTES_DB_VERSION,
+            exportedAt: new Date().toISOString(),
+            boards: boards || [],
+            notes: notes || [],
+            media: media || [],
+            files: filesOut
+        };
+
+        const json = JSON.stringify(payload);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'cx-notes-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        showToast(_('backupExported') || 'Backup exported.', 4000);
+    } catch (e) {
+        console.error('Backup export failed:', e);
+        showToast((_('backupExportFailed') || 'Backup export failed: {msg}').replace('{msg}', e.message), 6000);
+    }
+}
+
+/** Импорт на резервно копие от JSON файл. Замества съдържанието на базата. */
+async function backupImport(file) {
+    try {
+        const confirmed = await showConfirmation(_('confirmBackupImport') || 'Importing replaces the current notes with the ones in the file. Continue?');
+        if (!confirmed) return;
+
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        if (!payload || payload.format !== 'cx-notes-backup') {
+            showToast(_('backupBadFile') || 'This file is not a CX Notes backup.', 6000);
+            return;
+        }
+
+        const db = await openNotesDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction([BOARD_STORE_NAME, NOTE_STORE_NAME, MEDIA_STORE_NAME, FILES_STORE_NAME], 'readwrite');
+            tx.objectStore(BOARD_STORE_NAME).clear();
+            tx.objectStore(NOTE_STORE_NAME).clear();
+            tx.objectStore(MEDIA_STORE_NAME).clear();
+            tx.objectStore(FILES_STORE_NAME).clear();
+            (payload.boards || []).forEach(b => tx.objectStore(BOARD_STORE_NAME).put(b));
+            (payload.notes || []).forEach(n => tx.objectStore(NOTE_STORE_NAME).put(n));
+            (payload.media || []).forEach(m => tx.objectStore(MEDIA_STORE_NAME).put(m));
+            (payload.files || []).forEach(f => {
+                tx.objectStore(FILES_STORE_NAME).put({
+                    key: f.key,
+                    name: f.name,
+                    mime: f.mime,
+                    size: f.size,
+                    noteid: f.noteid,
+                    datemod: f.datemod,
+                    blob: base64ToBlob(f.data, f.mime)
+                });
+            });
+            tx.oncomplete = () => { db.close(); resolve(); };
+            tx.onerror = () => { db.close(); reject(tx.error); };
+        });
+
+        dbExists = await checkDbExists(NOTES_DB_NAME);
+        showToast(_('backupImported') || 'Backup imported.', 5000);
+        await mainLogic();
+    } catch (e) {
+        console.error('Backup import failed:', e);
+        showToast((_('backupImportFailed') || 'Backup import failed: {msg}').replace('{msg}', e.message), 6000);
     }
 }
 
@@ -9784,8 +9826,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
         });
     }
-    const updateLocalFolderCheckbox = document.getElementById('update-local-folder-checkbox');
-    const forceGDriveReadCheckbox = document.getElementById('force-gdrive-read-checkbox');
     const checkEmptyBoardsCheckbox = document.getElementById('check-empty-boards-checkbox');
     if (checkEmptyBoardsCheckbox) {
         checkEmptyBoardsCheckbox.checked = localStorage.getItem('checkEmptyBoards') === 'true';
@@ -9842,8 +9882,6 @@ async function createSettingsUI(boardsData, boardParseError) {
             }, 5000);
         }
     });
-    const syncDirtyBtn = document.getElementById('sync-dirty-btn');
-    const saveDbFolderBtn = document.getElementById('save-db-folder-btn');
     scaleInput.addEventListener('change', () => {
         const zoomValue = scaleInput.value;
         updateZoom(zoomValue);
@@ -10253,13 +10291,11 @@ async function createSettingsUI(boardsData, boardParseError) {
             // Ако потребителят откаже изтриването, отваряме настройките отново, за да не остава празен екран.
             document.getElementById('settings-modal').classList.add('visible');
         }
-        // Активираме контролите, в случай че са били деактивирани от userCheck
+        // Активираме контролите, в случай че са били деактивирани
         enableSettingsControls();
     });
     // --- Local Sync Folder ---
     // --- Archive Folder Setting ---
-    const selectArhBtn = document.getElementById('select-arh-btn');
-    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
     // Close
     document.getElementById('settings-close-btn').addEventListener('click', async (e) => {
         if (e && e.ctrlKey) return; // Allow Ctrl-Click toggle behavior to fire without closing the UI
@@ -10282,7 +10318,6 @@ async function createSettingsUI(boardsData, boardParseError) {
     settingsModalBody.dataset.initialized = true;
 }
 // Always ensure the delete folder button has a listener (outside the initialization guard)
-const deleteFolderBtn = document.getElementById('delete-folder-btn');
 
 // При инициализация на UI, проверяваме дали разширените настройки трябва да са видими
 // Разширените настройки вече са част от settings2-modal и са винаги видими
@@ -12522,41 +12557,17 @@ async function loadTranslations(lang) {
         }
         appTranslations[lang] = data;
         delete translationsFallback[lang];
-        if (accountSwitchNoticeRefresh) accountSwitchNoticeRefresh();
     } catch (e) {
         console.error("Failed to load translations:", e);
         if (!appTranslations[lang]) {
             appTranslations[lang] = {};
             translationsFallback[lang] = true;
             if (lang === 'bg') {
-                appTranslations[lang]['offlineStartButton'] = 'Старт офлайн';
-                appTranslations[lang]['authorizeButton'] = 'Вход с Google';
-                appTranslations[lang]['trialButton'] = 'Старт 30-дневен пробен период';
-                appTranslations[lang]['sessionExpired'] = 'Сесията изтече. Моля, влезте отново.';
                 appTranslations[lang]['initialDataLoad'] = 'Зареждане на данни...';
-                appTranslations[lang]['accountSwitchTitle'] = "Открит е друг акаунт";
-                appTranslations[lang]['accountSwitchText'] = "Влязъл си с {new}, а на устройството има копие на бележките от {old}. Приложението не може да стартира с чужди бележки: копието ще бъде изтрито и бележките ще се заредят наново от Google Drive за новия акаунт.";
-                appTranslations[lang]['accountSwitchRepeatText'] = "Влязъл си с {new}, а локалната база все още е от {old}, въпреки че вече беше изтрита веднъж в тази сесия. За да не се получи цикъл, приложението няма да стартира. ОК ще те изведе от акаунта.";
-                appTranslations[lang]['accountSwitchNotesHidden'] = "Докато този екран стои, бележките от стария акаунт не се показват. Изтриването започва едва след натискане на ОК.";
-                appTranslations[lang]['accountSwitchUnsynced'] = "На устройството има {count} несинхронизирани бележки. Преди изтриването те ще бъдат изтеглени като файл.";
-                appTranslations[lang]['accountSwitchNeedsOnline'] = "Няма връзка с интернет. Базата ще бъде изтрита, когато връзката се възстанови.";
                 appTranslations[lang]['okButton'] = "ОК";
             } else {
-                appTranslations[lang]['offlineStartButton'] = 'Start Offline';
-                appTranslations[lang]['authorizeButton'] = 'Authorize with Google';
-                appTranslations[lang]['trialButton'] = 'Start 30-day trial period';
-                appTranslations[lang]['sessionExpired'] = 'Session expired. Please login again.';
                 appTranslations[lang]['initialDataLoad'] = 'Data loading...';
-                appTranslations[lang]['accountSwitchTitle'] = "A different account was detected";
-                appTranslations[lang]['accountSwitchText'] = "You signed in as {new}, but this device holds a copy of the notes of {old}. The app cannot start with another account's notes: the copy will be deleted and the notes will be loaded again from Google Drive for the new account.";
-                appTranslations[lang]['accountSwitchRepeatText'] = "You signed in as {new}, but the local database still belongs to {old}, although it was already deleted once in this session. To avoid a loop, the app will not start. OK will sign you out.";
-                appTranslations[lang]['accountSwitchNotesHidden'] = "While this screen is open, the old account's notes are not shown. Deletion starts only after you press OK.";
-                appTranslations[lang]['accountSwitchUnsynced'] = "This device has {count} unsynced notes. They will be downloaded as a file before the deletion.";
-                appTranslations[lang]['accountSwitchNeedsOnline'] = "No internet connection. The database will be deleted once the connection is back.";
                 appTranslations[lang]['okButton'] = "OK";
-            }
-            if (!appTranslations[lang]['loginPrompt']) {
-                appTranslations[lang]['loginPrompt'] = lang === 'bg' ? 'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в MultiNotes.' : 'Please sign in with Google account you used to sync MultiNotes.';
             }
         }
     }
@@ -13049,27 +13060,6 @@ function navigateBoard(direction) {
 //     <!-- === --- === В Т О Р А   В Е Р С И Я === --- === -->
 
 // Settings 2 IIFE removed
-
-// --- Save Button Listener ---
-// --- Save Button Listener ---
-(function () {
-    const saveBtn = document.getElementById('save-btn');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (typeof exportNotes === 'function') exportNotes();
-            else console.error('exportNotes function not found');
-        });
-    }
-    const saveIndividualBtn = document.getElementById('save-individual-btn');
-    if (saveIndividualBtn) {
-        saveIndividualBtn.addEventListener('click', () => {
-            document.getElementById('settings-modal').classList.remove('visible');
-            if (typeof exportToIndividualFiles === 'function') exportToIndividualFiles();
-            else console.error('exportToIndividualFiles function not found');
-        });
-    }
-})();
 
 // --- Settings Close (×) Button ---
 const settingsCloseX = document.getElementById('settings-close-x');
