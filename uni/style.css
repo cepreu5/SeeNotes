@@ -4297,24 +4297,23 @@ body.selection-locked .note.active-selection-note .note-content {
     }
 }
 /* --- МАСОВ ИЗБОР НА БЕЛЕЖКИ (b2.36) --- */
-/* Отметката в горния десен ъгъл: заменя кръгчето за закачане, докато тече избор.
-   Стойностите по подразбиране са мястото на кръгчето при стандартния фон; ако бележката
-   е с друг фон, JS измерва мястото и го задава в inline стил. */
+/* Отметката е елемент в реда на кабарчето, точно преди кръгчето за закачане, и заема неговото
+   място: на избраните карти кръгчето се скрива с display: none, а отметката е неговият пряк
+   съсед в flex реда — същите размери, същото място, без абсолютно позициониране и без мерене. */
 .note-select-check {
-    position: absolute;
-    top: 26px;
-    right: 31px;
-    width: 20px;
-    height: 20px;
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 2px solid rgba(0, 0, 0, 0.45);
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     pointer-events: none;
-    z-index: 3;
 }
 
 .note-select-check.checked {
@@ -4342,8 +4341,14 @@ body.selection-locked .note.active-selection-note .note-content {
     opacity: 0.75;
 }
 
-/* По време на избор закачането се крие — иначе се натиска по навик. */
+/* По време на избор закачането се крие — иначе се натиска по навик. Скриваме го с visibility,
+   за да си запази мястото в реда: неотбелязаните карти не мърдат при влизане в избор. */
 #notes-container.selection-mode .note-pin-btn {
+    visibility: hidden;
+}
+
+/* На избраната карта кръгчето освобождава мястото си на отметката — тя е точно преди него. */
+#notes-container.selection-mode .note.note-selected .note-pin-btn {
     display: none;
 }
 

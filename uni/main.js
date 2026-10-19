@@ -14056,39 +14056,49 @@ function updateSelectionBar() {
     }
 }
 
-/** Нанася избора върху DOM: отметки, рамка, затъмняване на останалите карти. */
+/** Слага/маха отметката на една карта. Отметката е пряк съсед на кръгчето за закачане в реда на
+ *  кабарчето и заема неговото място, затова не се мери нищо и не се пипа оформлението. */
+function setCardSelectionMarker(card, isSelected) {
+    if (!card) return;
+    const box = card.querySelector('.note-select-check');
+    if (!isSelected) {
+        card.classList.remove('note-selected');
+        if (box) box.remove();
+        return;
+    }
+    card.classList.add('note-selected');
+    if (box) return;
+    const mark = document.createElement('div');
+    mark.className = 'note-select-check checked';
+    mark.setAttribute('aria-hidden', 'true');
+    // Влиза точно преди кръгчето; без кръгче — в края на реда на заглавието.
+    const pin = card.querySelector('.note-pin-btn');
+    if (pin && pin.parentNode) {
+        pin.parentNode.insertBefore(mark, pin);
+    } else {
+        const host = card.querySelector('.note-title-wrapper');
+        if (host) host.appendChild(mark);
+        else card.appendChild(mark);
+    }
+}
+
+/** Нанася избора върху DOM: отметки, рамка, затъмняване на останалите карти.
+ *  Пипа само картите, чието състояние се различава от желаното — при влизане в избор това е
+ *  само кликнатата карта, а не целият борд (иначе големите бордове се усещат като забавяне). */
 function applySelectionDomOnly() {
     if (!notesContainer) return;
-    getNoteCards(false).forEach(card => {
-        const key = getNoteCardKey(card);
-        const isSel = selectionState.active && selectionState.keys.has(key);
-        card.classList.toggle('note-selected', isSel);
-        let box = card.querySelector('.note-select-check');
-        if (selectionState.active) {
-            if (!box) {
-                box = document.createElement('div');
-                box.className = 'note-select-check';
-                box.setAttribute('aria-hidden', 'true');
-                // Отметката застава точно на мястото на кръгчето за закачане — то се крие по време
-                // на избор, а мястото му зависи от фона на бележката, затова се мери веднъж.
-                const pin = card.querySelector('.note-pin-btn');
-                if (pin) {
-                    const pr = pin.getBoundingClientRect();
-                    const cr = card.getBoundingClientRect();
-                    if (pr.width > 0) {
-                        const size = 20;
-                        box.style.top = Math.round(pr.top - cr.top + (pr.height - size) / 2) + 'px';
-                        box.style.right = Math.round(cr.right - pr.right + (pr.width - size) / 2) + 'px';
-                    }
-                }
-                card.appendChild(box);
-            }
-            box.classList.toggle('checked', isSel);
-        } else if (box) {
-            box.remove();
-        }
-    });
     notesContainer.classList.toggle('selection-mode', selectionState.active);
+    if (!selectionState.active) {
+        notesContainer.querySelectorAll('.note-select-check').forEach(box => box.remove());
+        notesContainer.querySelectorAll('.note.note-selected').forEach(card => card.classList.remove('note-selected'));
+    } else {
+        getNoteCards(false).forEach(card => {
+            const shouldBeSelected = selectionState.keys.has(getNoteCardKey(card));
+            if (shouldBeSelected !== card.classList.contains('note-selected')) {
+                setCardSelectionMarker(card, shouldBeSelected);
+            }
+        });
+    }
     const bar = document.getElementById('selection-bar');
     if (bar && !selectionState.active) bar.hidden = true;
 }
