@@ -177,9 +177,10 @@ const DEMO_NOTE_LIMIT = 5;
 // (DEMO_MODE по-горе е стар флаг за ограничаване на бележките и не участва в това.)
 const DEMO_MODE_STORAGE_KEY = 'cxNotesDemoMode';
 const DEMO_DB_NAME = 'NotesDB-demo';
-// Интрото на асистента в демо: показва се веднъж на влизане в демо (флагът е в
-// sessionStorage, значи презареждане в демото не го пуска пак, а изходът го чисти).
-const DEMO_INTRO_SESSION_KEY = 'cxNotesDemoIntroShown';
+// Интрото на асистента в демо: показва се само при първото влизане в демо и повече
+// никога. Флагът е в localStorage (преживява презареждане, изход от демото и нов таб) и
+// е отделен ключ, за да не пипа 'guide' на реалното приложение.
+const DEMO_INTRO_STORAGE_KEY = 'cxNotesDemoIntroShown';
 const DEMO_INTRO_DELAY_MS = 1500;
 const DEMO_FLAGS_SNAPSHOT_KEY = 'cxNotesDemoPrevFlags';
 const DEMO_DATA_SOURCE_KEYS = ['useGoogleDb', 'useIndexedDb', 'useLocalDb', 'useArhDb'];
@@ -3707,8 +3708,7 @@ function showDemoBanner() {
 async function exitDemoMode() {
     try {
         localStorage.removeItem(DEMO_MODE_STORAGE_KEY);
-        // Следващото влизане в демо пак показва интрото.
-        sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY);
+        // Интрото остава отбелязано: то е само за първото влизане в демо, не за всяко.
         const raw = sessionStorage.getItem(DEMO_FLAGS_SNAPSHOT_KEY);
         if (raw) {
             const previous = JSON.parse(raw);
@@ -20991,9 +20991,9 @@ async function startAssistantGuide(options = {}) {
 }
 
 /**
- * Интро в демо режима: показва се веднъж на влизане в демо, независимо от
- * initial_setup_complete (демото не минава първоначална настройка, значи флагът
- * никога не се вдига) и независимо от флага 'guide'.
+ * Интро в демо режима: показва се само при първото влизане в демо — после никога,
+ * независимо от initial_setup_complete (демото не минава първоначална настройка, значи
+ * флагът никога не се вдига) и независимо от флага 'guide'.
  */
 async function startDemoAssistantIntro() {
     if (!IS_DEMO_MODE) return false;
@@ -21001,16 +21001,16 @@ async function startDemoAssistantIntro() {
         // Флагът се вдига веднага, синхронно: иначе две извиквания на mainLogic, чиито
         // таймери гръмнат в един и същ тик, биха пуснали тура два пъти. При неуспех се
         // маха, за да опита пак при следващо влизане.
-        if (sessionStorage.getItem(DEMO_INTRO_SESSION_KEY) === '1') return false;
-        sessionStorage.setItem(DEMO_INTRO_SESSION_KEY, '1');
+        if (localStorage.getItem(DEMO_INTRO_STORAGE_KEY) === '1') return false;
+        localStorage.setItem(DEMO_INTRO_STORAGE_KEY, '1');
         // Офлайн клонът на mainLogic прави return, а finally-то на онлайн клона не се
         // изпълнява — затова тук чакаме само рамка, за да е готов бордът.
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const started = await startAssistantGuide({ force: true, persistFlag: false });
-        if (!started) sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY);
+        if (!started) localStorage.removeItem(DEMO_INTRO_STORAGE_KEY);
         return started;
     } catch (e) {
-        try { sessionStorage.removeItem(DEMO_INTRO_SESSION_KEY); } catch (_) { }
+        try { localStorage.removeItem(DEMO_INTRO_STORAGE_KEY); } catch (_) { }
         console.warn('[Demo] Assistant intro could not be shown:', e);
         return false;
     }
