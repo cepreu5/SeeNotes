@@ -4466,18 +4466,20 @@ body.selection-locked .note.active-selection-note .note-content {
     box-sizing: border-box;
 }
 
-/* --- Тънка лента под хедъра: един ред текст и линк за изход, без бутон --- */
+/* --- Лента на демо режима: точно един текстов ред под хедъра.
+   Без бутон, без flex-кутия и без допълнителен отстъп — височината е само от
+   line-height на текста. „Изход“ е inline текстова връзка в същия ред. --- */
 .demo-banner {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 8px;
-    padding: 2px 10px;
+    margin: 0;
+    padding: 1px 8px;
     box-sizing: border-box;
     background: #fff3cd;
-    border-bottom: 1px solid #e0b252;
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: #6a4b00;
 }
 
@@ -4487,26 +4489,14 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .demo-banner-label {
     font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .demo-banner-exit {
-    flex-shrink: 0;
-    color: #8a5a00;
+    color: inherit;
     text-decoration: underline;
-    white-space: nowrap;
     cursor: pointer;
 }
 
 .demo-banner-exit:hover {
-    color: #5c3a00;
-}
-
-@media (max-width: 560px) {
-    .demo-banner {
-        font-size: 11px;
-        gap: 6px;
-    }
+    color: #3d2a00;
 }

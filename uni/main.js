@@ -3624,6 +3624,7 @@ function loadGoogleIdentityServices(retries = 3) {
 async function prepareDemoMode() {
     installDemoNetworkBarrier();
     applyDemoDataSource();
+    await seedDemoContent();
     // Минаваме по офлайн пътя: без мрежа, без проверка на лиценз и без логин страница.
     isOffline = true;
     showDemoBanner();
@@ -3650,6 +3651,43 @@ function applyDemoDataSource() {
         console.warn('[Demo] Could not apply the demo data-source flags:', e);
     }
     updateGlobalStateFlags();
+}
+
+/**
+ * Началното съдържание на демото: един борд и една бележка „welcome“.
+ *
+ * Демото няма как да дойде с празна база: без нито един борд екранът е празен и
+ * няма къде да се създаде бележка. Затова при първо влизане се слага точно един
+ * борд с една бележка. Ако демо базата вече има борд, нищо не се пипа — иначе
+ * всяко презареждане триеше създаденото от човека.
+ */
+async function seedDemoContent() {
+    try {
+        const existingBoards = await countFromDB(BOARD_STORE_NAME);
+        if (existingBoards > 0) return;
+
+        const now = Date.now();
+        const board = {
+            "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+            "colorfont": "#000", "datemod": now, "gdid": "demo-board-welcome",
+            "id": 1, "numord": 1, "status": 0, "title": _('demoWelcomeBoard') || 'Welcome'
+        };
+        const note = {
+            "alarm_type": -1, "boardid": board.gdid, "calendarDate": 0,
+            "color": getDefaultNoteBgValue(), "date": now, "datemod": now,
+            "eventId": 0, "gdid": "demo-note-welcome", "id": 1,
+            "notetxt": _('demoWelcomeNote') || 'welcome',
+            "numord": 1, "pass": false, "sellist": 0, "status": 0,
+            "text_span": "", "timer": 0, "timer_type": -1, "timer_val": 1,
+            "title_span": "", "type": 0, "version": 243
+        };
+
+        await bulkPutDB(BOARD_STORE_NAME, [board], true);
+        await bulkPutDB(NOTE_STORE_NAME, [note], true);
+        console.log('[Demo] Seeded one board and one welcome note.');
+    } catch (e) {
+        console.warn('[Demo] Could not seed the demo content:', e);
+    }
 }
 
 /** Показва тънката лента „Демо режим“ под хедъра. */
@@ -5564,7 +5602,7 @@ async function startApp(isExplicitLogin = false) {
     }
 
     // --- Graceful fallback for KB Assistant ---
-    // kb-assistantt.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
+    // kb-assistant.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
     // до тогава - или ако зареждането се провали - тук стои този заместител.
     // Той има само init/showGuide/terminateGuide/updateLanguage/isInitialized.
     if (typeof window.kbAssistant === 'undefined') {
@@ -20885,11 +20923,11 @@ function ensureKBAssistant() {
     // Класът остава дефиниран след първото зареждане - скриптът не се добавя втори път
     const js = typeof KBAssistant !== 'undefined'
         ? Promise.resolve()
-        : loadKBAssistantFile('script', { src: 'kb-assistantt.js' });
+        : loadKBAssistantFile('script', { src: 'kb-assistant.js' });
     kbAssistantLoadPromise = Promise.all([css, js])
         .then(() => {
             if (!window.kbAssistant || typeof window.kbAssistant.getText !== 'function') {
-                throw new Error('kb-assistantt.js did not define the assistant');
+                throw new Error('kb-assistant.js did not define the assistant');
             }
             return window.kbAssistant.init();
         })
@@ -25903,7 +25941,9 @@ async function showNewBoardModal() {
             return;
         }
 
-        if (!currentEditingBoard && isOffline) {
+        // В демо режим бордът се записва само в локалната демо база, затова офлайн
+        // забраната не важи: тя пази синхронизацията с Google Drive, а демото няма такава.
+        if (!currentEditingBoard && isOffline && !IS_DEMO_MODE) {
             showToast(_('errorOfflineBoardCreate') || "Не може да създавате нов борд в офлайн режим.", 5000);
             return;
         }
@@ -26002,6 +26042,12 @@ async function showNewBoardModal() {
             }
 
             const updateGDriveNow = useGoogleDb && !isOffline;
+            // Без Google Drive ключът на борда (gdid) идва оттам. Офлайн такъв няма и
+            // празен gdid караше всеки нов борд да презаписва предишния — затова тук
+            // бордът получава собствен локален ключ.
+            if (!updateGDriveNow && !boardToSave.gdid) {
+                boardToSave.gdid = 'local-board-' + boardToSave.id;
+            }
             if (updateGDriveNow) {
                 let updated = false;
                 if (currentEditingBoard && currentEditingBoard.gdid) {

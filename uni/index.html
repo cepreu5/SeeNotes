@@ -174,12 +174,11 @@
         </div>
     </header>
 
-    <!-- Тънка лента на демо режима: един ред текст под хедъра, без бутон — само линк за изход.
-         Показва се само в демо (виж showDemoBanner). -->
-    <div id="demo-banner" class="demo-banner" hidden>
-        <span class="demo-banner-label" data-key="demoBannerLabel">Демо режим · без интернет</span>
-        <a href="#" class="demo-banner-exit" id="demo-banner-exit" data-key="demoExit">Изход</a>
-    </div>
+    <!-- Лента на демо режима: един текстов ред под хедъра, без бутон и без допълнителен
+         отстъп — „Изход“ е inline текстова връзка в същия ред. Показва се само в демо. -->
+    <div id="demo-banner" class="demo-banner" hidden><span class="demo-banner-label"
+            data-key="demoBannerLabel">Демо режим · без интернет</span> · <a href="#" class="demo-banner-exit"
+            id="demo-banner-exit" data-key="demoExit">Изход</a></div>
 
     <div id="login-page" class="login-div" hidden>
         <!-- Language switcher извън login-box, винаги видим -->
