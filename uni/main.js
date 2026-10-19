@@ -268,6 +268,9 @@ let SUPPORTED_LANGUAGES = [
     { id: 'bg', label: 'BG' }
 ];
 
+// Езикът живееше на login екрана; без него остава само изборът в Настройки и ?lang в адреса.
+let currentLang = localStorage.getItem('language') || 'en';
+
 function applyLanguageFromUrl() {
     const search = window.location.search.toLowerCase();
     const params = new URLSearchParams(window.location.search);
@@ -1511,8 +1514,7 @@ async function emptyTrash() {
 
     // Кошчето се чете от данните, не от видимите карти: така влизат и бележките, които в
     // момента не са изрисувани (друг борд, резултати от търсене, скрит филтър).
-    const trashNotes = () => allNotesData.filter(n => n && n.status === 1
-        && !n.guideDemo && n.id !== 'promo' && n.gdid !== 'promo');
+    const trashNotes = () => allNotesData.filter(n => n && n.status === 1);
 
     if (trashNotes().length === 0) {
         showToast(_('trashAlreadyEmpty') || "Кошчето е вече празно.", 3000);
@@ -3400,21 +3402,6 @@ function initApp() {
     saveSearchBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const searchTerm = searchBox.value.trim();
-        // Обработка на токен за лиценз
-        const tokenMatch = searchTerm.match(/^\??token=(.+)$/);
-        if (tokenMatch) {
-            const tokenValue = tokenMatch[1].trim();
-            if (tokenValue) {
-                localStorage.setItem('urlToken', tokenValue);
-                searchBox.value = '';
-                saveSearchBtn.style.display = 'none';
-                clearSearchBtn.style.display = 'none';
-                cachedLicenseData = null; // Изчистваме кеша за лиценза
-                isAppStarted = false; // Позволяваме рестартиране на приложението
-                startApp(true);
-            }
-            return;
-        }
         if (searchTerm && !savedSearches.includes(searchTerm)) {
             saveSearchTerm(searchTerm);
             // Animate the save button instead of showing a toast
@@ -3722,7 +3709,6 @@ function updateGlobalStateFlags() {
     useArhDb = false;
     useIndexedDb = true;
     automatedTimer = localStorage.getItem('automatedTimer') !== 'false';
-    updateLocalFolder = false;
 }
 
 function reportDataIntegrityIssues() {
@@ -6756,8 +6742,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
 // window.showModal за стъпките с action: "note".
 window.showModal = showModal;
 
-// Същото за демо бележката на водачите (msmrt.js): Beta/mainn.js се минифицира с --toplevel и
-// лекият двигател в Beta не вижда тези имена. Състоянието, което се преприсвоява, е жив getter, не снимка.
+// Същото и за двигателя на водача: Beta/mainn.js се минифицира с --toplevel и той не вижда
+// тези имена. Състоянието, което се препредава, е жив getter, не снимка.
 Object.defineProperty(window, 'boardsData', { get: () => boardsData, configurable: true });
 Object.defineProperty(window, 'allNotesData', { get: () => allNotesData, configurable: true });
 Object.defineProperty(window, 'currentBoardFilter', { get: () => currentBoardFilter, configurable: true });
@@ -9553,7 +9539,7 @@ const appSettingsKeys = [
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
     'language',
     'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
-    'enableNoteSorting', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
+    'enableNoteSorting', 'guide', 'showAdvancedSettings', 'promoImageIndex',
     'deviceName',
     'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
 ];
@@ -10300,20 +10286,8 @@ async function createSettingsUI(boardsData, boardParseError) {
     document.getElementById('settings-close-btn').addEventListener('click', async (e) => {
         if (e && e.ctrlKey) return; // Allow Ctrl-Click toggle behavior to fire without closing the UI
 
-        /* const configData = await exportConfig();
-        console.log("configData: ", configData); // Ще изведе масива с ключ/стойност от config store-a */
-        updateGlobalStateFlags();
-
         document.getElementById('settings-modal').classList.remove('visible');
         if (window.kbAssistant) window.kbAssistant.terminateGuide();
-        // Винаги обновяваме бутона, за да отрази актуалното състояние от localStorage
-        const hasChanged = JSON.stringify(settingsInitialState) !== JSON.stringify(currentState);
-        if (window.wasOpenedForMissingFolder) {
-            window.wasOpenedForMissingFolder = false; // Нулираме флага
-            mainLogic(); // Извикваме основната логика отново
-        } else if (hasChanged) {
-            mainLogic(); // Извикваме основната логика отново
-        }
     });
     settingsModalBody.dataset.initialized = true;
 }
@@ -12296,8 +12270,6 @@ function warnDuplicateBoardTitles(loadedBoardId) {
 }
 
 async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
-    // Екранът за смяна на акаунт е показан - бележките от чуждата база не се рисуват
-    if (accountSwitchNoticeShown) return;
     // Изчистваме бележките само ако не презареждаме единствено менюто - ПРЕМЕСТЕНО ПО-ДОЛУ ЗА ИЗБЯГВАНЕ НА 'МИГАНЕ'
     /* if (!rerenderOnlyMenu) {
         notesContainer.innerHTML = '';
@@ -12582,7 +12554,6 @@ async function setLanguage(lang) {
     localStorage.setItem('language', lang);
     document.documentElement.lang = lang;
     const translations = appTranslations[lang];
-    if (accountSwitchNoticeRefresh) accountSwitchNoticeRefresh();
 
     document.querySelectorAll('[data-key]').forEach(element => {
         const key = element.getAttribute('data-key');
@@ -15660,7 +15631,7 @@ function saveEditedNote(forceClose = false) {
                 "date": dateMod,
                 "datemod": dateMod,
                 "eventId": 0,
-                "gdid": String(modalId), // Use ID as temporary key to prevent empty key errors
+                "gdid": localUuid(), // локален ключ на бележката
                 "id": modalId,
                 "notetxt": processedText,
                 "numord": (!isNaN(noteNumordValue) ? noteNumordValue : noteNumord),
@@ -17153,6 +17124,12 @@ async function showNewBoardModal() {
         }
 
         const oldBackpath = currentEditingBoard ? currentEditingBoard.backpath : null;
+
+        // Локален режим: всеки борд получава собствен ключ. Без него празният gdid караше
+        // нов борд да презапише предишния в store-а.
+        if (!boardToSave.gdid) {
+            boardToSave.gdid = localUuid();
+        }
 
         try {
             // --- NEW LOGIC FOR CUSTOM BG ---
