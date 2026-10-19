@@ -4457,24 +4457,13 @@ body.selection-locked .note.active-selection-note .note-content {
    Бутон на началния екран и трайна лента в хедъра.
    ===================================================================== */
 
-/* --- Бутонът на началния екран (извън .login-box, за да е винаги достъпен) --- */
+/* --- Бутонът на началния екран: в панела със заявката за достъп, под нея --- */
 .demo-start-btn {
     display: block;
     width: 100%;
     max-width: 260px;
-    margin: 10px auto 15px auto;
-    padding: 10px 15px;
+    margin: 8px auto 0 auto;
     box-sizing: border-box;
-    border: none;
-    border-radius: 4px;
-    background-color: #4285F4;
-    color: #fff;
-    font-size: 1em;
-    cursor: pointer;
-}
-
-.demo-start-btn:hover {
-    background-color: #357ae8;
 }
 
 /* --- Тънка лента под хедъра: един ред текст и линк за изход, без бутон --- */
