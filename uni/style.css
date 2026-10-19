@@ -4477,9 +4477,7 @@ body.selection-locked .note.active-selection-note .note-content {
     font-size: 11px;
     line-height: 1.35;
     text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
     color: #6a4b00;
 }
 
@@ -4491,12 +4489,7 @@ body.selection-locked .note.active-selection-note .note-content {
     font-weight: 600;
 }
 
-.demo-banner-exit {
-    color: inherit;
-    text-decoration: underline;
-    cursor: pointer;
-}
-
-.demo-banner-exit:hover {
-    color: #3d2a00;
+.demo-banner-label::after {
+    content: " · ";
+    font-weight: 400;
 }

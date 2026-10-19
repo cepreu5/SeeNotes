@@ -3735,7 +3735,6 @@ function initDemoModeUI() {
     window.__cxDemoUIReady = true;
     const startBtn = document.getElementById('demo-start-btn');
     const banner = document.getElementById('demo-banner');
-    const exitBtn = document.getElementById('demo-banner-exit');
 
     // Потвърждение от самия браузър: демото не носи свой прозорец.
     if (startBtn) {
@@ -3747,9 +3746,6 @@ function initDemoModeUI() {
             window.location.href = url.toString();
         });
     }
-    // Изходът е линк, не бутон: без навигация по href, само изход от режима.
-    if (exitBtn) exitBtn.addEventListener('click', (e) => { e.preventDefault(); exitDemoMode(); });
-
     // Лентата се показва само когато демото е активно (иначе остава скрита).
     if (IS_DEMO_MODE && banner) {
         showDemoBanner();
@@ -7474,7 +7470,10 @@ async function initLoginPage() {
 function updateSignoutTooltip() {
     const email = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
     const signoutBtn = document.getElementById('signout_button');
-    if (signoutBtn) {
+    if (signoutBtn && IS_DEMO_MODE) {
+        // В демо бутонът не излиза от акаунт, а от демо режима.
+        signoutBtn.title = _('demoExitTooltip');
+    } else if (signoutBtn) {
         const baseTooltip = _('signoutButtonTooltip');
         if (email) {
             const username = email.split('@')[0];
@@ -7704,6 +7703,11 @@ async function loadGoogleApis() {
 }
 
 function handleSignoutClick() {
+    // В демо няма акаунт, от който да се излезе: бутонът за изход в хедъра извежда от демото.
+    if (IS_DEMO_MODE) {
+        exitDemoMode();
+        return;
+    }
     // Премахваме ключовете, свързани с удостоверяването
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
