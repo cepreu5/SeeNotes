@@ -6518,7 +6518,9 @@ function initApp() {
                 return;
             }
         }
-        const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
+        // В демо режим бутонът само презарежда от демо базата — не търси синхронизация,
+        // защото офлайн бележките (type = -1) иначе дават само toast „няма мрежа“.
+        const hasDirtyNotes = !IS_DEMO_MODE && allNotesData && allNotesData.some(n => n.type === -1);
         if (hasDirtyNotes && !isForceSync) {
             if (isOffline) {
                 showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
@@ -26390,7 +26392,9 @@ function populateFoldersDropdown() {
 function updateReloadButtonState() {
     const btn = document.getElementById('reload_button');
     if (!btn) return;
-    const hasDirty = allNotesData && allNotesData.some(n => n.type === -1);
+    // В демо режим няма къде да се синхронизира: бележките се маркират с type = -1
+    // (офлайн път), но бутонът не бива да става червен квадрат — остава както е.
+    const hasDirty = !IS_DEMO_MODE && allNotesData && allNotesData.some(n => n.type === -1);
     const img = btn.querySelector('img');
     if (hasDirty) {
         btn.style.background = '#e74c3c';
