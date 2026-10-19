@@ -3503,6 +3503,40 @@ body.selection-locked .note.active-selection-note .note-content {
     color: #fff;
 }
 
+/* Отмяна ↶ и връщане напред ↷: същите кръгчета като другите бутони, най-отляво в лентата. */
+.modal-edit-toolbar-btn.is-undo,
+.modal-edit-toolbar-btn.is-redo {
+    font-size: 17px;
+    line-height: 1;
+}
+
+/* Стрелка, която в момента не може нищо: приглушена, но точно същият размер (лентата не подскача). */
+.modal-edit-toolbar-btn.is-disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.modal-edit-toolbar-btn.is-disabled:hover,
+.modal-edit-toolbar-btn.is-disabled:focus-visible {
+    background: transparent;
+    border-color: #aaa;
+}
+
+/* Брояч на стъпките назад: „3 / 10“, в предупредителен цвят, когато историята е пълна. */
+.modal-edit-undo-count {
+    font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: rgba(0, 0, 0, 0.45);
+    padding: 0 2px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+
+.modal-edit-undo-count.is-full {
+    color: #b45309;
+}
+
 /* ▦ table fields: the content editor becomes text pieces + read-only table fields in place.
    The note textarea stays underneath (hidden) as the source of truth. */
 .is-table-split > :is(#note-edit-textarea, .nw-note-edit-textarea),
