@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b2.35';
+const CACHE_NAME = 'cx-notes-b2.36';
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,

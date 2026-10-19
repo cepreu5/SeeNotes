@@ -32,42 +32,45 @@
                     "text": "This is an opened note. Its size, colour and font are the note's own — set them once and they are remembered."
                 },
                 "7": {
-                    "text": "The <b>Copy</b> button copies the whole note in one press; if you have selected text, it copies only that."
+                    "text": "The note's <b>graphic paper</b> background is drawn from its colour. You see it here in the note's window and on the same note's card on the board. <b>Settings</b> turns it off for the whole app."
                 },
                 "8": {
-                    "text": "The <b>Calculator</b> totals the prices or counts the items in the note. Held with <b>Ctrl</b>, it counts only the checked lines."
+                    "text": "The <b>Copy</b> button copies the whole note in one press; if you have selected text, it copies only that."
                 },
                 "9": {
-                    "text": "Tables are plain text: columns split by <b>|</b>, a header row, then a row of dashes. The <b>▦</b> button switches between text and table form."
+                    "text": "The <b>Calculator</b> totals the prices or counts the items in the note. Held with <b>Ctrl</b>, it counts only the checked lines."
                 },
                 "10": {
-                    "text": "Close it with the <b>&times;</b> button, or a click anywhere outside. Several notes can stay open at once."
+                    "text": "Tables are plain text: columns split by <b>|</b>, a header row, then a row of dashes. The <b>▦</b> button switches between text and table form."
                 },
                 "11": {
-                    "text": "A demo note, just for this tour — it is removed at the end. Click <b>◎</b> to pin it to the top of the board."
+                    "text": "Close it with the <b>&times;</b> button, or a click anywhere outside. Several notes can stay open at once."
                 },
                 "12": {
-                    "text": "Click the note's date for a small week calendar inside it. Click the time and the note becomes a clock."
+                    "text": "A demo note, just for this tour — it is removed at the end. Click <b>◎</b> to pin it to the top of the board."
                 },
                 "13": {
-                    "text": "The calendar lays the same notes out by week instead of by board."
+                    "text": "Click the note's date for a small week calendar inside it. Click the time and the note becomes a clock."
                 },
                 "14": {
-                    "text": "Week, month or a single day — the view changes, the notes stay the same."
+                    "text": "The calendar lays the same notes out by week instead of by board."
                 },
                 "15": {
-                    "text": "Closing it brings you back to the board you were on."
+                    "text": "Week, month or a single day — the view changes, the notes stay the same."
                 },
                 "16": {
-                    "text": "Anything with a date you set shows up in <b>Reminders</b>, whatever board it belongs to."
+                    "text": "Closing it brings you back to the board you were on."
                 },
                 "17": {
-                    "text": "Deleted notes wait in <b>Trash</b>. Nothing is removed from <b>Google Drive</b> until you empty it."
+                    "text": "Anything with a date you set shows up in <b>Reminders</b>, whatever board it belongs to."
                 },
                 "18": {
-                    "text": "The rest is in <b>Settings</b> — zoom, note size, colours, sorting, this graphic paper background, and more."
+                    "text": "Deleted notes wait in <b>Trash</b>. Nothing is removed from <b>Google Drive</b> until you empty it."
                 },
                 "19": {
+                    "text": "The rest is in <b>Settings</b> — zoom, note size, colours, sorting, this graphic paper background, and more."
+                },
+                "20": {
                     "text": "And this is me, at the bottom right. Ask me anything about the app, or ask me to show any feature again."
                 }
             }
