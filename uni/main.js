@@ -4272,44 +4272,124 @@ async function moveNoteToTrash(noteGdid, noteId, options = {}) {
 /**
  * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
  */
-async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
+/**
+ * Грешка от Drive, при която си струва повторен опит (лимит на заявките, сървърна грешка, мрежа).
+ */
+function isRetryableDriveError(error) {
+    const msg = String((error && error.message) || error || '');
+    return /\b(429|500|502|503|504)\b/.test(msg) || /Failed to fetch|NetworkError|network error|timeout/i.test(msg);
+}
+/**
+ * Изтрива файл от Drive с до 3 опита и нарастващо изчакване при 429/5xx.
+ * Връща true (изтрит) или false (вече го нямаше - 404); хвърля при окончателен провал.
+ */
+async function deleteGDriveFileWithRetry(fileId, attempts = 3) {
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+            return await deleteGDriveFile(fileId);
+        } catch (error) {
+            lastError = error;
+            if (!isRetryableDriveError(error) || attempt === attempts - 1) break;
+            const wait = 400 * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+            console.warn(`[Trash] Drive delete failed (attempt ${attempt + 1}/${attempts}), retrying in ${wait}ms:`, (error && error.message) || error);
+            await new Promise(resolve => setTimeout(resolve, wait));
+        }
+    }
+    throw lastError || new Error('Drive delete failed');
+}
+/**
+ * Трие ключ от IndexedDB през вече отворена връзка (една връзка за цялата партида).
+ * Връща true при успех, false при грешка.
+ */
+function deleteKeyFromDBHandle(db, storeName, key) {
+    return new Promise((resolve) => {
+        let transaction;
+        try {
+            transaction = db.transaction([storeName], 'readwrite');
+            const store = transaction.objectStore(storeName);
+            store.delete(key);
+            // Същият ключ може да е записан като число или низ - трием и двата варианта.
+            if (typeof key === 'number') {
+                store.delete(String(key));
+            } else if (typeof key === 'string' && !isNaN(key) && key.trim() !== "" && !key.startsWith('L') && !key.includes('-')) {
+                store.delete(Number(key));
+            }
+        } catch (error) {
+            console.error("Local DB deletion failed:", error);
+            resolve(false);
+            return;
+        }
+        transaction.oncomplete = () => resolve(true);
+        transaction.onerror = () => resolve(false);
+        transaction.onabort = () => resolve(false);
+    });
+}
+/**
+ * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
+ * Връща { ok, gdriveDeleted, localDeleted, error }. ok === false значи, че бележката е още
+ * някъде (най-често в Drive) и ще се върне при следваща синхронизация - затова остава в паметта
+ * и на екрана, вместо да изчезне и да се появи отново.
+ * @param {object} opts - { db }: отворена IndexedDB връзка за партидно триене.
+ */
+async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false, opts = {}) {
     const updateGDriveNow = useGoogleDb && !isOffline;
-    let gdriveDeleted = false;
     const noteToDelete = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
     const actualGdid = noteToDelete ? noteToDelete.gdid : noteGdid;
 
+    // 1. Drive е източникът, от който бележката се връща при следваща синхронизация или презареждане.
+    let gdriveDeleted = false;
     if (updateGDriveNow && actualGdid && !isOffline && typeof deleteGDriveFile === 'function') {
         try {
-            await deleteGDriveFile(actualGdid);
+            await deleteGDriveFileWithRetry(actualGdid); // false = вече го нямаше (404), също е успех
             gdriveDeleted = true;
         } catch (e) {
-            console.warn("GDrive deletion failed but continuing locally:", e);
+            // Локалните копия НЕ се пипат: иначе бележката изчезва от екрана, а после се връща.
+            console.warn("GDrive deletion failed, note kept for retry:", e);
+            if (!skipUI) showToast((_('trashDeleteFailed') || "Бележката не е изтрита - няма връзка с Google Drive."), 5000);
+            return { ok: false, gdriveDeleted: false, localDeleted: false, error: e };
         }
     }
 
-
-    if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
-        try {
-            await deleteFromDB(NOTE_STORE_NAME, noteGdid || noteId);
-        } catch (e) {
-            console.error("Local DB deletion failed:", e);
-        }
-    }
-
-    const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
+    // 2. Локална база - през общата връзка на партидата, ако е подадена.
     let localDeleted = false;
-    if (doLocal && noteGdid && typeof deleteLocalFile === 'function') {
-        await deleteLocalFile(noteGdid);
+    if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
+        const dbKey = (noteToDelete && noteToDelete.gdid) || noteGdid || noteId;
+        let dbOk = false;
+        if (opts.db) {
+            dbOk = await deleteKeyFromDBHandle(opts.db, NOTE_STORE_NAME, dbKey);
+        } else {
+            try {
+                await deleteFromDB(NOTE_STORE_NAME, dbKey);
+                dbOk = true;
+            } catch (e) {
+                console.error("Local DB deletion failed:", e);
+            }
+        }
+        if (!dbOk) {
+            if (!skipUI) showToast((_('trashDeleteFailed') || "Бележката не е изтрита - грешка в локалната база."), 5000);
+            return { ok: false, gdriveDeleted, localDeleted: false, error: new Error('IndexedDB delete failed') };
+        }
         localDeleted = true;
     }
-    const midx = allNotesData.findIndex(n => (noteGdid ? n.gdid === noteGdid : n.id == noteId));
+
+    // 3. Локална папка (огледално копие; липсващ файл не е грешка).
+    const doLocal = localStorage.getItem('updateLocalFolder') === 'true';
+    if (doLocal && actualGdid && typeof deleteLocalFile === 'function') {
+        try {
+            if (await deleteLocalFile(actualGdid)) localDeleted = true;
+        } catch (e) {
+            console.warn("Local file delete failed:", e);
+        }
+    }
+
+    // 4. Памет и екран - само след като източниците са изчистени.
+    const midx = allNotesData.findIndex(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId) || (actualGdid && n.gdid === actualGdid));
     if (midx !== -1) allNotesData.splice(midx, 1);
     scheduleGcalSync(); // изтрита бележка → събитието се трие (изпразването на кошчето дава една сверка)
-    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
     const noteEl = document.querySelector(`.note[data-g="${actualGdid}"]`) ||
         (noteId ? document.querySelector(`.note[data-i="${noteId}"]`) : null);
     if (noteEl) noteEl.remove();
-
 
     if (!skipUI) {
         updateBoardCounterUI('trash');
@@ -4321,7 +4401,7 @@ async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false) {
             renderWeeklyCalendarView(currentWeeklyViewDate);
         }
     }
-    return { gdriveDeleted, localDeleted };
+    return { ok: true, gdriveDeleted, localDeleted };
 }
 /**
  * UI обвивка: показва потвърждение и извиква moveNoteToTrash или permanentlyDeleteNote.
@@ -4371,10 +4451,12 @@ async function emptyTrash() {
     const trashBtn = document.getElementById('empty-trash-fab');
     if (!trashBtn) return;
 
-    const notesInTrash = Array.from(notesContainer.querySelectorAll('.note'))
-        .filter(note => note.style.display !== 'none' && !note.classList.contains('promo-note'));
+    // Кошчето се чете от данните, не от видимите карти: така влизат и бележките, които в
+    // момента не са изрисувани (друг борд, резултати от търсене, скрит филтър).
+    const trashNotes = () => allNotesData.filter(n => n && n.status === 1
+        && !n.guideDemo && n.id !== 'promo' && n.gdid !== 'promo');
 
-    if (notesInTrash.length === 0) {
+    if (trashNotes().length === 0) {
         showToast(_('trashAlreadyEmpty') || "Кошчето е вече празно.", 3000);
         return;
     }
@@ -4386,26 +4468,73 @@ async function emptyTrash() {
     trashBtn.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="spin-animation"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" stroke="white" stroke-width="2" stroke-linecap="round"/></svg><style>@keyframes spin{to{transform:rotate(360deg)}}.spin-animation{animation:spin 1s linear infinite}</style>`;
     trashBtn.style.pointerEvents = 'none';
 
+    let deletedCount = 0;
+    let lastErrors = [];
+    let db = null;
     try {
-        const pool = new Set();
-        const CONCURRENCY_LIMIT = 10;
-        for (const noteEl of notesInTrash) {
-            if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
-            const noteGdid = noteEl.dataset.g;
-            const noteId = noteEl.dataset.i;
-            const promise = permanentlyDeleteNote(noteGdid, noteId, true).then(() => pool.delete(promise));
-            pool.add(promise);
+        // Една връзка към IndexedDB за цялата партида, вместо по една на бележка.
+        if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
+            try {
+                db = await openNotesDB();
+            } catch (e) {
+                console.warn("[Trash] Could not open DB, falling back to a connection per note:", e);
+                db = null;
+            }
         }
-        await Promise.all(pool);
 
+        const CONCURRENCY_LIMIT = 4; // по-малко паралелни заявки към Drive = по-малко 403/429
+        const MAX_ROUNDS = 4;
+        let round = 0;
+        while (round < MAX_ROUNDS) {
+            round++;
+            const pending = trashNotes();
+            if (pending.length === 0) break;
+            console.log(`[Trash] Round ${round}: ${pending.length} note(s) left`);
+            let deletedThisRound = 0;
+            const roundErrors = [];
+            for (let i = 0; i < pending.length; i += CONCURRENCY_LIMIT) {
+                const chunk = pending.slice(i, i + CONCURRENCY_LIMIT);
+                const results = await Promise.all(chunk.map(note =>
+                    permanentlyDeleteNote(note.gdid, note.id, true, { db })
+                        .catch(error => ({ ok: false, error }))
+                ));
+                results.forEach((result, index) => {
+                    if (result && result.ok) {
+                        deletedCount++;
+                        deletedThisRound++;
+                    } else {
+                        const note = chunk[index];
+                        roundErrors.push({
+                            gdid: note.gdid,
+                            id: note.id,
+                            error: (result && result.error && (result.error.message || String(result.error))) || 'unknown'
+                        });
+                    }
+                });
+                if (deletedThisRound) updateBoardCounterUI('trash');
+            }
+            lastErrors = roundErrors;
+            // Нищо не мина в този кръг - още един кръг няма да помогне.
+            if (!deletedThisRound) break;
+        }
 
         updateBoardCounterUI('trash');
         applyFilters();
-        showToast(_('trashEmptiedSuccess') || "Кошчето е изпразнено успешно.", 3000);
+        const remaining = trashNotes().length;
+        if (remaining === 0) {
+            showToast((_('trashEmptiedSuccessCount') || "Кошчето е празно. Изтрити: {count}.")
+                .replace('{count}', String(deletedCount)), 3000);
+        } else {
+            console.warn("[Trash] Notes left in trash after emptying:", lastErrors);
+            showToast((_('trashEmptiedPartial') || "Изтрити: {deleted}. Останали: {failed} - натиснете отново.")
+                .replace('{deleted}', String(deletedCount))
+                .replace('{failed}', String(remaining)), 6000);
+        }
     } catch (error) {
         console.error("Error emptying trash:", error);
         showToast("Error: " + error.message, 5000);
     } finally {
+        if (db) { try { db.close(); } catch (e) { /* вече затворена */ } }
         trashBtn.innerHTML = originalContent;
         trashBtn.style.pointerEvents = 'auto';
     }
