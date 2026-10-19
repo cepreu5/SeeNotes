@@ -12767,15 +12767,25 @@ function toggleModalSearch(modalContentBox, modalBody) {
 const fullscreenExpandIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`;
 const fullscreenCompressIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4m0 6l7-7M3 21l7-7"></path></svg>`;
 
-// The squares of the board menu that are not boards: Reorder, Fullscreen and Close-all-notes.
+// The squares of the board menu that are not boards: Reorder, Fullscreen, Close-all-notes and Product tour.
 function isBoardMenuUtilId(id) {
-    return id === 'reorder' || id === 'fullscreen' || id === 'close-all-notes';
+    return id === 'reorder' || id === 'fullscreen' || id === 'close-all-notes' || id === 'product-tour';
 }
-// Left to right: Reorder, Fullscreen, Close-all-notes.
+// Left to right: Reorder, Fullscreen, Close-all-notes, Product tour.
 function boardMenuUtilRank(id) {
     if (id === 'reorder') return 0;
     if (id === 'fullscreen') return 1;
-    return 2;
+    if (id === 'close-all-notes') return 2;
+    return 3;
+}
+// Product tour square: a play sign inside a circle — „пусни тура отначало".
+const productTourIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.2" />
+    <path d="M10 8.2l6 3.8-6 3.8z" fill="currentColor" stroke="none" />
+</svg>`;
+// Езикът идва от същия ключ, който ползва и останалата част от UI-а.
+function productTourLabel() {
+    return (localStorage.getItem('language') === 'bg') ? 'Пусни демо-тура' : 'Play the demo tour';
 }
 // Close all notes: two overlapping windows of the SAME size, the x in the upper (front) one (CX, 2026-10-07).
 // The front window is drawn last and filled with the button's own colour, so it hides the part of the back
@@ -13055,8 +13065,8 @@ function showAllBoardsModal(onSelectCallback = null, hint = '') {
     const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
     const modalUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 10) / 2));
     headerButtons.forEach(button => {
-        // Pick-a-board mode (a note's "Move to board"): the close-all square has no place there.
-        if (onSelectCallback && button.dataset.boardid === 'close-all-notes') return;
+        // Pick-a-board mode (a note's "Move to board"): the close-all square and the tour have no place there.
+        if (onSelectCallback && (button.dataset.boardid === 'close-all-notes' || button.dataset.boardid === 'product-tour')) return;
         const clone = button.cloneNode(true);
         // Only the header's own square keeps the id; the clone must not duplicate it.
         if (button.dataset.boardid === 'close-all-notes') clone.removeAttribute('id');
@@ -13120,23 +13130,6 @@ function showAllBoardsModal(onSelectCallback = null, hint = '') {
         boardsModalBody.appendChild(hintEl);
     }
     boardsModalBody.appendChild(modalContent);
-    // --- „Пусни демо-тура": един вход към продуктовия тур, на едно място с бордовете ---
-    if (!onSelectCallback) {
-        const tourBtn = document.createElement('button');
-        tourBtn.id = 'start-product-tour-btn';
-        tourBtn.className = 'board-filter-link start-product-tour-btn';
-        tourBtn.type = 'button';
-        tourBtn.textContent = (localStorage.getItem('language') === 'bg')
-            ? 'Пусни демо-тура'
-            : 'Start the demo tour';
-        tourBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            boardsModal.classList.remove('visible');
-            startProductTour();
-        });
-        boardsModalBody.appendChild(tourBtn);
-    }
     // --- Calculate optimal width to fit columns exactly ---
     let buttonWidth = maxWidthForButtons;
     // Fallback if global variable is not set or 0
@@ -15290,6 +15283,28 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     });
     allButtonLinks.push(closeAllLink);
     updateCloseAllNotesButtons();
+
+    // --- БУТОН „ПУСНИ ДЕМО-ТУРА" (след Затвори всички бележки) ---
+    // Повторно пускане на продуктовия тур: същият квадрат стига и до плаващото меню,
+    // защото то клонира бутоните на хедъра.
+    const tourLink = document.createElement('span');
+    tourLink.classList.add('board-filter-link', 'product-tour-btn');
+    tourLink.dataset.boardid = 'product-tour';
+    tourLink.style.backgroundColor = '#00897B';
+    tourLink.style.color = '#fff';
+    tourLink.style.cursor = 'pointer';
+    tourLink.style.display = 'flex';
+    tourLink.style.alignItems = 'center';
+    tourLink.style.justifyContent = 'center';
+    tourLink.innerHTML = productTourIconSvg;
+    tourLink.title = productTourLabel();
+    tourLink.setAttribute('aria-label', tourLink.title);
+    tourLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startProductTour();
+    });
+    allButtonLinks.push(tourLink);
 
     try {
         const raw = localStorage.getItem('boardMenuOrder');
@@ -21025,6 +21040,9 @@ async function startProductTour() {
  * Интро в демо режима: показва се само при първото влизане в демо — после никога,
  * независимо от initial_setup_complete (демото не минава първоначална настройка, значи
  * флагът никога не се вдига) и независимо от флага 'guide'.
+ * Първо интрото на Асистента (assistant-1), а веднага след като то свърши — продуктовият тур.
+ * „Свърши" значи, че водачът е затворен по какъвто и да е начин: последната стъпка, Ctrl+клик
+ * или продължително натискане — и в трите случая msm пуска guide-finished.
  */
 async function startDemoAssistantIntro() {
     if (!IS_DEMO_MODE) return false;
@@ -21037,11 +21055,21 @@ async function startDemoAssistantIntro() {
         // Офлайн клонът на mainLogic прави return, а finally-то на онлайн клона не се
         // изпълнява — затова тук чакаме само рамка, за да е готов бордът.
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        // Продуктовият тур (запис winnotes-tour). Ако липсва в базата, падаме обратно на интрото.
-        let started = await startAssistantGuide({ id: 'winnotes-tour', force: true, persistFlag: false });
-        if (!started) started = await startAssistantGuide({ force: true, persistFlag: false });
-        if (!started) localStorage.removeItem(DEMO_INTRO_STORAGE_KEY);
-        return started;
+        // Интрото първо. Ако го няма в базата, няма какво да чакаме и тръгва направо турът.
+        const introStarted = await startAssistantGuide({ force: true, persistFlag: false });
+        if (introStarted) {
+            // Еднократно: слушателят се маха сам при първото guide-finished.
+            window.addEventListener('guide-finished', () => {
+                startAssistantGuide({ id: 'winnotes-tour', force: true, persistFlag: false })
+                    .then(started => {
+                        if (!started) console.warn('[Demo] winnotes-tour is not in the knowledge base');
+                    });
+            }, { once: true });
+            return true;
+        }
+        const tourStarted = await startAssistantGuide({ id: 'winnotes-tour', force: true, persistFlag: false });
+        if (!tourStarted) localStorage.removeItem(DEMO_INTRO_STORAGE_KEY);
+        return tourStarted;
     } catch (e) {
         try { localStorage.removeItem(DEMO_INTRO_STORAGE_KEY); } catch (_) { }
         console.warn('[Demo] Assistant intro could not be shown:', e);
