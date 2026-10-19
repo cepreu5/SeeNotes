@@ -3652,13 +3652,10 @@ function applyDemoDataSource() {
     updateGlobalStateFlags();
 }
 
-/** Показва трайната лента „Демо режим“ в хедъра. */
+/** Показва тънката лента „Демо режим“ под хедъра. */
 function showDemoBanner() {
     const banner = document.getElementById('demo-banner');
-    if (banner) {
-        banner.hidden = false;
-        banner.style.display = '';
-    }
+    if (banner) banner.hidden = false;
 }
 
 /**
@@ -3706,7 +3703,8 @@ function initDemoModeUI() {
             window.location.href = url.toString();
         });
     }
-    if (exitBtn) exitBtn.addEventListener('click', () => { exitDemoMode(); });
+    // Изходът е линк, не бутон: без навигация по href, само изход от режима.
+    if (exitBtn) exitBtn.addEventListener('click', (e) => { e.preventDefault(); exitDemoMode(); });
 
     // Лентата се показва само когато демото е активно (иначе остава скрита).
     if (IS_DEMO_MODE && banner) {

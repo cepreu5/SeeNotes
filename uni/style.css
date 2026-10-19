@@ -4477,20 +4477,18 @@ body.selection-locked .note.active-selection-note .note-content {
     background-color: #357ae8;
 }
 
-/* --- Лентата в хедъра: свой ред над заглавието, с изход --- */
+/* --- Тънка лента под хедъра: един ред текст и линк за изход, без бутон --- */
 .demo-banner {
-    flex: 1 0 100%;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin: 0 0 6px 0;
-    padding: 5px 10px;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+    padding: 2px 10px;
     box-sizing: border-box;
     background: #fff3cd;
-    border: 1px solid #e0b252;
-    border-radius: 6px;
-    font-size: 13px;
+    border-bottom: 1px solid #e0b252;
+    font-size: 12px;
+    line-height: 1.5;
     color: #6a4b00;
 }
 
@@ -4500,36 +4498,26 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .demo-banner-label {
     font-weight: 600;
-    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .demo-banner-exit {
     flex-shrink: 0;
-    padding: 3px 10px;
-    border: 1px solid #b7791f;
-    border-radius: 4px;
-    background: none;
-    color: #6a4b00;
-    font-size: 12px;
+    color: #8a5a00;
+    text-decoration: underline;
     white-space: nowrap;
     cursor: pointer;
 }
 
 .demo-banner-exit:hover {
-    background: rgba(183, 121, 31, 0.12);
+    color: #5c3a00;
 }
 
 @media (max-width: 560px) {
     .demo-banner {
-        font-size: 12px;
-    }
-}
-
-/* Под 900px хедърът е центрирана колона — лентата заема ширината с еднакъв отстъп. */
-@media (max-width: 899px) {
-    .demo-banner {
-        width: calc(100% - 20px);
-        margin-left: auto;
-        margin-right: auto;
+        font-size: 11px;
+        gap: 6px;
     }
 }

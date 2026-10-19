@@ -106,11 +106,6 @@
     </script -->
 
     <header>
-        <!-- Лента на демо режима: трайна, с изход. Показва се само в демо (виж showDemoBanner). -->
-        <div id="demo-banner" class="demo-banner" hidden>
-            <span class="demo-banner-label" data-key="demoBannerLabel">Демо режим · без интернет</span>
-            <button type="button" class="demo-banner-exit" id="demo-banner-exit" data-key="demoExit">Изход от демо</button>
-        </div>
         <div style="display: flex; align-items: center;">
             <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
             <h1 ID="app-title" data-key="appTitle">CX Notes</h1>
@@ -178,6 +173,13 @@
             <div id="boards-menu-container"></div>
         </div>
     </header>
+
+    <!-- Тънка лента на демо режима: един ред текст под хедъра, без бутон — само линк за изход.
+         Показва се само в демо (виж showDemoBanner). -->
+    <div id="demo-banner" class="demo-banner" hidden>
+        <span class="demo-banner-label" data-key="demoBannerLabel">Демо режим · без интернет</span>
+        <a href="#" class="demo-banner-exit" id="demo-banner-exit" data-key="demoExit">Изход</a>
+    </div>
 
     <div id="login-page" class="login-div" hidden>
         <!-- Language switcher извън login-box, винаги видим -->
