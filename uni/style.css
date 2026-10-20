@@ -176,6 +176,16 @@ header h1 {
     font-size: 2.2rem;
 }
 
+/* Значката „локално · IndexedDB“ под заглавието: същият цвят като заглавието,
+   без прозрачност, за да се чете на дървения фон. */
+#mode-badge {
+    font-size: 0.75em;
+    line-height: 1;
+    color: darkorange;
+    opacity: 1;
+    text-shadow: 1px 2px 3px rgba(0, 0, 0, 0.5);
+}
+
 #search-wrapper {
     position: relative;
     /* New context for positioning icons */
