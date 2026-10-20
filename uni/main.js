@@ -202,6 +202,9 @@ const CONFIG_STORE_NAME = 'config';
 // Файловете (картинки, звук, видео, прикачени) живеят като Blob в собствен store.
 const FILES_STORE_NAME = 'files';
 const NOTES_DB_VERSION = 4; // b3.0: нов store `files`
+// Флаг в config store-а: началният борд вече е сложен. Пази от повторно слагане,
+// ако човек сам изтрие всички бордове. Трие се заедно с базата.
+const FIRST_RUN_SEEDED_KEY = 'firstRunSeeded';
 
 // --- SVG икони ---
 // const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
@@ -1856,7 +1859,23 @@ async function getFromDB(storeName, key) {
  * Запазва стойност в config store-a.
  * @param {string} key - Ключ (напр. 'directoryHandle', 'lastLocalTimestamp').
  * @param {*} value - Стойността за запис.
+ * @returns {Promise<void>}
  */
+async function putConfig(key, value) {
+    const db = await openNotesDB();
+    return new Promise((resolve, reject) => {
+        try {
+            const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
+            transaction.objectStore(CONFIG_STORE_NAME).put(value, key);
+            transaction.oncomplete = () => { db.close(); resolve(); };
+            transaction.onerror = (event) => { db.close(); reject('Error saving to config: ' + event.target.error); };
+            transaction.onabort = () => { db.close(); reject('Transaction aborted saving to config'); };
+        } catch (error) {
+            db.close();
+            reject(error);
+        }
+    });
+}
 
 /**
  * Извлича стойност от config store-a.
@@ -3544,6 +3563,59 @@ function updateGlobalStateFlags() {
 }
 
 
+/**
+ * Първо стартиране: базата се създава празна и без нито един борд екранът остава
+ * празен — няма къде да се създаде бележка. Затова при празна база се слага борд
+ * „Main“ с бележка „Welcome“.
+ *
+ * Прави се само веднъж. Флагът в config store-а (върви заедно с базата) пази от
+ * повторно слагане, ако човек сам изтрие всички бордове. При „създай база наново“
+ * флагът изчезва заедно с базата и началният борд се появява отново.
+ */
+async function seedFirstRunContent() {
+    try {
+        if (await getConfig(FIRST_RUN_SEEDED_KEY)) return;
+
+        const [boards, notes] = await Promise.all([
+            getAllFromDB(BOARD_STORE_NAME),
+            getAllFromDB(NOTE_STORE_NAME)
+        ]);
+        // Има данни (собствени или внесени от резервно копие): нищо не пипаме,
+        // само отбелязваме, че началното съдържание вече не се дължи.
+        if ((boards && boards.length) || (notes && notes.length)) {
+            await putConfig(FIRST_RUN_SEEDED_KEY, Date.now());
+            return;
+        }
+
+        const now = Date.now();
+        let noteColor = 0;
+        try { noteColor = getDefaultNoteBgValue(); } catch (e) { noteColor = 0; }
+
+        const boardGdid = localUuid();
+        const board = {
+            "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+            "colorfont": "#000", "datemod": now, "gdid": boardGdid,
+            "id": 1, "numord": 1, "status": 0, "title": "Main"
+        };
+        const note = {
+            "alarm_type": -1, "boardid": boardGdid, "calendarDate": 0,
+            "color": noteColor, "date": now, "datemod": now, "eventId": 0,
+            "gdid": localUuid(), "id": 1, "notetxt": "Welcome",
+            "numord": 1, "pass": false, "sellist": 0, "status": 0,
+            "text_span": "", "timer": 0, "timer_type": -1, "timer_val": 1,
+            "title_span": "", "type": 0, "version": 243
+        };
+
+        await bulkPutDB(BOARD_STORE_NAME, [board], true);
+        await bulkPutDB(NOTE_STORE_NAME, [note], true);
+        await putConfig(FIRST_RUN_SEEDED_KEY, now);
+        console.log('[First run] Created the Main board with a Welcome note.');
+    } catch (e) {
+        // Празна начална база не бива да спира приложението.
+        console.warn('[First run] Could not create the initial board:', e);
+    }
+}
+
 async function mainLogic() {
     if (!appTranslations[currentLang]) {
         await loadTranslations(currentLang);
@@ -3562,6 +3634,8 @@ async function mainLogic() {
 
     try {
         dbExists = await checkDbExists(NOTES_DB_NAME);
+        // Празна база получава начален борд „Main“ с бележка „Welcome“.
+        await seedFirstRunContent();
         await fetchAllDataLocal();
         await renderUI({ boardParseError: false });
     } catch (e) {
