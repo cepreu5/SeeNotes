@@ -10706,6 +10706,8 @@ function activateNoteWindow(win, front = true) {
         noteStickyColors = sticky ? sticky.colors : { 4: null, 5: null };
         win.el.classList.add('note-window-active');
         if (win.open) setExpandedModalFloatingControls(win.body.dataset.isExpanded === 'true');
+        // Историята за отмяна е на бележка: при смяна на прозореца започва от тук.
+        resetNoteEditUndoHistory(win.body);
     }
     if (front) raiseNoteWindow(win);
 }
@@ -21765,6 +21767,9 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         // Геометрията влиза в отметката; вече взета при отварянето - остава (местене преди редакция пак е промяна).
         if (modalBodyElem.dataset.baseGeometry === undefined) setNoteWindowBaseGeometry(modalBodyElem);
     }
+    // Where the undo history starts: the state the note opens in (after the table alignment done on
+    // opening, so undo does not step back into it).
+    resetNoteEditUndoHistory(modalBodyElem);
 }
 function toggleListFormat(textarea, listType) {
     const start = textarea.selectionStart;
@@ -21905,6 +21910,21 @@ document.addEventListener('keydown', (e) => {
         const isI = (code === 'KeyI' || key === 'i');
         const isU = (code === 'KeyU' || key === 'u');
         const isD = (code === 'KeyD' || key === 'd');
+        const isZ = (code === 'KeyZ' || key === 'z');
+        const isY = (code === 'KeyY' || key === 'y');
+
+        // Ctrl/⌘+Z - back, Ctrl/⌘+Shift+Z (or Ctrl+Y) - forward, through our history for the note.
+        // Caught before the browser's own undo, so the two histories do not drift apart.
+        // Not inside an open table field: a cell keeps the browser's own undo for what was typed in it.
+        if ((isZ || isY) && !(activeTextarea.classList && activeTextarea.classList.contains('note-table-field'))) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            const undoBody = getNoteEditUndoBodyFrom(activeTextarea);
+            if (isY || e.shiftKey) redoNoteEdit(undoBody);
+            else undoNoteEdit(undoBody);
+            return;
+        }
 
         if (isB || isI || isU || isD) {
             e.preventDefault();
@@ -23391,6 +23411,281 @@ function revealNoteTableSplitCaret(split) {
     }
 }
 
+// --- Отмяна / връщане напред в редактора на бележката (50 стъпки) ---
+// A snapshot is taken on a word boundary (space, new line, punctuation), at B/I/U/S, at a paste,
+// at ▦ and when a field loses focus - not on every character. So undo goes back word by word
+// instead of letter by letter; if no boundary comes, a pause (NOTE_EDIT_UNDO_DELAY) takes one.
+// The snapshot carries the body text and the title, their formats (dataset.format /
+// dataset.titleFormat), the caret and the field it was in. The history belongs to the note (it lives
+// on the #modal-body element of that window), so it does not jump from note to note.
+const NOTE_EDIT_UNDO_STEPS = 50; // how many steps back (the current state is not counted)
+const NOTE_EDIT_UNDO_DELAY = 900; // pause in typing with no word boundary after which a snapshot is taken
+let noteEditUndoRestoring = false; // restoring must not take a new snapshot
+
+// Which #modal-body (or its hidden twin when several notes are open) stands behind an element.
+function getNoteEditUndoBodyFrom(el) {
+    if (el && el._undoBody) return el._undoBody;
+    const box = el && el.closest ? el.closest('.modal-content-box') : null;
+    const inBox = box ? box.querySelector('#modal-body, .nw-modal-body, [data-mwid="modal-body"]') : null;
+    return inBox || (el && el.closest ? el.closest('#modal-body') : null) || document.getElementById('modal-body');
+}
+
+function getNoteEditUndoHistory(modalBodyElem, create = true) {
+    if (!modalBodyElem) return null;
+    if (!modalBodyElem._noteEditUndo && create) {
+        modalBodyElem._noteEditUndo = { entries: [], cursor: -1, timer: null };
+    }
+    return modalBodyElem._noteEditUndo || null;
+}
+
+// The editor's current state as a snapshot. With open table fields (▦) the hidden textarea still
+// holds the whole note, so the snapshot is read from it alone.
+function takeNoteEditUndoSnapshot(modalBodyElem) {
+    const body = getNoteEditUndoBodyFrom(modalBodyElem) || modalBodyElem;
+    const main = document.getElementById('note-edit-textarea');
+    const title = document.getElementById('note-edit-title-textarea');
+    const active = document.activeElement;
+    let fieldId = 'note-edit-textarea';
+    let caretStart = main ? main.selectionStart : 0;
+    let caretEnd = main ? main.selectionEnd : 0;
+    if (active && active.id === 'note-edit-title-textarea' && title) {
+        fieldId = 'note-edit-title-textarea';
+        caretStart = title.selectionStart;
+        caretEnd = title.selectionEnd;
+    } else if (active && active !== main && isNoteEditBodyField(active)) {
+        // A table field: the position counts in the note, not in the field.
+        const ctx = getNoteEditContext(active);
+        if (ctx && ctx.off >= 0) {
+            fieldId = 'note-edit-textarea';
+            caretStart = ctx.off + active.selectionStart;
+            caretEnd = ctx.off + active.selectionEnd;
+        }
+    }
+    return {
+        body: main ? main.value : ((body && body.dataset.draftText) || ''),
+        title: title ? title.value : ((body && body.dataset.draftTitle) || ''),
+        bodyFormat: (body && body.dataset.format) || '',
+        titleFormat: (body && body.dataset.titleFormat) || '',
+        caretStart: caretStart,
+        caretEnd: caretEnd,
+        fieldId: fieldId
+    };
+}
+
+function noteEditUndoSnapshotEqual(a, b) {
+    return !!a && !!b
+        && a.body === b.body
+        && a.title === b.title
+        && a.bodyFormat === b.bodyFormat
+        && a.titleFormat === b.titleFormat;
+}
+
+// Takes a snapshot if anything changed. A new change after an undo drops the steps ahead.
+function commitNoteEditUndo(modalBodyElem) {
+    if (noteEditUndoRestoring) return;
+    const body = modalBodyElem || document.getElementById('modal-body');
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    // Only on the active window: a delayed snapshot would otherwise mix one note's text with
+    // another note's formats.
+    const activeBody = getNoteEditUndoBodyFrom(document.getElementById('note-edit-textarea'));
+    if (activeBody && body !== activeBody) return;
+    if (hist.timer) {
+        clearTimeout(hist.timer);
+        hist.timer = null;
+    }
+    const snap = takeNoteEditUndoSnapshot(body);
+    const current = hist.entries[hist.cursor];
+    if (current && noteEditUndoSnapshotEqual(current, snap)) {
+        updateNoteEditUndoUI(body);
+        return;
+    }
+    if (hist.cursor < hist.entries.length - 1) hist.entries = hist.entries.slice(0, hist.cursor + 1);
+    hist.entries.push(snap);
+    // The oldest one leaves: 50 steps back plus the current state are kept.
+    if (hist.entries.length > NOTE_EDIT_UNDO_STEPS + 1) {
+        hist.entries = hist.entries.slice(hist.entries.length - (NOTE_EDIT_UNDO_STEPS + 1));
+    }
+    hist.cursor = hist.entries.length - 1;
+    updateNoteEditUndoUI(body);
+}
+
+// Delays a snapshot by ~900 ms after the last key pressed (only when there was no word boundary).
+function scheduleNoteEditUndoCommit(field) {
+    if (noteEditUndoRestoring) return;
+    const body = getNoteEditUndoBodyFrom(field);
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    if (hist.timer) clearTimeout(hist.timer);
+    hist.timer = setTimeout(() => {
+        hist.timer = null;
+        commitNoteEditUndo(body);
+    }, NOTE_EDIT_UNDO_DELAY);
+}
+
+// Puts one snapshot back: text, title, their formats and the caret. With table fields open (▦) the
+// fields are closed first and reopened only if that does not overwrite the restored text.
+function applyNoteEditUndoSnapshot(modalBodyElem, snap) {
+    if (!snap) return;
+    const body = modalBodyElem || document.getElementById('modal-body');
+    const main = document.getElementById('note-edit-textarea');
+    const title = document.getElementById('note-edit-title-textarea');
+    const mainBackdrop = document.getElementById('note-edit-textarea-backdrop');
+    const titleBackdrop = document.getElementById('note-edit-title-textarea-backdrop');
+    noteEditUndoRestoring = true;
+    try {
+        if (main && getNoteTableSplit(main)) closeNoteTableSplit(main);
+        if (main) {
+            main.value = snap.body;
+            // lastVal is raised before handleEditInput: no difference, so the formats do not move by
+            // themselves.
+            main.dataset.lastVal = snap.body;
+            handleEditInput(main, mainBackdrop);
+        }
+        if (title) {
+            title.value = snap.title;
+            title.dataset.lastVal = snap.title;
+            handleEditInput(title, titleBackdrop);
+        }
+        // The formats go back exactly as they were recorded.
+        if (body) {
+            body.dataset.format = snap.bodyFormat || '';
+            body.dataset.titleFormat = snap.titleFormat || '';
+        }
+        refreshNoteEditBackdrops(getNoteEditContext(main));
+        refreshNoteEditBackdrops(getNoteEditContext(title));
+        if (main) {
+            const caret = Math.max(0, Math.min(snap.caretStart || 0, snap.body.length));
+            main.setSelectionRange(caret, caret);
+            const plan = planMarkdownTableFieldsOpen(snap.body, caret, true);
+            if (plan.tableCount && plan.text === snap.body) openNoteTableSplit(main, plan.ranges);
+        }
+        const field = (snap.fieldId === 'note-edit-title-textarea' && title) ? title : main;
+        const splitOpen = main ? getNoteTableSplit(main) : null;
+        if (field && !(splitOpen && splitOpen.contains(document.activeElement))) {
+            const maxPos = field.value.length;
+            const start = Math.max(0, Math.min(snap.caretStart || 0, maxPos));
+            const end = Math.max(start, Math.min(snap.caretEnd || start, maxPos));
+            field.focus({ preventScroll: true });
+            field.setSelectionRange(start, end);
+        }
+        if (typeof updateTableAlignButtonState === 'function') updateTableAlignButtonState();
+    } finally {
+        noteEditUndoRestoring = false;
+    }
+}
+
+function undoNoteEdit(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    // First record what was typed since the last pause, so it is not lost.
+    commitNoteEditUndo(body);
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist || hist.cursor <= 0) {
+        updateNoteEditUndoUI(body);
+        return;
+    }
+    hist.cursor -= 1;
+    applyNoteEditUndoSnapshot(body, hist.entries[hist.cursor]);
+    updateNoteEditUndoUI(body);
+}
+
+function redoNoteEdit(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    if (hist.cursor >= hist.entries.length - 1) {
+        updateNoteEditUndoUI(body);
+        return;
+    }
+    hist.cursor += 1;
+    applyNoteEditUndoSnapshot(body, hist.entries[hist.cursor]);
+    updateNoteEditUndoUI(body);
+}
+
+// A new starting point: one snapshot (the current state by default). Called when a note is opened,
+// when the window changes and after Save.
+function resetNoteEditUndoHistory(modalBodyElem, state = null) {
+    const body = getNoteEditUndoBodyFrom(modalBodyElem) || modalBodyElem || document.getElementById('modal-body');
+    if (!body) return;
+    const hist = getNoteEditUndoHistory(body);
+    if (!hist) return;
+    if (hist.timer) {
+        clearTimeout(hist.timer);
+        hist.timer = null;
+    }
+    hist.entries = [state || takeNoteEditUndoSnapshot(body)];
+    hist.cursor = 0;
+    updateNoteEditUndoUI(body);
+}
+
+// The arrows dim when they can do nothing. (No step counter: it took a button's place.)
+function updateNoteEditUndoUI(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    if (!body || !body.closest) return;
+    const box = body.closest('.modal-content-box');
+    const toolbar = box ? box.querySelector('.modal-edit-toolbar') : null;
+    if (!toolbar) return;
+    const hist = getNoteEditUndoHistory(body, false);
+    const cursor = hist ? hist.cursor : 0;
+    const total = hist ? hist.entries.length : 1;
+    const undoBtn = toolbar.querySelector('.modal-edit-toolbar-btn.is-undo');
+    const redoBtn = toolbar.querySelector('.modal-edit-toolbar-btn.is-redo');
+    if (undoBtn) undoBtn.classList.toggle('is-disabled', cursor <= 0);
+    if (redoBtn) redoBtn.classList.toggle('is-disabled', cursor >= total - 1);
+}
+
+// A word boundary: a space, a new line or punctuation. On a boundary a snapshot is taken at once, so
+// undo goes back word by word; the letters between two boundaries collect into one step.
+const NOTE_EDIT_UNDO_BOUNDARY = /[\s\u00a0.,;:!?…·—–\-()\[\]{}"'«»„“”*_~/\\|+=<>@#$%^&]/;
+
+function isNoteEditUndoBoundaryInput(event) {
+    if (!event) return false;
+    if (event.inputType === 'insertLineBreak' || event.inputType === 'insertParagraph') return true;
+    // Deleting a whole word, or a cut: also a finished action, not letter by letter.
+    if (event.inputType === 'deleteByCut' || event.inputType === 'deleteWordBackward' || event.inputType === 'deleteWordForward') return true;
+    const data = event.data;
+    return typeof data === 'string' && data.length === 1 && NOTE_EDIT_UNDO_BOUNDARY.test(data);
+}
+
+function initNoteEditUndo(modalBodyElem) {
+    const body = modalBodyElem || document.getElementById('modal-body');
+    if (!body) return;
+    const fields = [document.getElementById('note-edit-textarea'), document.getElementById('note-edit-title-textarea')];
+    fields.forEach((field) => {
+        if (!field) return;
+        field._undoBody = body;
+        if (field._undoBound) return;
+        field._undoBound = true;
+        field.addEventListener('input', (e) => {
+            if (isNoteEditUndoBoundaryInput(e)) commitNoteEditUndo(field._undoBody);
+            else scheduleNoteEditUndoCommit(field);
+        });
+        field.addEventListener('blur', () => commitNoteEditUndo(field._undoBody));
+        field.addEventListener('paste', () => setTimeout(() => commitNoteEditUndo(field._undoBody), 0));
+        field.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.isComposing) commitNoteEditUndo(field._undoBody);
+        });
+    });
+    if (!getNoteEditUndoHistory(body, false)) resetNoteEditUndoHistory(body);
+    updateNoteEditUndoUI(body);
+}
+
+// The strip scrolls sideways, so it needs to say it continues: the right edge fades while there is
+// more to the right. Re-measured when the strip resizes (rotation, a window widening).
+function updateModalEditToolbarOverflow(toolbar) {
+    if (!toolbar) return;
+    toolbar.classList.toggle('is-scrollable', toolbar.scrollWidth > toolbar.clientWidth + 1);
+}
+
+function observeModalEditToolbarOverflow(toolbar) {
+    updateModalEditToolbarOverflow(toolbar);
+    if (typeof ResizeObserver !== 'function') return;
+    if (toolbar._overflowObserver) toolbar._overflowObserver.disconnect();
+    const observer = new ResizeObserver(() => updateModalEditToolbarOverflow(toolbar));
+    observer.observe(toolbar);
+    toolbar._overflowObserver = observer;
+}
+
 function createModalEditToolbar(modalContentBox) {
     if (!modalContentBox) return;
     restoreModalHeaderListButtons();
@@ -23475,7 +23770,22 @@ function createModalEditToolbar(modalContentBox) {
             type === 'underline',
             type === 'strike'
         );
+        // Formatting is recorded as its own step at once, without waiting for a pause.
+        commitNoteEditUndo(getNoteEditUndoBodyFrom(textarea));
     };
+    // Undo ↶ / redo ↷: first, before B - the history is the text's, not navigation's.
+    addButton({
+        label: '↶',
+        title: _('undoTooltip') || 'Undo (Ctrl+Z)',
+        className: 'is-undo',
+        action: () => undoNoteEdit(getNoteEditUndoBodyFrom(toolbar))
+    });
+    addButton({
+        label: '↷',
+        title: _('redoTooltip') || 'Redo (Ctrl+Shift+Z)',
+        className: 'is-redo',
+        action: () => redoNoteEdit(getNoteEditUndoBodyFrom(toolbar))
+    });
     addButton({ label: 'B', title: _('boldTooltip') || 'Bold text', className: 'is-bold', action: () => applyMarkdown('bold') });
     addButton({ label: 'I', title: _('italicTooltip') || 'Italic text', className: 'is-italic', action: () => applyMarkdown('italic') });
     addButton({ label: 'U', title: _('underlineTooltip') || 'Underline text', className: 'is-underline', action: () => applyMarkdown('underline') });
@@ -23518,6 +23828,8 @@ function createModalEditToolbar(modalContentBox) {
     updateTableAlignButtonState();
     updateNoteStickyButtons();
     modalContentBox.classList.add('has-edit-toolbar');
+    // The strip is one row and scrolls: it fades at its right edge while there is more to the right.
+    observeModalEditToolbarOverflow(toolbar);
 }
 
 function initNoteEditUI() {
@@ -23596,6 +23908,7 @@ function initNoteEditUI() {
     }
     if (modalBodyEl?.querySelector('textarea')) {
         createModalEditToolbar(modalContentBox);
+        initNoteEditUndo(modalBodyEl);
     }
 
     // Bind hidden attach input listener if not already bound
@@ -24245,6 +24558,17 @@ function saveEditedNote(forceClose = false) {
         const titleFormatStr = isPreview ? (modalBodyElem.dataset.previewDraftTitleFormat || "") : (modalBodyElem.dataset.titleFormat || "");
         // Чете се преди disableNoteEditing - то трие previewHasTitle (иначе запис от прегледа губи заглавието).
         const hasPreviewTitle = isPreview && modalBodyElem.dataset.previewHasTitle === 'true';
+
+        // След Запис историята за отмяна започва наново от записаното състояние.
+        resetNoteEditUndoHistory(modalBodyElem, {
+            body: newText === undefined ? '' : newText,
+            title: titleText || '',
+            bodyFormat: formatStr || '',
+            titleFormat: titleFormatStr || '',
+            caretStart: 0,
+            caretEnd: 0,
+            fieldId: 'note-edit-textarea'
+        });
 
         if (!closeAfterSave) {
             disableNoteEditing(modalBodyElem);
