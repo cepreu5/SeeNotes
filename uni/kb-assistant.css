@@ -285,44 +285,6 @@
 }
 
 /* ========================================
-   Related Topics
-   ======================================== */
-
-.kb-related {
-    margin-top: 8px;
-    padding-top: 10px;
-    border-top: 1px solid var(--kb-border-color);
-}
-
-.kb-related-title {
-    font-size: 12px;
-    color: var(--kb-text-secondary);
-    margin-bottom: 6px;
-    font-weight: 500;
-}
-
-.kb-related-items {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.kb-related-item {
-    font-size: 11px;
-    padding: 4px 10px;
-    background: var(--kb-bg-light);
-    border-radius: 12px;
-    color: var(--kb-text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.kb-related-item:hover {
-    background: var(--kb-border-color);
-    color: var(--kb-text-primary);
-}
-
-/* ========================================
    Additional Results
    ======================================== */
 
@@ -472,7 +434,6 @@
 .kb-input::placeholder {
     color: #718096;
 }
-
 
 .kb-input:focus {
     border-color: var(--kb-accent-color);

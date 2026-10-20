@@ -868,15 +868,6 @@ class KBAssistant {
      * @param {Object} guideData
      * @returns {string}
      */
-    getGuideText(guideData) {
-        // Ако guide data има text, използваме го
-        if (guideData.text) {
-            return guideData.text[this.currentLang] || guideData.text.en;
-        }
-
-        // Иначе използваме answer от KB записа
-        return '';
-    }
 
     /**
      * Highlight на UI елемент
@@ -1683,19 +1674,6 @@ class KBUI {
     /**
      * Обновява текстовете в UI според езика
      */
-    updateTexts() {
-        if (!window.kbAssistant) return;
-
-        const titleEl = this.container.querySelector('.kb-title');
-        const inputEl = this.inputField;
-
-        if (titleEl) {
-            titleEl.textContent = window.kbAssistant.getText('assistantName');
-        }
-        if (inputEl) {
-            inputEl.placeholder = window.kbAssistant.getText('inputPlaceholder');
-        }
-    }
 
     /**
      * Отваря чата

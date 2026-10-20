@@ -52,16 +52,6 @@
     margin-bottom: 0;
 }
 
-.guide-next {
-    margin-top: 6px;
-    background: #0078d7;
-    color: white;
-    border: none;
-    padding: 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
 .speech-bubble img {
     max-width: 100%;
     height: auto;

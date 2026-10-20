@@ -70,7 +70,6 @@ function renderVersionLabels() {
     }
 }
 
-const appVersionPromise = resolveAppVersion();
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
 let guide = true;
@@ -82,27 +81,6 @@ else guide = true;
 
 let initialBoardModalPending = false;
 
-function showInitialBoardModalAfterGuide() {
-    if (initialBoardModalPending) return;
-
-    const openModal = () => {
-        initialBoardModalPending = false;
-        if (boardsData.length === 0 && typeof showNewBoardModal === 'function') {
-            showNewBoardModal();
-        }
-    };
-
-    // The introduction is scheduled after the first render. Defer the board
-    // dialog when it is pending or already visible, and resume on completion
-    // or when the user explicitly stops the guide.
-    if (guide === true || window.isGuideActive || document.querySelector('.guide-container')) {
-        initialBoardModalPending = true;
-        window.addEventListener('guide-finished', openModal, { once: true });
-        return;
-    }
-
-    openModal();
-}
 
 // --- Unified Share Event Handler ---
 const handleShareEvent = (eventData, source) => {
@@ -161,9 +139,6 @@ let pass = false;
 // --- Конфигурация и версия ---
 
 
-// --- Глобални флагове за инициализация на папката ---
-let folderSetupMode = null; // 'import_migrate' | 'create_empty' | 'advanced_existing' | null
-let isInitialFolderSetupDone = false;
 
 // --- Глобално състояние на приложението ---
 let allNotesData = []; // Съхранява всички бележки за календара
@@ -177,7 +152,6 @@ let searchInBoardOnly = localStorage.getItem('searchInBoardOnly') === 'true';
 let currentBackground = 'Board.png';
 let currentCalendarDate = new Date();
 let currentWeeklyViewDate = new Date(); // За новия седмичен изглед
-let authToken = null; // винаги null в локален режим
 let ts; // Време на първо стартиране на приложението
 let isInitialLoad = true; // Флаг за първоначално зареждане
 let isLoadCancelled = false; // Флаг за прекратяване на зареждането
@@ -187,8 +161,6 @@ let notesBgrdChanged = false; // Flag to track if notes background setting chang
 let oneTapLinkChanged = false;
 let isToastHidden = localStorage.getItem('hideToast') === 'true'; // Default to false
 
-// --- Състояние на търсенето ---
-let searchMode = 'content'; // Default to content search (includes title)
 let savedSearches = [];
 let maxSavedSearches = 20;
 
@@ -211,7 +183,6 @@ let automatedTimer = true; // true по подразбиране
 let dbNoteIdTypeGlobal = null; // Запомня типа на връзката в базата
 let dataIntegrityIssues = []; // Track missing/duplicate IDs during load
 let isAppStarted = false; // Guard for startApp
-let isMainLogicRunning = false; // Guard for mainLogic concurrency
 let isOffline = true; // Локален режим: винаги работим без мрежа
 let localFileMap = new Map(); // Карта за съответствие GDID -> име на файл за локална папка
 
@@ -240,7 +211,6 @@ const calendarTodaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" hei
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
 const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
 const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
-const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7" /></svg>`;
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
 const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2.4" stroke="currentColor" fill="none"><circle class="pin-dot" cx="12" cy="12" r="7"></circle></svg>`;
@@ -699,7 +669,6 @@ async function createNewNote() {
     }
 }
 
-let cachedMainFolderId = null;
 function renderCalendarView() {
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
@@ -1508,97 +1477,6 @@ async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
     }
 }
 
-async function emptyTrash() {
-    const trashBtn = document.getElementById('empty-trash-fab');
-    if (!trashBtn) return;
-
-    // Кошчето се чете от данните, не от видимите карти: така влизат и бележките, които в
-    // момента не са изрисувани (друг борд, резултати от търсене, скрит филтър).
-    const trashNotes = () => allNotesData.filter(n => n && n.status === 1);
-
-    if (trashNotes().length === 0) {
-        showToast(_('trashAlreadyEmpty') || "Кошчето е вече празно.", 3000);
-        return;
-    }
-
-    const confirmed = await showConfirmation(_('confirmEmptyTrash') || "Сигурни ли сте, че искате да изпразните кошчето окончателно? Това действие е необратимо.");
-    if (!confirmed) return;
-
-    const originalContent = trashBtn.innerHTML;
-    trashBtn.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="spin-animation"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" stroke="white" stroke-width="2" stroke-linecap="round"/></svg><style>@keyframes spin{to{transform:rotate(360deg)}}.spin-animation{animation:spin 1s linear infinite}</style>`;
-    trashBtn.style.pointerEvents = 'none';
-
-    let deletedCount = 0;
-    let lastErrors = [];
-    let db = null;
-    try {
-        // Една връзка към IndexedDB за цялата партида, вместо по една на бележка.
-        if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
-            try {
-                db = await openNotesDB();
-            } catch (e) {
-                console.warn("[Trash] Could not open DB, falling back to a connection per note:", e);
-                db = null;
-            }
-        }
-
-        const CONCURRENCY_LIMIT = 4; // по-малко паралелни заявки към Drive = по-малко 403/429
-        const MAX_ROUNDS = 4;
-        let round = 0;
-        while (round < MAX_ROUNDS) {
-            round++;
-            const pending = trashNotes();
-            if (pending.length === 0) break;
-            console.log(`[Trash] Round ${round}: ${pending.length} note(s) left`);
-            let deletedThisRound = 0;
-            const roundErrors = [];
-            for (let i = 0; i < pending.length; i += CONCURRENCY_LIMIT) {
-                const chunk = pending.slice(i, i + CONCURRENCY_LIMIT);
-                const results = await Promise.all(chunk.map(note =>
-                    permanentlyDeleteNote(note.gdid, note.id, true, { db })
-                        .catch(error => ({ ok: false, error }))
-                ));
-                results.forEach((result, index) => {
-                    if (result && result.ok) {
-                        deletedCount++;
-                        deletedThisRound++;
-                    } else {
-                        const note = chunk[index];
-                        roundErrors.push({
-                            gdid: note.gdid,
-                            id: note.id,
-                            error: (result && result.error && (result.error.message || String(result.error))) || 'unknown'
-                        });
-                    }
-                });
-                if (deletedThisRound) updateBoardCounterUI('trash');
-            }
-            lastErrors = roundErrors;
-            // Нищо не мина в този кръг - още един кръг няма да помогне.
-            if (!deletedThisRound) break;
-        }
-
-        updateBoardCounterUI('trash');
-        applyFilters();
-        const remaining = trashNotes().length;
-        if (remaining === 0) {
-            showToast((_('trashEmptiedSuccessCount') || "Кошчето е празно. Изтрити: {count}.")
-                .replace('{count}', String(deletedCount)), 3000);
-        } else {
-            console.warn("[Trash] Notes left in trash after emptying:", lastErrors);
-            showToast((_('trashEmptiedPartial') || "Изтрити: {deleted}. Останали: {failed} - натиснете отново.")
-                .replace('{deleted}', String(deletedCount))
-                .replace('{failed}', String(remaining)), 6000);
-        }
-    } catch (error) {
-        console.error("Error emptying trash:", error);
-        showToast("Error: " + error.message, 5000);
-    } finally {
-        if (db) { try { db.close(); } catch (e) { /* вече затворена */ } }
-        trashBtn.innerHTML = originalContent;
-        trashBtn.style.pointerEvents = 'auto';
-    }
-}
 /**
  * Актуализира брояча на бележките в заглавието на борда в менюто.
  */
@@ -1857,23 +1735,6 @@ async function getAllFromDB(storeName) {
     });
 }
 
-async function countFromDB(storeName) {
-    const db = await openNotesDB();
-    return new Promise((resolve, reject) => {
-        try {
-            const transaction = db.transaction([storeName], 'readonly');
-            const store = transaction.objectStore(storeName);
-            const request = store.count();
-            request.onsuccess = (event) => resolve(event.target.result);
-            request.onerror = (event) => reject(`Error in countFromDB (${storeName}): ` + event.target.error);
-            transaction.oncomplete = () => db.close();
-            transaction.onerror = () => db.close();
-        } catch (error) {
-            db.close();
-            reject(error);
-        }
-    });
-}
 
 /**
  * Извлича единичен запис от даден store по ключ.
@@ -1904,32 +1765,6 @@ async function getFromDB(storeName, key) {
  * @param {string} key - Ключ (напр. 'directoryHandle', 'lastLocalTimestamp').
  * @param {*} value - Стойността за запис.
  */
-async function saveConfig(key, value) {
-    const db = await openNotesDB();
-    return new Promise((resolve, reject) => {
-        try {
-            const transaction = db.transaction(CONFIG_STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(CONFIG_STORE_NAME);
-            const request = store.put(value, key);
-            request.onerror = (event) => reject('Error saving to config: ' + event.target.error);
-            transaction.oncomplete = () => {
-                db.close();
-                resolve();
-            };
-            transaction.onerror = () => {
-                db.close();
-                reject('Transaction error saving to config');
-            };
-            transaction.onabort = () => {
-                db.close();
-                reject('Transaction aborted saving to config');
-            };
-        } catch (error) {
-            db.close();
-            reject(error);
-        }
-    });
-}
 
 /**
  * Извлича стойност от config store-a.
@@ -2036,26 +1871,6 @@ function deleteNotesDB() {
  * Deletes the entire IndexedDB database.
  * @returns {Promise<void>}
  */
-async function clearDbStores() {
-    try {
-        const db = await openNotesDB();
-        const storesToClear = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME];
-        const transaction = db.transaction(storesToClear, 'readwrite');
-        const clearPromises = storesToClear.map(storeName => {
-            return new Promise((resolve, reject) => {
-                const request = transaction.objectStore(storeName).clear();
-                request.onsuccess = resolve;
-                request.onerror = reject;
-            });
-        });
-        await Promise.all(clearPromises);
-        db.close(); // ВИНАГИ затваряме връзката след приключване
-        console.log('Data stores cleared, config preserved.');
-    } catch (error) {
-        console.log('Failed to clear data stores:', error);
-        showToast(_('dbDeleteFailed'), 10000);
-    }
-}
 
 /**
  * Deletes a single record from a specified store by its key.
@@ -2496,22 +2311,6 @@ function notifyRemovedLinkMarkers(count) {
     showToast((_('linkMarkersRemovedToast') || '').replace('{count}', count));
 }
 
-function showMessagePopup(message, showInput = false) {
-    folderIdPromptPopup = document.getElementById('folderIdPromptPopup');
-    folderIdInput = document.getElementById('folderIdInput');
-    submitFolderIdBtn = document.getElementById('submitFolderIdBtn');
-    document.querySelector('#folderIdPromptPopup p').textContent = message;
-    if (showInput) {
-        folderIdInput.style.display = 'block';
-        submitFolderIdBtn.textContent = _('submitButton');
-        folderIdInput.value = '';
-        folderIdInput.focus();
-    } else {
-        folderIdInput.style.display = 'none';
-        submitFolderIdBtn.textContent = _('okButton');
-    }
-    folderIdPromptPopup.classList.add('show');
-}
 
 function hideFolderIdPrompt() {
     if (folderIdPromptPopup) {
@@ -2613,71 +2412,6 @@ function showConfirmation(message, options = {}) {
 /**
  * Показва избор с три опции при синхронизация: Да, Не, Всички.
  */
-function showSyncChoiceModal(noteSummary) {
-    return new Promise(resolve => {
-        const popup = document.getElementById('folderIdPromptPopup');
-        const popupContent = popup.querySelector('.popup-content');
-        const messagePara = popup.querySelector('p');
-        const yesBtn = document.getElementById('submitFolderIdBtn');
-        let noBtn = document.getElementById('prompt-no-btn');
-        let allBtn = document.getElementById('prompt-cancel-btn');
-
-        if (!noBtn) {
-            noBtn = document.createElement('button');
-            noBtn.id = 'prompt-no-btn';
-            noBtn.className = 'zoom-btn settings-close-btn';
-            noBtn.style.marginLeft = '10px';
-            yesBtn.parentNode.appendChild(noBtn);
-        }
-        if (!allBtn) {
-            allBtn = document.createElement('button');
-            allBtn.id = 'prompt-cancel-btn';
-            allBtn.className = 'zoom-btn settings-close-btn';
-            allBtn.style.marginLeft = '10px';
-            yesBtn.parentNode.appendChild(allBtn);
-        }
-
-        const promptText = (typeof _ === 'function' ? _('syncPromptNote') : 'Sync note:');
-        messagePara.innerHTML = `<div style="font-weight:bold; margin-bottom:10px;">${promptText}</div><div style="font-style:italic; color:#555; max-height:150px; overflow-y:auto; border:1px solid #eee; padding:10px; border-radius:4px; text-align:left;">${noteSummary}</div>`;
-
-        // Разширяваме прозореца за по-добър преглед
-        popupContent.style.width = '450px';
-        popupContent.style.maxWidth = '90vw';
-
-        yesBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbYes') : 'Yes');
-        noBtn.textContent = (typeof _ === 'function' ? _('confirmCreateDbNo') : 'No');
-        allBtn.textContent = (typeof _ === 'function' ? _('allEntries') : 'All');
-
-        noBtn.style.display = 'inline-block';
-        allBtn.style.display = 'inline-block';
-
-        const folderIdInput = document.getElementById('folderIdInput');
-        if (folderIdInput) folderIdInput.style.display = 'none';
-
-        const cleanup = () => {
-            popup.classList.remove('show');
-            yesBtn.removeEventListener('click', onYes);
-            noBtn.removeEventListener('click', onNo);
-            allBtn.removeEventListener('click', onAll);
-            yesBtn.addEventListener('click', handleSubmitFolderId);
-            if (folderIdInput) folderIdInput.style.display = '';
-            // Restore original width
-            popupContent.style.width = '';
-            popupContent.style.maxWidth = '';
-        };
-
-        const onYes = () => { cleanup(); resolve('yes'); };
-        const onNo = () => { cleanup(); resolve('no'); };
-        const onAll = () => { cleanup(); resolve('all'); };
-
-        yesBtn.removeEventListener('click', handleSubmitFolderId);
-        yesBtn.addEventListener('click', onYes);
-        noBtn.addEventListener('click', onNo);
-        allBtn.addEventListener('click', onAll);
-
-        popup.classList.add('show');
-    });
-}
 function showPrompt(message, defaultValue = '') {
     return new Promise(resolve => {
         const popup = document.getElementById('folderIdPromptPopup');
@@ -3711,39 +3445,6 @@ function updateGlobalStateFlags() {
     automatedTimer = localStorage.getItem('automatedTimer') !== 'false';
 }
 
-function reportDataIntegrityIssues() {
-    if (dataIntegrityIssues.length === 0) return;
-    const duplicates = dataIntegrityIssues.filter(i => i.type === 'duplicate');
-    const missing = dataIntegrityIssues.filter(i => i.type === 'missing');
-    console.group('%c Data Integrity Report ', 'background: #f44336; color: white; font-weight: bold;');
-    if (duplicates.length > 0) {
-        console.warn(`Found ${duplicates.length} duplicate IDs. IndexedDB will only keep the LAST version of each.`);
-        duplicates.forEach(d => {
-            console.log(` - ID: ${d.gdid} | Mode: ${d.mode || 'direct'} | Files: [${d.file1}] and [${d.file2}]`);
-        });
-    }
-    if (missing.length > 0) {
-        console.warn(`Found ${missing.length} items missing an ID property. These were likely skipped.`);
-        missing.forEach(m => {
-            console.log(` - File: ${m.file} | Mode: ${m.mode || 'direct'} | Content: "${(m.text || '').substring(0, 50)}..."`);
-        });
-    }
-    console.groupEnd();
-    // Show a small toast if there are many issues
-    if (duplicates.length > 0) {
-        let previewText = '';
-        // Find the content of the first duplicate to show as a hint
-        const firstDupId = duplicates[0].gdid;
-        const dupNote = allNotesData.find(n => n.gdid === firstDupId);
-        if (dupNote) {
-            const content = dupNote.notetxt || dupNote.text || '';
-            previewText = content.substring(0, 50).replace(/\n/g, ' ');
-            if (content.length > 50) previewText += '...';
-        }
-        const msg = `${_('duplicateNotes')}: ${duplicates.length}. ${_('content')}: "${previewText}"`;
-        showToast(msg, 10000);
-    }
-}
 
 async function mainLogic() {
     if (!appTranslations[currentLang]) {
@@ -4010,26 +3711,6 @@ async function fetchAllDataLocal() {
     console.log(`Loaded ${boardsData.length} boards, ${mediaData.length} media, and ${allNotesData.length} notes from DB.`);
 }
 
-function showImageVideoOverlay(src, isVideo = false) {
-    const overlay = document.createElement('div');
-    overlay.className = 'fullscreen-preview-overlay';
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-    const mediaElement = isVideo ? document.createElement('video') : document.createElement('img');
-    mediaElement.src = src;
-    if (isVideo) {
-        mediaElement.controls = true;
-        mediaElement.autoplay = true;
-    }
-    overlay.appendChild(mediaElement);
-    const closeButton = document.createElement('button');
-    closeButton.className = 'modal-close';
-    closeButton.innerHTML = '&times;';
-    closeButton.addEventListener('click', () => overlay.remove());
-    overlay.appendChild(closeButton);
-    document.body.appendChild(overlay);
-}
 
 async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
     if (!noteElement) return;
@@ -4440,24 +4121,6 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
 /**
  * Възстановява позициите на всички плаващи елементи от localStorage
  */
-function restoreAllFloatingPositions() {
-    const mappings = [
-        { id: 'add-note-fab', key: 'addNoteFabPosition' },
-        { id: 'popup-menu-btn-floating', key: 'popupMenuBtnPosition' },
-        { id: 'scrollTopBtn', key: 'scrollTopBtnPosition' },
-        { id: 'kb-fab', key: 'kbFabPosition' }
-    ];
-
-    mappings.forEach(m => {
-        const el = document.getElementById(m.id);
-        // При чист старт началната позиция вече е зададена от първата
-        // инициализация. Не я пресмятаме отново след тихото зареждане на
-        // настройките, освен ако профилът действително съдържа позиция.
-        if (el && localStorage.getItem(m.key)) {
-            makeElementDraggable(el, m.key, true);
-        }
-    });
-}
 
 function getNoteUiState(uiState) {
     return uiState && typeof uiState === 'object' && !Array.isArray(uiState) ? uiState : {};
@@ -4968,12 +4631,6 @@ function isSingleNoteMode() {
     return localStorage.getItem('singleNoteMode') === 'true';
 }
 
-// After a profile load: the checkbox and the shade follow the loaded value at once.
-function applySingleNoteModeSetting() {
-    const checkbox = document.getElementById('single-note-mode-checkbox');
-    if (checkbox) checkbox.checked = isSingleNoteMode();
-    updateSingleNoteOverlay();
-}
 
 function updateSingleNoteOverlay() {
     updateCloseAllNotesButtons();
@@ -5275,83 +4932,9 @@ function closeNoteWindow(win) {
     }
 }
 
-// Background sync took a newer version of a note in. A window without the user's changes takes it
-// quietly and shows a quiet "updated" trace; a window with unsaved changes is not touched: it says
-// the note was changed elsewhere and asks. No changes of the user's - no question, ever.
-function refreshNoteWindowsAfterSync(changedNotes) {
-    (changedNotes || []).forEach(note => {
-        const win = findNoteWindow(note.id, note.gdid);
-        if (!win) return;
-        const kind = withNoteWindow(win, () => getNoteUnsavedKind());
-        if (kind === 'edit') showNoteWindowChangedElsewhere(win, note);
-        else refreshNoteWindowContent(win, note, true);
-    });
-}
 
-function refreshNoteWindowContent(win, note, withTrace) {
-    if (!win.open) return;
-    const isExpanded = win.body.dataset.isExpanded === 'true';
-    let editorSize = null;
-    try { editorSize = win.body.dataset.editorSize ? JSON.parse(win.body.dataset.editorSize) : null; } catch (e) { editorSize = null; }
-    withNoteWindow(win, () => {
-        if (win.body.querySelector('textarea') || win.body.dataset.isPreview === 'true') disableNoteEditing(win.body);
-    });
-    showModal({
-        raw: note.notetxt || '',
-        format: note.text_span,
-        titleFormat: note.title_span,
-        color: getNoteColorCss(note.color),
-        boardId: note.boardid,
-        id: note.id,
-        gdid: note.gdid,
-        datemod: note.datemod,
-        originalNote: note,
-        uiState: { ...normalizeNoteUiState(note.uiState), exp: isExpanded, ...noteUiSizeKey(editorSize) },
-        noteWindow: win
-    }, document.querySelector(`.note[data-g="${note.gdid}"]`) || document.querySelector(`.note[data-i="${note.id}"]`));
-    win.el.querySelector('.note-window-sync-banner')?.remove();
-    if (withTrace) showNoteWindowSyncTrace(win);
-}
 
-function showNoteWindowSyncTrace(win) {
-    win.box.querySelector('.note-window-sync-trace')?.remove();
-    const trace = document.createElement('div');
-    trace.className = 'note-window-sync-trace';
-    trace.textContent = _('noteWindowUpdated') || 'updated';
-    win.box.appendChild(trace);
-    setTimeout(() => trace.classList.add('is-fading'), 2200);
-    setTimeout(() => trace.remove(), 3000);
-}
 
-function showNoteWindowChangedElsewhere(win, note) {
-    win.body.parentNode.querySelector('.note-window-sync-banner')?.remove();
-    const banner = document.createElement('div');
-    banner.className = 'note-window-sync-banner';
-    const text = document.createElement('span');
-    text.textContent = _('noteChangedElsewhere') || 'This note was changed elsewhere.';
-    const takeBtn = document.createElement('button');
-    takeBtn.type = 'button';
-    takeBtn.className = 'note-window-sync-take';
-    takeBtn.textContent = _('noteChangedElsewhereTake') || 'Load the new version';
-    const keepBtn = document.createElement('button');
-    keepBtn.type = 'button';
-    keepBtn.className = 'note-window-sync-keep';
-    keepBtn.textContent = _('noteChangedElsewhereKeep') || 'Keep mine';
-    banner.append(text, takeBtn, keepBtn);
-    takeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const fresh = allNotesData.find(n => (n.gdid && String(n.gdid) === String(note.gdid)) || (n.id && String(n.id) === String(note.id))) || note;
-        refreshNoteWindowContent(win, fresh, false);
-    });
-    keepBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // My save goes over the new version: it becomes the base, so the save does not merge or ask again.
-        win.body.dataset.baseDatemod = String(note.datemod || Date.now());
-        win.body.dataset.baseNote = JSON.stringify(note);
-        banner.remove();
-    });
-    win.body.parentNode.insertBefore(banner, win.body);
-}
 
 // Every listener a window needs, on its own elements (cloneNode copies none).
 function wireNoteWindow(win) {
@@ -5651,11 +5234,6 @@ function initNoteWindows() {
     if (win) activateNoteWindow(win, true);
 }
 
-// Back to the app (the tab visible again, a return from the bfcache, the window focused): the open
-// notes are checked on Google Drive and a newer version is taken in exactly like the background
-// sync does it (refreshNoteWindowsAfterSync) - no page reload, no timer, only the open notes.
-let noteWindowsDriveCheck = null;
-let noteWindowsDriveCheckAt = 0;
 function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, fresh = false) {
     let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
     if (typeof options === 'string') {
@@ -7247,20 +6825,6 @@ function formatDate(dateString) {
     } catch (e) { return dateString; }
 }
 
-function formatDateTime(timestamp) {
-    if (!timestamp) return '';
-    try {
-        const date = new Date(timestamp);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${day}.${month}.${year} ${hours}:${minutes}`;
-    } catch (e) {
-        return timestamp; // Fallback
-    }
-}
 
 // 12 или 24 ч по устройството (b2.13), определя се веднъж: първо -u-hc- в езика (системната настройка
 // стига до браузъра така, напр. en-US-u-hc-h23), после какво дава Intl за езика. null - няма Intl.
@@ -11054,25 +10618,6 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     return processedLines.join('<br>');
 }
 
-function renderNoteContent(text) {
-    if (!text) return '';
-    const codeBlocks = [];
-    const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
-    const textWithoutCode = text.replace(codeTagRegex, (match, code1, code2) => {
-        const code = code1 !== undefined ? code1 : code2;
-        codeBlocks.push(escapeHtml(code));
-        return CODE_BLOCK_PLACEHOLDER;
-    });
-
-    // First, escape the entire remaining text to neutralize any HTML
-    const escapedText = escapeHtml(textWithoutCode);
-    // Then, find URLs in the *escaped* text and wrap them in <a> tags.
-    const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-    let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    html = insertCodeBlocks(html, codeBlocks);
-
-    return html;
-}
 
 // Next mdClear marker (default --) at or after 'from', skipping the dashes of a Markdown table
 // separator row (| ----- | --- |): those are the table, not a marker. -1 when there is none.
@@ -12540,36 +12085,7 @@ function ensureKBAssistant() {
  *        истинските настройки на браузъра, за да не изяде интрото на реалното приложение)
  * @returns {Promise<boolean>}
  */
-async function startAssistantGuide(options = {}) {
-    if (!options.force && !guide) return false;
-    if (!(await ensureKBAssistant())) return false;
-    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
-    if (!entry || !entry.guide) return false;
-    window.kbAssistant.showGuide(entry.guide);
-    if (options.persistFlag !== false) {
-        localStorage.setItem('guide', 'false');
-        guide = false;
-    }
-    return true;
-}
 
-function onKBFabClick(e) {
-    // След зареждането бутонът се обслужва от KBUI (toggle, Ctrl+клик)
-    if (window.kbUI) return;
-    if (e.ctrlKey) {
-        const fab = e.currentTarget;
-        fab.style.opacity = fab.style.opacity === '0.5' ? '1' : '0.5';
-        return;
-    }
-    if (kbAssistantLoadPromise) {
-        // Клик по време на зареждане: скрива/показва панела, без нова заявка
-        kbOpenAfterLoad = !kbOpenAfterLoad;
-        setKBLoadingPanel(kbOpenAfterLoad);
-        return;
-    }
-    kbOpenAfterLoad = true;
-    ensureKBAssistant();
-}
 
 // --- Обновяване на приложението (uni/sw.js) ---
 // Флагът следи пипал ли е потребителят приложението след отварянето. Докато не е пипал и новият
@@ -14436,9 +13952,6 @@ function toggleMarkdownTablesAlignment(text, tables = collectAlignableMarkdownTa
     return { text: result, edits, tableCount: tables.length, aligned: !allAligned };
 }
 
-function areAllMarkdownTablesAligned(text, tables = collectAlignableMarkdownTables(text)) {
-    return tables.length > 0 && tables.every(table => getMarkdownTableEdits(text, table, 'aligned').length === 0);
-}
 
 // Maps an offset through edits sorted from last to first (as returned above).
 function mapOffsetThroughEdits(pos, edits) {

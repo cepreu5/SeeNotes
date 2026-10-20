@@ -176,18 +176,6 @@ header h1 {
     font-size: 2.2rem;
 }
 
-#search-container {
-    position: relative;
-    /* Needed for positioning the save button and popup */
-    flex-grow: 1;
-    /*padding: 0 2em;*/
-    display: flex;
-    justify-content: center;
-    max-width: 400px;
-    /* Prevent it from growing too wide */
-    align-items: center;
-}
-
 #search-wrapper {
     position: relative;
     /* New context for positioning icons */
@@ -1409,12 +1397,6 @@ code {
     /* Иконата не "поглъща" клика */
 }
 
-#boards-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 5px;
-}
-
 /* Hide logo on small screens */
 @media (max-width: 480px) {
     .header-logo {
@@ -2198,12 +2180,6 @@ code {
     cursor: pointer;
 }
 
-#scaleValue {
-    margin-left: 10px;
-    font-size: 1em;
-    color: black;
-}
-
 .note-counter {
     background-color: rgba(0, 0, 0, 0.6);
     color: white;
@@ -2217,22 +2193,6 @@ code {
     margin-bottom: 12px;
     cursor: pointer;
     /* Make it look clickable */
-}
-
-#zoom-modal .modal-content-box {
-    background-color: #cfe6f8;
-    width: 90%;
-    max-width: 600px;
-    padding: 0;
-    height: auto;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-}
-
-#zoom-modal-body {
-    flex-grow: 1;
-    overflow-y: auto;
 }
 
 .zoom-control-wrapper {
@@ -2422,8 +2382,7 @@ code {
     /* Ensure the wrapper takes full width to allow alignment */
 }
 
-.start-board-select,
-.active-folder-select {
+.start-board-select {
     padding: 8px;
     border-radius: 4px;
     border: 1px solid #060606;
@@ -2433,8 +2392,7 @@ code {
     min-width: 200px;
 }
 
-.start-board-select:focus,
-.active-folder-select:focus {
+.start-board-select:focus {
     outline: 2px solid #4285F4;
 }
 
@@ -2979,38 +2937,6 @@ code {
 
 #boards-menu-container {
     display: block;
-}
-
-/* Floating button visibility handled in its own class */
-
-/* .popup-menu-btn removed */
-
-/* --- Login Page Styles --- */
-.login-box {
-    text-align: center;
-    background: #afbac6;
-    padding: 10px;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    /*margin-top: 10px;*/
-    max-width: 800px;
-    /* Limit width */
-    margin-left: auto;
-    margin-right: auto;
-}
-
-#authorize_button {
-    font-size: 1.2em;
-    padding: 10px 20px;
-    cursor: pointer;
-    background-color: #4285F4;
-    color: white;
-    border: none;
-    border-radius: 4px;
-}
-
-#authorize_button:hover {
-    background-color: #357ae8;
 }
 
 /* Стилове за главния language switcher извън login-box */
@@ -4096,32 +4022,6 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 #single-note-overlay.visible {
     display: block;
-}
-
-/* Обхождането след включване на Google Календар (b2.11): брояч и лента в реда под ключа.
-   Лентата е в currentColor — следва цвета на текста в настройките, светли и тъмни. */
-.gcal-sync-progress {
-    display: block;
-    margin-top: 4px;
-}
-.gcal-sync-progress-text {
-    display: block;
-    font-variant-numeric: tabular-nums;
-}
-.gcal-sync-progress-bar {
-    display: block;
-    position: relative;
-    height: 4px;
-    margin-top: 3px;
-    border-radius: 2px;
-    overflow: hidden;
-    background: rgba(127, 127, 127, 0.3);
-}
-.gcal-sync-progress-bar > span {
-    display: block;
-    height: 100%;
-    background: currentColor;
-    transition: width 0.2s ease;
 }
 
 /* b2.14: камбанката на мястото на календарчето мига 10 сек (само прозрачност, цветовете са на .header-btn). */
