@@ -411,8 +411,11 @@
                     </button>
                     <button data-mwid="modal-expand-btn" class="modal-header-btn nw-modal-expand-btn" data-key-title="modalExpandTooltip"
                         title="Expand modal">&#9650;</button>
-                    <button class="modal-close" data-key-title="closeButton" title="Close">&times;</button>
                 </div>
+                <!-- Close is its own grid cell below (see .modal-header-toolbar > .modal-close):
+                     the button row may shrink and scroll sideways, the way out of the window never
+                     leaves the window. -->
+                <button class="modal-close" data-key-title="closeButton" title="Close">&times;</button>
             </div>
             <div data-mwid="modal-body" class="nw-modal-body"></div>
             <div class="modal-resize-handle"></div>
