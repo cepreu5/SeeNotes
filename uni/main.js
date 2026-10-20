@@ -1035,7 +1035,7 @@ async function fetchAllData(folderIdFromPrompt, modifiedSince = null) {
     checkIntegrity(allNotesData, 'note.txt');
     if (boardsData.length === 0 && allNotesData.length === 0) {
         if (activeFolderName && activeFolderName !== 'AppDataFolder' && localStorage.getItem('initial_setup_complete') === 'true') {
-            showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with MultiNotes data.', 10000);
+            showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with notes.', 10000);
         } else {
             showToast(_('errorNoBoardFilesFound') || 'No boards found in the selected folder. Please create a board first.', 10000);
             showInitialBoardModalAfterGuide();
@@ -17141,7 +17141,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                             ]);
                             if (!boardFiles && !noteFiles) {
                                 if (typeof showToast === 'function') {
-                                    showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with MultiNotes data.', 7000);
+                                    showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with notes.', 7000);
                                 }
                                 activeFolderSelect.value = activeFolderName;
                                 return;
@@ -17200,7 +17200,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                         if (typeof NOTES_DB_NAME !== 'undefined') {
                             indexedDB.deleteDatabase(NOTES_DB_NAME);
                         } else {
-                            indexedDB.deleteDatabase('multinotes_db');
+                            indexedDB.deleteDatabase('NotesDB');
                         }
                         await syncGlobalFoldersJson();
                         location.reload();
@@ -20975,7 +20975,7 @@ async function loadTranslations(lang) {
                 appTranslations[lang]['okButton'] = "OK";
             }
             if (!appTranslations[lang]['loginPrompt']) {
-                appTranslations[lang]['loginPrompt'] = lang === 'bg' ? 'Моля, влезте с Google акаунта, с който сте синхронизирали бележките си в MultiNotes.' : 'Please sign in with Google account you used to sync MultiNotes.';
+                appTranslations[lang]['loginPrompt'] = lang === 'bg' ? 'Моля, влезте с акаунт, който има достъп до Google Drive.' : 'Please sign in with an account that has access to Google Drive.';
             }
         }
     }
