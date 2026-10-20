@@ -18403,6 +18403,9 @@ function adjustFormatStringOffset(formatString, offset) {
 const LINK_MARKER_REGEX = /\{#L(\d+)#\}/g;
 // Кодовият блок се заменя с ЕДИН символ (Private Use Area), за да не може граница на сегмент да го разкъса.
 const CODE_BLOCK_PLACEHOLDER = '\uE000';
+// Markdown линкът [текст](адрес) също се заменя с ЕДИН символ (друг, за да не се бъркат слотовете)
+// и се връща в готовия низ - виж mdLinkSlots в processNoteContent.
+const MD_LINK_PLACEHOLDER = '\uE001';
 
 function buildCodeBlockHtml(block) {
     const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
@@ -18419,6 +18422,21 @@ function insertCodeBlocks(html, codeBlocks) {
     let out = parts[0];
     for (let i = 1; i < parts.length; i++) {
         out += (i - 1 < codeBlocks.length ? buildCodeBlockHtml(codeBlocks[i - 1]) : CODE_BLOCK_PLACEHOLDER) + parts[i];
+    }
+    return out;
+}
+
+/**
+ * Връща готовия HTML на markdown линковете на местата на техните маркери, по ред.
+ * Връща се накрая, върху сглобения низ: дотогава линкът е един знак и не пречи на редовете,
+ * списъците и urlRegex.
+ */
+function insertLinkSlots(html, mdLinkSlots) {
+    if (!mdLinkSlots.length || html.indexOf(MD_LINK_PLACEHOLDER) === -1) return html;
+    const parts = html.split(MD_LINK_PLACEHOLDER);
+    let out = parts[0];
+    for (let i = 1; i < parts.length; i++) {
+        out += (i - 1 < mdLinkSlots.length ? mdLinkSlots[i - 1] : MD_LINK_PLACEHOLDER) + parts[i];
     }
     return out;
 }
@@ -19001,6 +19019,33 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     });
     let escapedText = escapeHtml(textWithoutCode);
     const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
+    // Markdown линкът [текст](адрес) се маскира с ЕДИН символ ОЩЕ ПРЕДИ прохода по urlRegex, защото
+    // иначе urlRegex обвива адреса и в href="…", и в текста на етикета (получава се котва в котва и
+    // счупен HTML), а самият „[текст](“ остава гол текст преди истинския линк. Слотовете се връщат
+    // накрая, върху сглобения низ, за да виждат обработката на редовете и списъците един знак.
+    const mdLinkSlots = [];
+    if (escapedText.indexOf('](') !== -1) {
+        escapedText = escapedText.replace(/(?:(https?|ftp|file):\/\/)?\[([^\]\n]*)\]\(([^()\s]+)\)/ig, (match, scheme, label, target) => {
+            const shownLabel = label.trim();
+            // Празен етикет ([ ](…) / [x](…) - отметка, или [](…)) и непознат адрес (javascript:,
+            // относителен път) не са линк: остават гол текст. Маскират се като слот, за да не обвие
+            // urlRegex по-нататък адреса в скобите.
+            if (!shownLabel || /^[xXхХ☐☑]$/.test(shownLabel) || !/^(https?|ftp|file|mailto):/i.test(target)) {
+                mdLinkSlots.push(match);
+                return MD_LINK_PLACEHOLDER;
+            }
+            // „https://[host/path](http://host/path)“: схемата стои пред скобата, етикетът е без нея.
+            // Показваме един адрес със схемата отпред, а сочим към адреса от скобите.
+            const shown = (scheme && !shownLabel.toLowerCase().startsWith(scheme.toLowerCase() + '://'))
+                ? scheme + '://' + shownLabel
+                : shownLabel;
+            // Етикетът и адресът идват от вече екраниран текст - слагат се както са, без ново екраниране.
+            mdLinkSlots.push((isForModal || oneTapLinksEnabled)
+                ? `<a href="${target}" target="_blank" rel="noopener noreferrer">${shown}</a>`
+                : `<span class="nmd-link-elide">${shown}</span>`);
+            return MD_LINK_PLACEHOLDER;
+        });
+    }
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
     if (isForModal || oneTapLinksEnabled) {
         escapedText = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
@@ -19036,7 +19081,8 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     const lines = escapedText.split('\n');
     const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
     const processedLines = skipLineBlocks ? lines : wrapNoteLineBlocks(lines, listMeasureEl);
-    return processedLines.join('<br>');
+    // Линковете се връщат най-накрая, върху сглобения низ: дотук всеки беше един знак.
+    return insertLinkSlots(processedLines.join('<br>'), mdLinkSlots);
 }
 
 function renderNoteContent(text) {
