@@ -1395,6 +1395,98 @@ function deleteKeyFromDBHandle(db, storeName, key) {
  * Връща { ok, error }. ok === false значи, че бележката е още в базата и остава в паметта.
  * @param {object} opts - { db }: отворена IndexedDB връзка за партидно триене.
  */
+async function emptyTrash() {
+    const trashBtn = document.getElementById('empty-trash-fab');
+    if (!trashBtn) return;
+
+    // Кошчето се чете от данните, не от видимите карти: така влизат и бележките, които в
+    // момента не са изрисувани (друг борд, резултати от търсене, скрит филтър).
+    const trashNotes = () => allNotesData.filter(n => n && n.status === 1);
+
+    if (trashNotes().length === 0) {
+        showToast(_('trashAlreadyEmpty') || "Кошчето е вече празно.", 3000);
+        return;
+    }
+
+    const confirmed = await showConfirmation(_('confirmEmptyTrash') || "Сигурни ли сте, че искате да изпразните кошчето окончателно? Това действие е необратимо.");
+    if (!confirmed) return;
+
+    const originalContent = trashBtn.innerHTML;
+    trashBtn.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" class="spin-animation"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" stroke="white" stroke-width="2" stroke-linecap="round"/></svg><style>@keyframes spin{to{transform:rotate(360deg)}}.spin-animation{animation:spin 1s linear infinite}</style>`;
+    trashBtn.style.pointerEvents = 'none';
+
+    let deletedCount = 0;
+    let lastErrors = [];
+    let db = null;
+    try {
+        // Една връзка към IndexedDB за цялата партида, вместо по една на бележка.
+        if (useIndexedDb && typeof NOTE_STORE_NAME !== 'undefined') {
+            try {
+                db = await openNotesDB();
+            } catch (e) {
+                console.warn("[Trash] Could not open DB, falling back to a connection per note:", e);
+                db = null;
+            }
+        }
+
+        const CONCURRENCY_LIMIT = 4; // по-малко паралелни заявки към Drive = по-малко 403/429
+        const MAX_ROUNDS = 4;
+        let round = 0;
+        while (round < MAX_ROUNDS) {
+            round++;
+            const pending = trashNotes();
+            if (pending.length === 0) break;
+            console.log(`[Trash] Round ${round}: ${pending.length} note(s) left`);
+            let deletedThisRound = 0;
+            const roundErrors = [];
+            for (let i = 0; i < pending.length; i += CONCURRENCY_LIMIT) {
+                const chunk = pending.slice(i, i + CONCURRENCY_LIMIT);
+                const results = await Promise.all(chunk.map(note =>
+                    permanentlyDeleteNote(note.gdid, note.id, true, { db })
+                        .catch(error => ({ ok: false, error }))
+                ));
+                results.forEach((result, index) => {
+                    if (result && result.ok) {
+                        deletedCount++;
+                        deletedThisRound++;
+                    } else {
+                        const note = chunk[index];
+                        roundErrors.push({
+                            gdid: note.gdid,
+                            id: note.id,
+                            error: (result && result.error && (result.error.message || String(result.error))) || 'unknown'
+                        });
+                    }
+                });
+                if (deletedThisRound) updateBoardCounterUI('trash');
+            }
+            lastErrors = roundErrors;
+            // Нищо не мина в този кръг - още един кръг няма да помогне.
+            if (!deletedThisRound) break;
+        }
+
+        updateBoardCounterUI('trash');
+        applyFilters();
+        const remaining = trashNotes().length;
+        if (remaining === 0) {
+            showToast((_('trashEmptiedSuccessCount') || "Кошчето е празно. Изтрити: {count}.")
+                .replace('{count}', String(deletedCount)), 3000);
+        } else {
+            console.warn("[Trash] Notes left in trash after emptying:", lastErrors);
+            showToast((_('trashEmptiedPartial') || "Изтрити: {deleted}. Останали: {failed} - натиснете отново.")
+                .replace('{deleted}', String(deletedCount))
+                .replace('{failed}', String(remaining)), 6000);
+        }
+    } catch (error) {
+        console.error("Error emptying trash:", error);
+        showToast("Error: " + error.message, 5000);
+    } finally {
+        if (db) { try { db.close(); } catch (e) { /* вече затворена */ } }
+        trashBtn.innerHTML = originalContent;
+        trashBtn.style.pointerEvents = 'auto';
+    }
+}
+
 async function permanentlyDeleteNote(noteGdid, noteId, skipUI = false, opts = {}) {
     const noteToDelete = allNotesData.find(n => (noteGdid && n.gdid == noteGdid) || (noteId && n.id == noteId));
     const actualGdid = noteToDelete ? noteToDelete.gdid : noteGdid;
@@ -2155,6 +2247,12 @@ async function startApp() {
         initDraggableButtons();
 
         await mainLogic();
+        // Интрото на асистента при първо влизане. В локалния режим няма първоначална
+        // настройка, затова единственото условие е флагът 'guide' (вдига се на 'false'
+        // след първото показване, за да не излиза втори път).
+        if (guide) {
+            setTimeout(() => { startAssistantGuide().catch(err => console.warn('[Guide] intro failed:', err)); }, 1500);
+        }
         handleShareTarget();
     } catch (err) {
         console.error("Error in startApp:", err);
@@ -7905,6 +8003,12 @@ function applyFilters() {
     // --- Покажи/Скрий бутона за изпразване на кошчето ---
     const emptyTrashFab = document.getElementById('empty-trash-fab');
     if (emptyTrashFab) {
+        // Иконата и слушателят се слагат веднъж: тази секция върви при всяко пре-рисуване.
+        if (!emptyTrashFab.dataset.trashBound) {
+            emptyTrashFab.innerHTML = emptyTrashIconSvg;
+            emptyTrashFab.addEventListener('click', emptyTrash);
+            emptyTrashFab.dataset.trashBound = '1';
+        }
         const isTrash = currentBoardFilter === 'trash';
         emptyTrashFab.style.display = (isTrash && visibleCount > 0) ? 'flex' : 'none';
     }
@@ -12085,7 +12189,18 @@ function ensureKBAssistant() {
  *        истинските настройки на браузъра, за да не изяде интрото на реалното приложение)
  * @returns {Promise<boolean>}
  */
-
+async function startAssistantGuide(options = {}) {
+    if (!options.force && !guide) return false;
+    if (!(await ensureKBAssistant())) return false;
+    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+    if (!entry || !entry.guide) return false;
+    window.kbAssistant.showGuide(entry.guide);
+    if (options.persistFlag !== false) {
+        localStorage.setItem('guide', 'false');
+        guide = false;
+    }
+    return true;
+}
 
 // --- Обновяване на приложението (uni/sw.js) ---
 // Флагът следи пипал ли е потребителят приложението след отварянето. Докато не е пипал и новият
