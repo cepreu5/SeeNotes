@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b2.40';
+const CACHE_NAME = 'cx-notes-b2.41';
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
@@ -97,6 +97,9 @@ const LAZY_ASSETS = [
   './lang/kb-core.json',
   './lang/kb-bg.json',
   './lang/kb-en.json',
+  './lang/kb-tour-core.json',
+  './lang/kb-tour-bg.json',
+  './lang/kb-tour-en.json',
 ];
 const LAZY_ASSET_URLS = LAZY_ASSETS.map(url => new URL(url, self.location.href).href);
 
