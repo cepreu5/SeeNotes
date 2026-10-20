@@ -19789,6 +19789,10 @@ async function createNoteElement(noteContent) {
     let displayContent = fileContent;
     let previewTitleSourceText = '';
     let adjustPreviewBodyToRenderedTitle = false;
+    // При явен разделител '|' записът пази text_span в координати на ТЯЛОТО (вж. postEditNoteState:
+    // форматите на тялото се сериализират отделно), затова офсетът на заглавието НЕ се изважда.
+    // Без '|' (първият ред се показва като заглавие) форматите са спрямо целия текст и офсетът важи.
+    let isPipeBodyContent = false;
     let isBorderlessTableNote = false;
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
@@ -19806,6 +19810,8 @@ async function createNoteElement(noteContent) {
         } else if (pipeIndex !== -1) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
+            // text_span е тяло-относителен при '|' — offset не се прилага в renderPreviewContent.
+            isPipeBodyContent = true;
         } else if (isType1Note) {
             previewTitleSourceText = (fileContent.split('\n').find(line => line.trim()) || '').trim();
             const symBold = (localStorage.getItem('mdBold') || '**').trim();
@@ -20077,7 +20083,7 @@ async function createNoteElement(noteContent) {
         // Намираме точния символен офсет, ако първият ред (заглавието) е отделен
         const rawOffset = fileContent.indexOf(contentForPreview);
         const offset = rawOffset !== -1 ? rawOffset : Math.max(0, fileContent.length - contentForPreview.length);
-        if (offset > 0 && formatSource) {
+        if (offset > 0 && formatSource && !isPipeBodyContent) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
         contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
