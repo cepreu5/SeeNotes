@@ -3434,23 +3434,43 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Secondary header row shown only while a note is being edited. */
+/* One row, always: what does not fit scrolls sideways instead of wrapping. A second row made the
+   header taller than the fixed padding above the note text, and the text went under the header. */
 .modal-edit-toolbar {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
     align-items: center;
-    gap: 8px;
+    gap: 3px;
     grid-column: 1 / -1;
     grid-row: 2;
     margin-top: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.18);
     pointer-events: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* The strip scrolls with a finger, a trackpad and Shift+wheel; the scrollbar stays hidden -
+       it eats 4-8px of the strip's height and breaks the rounding of the buttons. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.modal-edit-toolbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* More buttons to the right: the right edge fades, so the strip reads as continuing. The mask is
+   painted on the strip's box, so it stays at the edge while the buttons scroll under it. */
+.modal-edit-toolbar.is-scrollable {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
 }
 
 .modal-edit-toolbar-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: 1px solid #aaa;
     border-radius: 50%;
@@ -3461,7 +3481,7 @@ body.selection-locked .note.active-selection-note .note-content {
     justify-content: center;
     cursor: pointer;
     font-family: inherit;
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1;
     flex: 0 0 auto;
 }
@@ -3475,26 +3495,57 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .modal-edit-toolbar-btn.is-bold {
     font-weight: 700;
+    font-size: 15px;
 }
 
 .modal-edit-toolbar-btn.is-italic {
     font-style: italic;
+    font-size: 15px;
 }
 
 .modal-edit-toolbar-btn.is-underline {
     text-decoration: underline;
+    font-size: 15px;
 }
 
 .modal-edit-toolbar-btn.is-strike {
     text-decoration: line-through;
+    font-size: 15px;
 }
 
 
 
 
 
+/* The two list buttons are older elements carrying .modal-nav-btn, which the shared rule sizes at
+   32px: inside the strip they take its size, so all the buttons are one row of 28px circles. */
+.modal-edit-toolbar .modal-nav-btn {
+    width: 28px;
+    height: 28px;
+}
+
+/* History: ↶ undo and ↷ redo, first in the strip - the history is the text's, not navigation's. */
+.modal-edit-toolbar-btn.is-undo,
+.modal-edit-toolbar-btn.is-redo {
+    font-size: 15px;
+    line-height: 1;
+}
+
+/* An arrow that can do nothing right now: dimmed, but exactly the same size, so the strip never
+   shifts when a note opens with nothing to undo. */
+.modal-edit-toolbar-btn.is-disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.modal-edit-toolbar-btn.is-disabled:hover,
+.modal-edit-toolbar-btn.is-disabled:focus-visible {
+    background: transparent;
+    border-color: #aaa;
+}
+
 .modal-edit-toolbar-btn.is-table {
-    font-size: 18px;
+    font-size: 16px;
 }
 
 .modal-edit-toolbar-btn.is-table.is-active {
@@ -3645,12 +3696,8 @@ body.selection-locked .note.active-selection-note .note-content {
     pointer-events: none;
 }
 
-/* Keep ▦ on the same row as the other formatting buttons on phones. */
-@media (max-width: 420px) {
-    .modal-edit-toolbar {
-        gap: 4px;
-    }
-}
+/* The strip is one row at every width (see flex-wrap: nowrap above), so ▦ keeps its place on the
+   same row on phones too and the narrow-width gap override is no longer needed. */
 
 .modal-content-box.has-edit-toolbar {
     padding-top: 100px;
