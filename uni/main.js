@@ -11845,7 +11845,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
 
     if (!isPromo && !options.readonly) {
         const closeBtn = modalContentBox.querySelector('.modal-close');
-        if (closeBtn) {
+        // b2.36: Close has its own header cell now, so the colour dot goes into the button row
+        // itself (before the expand control), never next to the close button's new parent.
+        const headerRow = modalContentBox.querySelector('.modal-header-buttons');
+        if (closeBtn && headerRow) {
             const expandBtn = document.getElementById('modal-expand-btn');
             const colorBtn = document.createElement('div');
             colorBtn.id = 'modal-color-btn';
@@ -11864,7 +11867,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
             // Keeps the editor's focus and selection (the text colours apply to the selection).
             colorBtn.addEventListener('mousedown', (e) => e.preventDefault());
             // Keep it immediately to the left of the expand control in the first header row.
-            closeBtn.parentNode.insertBefore(colorBtn, expandBtn || closeBtn);
+            headerRow.insertBefore(colorBtn, expandBtn && expandBtn.parentNode === headerRow ? expandBtn : null);
 
             // Palette
             const palette = document.createElement('div');
