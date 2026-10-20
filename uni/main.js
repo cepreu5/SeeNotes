@@ -17422,13 +17422,21 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
     }
     // One-tap links
-    oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false
-    oneTapLinkCheckbox.addEventListener('change', () => {
-        const isChecked = oneTapLinkCheckbox.checked;
-        localStorage.setItem('oneTapLink', isChecked);
-        showToast(_('settingSaved'), 2000);
-        oneTapLinkChanged = true;
-    });
+    if (oneTapLinkCheckbox) {
+        oneTapLinkCheckbox.checked = isOneTapLinksEnabled(); // Default to false
+        oneTapLinkCheckbox.addEventListener('change', () => {
+            const isChecked = oneTapLinkCheckbox.checked;
+            localStorage.setItem('oneTapLink', isChecked);
+            // Само localStorage не стига: при старт loadSettingsFromGDrive презаписва ключа от
+            // профилния снапшот (и от settings.json в Drive), тоест изборът се губеше при всяко
+            // презареждане. Затова обновяваме и снапшота, и профила, без да чакаме Save.
+            if (typeof saveSettingsToGDrive === 'function') {
+                saveSettingsToGDrive(true).catch(e => console.warn('One-tap link settings sync failed:', e));
+            }
+            showToast(_('settingSaved'), 2000);
+            oneTapLinkChanged = true;
+        });
+    }
     // Click to edit
     if (clickToEditCheckbox) {
         clickToEditCheckbox.checked = localStorage.getItem('clickToEdit') !== 'false'; // Default to true
@@ -19006,6 +19014,14 @@ function wrapNoteLineBlocks(lines, listMeasureEl, plainTextOf) {
     return out;
 }
 
+// One-tap links: едно място за четене на настройката. Липсваща стойност значи ИЗКЛЮЧЕНО,
+// както е и подразбираното състояние на квадратчето в Settings. Преди това бордът смяташе
+// липсващата стойност за включена (за прикачените файлове), а за markdown линковете - за
+// изключена, тоест една и съща настройка имаше две противоположни значения.
+function isOneTapLinksEnabled() {
+    return localStorage.getItem('oneTapLink') === 'true';
+}
+
 // skipLineBlocks: текстът е част от ред (сегмент на formatText) - блоковете на редовете
 // се слагат от извикващия върху завършените редове.
 function processNoteContent(text, isForModal = false, skipLineBlocks = false, listIndentMeasureEl = undefined) {
@@ -19018,7 +19034,7 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
         return CODE_BLOCK_PLACEHOLDER;
     });
     let escapedText = escapeHtml(textWithoutCode);
-    const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
+    const oneTapLinksEnabled = isOneTapLinksEnabled();
     // Markdown линкът [текст](адрес) се маскира с ЕДИН символ ОЩЕ ПРЕДИ прохода по urlRegex, защото
     // иначе urlRegex обвива адреса и в href="…", и в текста на етикета (получава се котва в котва и
     // счупен HTML), а самият „[текст](“ остава гол текст преди истинския линк. Слотовете се връщат
@@ -19343,7 +19359,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
     const displayLinkText = (isSharedResource || !nameOnly) ? (_('openLink') || 'Open') : nameOnly;
     const archiveFolderName = dirHandle ? dirHandle.name : '';
     const createLink = async (folderName, textPrefix) => {
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+        const oneTapLinksEnabled = isOneTapLinksEnabled();
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             const span = document.createElement('span');
             span.textContent = textPrefix + displayLinkText;
@@ -19433,7 +19449,7 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
             if (parts.length < 3) break;
             const [lat, lng, label] = parts;
             const textContainer = document.createElement('div');
-            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+            const oneTapLinksEnabled = isOneTapLinksEnabled();
             const isForModal = !!attachmentWrapper.closest('#modal-body');
             let linkElement;
             if (!isForModal && !oneTapLinksEnabled) {
@@ -19498,7 +19514,7 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
     const fileId = attachment.pathGD; // Вече имаме fileId директно в attachment обекта.
     // Оптимизация: Премахваме API заявката оттук и я местим в onclick събитието.
     const setupLink = (folderName, textPrefix) => {
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+        const oneTapLinksEnabled = isOneTapLinksEnabled();
         let linkElement;
         if (!isForModal && !oneTapLinksEnabled) { // Създаваме неактивен span, САМО ако не сме в модал И опцията е изключена
             linkElement = document.createElement('span');
@@ -19593,7 +19609,7 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
             if (parts.length < 3) break;
             const [lat, lng, label] = parts;
             const textContainer = document.createElement('div');
-            const oneTapLinksEnabled = localStorage.getItem('oneTapLink') !== 'false';
+            const oneTapLinksEnabled = isOneTapLinksEnabled();
             const isForModal = !!attachmentWrapper.closest('#modal-body');
             let linkElement;
             if (!isForModal && !oneTapLinksEnabled) {
@@ -20072,7 +20088,7 @@ async function createNoteElement(noteContent) {
             note.dataset.ho = '1';
         }
         // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
-        const oneTapLinksEnabled = localStorage.getItem('oneTapLink') === 'true';
+        const oneTapLinksEnabled = isOneTapLinksEnabled();
         const shouldShowAttachments = isForModal || oneTapLinksEnabled;
         if (shouldShowAttachments) {
             const separator = document.createElement('hr');
