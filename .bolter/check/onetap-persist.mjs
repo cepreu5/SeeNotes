@@ -122,6 +122,29 @@ const afterOff = await page.evaluate(() => ({
 ok(afterOff.ls === 'false', `след изключване и презареждане localStorage е 'false' (${afterOff.ls})`);
 ok(afterOff.checked === false, `след изключване и презареждане квадратчето е празно (${afterOff.checked})`);
 
+// --- 5. Профилът включва настройката СЛЕД първото рисуване: картите се пре-рисуват, не остават стари ---
+await page.evaluate(() => {
+  // Профилът казва "включено", локалният ключ липсва - точно както при старт на ново устройство.
+  localStorage.setItem('settings_multinotes_data', JSON.stringify({ oneTapLink: 'true' }));
+  localStorage.removeItem('oneTapLink');
+});
+await page.reload({ waitUntil: 'load' });
+await boot();
+// Профилното зареждане се вика изрично, както го прави mainLogic при истински старт.
+await page.evaluate(() => loadSettingsFromGDrive(true));
+await page.evaluate(() => new Promise(r => setTimeout(r, 800)));
+const profileCase = await page.evaluate(() => ({
+  ls: localStorage.getItem('oneTapLink'),
+  onBoard: (() => {
+    const d = document.createElement('div');
+    d.innerHTML = getFormattedNoteHtml('виж https://example.com/a', '', '', false);
+    return { a: d.querySelectorAll('a').length, elide: d.querySelectorAll('.nmd-link-elide').length };
+  })(),
+}));
+ok(profileCase.ls === 'true', `профилът включва настройката след старт (${profileCase.ls})`);
+ok(profileCase.onBoard.a === 1 && profileCase.onBoard.elide === 0,
+  `след профилно зареждане бордът рисува котва, не стар текст (a=${profileCase.onBoard.a}, elide=${profileCase.onBoard.elide})`);
+
 ok(errs.length === 0, `няма конзолни грешки (${errs.length})${errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''}`);
 
 console.log(fails === 0 ? '\nALL PASS' : `\n${fails} FAIL`);

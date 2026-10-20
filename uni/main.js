@@ -16668,6 +16668,8 @@ async function saveSettingsToGDrive(silent = false) {
 }
 
 async function loadSettingsFromGDrive(silent = false) {
+    // Стойността преди профила: по нея се разбира дали трябва пре-рисуване на картите.
+    const oneTapBeforeLoad = localStorage.getItem('oneTapLink');
     if (!silent && typeof showToast === 'function') showToast(_('loadingProfiles'));
     let content = null;
     if (!isOffline) {
@@ -16720,11 +16722,16 @@ async function loadSettingsFromGDrive(silent = false) {
             });
             applySingleNoteModeSetting();
             applyGcalNotesSetting();
+            // One-click links решава как се рисуват котвите на борда. Ако профилът е променил тази
+            // настройка, вече нарисуваните карти са от старата стойност (бордът се рисува преди
+            // профила при старт) - затова се пре-рисуват, вместо да се обновява само менюто.
+            const oneTapAfterLoad = isOneTapLinksEnabled();
+            const oneTapNeedsRerender = oneTapBeforeLoad === null ? false : oneTapBeforeLoad !== String(oneTapAfterLoad);
             // Току-що сменен език: профилът се обновява на заден план, стартът не го чака
             if (pendingLang) saveSettingsToGDrive(true).catch(e => console.warn('Background profile sync after language change failed:', e));
             initHeaderFullscreen();
             if (silent) {
-                await renderUI({ rerenderOnlyMenu: true });
+                await renderUI({ rerenderOnlyMenu: !oneTapNeedsRerender });
                 restoreAllFloatingPositions();
             } else {
                 setTimeout(async () => {
