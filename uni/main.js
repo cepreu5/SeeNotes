@@ -336,7 +336,12 @@ const BOARD_STORE_NAME = 'boards';
 const MEDIA_STORE_NAME = 'media';
 const NOTE_STORE_NAME = 'notes';
 const CONFIG_STORE_NAME = 'config';
-const NOTES_DB_VERSION = 3;
+// Файловете (картинки, звук, прикачени) в локалния режим (клон feat/local-mode) живеят като
+// Blob в собствен store `files`. Тук не се ползва, но схемата трябва да е същата: IndexedDB
+// вдига версията необратимо и база, отворена веднъж от локалния режим (v4), не се отваря от
+// по-ниска версия. Затова версията е 4 и store-ът се създава и тук.
+const FILES_STORE_NAME = 'files';
+const NOTES_DB_VERSION = 4;
 
 // --- SVG икони ---
 // const eyeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
@@ -4965,8 +4970,10 @@ function openNotesDB() {
         let retries = 0;
         const maxRetries = 3;
 
-        const attemptOpen = () => {
-            const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
+        const attemptOpen = (version = NOTES_DB_VERSION) => {
+            const request = version === null
+                ? indexedDB.open(NOTES_DB_NAME)   // без версия: отваря каквато е в момента
+                : indexedDB.open(NOTES_DB_NAME, version);
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
                 if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
@@ -4981,6 +4988,9 @@ function openNotesDB() {
                 if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
                     db.createObjectStore(CONFIG_STORE_NAME);
                 }
+                if (!db.objectStoreNames.contains(FILES_STORE_NAME)) {
+                    db.createObjectStore(FILES_STORE_NAME, { keyPath: 'key' });
+                }
                 console.log("NotesDB structure is up to date.");
             };
             request.onsuccess = (event) => {
@@ -4993,8 +5003,18 @@ function openNotesDB() {
                 const error = event.target.error;
                 const errorName = error ? error.name : "UnknownError";
 
+                if (errorName === 'VersionError' && version !== null) {
+                    // Базата вече е вдигната до по-висока версия от друг вариант (напр. локалния
+                    // режим, който я вдига до 4, или бъдещ такъв). Повторен опит със същата
+                    // версия не може да успее — отваряме без версия, което дава текущата схема
+                    // и запазените данни, вместо да заключим човека извън собствените му бележки.
+                    console.warn(`NotesDB is already at a newer version than ${NOTES_DB_VERSION}; opening it at its existing version.`);
+                    attemptOpen(null);
+                    return;
+                }
+
                 // Retry specifically for UnknownError or if backing store is gone (typical browser hiccups)
-                if ((errorName === 'UnknownError' || errorName === 'VersionError') && retries < maxRetries) {
+                if (errorName === 'UnknownError' && retries < maxRetries) {
                     retries++;
                     console.warn(`Retry ${retries} opening NotesDB due to ${errorName}...`);
                     setTimeout(attemptOpen, 100 * retries);
