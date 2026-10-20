@@ -810,6 +810,18 @@ code {
     text-decoration: underline;
 }
 
+/* На борда URL-ът е гол текст (не линк, освен при one-tap режим), но трябва да изглежда като в
+   модала: един ред, съкратен със „…“ на ръба на картата, вместо разлят на няколко реда.
+   Същото поведение като .note-content a по-горе, само че не е котва и не носи цвят на линк. */
+.note-content .nmd-link-elide {
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: text-bottom;
+}
+
 .note-footer {
     flex-shrink: 0;
     display: flex;
@@ -1930,7 +1942,7 @@ code {
 
 /* b1.95: таблет и десктоп 900-1220px — хедърът остава в ЕДИН ред (преди: колона от 4 реда и ~212px).
    Търсачката се свива, за да се събере редом бутоните, вместо да се пренася на втори ред.
-   b2.28: горната граница 1220px е премахната — над 1220px панелът с дъските (.boards-note, пълна ширина,
+   15 Oct 2026: горната граница 1220px е премахната — над 1220px панелът с дъските (.boards-note, пълна ширина,
    добавен от main.js) нямаше order и заставаше ПРЕДИ бутоните, избутвайки ги на трети ред, а търсачката
    се долепяше най-вдясно. Сега същият едноредов ред важи и за широки екрани. */
 @media (min-width: 900px) {
@@ -2057,13 +2069,13 @@ code {
         padding: 1em 0 0.5em;
     }*/
 
-/* ВАЖНО (b2.29, 15 Oct 2026): оттук до #header-buttons НЕ е изтекло от @media (max-width:899px) —
+/* ВАЖНО (15 Oct 2026): оттук до #header-buttons НЕ е изтекло от @media (max-width:899px) —
    двете правила тук важат на всички ширини и са единствените за този селектор:
      - #header-buttons { display:flex; justify-content:center; padding:5px 0 } — от него зависи
        едноредовият хедър на таблет/десктоп (без него хедърът става 132px вместо 96px);
-     - #header-buttons { order: 2 } — на този клон медията за едноредов хедър е само
-       min-width:900px..max-width:1220px, затова над 1220px това е единственото order за бутоните.
-       След PR #1 (медията става само min-width:900px) редът тук е излишен и може да се махне.
+     - #header-buttons { order: 2 } — редът вече е излишен, след като медията за едноредов хедър
+       стана @media (min-width: 900px) и тя сама задава order:3 на бутоните, но е оставен на
+       мястото си, за да не се пипа нищо извън двете поправки.
    Мобилните правила, които наистина бяха изтекли (диалогът на настройките, редовете в него и
    полето за мащаб), са прибрани обратно в @media (max-width:899px) — иначе диалогът се разпъваше
    по цялата ширина на широк екран вместо да е max 400px. */
@@ -3335,13 +3347,20 @@ body.selection-locked .note.active-selection-note .note-content {
 
 
 /* --- RESPONSIVE MODAL TOOLBARS --- */
+/* Three cells, not two: the board name, the row of window buttons, and Close on its own. Only the
+   name and the button row are allowed to give way, so however narrow the window is dragged, the
+   header stays exactly as wide as the box - nothing in it can be painted outside the box. */
 .modal-header-toolbar {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content;
+    /* minmax(0, ...) on both shrinkable cells: a plain max-content track refuses to go below the
+       buttons' own width and the whole grid overflows the box (that was the bug - the row-2 strip
+       then stretched to that overflowed width and its scroll started past the real right edge). */
+    grid-template-columns: minmax(0, 1fr) minmax(0, max-content) max-content;
+    column-gap: 8px;
     grid-template-rows: auto auto;
     align-items: center;
     z-index: 10001;
@@ -3357,12 +3376,33 @@ body.selection-locked .note.active-selection-note .note-content {
     align-items: center;
     pointer-events: auto;
     flex-wrap: nowrap;
-    width: max-content;
-    justify-content: flex-end;
+    /* No width: max-content here any more. As a grid item with min-width 0 the row shrinks with the
+       box; when its buttons no longer fit, it scrolls sideways inside the box (below) instead of
+       pushing the header wider than the window. */
+    min-width: 0;
+    justify-content: flex-start;
     grid-column: 2;
     grid-row: 1;
     margin-left: 0;
-    flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* The scrollbar would eat 4-8px of the row's height and nothing here is worth a visible bar. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.modal-header-buttons::-webkit-scrollbar {
+    display: none;
+}
+
+/* Close: its own cell in row 1, so it is fully visible and clickable at every width, while the
+   button row to its left shrinks and scrolls under its own edge. */
+.modal-header-toolbar > .modal-close {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    pointer-events: auto;
 }
 
 .modal-footer-toolbar {
@@ -3385,6 +3425,7 @@ body.selection-locked .note.active-selection-note .note-content {
 
 /* Base styles for individual toolbar components to ensure consistency */
 .modal-header-buttons button,
+.modal-header-toolbar > .modal-close,
 .modal-nav-btn,
 .modal-header-btn {
     position: static !important;
@@ -3434,23 +3475,47 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Secondary header row shown only while a note is being edited. */
+/* One row, always: what does not fit scrolls sideways instead of wrapping. A second row made the
+   header taller than the fixed padding above the note text, and the text went under the header. */
 .modal-edit-toolbar {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
     align-items: center;
-    gap: 8px;
+    gap: 3px;
     grid-column: 1 / -1;
     grid-row: 2;
     margin-top: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.18);
     pointer-events: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Sized by the box itself: the header grid above never grows past the box, and the strip spans
+       every column of it, so clientWidth here is the box's inner width - the sideways scroll and the
+       is-scrollable fade at the right edge start at the real right edge. */
+    min-width: 0;
+    /* The strip scrolls with a finger, a trackpad and Shift+wheel; the scrollbar stays hidden -
+       it eats 4-8px of the strip's height and breaks the rounding of the buttons. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.modal-edit-toolbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* More buttons to the right: the right edge fades, so the strip reads as continuing. The mask is
+   painted on the strip's box, so it stays at the edge while the buttons scroll under it. */
+.modal-edit-toolbar.is-scrollable {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
 }
 
 .modal-edit-toolbar-btn {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: 1px solid #aaa;
     border-radius: 50%;
@@ -3461,7 +3526,7 @@ body.selection-locked .note.active-selection-note .note-content {
     justify-content: center;
     cursor: pointer;
     font-family: inherit;
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1;
     flex: 0 0 auto;
 }
@@ -3475,42 +3540,44 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .modal-edit-toolbar-btn.is-bold {
     font-weight: 700;
+    font-size: 15px;
 }
 
 .modal-edit-toolbar-btn.is-italic {
     font-style: italic;
+    font-size: 15px;
 }
 
 .modal-edit-toolbar-btn.is-underline {
     text-decoration: underline;
+    font-size: 15px;
 }
 
 .modal-edit-toolbar-btn.is-strike {
     text-decoration: line-through;
+    font-size: 15px;
 }
 
 
 
 
 
-.modal-edit-toolbar-btn.is-table {
-    font-size: 18px;
+/* The two list buttons are older elements carrying .modal-nav-btn, which the shared rule sizes at
+   32px: inside the strip they take its size, so all the buttons are one row of 28px circles. */
+.modal-edit-toolbar .modal-nav-btn {
+    width: 28px;
+    height: 28px;
 }
 
-.modal-edit-toolbar-btn.is-table.is-active {
-    background: #4a90e2;
-    border-color: #4a90e2;
-    color: #fff;
-}
-
-/* Отмяна ↶ и връщане напред ↷: същите кръгчета като другите бутони, най-отляво в лентата. */
+/* History: ↶ undo and ↷ redo, first in the strip - the history is the text's, not navigation's. */
 .modal-edit-toolbar-btn.is-undo,
 .modal-edit-toolbar-btn.is-redo {
-    font-size: 17px;
+    font-size: 15px;
     line-height: 1;
 }
 
-/* Стрелка, която в момента не може нищо: приглушена, но точно същият размер (лентата не подскача). */
+/* An arrow that can do nothing right now: dimmed, but exactly the same size, so the strip never
+   shifts when a note opens with nothing to undo. */
 .modal-edit-toolbar-btn.is-disabled {
     opacity: 0.35;
     cursor: default;
@@ -3522,15 +3589,15 @@ body.selection-locked .note.active-selection-note .note-content {
     border-color: #aaa;
 }
 
-/* Навигацията ← → ▦ е една група: като не се побира, минава на втория ред цялата, не на части. */
-.modal-edit-toolbar-nav {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 0 0 auto;
+.modal-edit-toolbar-btn.is-table {
+    font-size: 16px;
 }
 
-/* Брояч на стъпките няма: заемаше място в лентата и сваляше бутони на долния ред. */
+.modal-edit-toolbar-btn.is-table.is-active {
+    background: #4a90e2;
+    border-color: #4a90e2;
+    color: #fff;
+}
 
 /* ▦ table fields: the content editor becomes text pieces + read-only table fields in place.
    The note textarea stays underneath (hidden) as the source of truth. */
@@ -3674,12 +3741,8 @@ body.selection-locked .note.active-selection-note .note-content {
     pointer-events: none;
 }
 
-/* Keep ▦ on the same row as the other formatting buttons on phones. */
-@media (max-width: 420px) {
-    .modal-edit-toolbar {
-        gap: 4px;
-    }
-}
+/* The strip is one row at every width (see flex-wrap: nowrap above), so ▦ keeps its place on the
+   same row on phones too and the narrow-width gap override is no longer needed. */
 
 .modal-content-box.has-edit-toolbar {
     padding-top: 100px;
@@ -4325,62 +4388,6 @@ body.selection-locked .note.active-selection-note .note-content {
         opacity: 0.2;
     }
 }
-
-/* b2.26: сливането на лексикалното и смисловото търсене — редът под полето и знакът „≈“ на бележките, дошли само по смисъла */
-#search-hybrid-line {
-    position: absolute;
-    top: 100%;
-    left: 45px;
-    margin-top: 2px;
-    font-size: 0.75em;
-    line-height: 1.2;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-    white-space: nowrap;
-    pointer-events: none;
-    font-variant-numeric: tabular-nums;
-    z-index: 2;
-}
-
-#search-hybrid-line[hidden] {
-    display: none;
-}
-
-#search-hybrid-line.pending {
-    opacity: 0.7;
-}
-
-#search-wrapper.has-hybrid-line #saved-searches-popup {
-    top: calc(100% + 18px);
-}
-
-/* в колоната на тесен екран бутоните са точно под полето — редът си взима място, вместо да легне върху тях */
-@media (max-width: 899px) {
-    #search-wrapper.has-hybrid-line {
-        margin-bottom: 16px;
-    }
-}
-
-.note.semantic-hit .note-title-truncated {
-    margin-right: 46px;
-}
-
-.note .semantic-hit-chip {
-    position: absolute;
-    top: 50px;
-    right: 20px;
-    min-width: 1.2em;
-    padding: 0 4px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.12);
-    color: inherit;
-    font-size: 0.95em;
-    font-weight: 700;
-    line-height: 1.4;
-    text-align: center;
-    pointer-events: none;
-}
-
 /* --- МАСОВ ИЗБОР НА БЕЛЕЖКИ (b2.36) --- */
 /* Отметката е елемент в реда на кабарчето, точно преди кръгчето за закачане, и заема неговото
    място: на избраните карти кръгчето се скрива с display: none, а отметката е неговият пряк
@@ -4535,4 +4542,46 @@ body.selection-locked .note.active-selection-note .note-content {
     .selection-bar-btn {
         padding: 6px 9px;
     }
+}
+
+/* =====================================================================
+   Демо режим (index.html?demo=1)
+   Бутон на началния екран и трайна лента в хедъра.
+   ===================================================================== */
+
+/* --- Бутонът на началния екран: в панела със заявката за достъп, под нея --- */
+.demo-start-btn {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    margin: 8px auto 0 auto;
+    box-sizing: border-box;
+}
+
+/* --- Лента на демо режима: точно един текстов ред под хедъра.
+   Без бутон, без flex-кутия и без допълнителен отстъп — височината е само от
+   line-height на текста. „Изход“ е inline текстова връзка в същия ред. --- */
+.demo-banner {
+    margin: 0;
+    padding: 1px 8px;
+    box-sizing: border-box;
+    background: #fff3cd;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: center;
+    white-space: normal;
+    color: #6a4b00;
+}
+
+.demo-banner[hidden] {
+    display: none;
+}
+
+.demo-banner-label {
+    font-weight: 600;
+}
+
+.demo-banner-label::after {
+    content: " · ";
+    font-weight: 400;
 }

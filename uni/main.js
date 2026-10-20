@@ -10,7 +10,7 @@
 // App version: идва от CACHE_NAME на service worker-а ('cx-notes-b1.67' -> 'Beta 1.67').
 // null, докато не се разбере; ако не се разбере изобщо, надписът се скрива.
 let version = null;
-const debug = true; // Глобален флаг за дебъг режим
+const debug = false; // Глобален флаг за дебъг режим
 
 function versionFromCacheName(cacheName) {
     const match = /^cx-notes-b(\d.*)$/.exec(String(cacheName || '').trim());
@@ -170,6 +170,76 @@ let pass = false;
 let DEMO_MODE = false;
 const DEMO_NOTE_LIMIT = 5;
 
+// --- Демо режим (без мрежа, само IndexedDB) -------------------------------------
+// Демото пуска цялото приложение без нито едно външно обръщение: собствена база
+// (NotesDB-demo), твърда бариера пред fetch и никакъв Google скрипт. Флагът живее в
+// localStorage, за да преживее презареждане, и се вдига и от адрес ?demo=1.
+// (DEMO_MODE по-горе е стар флаг за ограничаване на бележките и не участва в това.)
+const DEMO_MODE_STORAGE_KEY = 'cxNotesDemoMode';
+const DEMO_DB_NAME = 'NotesDB-demo';
+// Интрото на асистента в демо: показва се само при първото влизане в демо и повече
+// никога. Флагът е в localStorage (преживява презареждане, изход от демото и нов таб) и
+// е отделен ключ, за да не пипа 'guide' на реалното приложение.
+const DEMO_INTRO_STORAGE_KEY = 'cxNotesDemoIntroShown';
+const DEMO_INTRO_DELAY_MS = 1500;
+const DEMO_FLAGS_SNAPSHOT_KEY = 'cxNotesDemoPrevFlags';
+const DEMO_DATA_SOURCE_KEYS = ['useGoogleDb', 'useIndexedDb', 'useLocalDb', 'useArhDb'];
+
+function readDemoModeRequest() {
+    // 1) Адресът печели: ?demo=1 влиза направо в демо, ?demo=0 го изключва.
+    try {
+        const value = new URLSearchParams(window.location.search).get('demo');
+        if (value !== null) {
+            const normalized = String(value).toLowerCase();
+            if (['1', 'true', 'yes', 'on'].includes(normalized)) return 'on';
+            if (['0', 'false', 'no', 'off'].includes(normalized)) return 'off';
+        }
+    } catch (e) { /* без URLSearchParams остава само запазеният флаг */ }
+    // 2) Запазеният флаг: демото преживява презареждане.
+    try {
+        if (localStorage.getItem(DEMO_MODE_STORAGE_KEY) === '1') return 'on';
+    } catch (e) { /* режим без localStorage: само адресът може да включи демо */ }
+    return 'off';
+}
+
+const DEMO_MODE_REQUEST = readDemoModeRequest();
+const IS_DEMO_MODE = DEMO_MODE_REQUEST === 'on';
+if (DEMO_MODE_REQUEST === 'off') {
+    try { localStorage.removeItem(DEMO_MODE_STORAGE_KEY); } catch (e) { }
+}
+window.__cxDemoMode = IS_DEMO_MODE;
+
+// Отказаните външни адреси в демо режим — за конзолата и за ръчна проверка.
+const demoBlockedRequests = [];
+
+/**
+ * Твърдата мрежова бариера на демото: всяка заявка извън произхода на приложението се
+ * отказва и се логва. Флаговете isOffline не стигат — една забравена проверка е
+ * достатъчна, за да излезе заявка към Google.
+ */
+function installDemoNetworkBarrier() {
+    if (window.__cxDemoNetworkBarrier) return;
+    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+    window.fetch = function (input, init) {
+        let target = '';
+        try {
+            target = typeof input === 'string' ? input : ((input && input.url) ? input.url : String(input));
+        } catch (e) { target = '[unknown]'; }
+        let sameOrigin = false;
+        try {
+            sameOrigin = new URL(target, window.location.href).origin === window.location.origin;
+        } catch (e) { sameOrigin = false; }
+        if (sameOrigin && nativeFetch) return nativeFetch(input, init);
+        demoBlockedRequests.push(target);
+        console.warn('[Demo] Външна заявка отказана (демо режимът няма мрежа):', target);
+        return Promise.reject(new TypeError('Demo mode: network access is disabled for ' + target));
+    };
+    window.__cxDemoNetworkBarrier = true;
+    console.log('[Demo] Network barrier is on: every request outside this origin will be refused.');
+}
+
+if (IS_DEMO_MODE) installDemoNetworkBarrier();
+
 // =================================================================================
 // I. ГЛОБАЛНИ ПРОМЕНЛИВИ И КОНСТАНТИ
 // =================================================================================
@@ -258,7 +328,10 @@ console.log(`[Startup] Active folder: ${activeFolderName}`);
 let folderIdPromptPopup, folderIdInput, submitFolderIdBtn;
 
 // --- IndexedDB Конфигурация ---
-const NOTES_DB_NAME = 'NotesDB';
+const NOTES_DB_NAME_DEFAULT = 'NotesDB';
+// Демото работи в собствена база: истинските бележки в NotesDB остават недокоснати.
+// Името е една точка на истина — целият код по-долу ползва NOTES_DB_NAME.
+let NOTES_DB_NAME = IS_DEMO_MODE ? DEMO_DB_NAME : NOTES_DB_NAME_DEFAULT;
 const BOARD_STORE_NAME = 'boards';
 const MEDIA_STORE_NAME = 'media';
 const NOTE_STORE_NAME = 'notes';
@@ -1188,9 +1261,6 @@ async function runGoogleDriveSync(forceFullSync = false) {
             }
         }
         loaderText.textContent = _('syncFinishedLoadingData');
-        // b2.23: входящите промени от Drive са в allNotesData — индексът за търсене по смисъл догонва само разликата
-        // (нови / променени по отпечатък / изчезнали). Без зареден двигател нищо не се зарежда — догонва се в Настройки.
-        if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
         return totalActualUpdates;
     } finally {
         isSyncing = false;
@@ -3524,6 +3594,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Добави този код в началото или края на main.js
 // Динамично зареждане на Google Identity Services скрипта с retry логика
 function loadGoogleIdentityServices(retries = 3) {
+    if (IS_DEMO_MODE) {
+        // Демото не зарежда GIS: иначе скриптът от accounts.google.com тръгва още при отваряне.
+        console.log('[Demo] Google Identity Services is not loaded in demo mode.');
+        return;
+    }
     if (document.querySelector('script[src="https://accounts.google.com/gsi/client"]')) {
         return;
     }
@@ -3540,14 +3615,164 @@ function loadGoogleIdentityServices(retries = 3) {
     document.head.appendChild(script);
 }
 
+// =================================================================================
+// II. ДЕМО РЕЖИМ — подготовка, лента, изход
+// =================================================================================
+// Демото минава по съществуващия офлайн път: checkAuth пропуска без мрежа при
+// isOffline + isExplicitLogin, а mainLogic има офлайн клон, който рисува от IndexedDB.
+// Затова не са нужни токен, имейл или лиценз — само собствена база и никаква мрежа.
+
+/**
+ * Подготвя демото преди старта на приложението: локален източник на данни в собствената
+ * база и лента в хедъра. Бариерата пред fetch вече е вдигната.
+ */
+async function prepareDemoMode() {
+    installDemoNetworkBarrier();
+    applyDemoDataSource();
+    await seedDemoContent();
+    // Минаваме по офлайн пътя: без мрежа, без проверка на лиценз и без логин страница.
+    isOffline = true;
+    showDemoBanner();
+    console.log(`[Demo] Demo mode is on: database "${NOTES_DB_NAME}", no network.`);
+}
+
+/**
+ * Демото е само локална база. Истинските настройки на браузъра се запазват, за да се
+ * върнат при изход от демо.
+ */
+function applyDemoDataSource() {
+    try {
+        if (localStorage.getItem(DEMO_MODE_STORAGE_KEY) !== '1') {
+            const previous = {};
+            DEMO_DATA_SOURCE_KEYS.forEach(key => { previous[key] = localStorage.getItem(key); });
+            sessionStorage.setItem(DEMO_FLAGS_SNAPSHOT_KEY, JSON.stringify(previous));
+        }
+        localStorage.setItem(DEMO_MODE_STORAGE_KEY, '1');
+        localStorage.setItem('useGoogleDb', 'false');
+        localStorage.setItem('useIndexedDb', 'true');
+        localStorage.setItem('useLocalDb', 'false');
+        localStorage.setItem('useArhDb', 'false');
+    } catch (e) {
+        console.warn('[Demo] Could not apply the demo data-source flags:', e);
+    }
+    updateGlobalStateFlags();
+}
+
+/**
+ * Началното съдържание на демото: един борд и една бележка „welcome“.
+ *
+ * Демото няма как да дойде с празна база: без нито един борд екранът е празен и
+ * няма къде да се създаде бележка. Затова при първо влизане се слага точно един
+ * борд с една бележка. Ако демо базата вече има борд, нищо не се пипа — иначе
+ * всяко презареждане триеше създаденото от човека.
+ */
+async function seedDemoContent() {
+    try {
+        const existingBoards = await countFromDB(BOARD_STORE_NAME);
+        if (existingBoards > 0) return;
+
+        const now = Date.now();
+        const board = {
+            "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+            "colorfont": "#000", "datemod": now, "gdid": "demo-board-welcome",
+            "id": 1, "numord": 1, "status": 0, "title": _('demoWelcomeBoard') || 'Welcome'
+        };
+        const note = {
+            "alarm_type": -1, "boardid": board.gdid, "calendarDate": 0,
+            "color": getDefaultNoteBgValue(), "date": now, "datemod": now,
+            "eventId": 0, "gdid": "demo-note-welcome", "id": 1,
+            "notetxt": _('demoWelcomeNote') || 'welcome',
+            "numord": 1, "pass": false, "sellist": 0, "status": 0,
+            "text_span": "", "timer": 0, "timer_type": -1, "timer_val": 1,
+            "title_span": "", "type": 0, "version": 243
+        };
+
+        await bulkPutDB(BOARD_STORE_NAME, [board], true);
+        await bulkPutDB(NOTE_STORE_NAME, [note], true);
+        console.log('[Demo] Seeded one board and one welcome note.');
+    } catch (e) {
+        console.warn('[Demo] Could not seed the demo content:', e);
+    }
+}
+
+/** Показва тънката лента „Демо режим“ под хедъра. */
+function showDemoBanner() {
+    const banner = document.getElementById('demo-banner');
+    if (banner) banner.hidden = false;
+}
+
+/**
+ * Изходът от демо връща към началния екран (чисто) — без автоматичен опит за вход с
+ * Google. Демо базата остава, за да не се губи при следващо влизане в демото.
+ */
+async function exitDemoMode() {
+    try {
+        localStorage.removeItem(DEMO_MODE_STORAGE_KEY);
+        // Интрото остава отбелязано: то е само за първото влизане в демо, не за всяко.
+        const raw = sessionStorage.getItem(DEMO_FLAGS_SNAPSHOT_KEY);
+        if (raw) {
+            const previous = JSON.parse(raw);
+            DEMO_DATA_SOURCE_KEYS.forEach(key => {
+                const value = previous[key];
+                if (value === null || value === undefined) localStorage.removeItem(key);
+                else localStorage.setItem(key, value);
+            });
+            sessionStorage.removeItem(DEMO_FLAGS_SNAPSHOT_KEY);
+        }
+    } catch (e) {
+        console.warn('[Demo] Could not restore the settings on exit:', e);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('demo');
+    window.location.replace(url.toString());
+}
+
+/** Бутонът на началния екран, предупреждението и изходът от лентата. */
+function initDemoModeUI() {
+    // Идемпотентно: извиква се веднага (елементите вече са в DOM, main.js е в края на body)
+    // и повторно при DOMContentLoaded, без да дублира слушателите.
+    if (window.__cxDemoUIReady) return;
+    window.__cxDemoUIReady = true;
+    const startBtn = document.getElementById('demo-start-btn');
+    const banner = document.getElementById('demo-banner');
+
+    // Потвърждение от самия браузър: демото не носи свой прозорец.
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            if (!confirm(_('demoConfirm'))) return;
+            try { localStorage.setItem(DEMO_MODE_STORAGE_KEY, '1'); } catch (e) { }
+            const url = new URL(window.location.href);
+            url.searchParams.set('demo', '1');
+            window.location.href = url.toString();
+        });
+    }
+    // Лентата се показва само когато демото е активно (иначе остава скрита).
+    if (IS_DEMO_MODE && banner) {
+        showDemoBanner();
+    } else if (banner) {
+        banner.hidden = true;
+    }
+}
+
+// Веднага: main.js се зарежда след началния екран, значи елементите вече съществуват и
+// бутонът работи още преди края на парсването на страницата.
+initDemoModeUI();
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDemoModeUI);
+}
+
 // Стартирай зареждането в зависимост от състоянието
 (async () => {
     await setLanguage(currentLang);
+    // Демото се подготвя преди самото стартиране: собствена база и офлайн път.
+    // Няма GIS, няма логин страница.
+    if (IS_DEMO_MODE) await prepareDemoMode();
     dbExists = await checkDbExists(NOTES_DB_NAME);
     const hasToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
     await goOffline();
     if (isOffline) {
-        startApp();
+        // В демо входът е явен: checkAuth пропуска без мрежа и без токен.
+        startApp(IS_DEMO_MODE);
     } else if (hasToken) {
         loadGoogleIdentityServices();
         startApp();
@@ -5379,7 +5604,7 @@ async function startApp(isExplicitLogin = false) {
     }
 
     // --- Graceful fallback for KB Assistant ---
-    // kb-assistantt.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
+    // kb-assistant.js се зарежда едва при първо отваряне (ensureKBAssistant), така че
     // до тогава - или ако зареждането се провали - тук стои този заместител.
     // Той има само init/showGuide/terminateGuide/updateLanguage/isInitialized.
     if (typeof window.kbAssistant === 'undefined') {
@@ -6289,7 +6514,9 @@ function initApp() {
                 return;
             }
         }
-        const hasDirtyNotes = allNotesData && allNotesData.some(n => n.type === -1);
+        // В демо режим бутонът само презарежда от демо базата — не търси синхронизация,
+        // защото офлайн бележките (type = -1) иначе дават само toast „няма мрежа“.
+        const hasDirtyNotes = !IS_DEMO_MODE && allNotesData && allNotesData.some(n => n.type === -1);
         if (hasDirtyNotes && !isForceSync) {
             if (isOffline) {
                 showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
@@ -7150,6 +7377,11 @@ function saveSearchTerm(term) {
 
 // Функция за инициализация на login страницата
 async function initLoginPage() {
+    if (IS_DEMO_MODE) {
+        // В демо няма логин страница: няма акаунт, лиценз и уайтлист за проверка.
+        console.log('[Demo] Login page skipped in demo mode.');
+        return;
+    }
     document.getElementById('login-page').hidden = false;
     document.getElementById('login-page').style.display = 'block';
     updateSearchPlaceholder();
@@ -7238,7 +7470,10 @@ async function initLoginPage() {
 function updateSignoutTooltip() {
     const email = localStorage.getItem('google_login_hint') || sessionStorage.getItem('google_auth_email_hint');
     const signoutBtn = document.getElementById('signout_button');
-    if (signoutBtn) {
+    if (signoutBtn && IS_DEMO_MODE) {
+        // В демо бутонът не излиза от акаунт, а от демо режима.
+        signoutBtn.title = _('demoExitTooltip');
+    } else if (signoutBtn) {
         const baseTooltip = _('signoutButtonTooltip');
         if (email) {
             const username = email.split('@')[0];
@@ -7468,6 +7703,11 @@ async function loadGoogleApis() {
 }
 
 function handleSignoutClick() {
+    // В демо няма акаунт, от който да се излезе: бутонът за изход в хедъра извежда от демото.
+    if (IS_DEMO_MODE) {
+        exitDemoMode();
+        return;
+    }
     // Премахваме ключовете, свързани с удостоверяването
     localStorage.removeItem('google_auth_token');
     sessionStorage.removeItem('google_auth_token');
@@ -8577,6 +8817,12 @@ async function mainLogic(forceFullSync = false) {
         // Показваме бутона за инсталиране, ако има такъв
         if (window.showInstallButton) window.showInstallButton();
 
+        // Демо режимът минава по този клон и не стига до интрото в онлайн finally-то.
+        // Затова то се пуска тук — веднъж на влизане в демо.
+        if (IS_DEMO_MODE) {
+            setTimeout(startDemoAssistantIntro, DEMO_INTRO_DELAY_MS);
+        }
+
         return;
     }
     if (isMainLogicRunning) {
@@ -9005,18 +9251,11 @@ async function mainLogic(forceFullSync = false) {
             if (window.showInstallButton) window.showInstallButton();
             if (!isOffline) loadSettingsFromGDrive(true);
             if (guide && localStorage.getItem('initial_setup_complete') === 'true') {
-                const startAssistantGuide = async () => {
+                const startAssistantGuideOnLoad = async () => {
                     // Водачът зарежда асистента сам (без "какво ново" - то е при отваряне на панела)
-                    if (await ensureKBAssistant()) {
-                        const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
-                        if (entry && entry.guide) {
-                            window.kbAssistant.showGuide(entry.guide);
-                            localStorage.setItem('guide', 'false');
-                            guide = false;
-                        }
-                    }
+                    await startAssistantGuide();
                 };
-                setTimeout(startAssistantGuide, 1500);
+                setTimeout(startAssistantGuideOnLoad, 1500);
             }
         }
     } finally {
@@ -9190,7 +9429,6 @@ async function runLocalSync(forceFullSync = false) {
             : _('localNoUpdates');
         showToast(message, 3000);
     }
-    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: както след синхрона с Drive
     return updatedCount;
 }
 
@@ -10152,7 +10390,7 @@ function buildNoteCalRow(modalBodyElem) {
     const repeatSelect = document.createElement('select');
     repeatSelect.className = 'note-cal-repeat-select';
     [['', 'noteCalRepeatNone', 'none'], ['daily', 'noteCalRepeatDaily', 'every day'], ['weekly', 'noteCalRepeatWeekly', 'every week'],
-        ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year']].forEach(([value, key, fallback]) => {
+    ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year']].forEach(([value, key, fallback]) => {
         const opt = document.createElement('option');
         opt.value = value;
         opt.textContent = _(key) || fallback;
@@ -10448,7 +10686,6 @@ function restoreNoteWindowIds(win) {
 
 function activateNoteWindow(win, front = true) {
     if (!win) return;
-    const switchedWindow = activeNoteWindow !== win;
     if (activeNoteWindow !== win) {
         const prev = activeNoteWindow;
         if (prev) {
@@ -10469,9 +10706,9 @@ function activateNoteWindow(win, front = true) {
         noteStickyColors = sticky ? sticky.colors : { 4: null, 5: null };
         win.el.classList.add('note-window-active');
         if (win.open) setExpandedModalFloatingControls(win.body.dataset.isExpanded === 'true');
+        // Историята за отмяна е на бележка: при смяна на прозореца започва от тук.
+        resetNoteEditUndoHistory(win.body);
     }
-    // Историята за отмяна е на бележка: при смяна на прозореца (от потребителя) започва от тук.
-    if (switchedWindow && front) resetNoteEditUndoHistory(win.body);
     if (front) raiseNoteWindow(win);
 }
 
@@ -11608,7 +11845,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
 
     if (!isPromo && !options.readonly) {
         const closeBtn = modalContentBox.querySelector('.modal-close');
-        if (closeBtn) {
+        // b2.36: Close has its own header cell now, so the colour dot goes into the button row
+        // itself (before the expand control), never next to the close button's new parent.
+        const headerRow = modalContentBox.querySelector('.modal-header-buttons');
+        if (closeBtn && headerRow) {
             const expandBtn = document.getElementById('modal-expand-btn');
             const colorBtn = document.createElement('div');
             colorBtn.id = 'modal-color-btn';
@@ -11627,7 +11867,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
             // Keeps the editor's focus and selection (the text colours apply to the selection).
             colorBtn.addEventListener('mousedown', (e) => e.preventDefault());
             // Keep it immediately to the left of the expand control in the first header row.
-            closeBtn.parentNode.insertBefore(colorBtn, expandBtn || closeBtn);
+            headerRow.insertBefore(colorBtn, expandBtn && expandBtn.parentNode === headerRow ? expandBtn : null);
 
             // Palette
             const palette = document.createElement('div');
@@ -13800,85 +14040,6 @@ function parseSearchQuery(raw) {
     return { lex: true, query: value.slice(m[0].length) };
 }
 
-// b2.26: стъпка 4 — обикновеното търсене е hybrid, когато отметката „Търсене по смисъл“ е поставена и индексът е готов
-// (SeeNotesSemanticIndex.searchEnabled()). Два паса: лексикалното се показва веднага, както досега; векторният крак
-// (semantic-index.js → searchVectors: топ 20 над прага по косинус) идва асинхронно и applyFilters() се вика пак.
-// Тогава двата списъка се сливат по RRF (k = 60), подредбата е с CSS order (DOM редът не се мести — изчистеното поле
-// връща реда и знаците както днес), а бележките, дошли само от векторния крак, носят „≈“. Под полето: „≈ N от M бележки“.
-// „/9“ и „/lex“ остават само лексикални. Без модел / индекс / грешка → само лексикалният крак, без съобщение.
-let hybridSearchSeq = 0; // заявките се броят: отговор на стара заявка не презаписва реда на нова
-let hybridSearchPending = null; // заявката, чийто векторен крак се смята в момента
-let hybridSearchResult = null; // { query, ok, hits } — последният получен отговор
-
-function hybridSearchActive() {
-    return !!(window.SeeNotesSemanticIndex && typeof window.SeeNotesSemanticIndex.searchEnabled === 'function'
-        && window.SeeNotesSemanticIndex.searchEnabled());
-}
-
-// null = още се смята (първи пас); { ok:false } = падане на лексикалния крак; { ok:true, hits } = вторият пас.
-function getHybridVectorResult(query) {
-    if (hybridSearchResult && hybridSearchResult.query === query) {
-        // отговорът, който още се смята за друга (по-стара) заявка, вече не трябва да презапише този
-        if (hybridSearchPending !== null) { hybridSearchSeq++; hybridSearchPending = null; }
-        return hybridSearchResult;
-    }
-    if (hybridSearchPending === query) return null;
-    hybridSearchPending = query;
-    const seq = ++hybridSearchSeq;
-    const done = (res) => {
-        if (seq !== hybridSearchSeq) return;
-        hybridSearchPending = null;
-        hybridSearchResult = { query, ok: !!(res && res.ok), hits: (res && res.ok && res.hits) || [] };
-        const box = document.getElementById('search-box');
-        const now = box ? parseSearchQuery(box.value) : null;
-        if (now && !now.lex && now.query.trim() === query) applyFilters();
-    };
-    Promise.resolve()
-        .then(() => window.SeeNotesSemanticIndex.searchVectors(query))
-        .then(done, () => done(null));
-    return null;
-}
-
-function hybridNoteKey(note) {
-    return String(note.dataset.g || note.dataset.i || '');
-}
-
-// Ранг в лексикалния крак: срещания на заявката — в заглавието ×3, в тялото ×1.
-function countSearchOccurrences(text, term) {
-    if (!term) return 0;
-    let n = 0;
-    for (let i = text.indexOf(term); i !== -1; i = text.indexOf(term, i + term.length)) n++;
-    return n;
-}
-
-function setSemanticHitChip(note, on) {
-    note.classList.toggle('semantic-hit', !!on);
-    let chip = note.querySelector(':scope > .semantic-hit-chip');
-    if (on && !chip) {
-        chip = document.createElement('span');
-        chip.className = 'semantic-hit-chip';
-        chip.textContent = '≈';
-        chip.setAttribute('aria-hidden', 'true');
-        note.appendChild(chip);
-    } else if (!on && chip) {
-        chip.remove();
-    }
-}
-
-function renderHybridSearchLine(state, semanticCount, total) {
-    const line = document.getElementById('search-hybrid-line');
-    if (!line) return;
-    const wrapper = line.parentElement;
-    if (wrapper) wrapper.classList.toggle('has-hybrid-line', !!state); // попъпът със запазените търсения слиза под реда
-    line.classList.toggle('pending', state === 'pending');
-    if (!state) { line.hidden = true; line.textContent = ''; return; }
-    if (state === 'pending') { line.textContent = '≈'; line.hidden = false; return; }
-    const key = total === 1 ? 'semanticSearchLineOne' : 'semanticSearchLine';
-    const tpl = (typeof _ === 'function' && _(key)) || '≈ {n} / {total}';
-    line.textContent = tpl.split('{n}').join(String(semanticCount)).split('{total}').join(String(total));
-    line.hidden = false;
-}
-
 function applyFilters() {
     const searchBox = document.getElementById('search-box');
     const parsedSearch = parseSearchQuery(searchBox ? searchBox.value : '');
@@ -13889,13 +14050,6 @@ function applyFilters() {
     const normalizedSearchTerm = (isLexSearch && searchTerm !== '') ? normalizeSearchText(parsedSearch.query) : '';
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;
-    // b2.26: hybrid само за голата заявка; векторният резултат е null, докато се смята (първи пас)
-    const hybridQuery = (!isLexSearch && searchTerm.trim() !== '' && hybridSearchActive()) ? parsedSearch.query.trim() : '';
-    const hybridResult = hybridQuery ? getHybridVectorResult(hybridQuery) : null;
-    const hybridReady = !!(hybridResult && hybridResult.ok);
-    const vectorRank = new Map();
-    if (hybridReady) hybridResult.hits.forEach((h, i) => { if (!vectorRank.has(String(h.id))) vectorRank.set(String(h.id), i + 1); });
-    const hybridVisible = []; // { note, key, lexScore, semanticOnly, domIndex }
     // --- PRE-CALCULATE FILTER MODES ---
     const isAll = currentBoardFilter === 'all' || currentBoardFilter === 'search-results';
     const isReminder = currentBoardFilter === 'reminder';
@@ -13965,8 +14119,6 @@ function applyFilters() {
         }
         // Filter by Search Term
         let matchesSearch = true;
-        let lexScore = 0;
-        let semanticOnly = false;
         // OPTIMIZATION: Only access DOM textContent if there is a search term!
         if (searchTerm !== '') {
             const titleEl = note.querySelector('.note-title-truncated');
@@ -13975,26 +14127,13 @@ function applyFilters() {
             matchesSearch = isLexSearch
                 ? getNormalizedNoteText(note, noteText).includes(normalizedSearchTerm)
                 : noteText.toLowerCase().includes(searchTerm);
-            if (hybridReady) {
-                if (matchesSearch) {
-                    lexScore = 3 * countSearchOccurrences((titleEl ? titleEl.textContent : '').toLowerCase(), searchTerm)
-                        + countSearchOccurrences((contentEl ? contentEl.textContent : '').toLowerCase(), searchTerm);
-                } else if (vectorRank.has(hybridNoteKey(note))) {
-                    matchesSearch = true;
-                    semanticOnly = true;
-                }
-            }
         }
         // Проверка за режим "търсене само в борда"
         let inBoardScope = true;
         if (searchInBoardOnly && searchTerm !== '' && boardOnlyIds.length > 0) {
             inBoardScope = boardOnlyIds.some(id => note.dataset.b == id);
         }
-        const isShown = (searchTerm !== '' ? (matchesSearch && inBoardScope && (!isDeleted || trashSearch)) : isVisibleByBoard);
-        setSemanticHitChip(note, isShown && semanticOnly);
-        if (isShown && hybridReady) hybridVisible.push({ note, key: hybridNoteKey(note), lexScore, semanticOnly, domIndex: hybridVisible.length });
-        else if (note.style.order) note.style.order = '';
-        if (isShown) {
+        if ((searchTerm !== '' ? (matchesSearch && inBoardScope && (!isDeleted || trashSearch)) : isVisibleByBoard)) {
             note.style.display = 'flex';
             visibleCount++;
             if (isNewUpdates && isDeleted) {
@@ -14014,31 +14153,13 @@ function applyFilters() {
             if (trashOverlay) trashOverlay.remove();
         }
     }
-    // b2.26: вторият пас на hybrid търсенето — ред по RRF вместо обичайното сортиране
-    let semanticOnlyCount = 0;
-    if (hybridReady) {
-        const lexical = hybridVisible.filter(x => !x.semanticOnly)
-            .sort((a, b) => (b.lexScore - a.lexScore) || (a.domIndex - b.domIndex));
-        const byKey = new Map();
-        hybridVisible.forEach(x => { if (!byKey.has(x.key)) byKey.set(x.key, []); byKey.get(x.key).push(x); });
-        const lexIds = lexical.map(x => x.key);
-        const vecIds = hybridResult.hits.map(h => String(h.id)).filter(id => byKey.has(id));
-        let order = 1;
-        window.SeeNotesSemanticIndex.fuse(lexIds, vecIds).forEach(row => {
-            (byKey.get(row.id) || []).forEach(x => { if (!x.ordered) { x.note.style.order = String(order++); x.ordered = true; } });
-            byKey.delete(row.id);
-        });
-        hybridVisible.forEach(x => { if (!x.ordered) x.note.style.order = String(order++); }); // бележки без ИД — накрая
-        semanticOnlyCount = hybridVisible.filter(x => x.semanticOnly).length;
-    }
-    renderHybridSearchLine(hybridQuery ? (hybridReady ? 'ready' : (hybridResult ? null : 'pending')) : null, semanticOnlyCount, visibleCount);
     // --- Sorting Logic ---
     const pinSortingEnabled = currentBoardFilter === 'all' || isStandard;
     const systemSortStatus = getSystemBoardSortStatus(currentBoardFilter);
     const systemSortOverrideEnabled = systemSortStatus >= 10;
     const reminderDateSortingEnabled = isReminder && !systemSortOverrideEnabled;
     const noteSortingEnabled = localStorage.getItem('enableNoteSorting') === 'true';
-    if (!hybridReady && (noteSortingEnabled || pinSortingEnabled || reminderDateSortingEnabled || systemSortOverrideEnabled)) {
+    if (noteSortingEnabled || pinSortingEnabled || reminderDateSortingEnabled || systemSortOverrideEnabled) {
         let sortCriteria = localStorage.getItem('sortCriteria') || 'numord';
         let sortReverse = localStorage.getItem('sortInReverse') === 'true';
         let sortRemindersTop = localStorage.getItem('sortRemindersTop') === 'true';
@@ -17437,8 +17558,6 @@ async function createSettingsUI(boardsData, boardParseError) {
         boardsArrow.style.transition = 'transform 0.3s ease';
         boardsArrow.style.transform = isActive ? 'rotate(0deg)' : 'rotate(180deg)';
     });
-    // Търсене по смисъл (b2.23): акордеонът под „Подреждане на бележките“ — само слушатели, нищо не се тегли
-    if (typeof initSemanticSection === 'function') initSemanticSection();
     // Sorting options
     const sortCriteriaRadios = document.querySelectorAll('input[name="sort-criteria"]');
     const savedSortCriteria = localStorage.getItem('sortCriteria') || 'numord';
@@ -18783,7 +18902,6 @@ async function saveNoteCheckboxChange(noteObj) {
     else if (useIndexedDbNow) noteObj.type = -1; // за офлайн синхронизация
     if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, noteObj, true);
     if (typeof updateReloadButtonState === 'function') updateReloadButtonState();
-    if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: отметката мени текста
 }
 
 // Елементът, спрямо чийто шрифт се мери висящият отстъп на списъците.
@@ -18887,7 +19005,10 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     if (isForModal || oneTapLinksEnabled) {
         escapedText = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     } else {
-        escapedText = escapedText.replace(urlRegex, '$1');
+        // На борда URL-ът не е линк (освен при one-tap), но трябва да се съкращава със „…“ като в
+        // модала, вместо да се пренася на няколко реда. Затова го обвиваме в елемент със същото
+        // поведение като .note-content a — виж nmd-link-elide в style.css.
+        escapedText = escapedText.replace(urlRegex, '<span class="nmd-link-elide">$1</span>');
     }
     escapedText = escapedText.replace(/`([^`\n]+)`/g, '<code class="md-inline-code" style="background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; font-family: monospace;">$1</code>');
     const symBold = (localStorage.getItem('mdBold') || '**').trim();
@@ -20821,11 +20942,11 @@ function ensureKBAssistant() {
     // Класът остава дефиниран след първото зареждане - скриптът не се добавя втори път
     const js = typeof KBAssistant !== 'undefined'
         ? Promise.resolve()
-        : loadKBAssistantFile('script', { src: 'kb-assistantt.js' });
+        : loadKBAssistantFile('script', { src: 'kb-assistant.js' });
     kbAssistantLoadPromise = Promise.all([css, js])
         .then(() => {
             if (!window.kbAssistant || typeof window.kbAssistant.getText !== 'function') {
-                throw new Error('kb-assistantt.js did not define the assistant');
+                throw new Error('kb-assistant.js did not define the assistant');
             }
             return window.kbAssistant.init();
         })
@@ -20852,6 +20973,55 @@ function ensureKBAssistant() {
             return ok;
         });
     return kbAssistantLoadPromise;
+}
+
+/**
+ * Интрото на асистента (запис assistant-1 в базата на знанието): зарежда асистента и
+ * пуска тура. Връща true, ако турът е тръгнал.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.force] - пуска интрото дори при вече изтекъл флаг 'guide'
+ * @param {boolean} [options.persistFlag=true] - записва ли 'guide'='false' (демото не пипа
+ *        истинските настройки на браузъра, за да не изяде интрото на реалното приложение)
+ * @returns {Promise<boolean>}
+ */
+async function startAssistantGuide(options = {}) {
+    if (!options.force && !guide) return false;
+    if (!(await ensureKBAssistant())) return false;
+    const entry = window.kbAssistant.kbData?.general?.find(e => e.id === 'assistant-1');
+    if (!entry || !entry.guide) return false;
+    window.kbAssistant.showGuide(entry.guide);
+    if (options.persistFlag !== false) {
+        localStorage.setItem('guide', 'false');
+        guide = false;
+    }
+    return true;
+}
+
+/**
+ * Интро в демо режима: показва се само при първото влизане в демо — после никога,
+ * независимо от initial_setup_complete (демото не минава първоначална настройка, значи
+ * флагът никога не се вдига) и независимо от флага 'guide'.
+ */
+async function startDemoAssistantIntro() {
+    if (!IS_DEMO_MODE) return false;
+    try {
+        // Флагът се вдига веднага, синхронно: иначе две извиквания на mainLogic, чиито
+        // таймери гръмнат в един и същ тик, биха пуснали тура два пъти. При неуспех се
+        // маха, за да опита пак при следващо влизане.
+        if (localStorage.getItem(DEMO_INTRO_STORAGE_KEY) === '1') return false;
+        localStorage.setItem(DEMO_INTRO_STORAGE_KEY, '1');
+        // Офлайн клонът на mainLogic прави return, а finally-то на онлайн клона не се
+        // изпълнява — затова тук чакаме само рамка, за да е готов бордът.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const started = await startAssistantGuide({ force: true, persistFlag: false });
+        if (!started) localStorage.removeItem(DEMO_INTRO_STORAGE_KEY);
+        return started;
+    } catch (e) {
+        try { localStorage.removeItem(DEMO_INTRO_STORAGE_KEY); } catch (_) { }
+        console.warn('[Demo] Assistant intro could not be shown:', e);
+        return false;
+    }
 }
 
 function onKBFabClick(e) {
@@ -20918,21 +21088,21 @@ async function waitingWorkerIsNewBuild(worker) {
 
 // Банерът за обновяване: на топ ниво, защото го вика handleWaitingWorker (вътре в load
 // handler-а не се виждаше от нея - ReferenceError: showUpdateNotification is not defined).
-        // Function to show update notification as a persistent floating bar
-        // Uses a simple boolean flag - guarantees at most ONE notification per page load
-        const showUpdateNotification = (waitingSW) => {
-            if (!waitingSW) return;
+// Function to show update notification as a persistent floating bar
+// Uses a simple boolean flag - guarantees at most ONE notification per page load
+const showUpdateNotification = (waitingSW) => {
+    if (!waitingSW) return;
 
-            // Block if already shown on this page load
-            if (window._swUpdateBarShown) return;
+    // Block if already shown on this page load
+    if (window._swUpdateBarShown) return;
 
-            window._swUpdateBarShown = true;
-            console.log('[SW] Showing update notification bar.');
+    window._swUpdateBarShown = true;
+    console.log('[SW] Showing update notification bar.');
 
-            // Create update notification bar
-            const updateBar = document.createElement('div');
-            updateBar.id = 'sw-update-bar';
-            updateBar.style.cssText = `
+    // Create update notification bar
+    const updateBar = document.createElement('div');
+    updateBar.id = 'sw-update-bar';
+    updateBar.style.cssText = `
                 position: fixed;
                 bottom: 15px;
                 left: 50%;
@@ -20951,13 +21121,13 @@ async function waitingWorkerIsNewBuild(worker) {
                 animation: swSlideUp 0.3s ease;
             `;
 
-            const textSpan = document.createElement('span');
-            textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
-            textSpan.style.fontWeight = '500';
+    const textSpan = document.createElement('span');
+    textSpan.textContent = typeof _ === 'function' ? _('newVersionAvailable') : "New version available!";
+    textSpan.style.fontWeight = '500';
 
-            const refreshBtn = document.createElement('button');
-            refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
-            refreshBtn.style.cssText = `
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = typeof _ === 'function' ? _('refreshNow') : "Refresh now";
+    refreshBtn.style.cssText = `
                 background: white;
                 color: #667eea;
                 border: none;
@@ -20967,31 +21137,31 @@ async function waitingWorkerIsNewBuild(worker) {
                 font-weight: bold;
                 transition: all 0.2s;
             `;
-            refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
-            refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
-            refreshBtn.onclick = () => {
-                localStorage.removeItem('app_version_seen');
-                waitingSW.postMessage({ type: 'SKIP_WAITING' });
-                setTimeout(() => updateBar.remove(), 100);
-            };
+    refreshBtn.onmouseover = () => { refreshBtn.style.transform = 'scale(1.05)'; refreshBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
+    refreshBtn.onmouseout = () => { refreshBtn.style.transform = 'scale(1)'; refreshBtn.style.boxShadow = 'none'; };
+    refreshBtn.onclick = () => {
+        localStorage.removeItem('app_version_seen');
+        waitingSW.postMessage({ type: 'SKIP_WAITING' });
+        setTimeout(() => updateBar.remove(), 100);
+    };
 
-            updateBar.appendChild(textSpan);
-            updateBar.appendChild(refreshBtn);
-            document.body.appendChild(updateBar);
+    updateBar.appendChild(textSpan);
+    updateBar.appendChild(refreshBtn);
+    document.body.appendChild(updateBar);
 
-            // Add animation style if not exists
-            if (!document.getElementById('sw-update-style')) {
-                const style = document.createElement('style');
-                style.id = 'sw-update-style';
-                style.textContent = `
+    // Add animation style if not exists
+    if (!document.getElementById('sw-update-style')) {
+        const style = document.createElement('style');
+        style.id = 'sw-update-style';
+        style.textContent = `
                     @keyframes swSlideUp {
                         from { transform: translateX(-50%) translateY(100px); opacity: 0; }
                         to { transform: translateX(-50%) translateY(0); opacity: 1; }
                     }
                 `;
-                document.head.appendChild(style);
-            }
-        };
+        document.head.appendChild(style);
+    }
+};
 
 let handledWaitingWorker = null;
 async function handleWaitingWorker(worker) {
@@ -21603,8 +21773,8 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         // Геометрията влиза в отметката; вече взета при отварянето - остава (местене преди редакция пак е промяна).
         if (modalBodyElem.dataset.baseGeometry === undefined) setNoteWindowBaseGeometry(modalBodyElem);
     }
-    // Начална точка на историята за отмяна: състоянието, в което бележката се отваря (след
-    // подравняването на таблиците при отваряне, за да не се отменя то).
+    // Where the undo history starts: the state the note opens in (after the table alignment done on
+    // opening, so undo does not step back into it).
     resetNoteEditUndoHistory(modalBodyElem);
 }
 function toggleListFormat(textarea, listType) {
@@ -21749,8 +21919,10 @@ document.addEventListener('keydown', (e) => {
         const isZ = (code === 'KeyZ' || key === 'z');
         const isY = (code === 'KeyY' || key === 'y');
 
-        // Ctrl/⌘+Z - назад, Ctrl/⌘+Shift+Z (или Ctrl+Y) - напред, през нашата история за бележката.
-        if (isZ || isY) {
+        // Ctrl/⌘+Z - back, Ctrl/⌘+Shift+Z (or Ctrl+Y) - forward, through our history for the note.
+        // Caught before the browser's own undo, so the two histories do not drift apart.
+        // Not inside an open table field: a cell keeps the browser's own undo for what was typed in it.
+        if ((isZ || isY) && !(activeTextarea.classList && activeTextarea.classList.contains('note-table-field'))) {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
@@ -23184,7 +23356,6 @@ function applyMarkdownTableAlignment(all = false) {
         const result = planMarkdownTableFieldsClose(textarea.value, ranges || []);
         applyTableEditsToNoteTextarea(textarea, result.edits, result.text);
         updateTableAlignButtonState();
-        commitNoteEditUndo(getNoteEditModalBody(textarea));
         return;
     }
     const plan = planMarkdownTableFieldsOpen(textarea.value, textarea.selectionStart, all);
@@ -23195,7 +23366,6 @@ function applyMarkdownTableAlignment(all = false) {
     applyTableEditsToNoteTextarea(textarea, plan.edits, plan.text);
     openNoteTableSplit(textarea, plan.ranges);
     updateTableAlignButtonState();
-    commitNoteEditUndo(getNoteEditModalBody(textarea));
 }
 
 // Opening the editor (plan 9): every alignable table in the note is aligned and shown in its
@@ -23248,18 +23418,17 @@ function revealNoteTableSplitCaret(split) {
 }
 
 // --- Отмяна / връщане напред в редактора на бележката (50 стъпки) ---
-// Снимка се пази на граница на дума (интервал, нов ред, пунктуация), при B/I/U/S, при поставяне,
-// при ▦ и при излизане от полето - не на всеки символ. Така при нормално писане отмяната връща
-// дума по дума, а не буква по буква; ако граница не дойде, снимка се записва на пауза
-// (NOTE_EDIT_UNDO_DELAY).
-// Снимката носи текста на тялото и заглавието, форматите им (dataset.format / dataset.titleFormat),
-// позицията на курсора и полето, в което е бил. Историята е на бележка (пази се на елемента
-// #modal-body на прозореца), за да не прескача от бележка в бележка.
-const NOTE_EDIT_UNDO_STEPS = 50; // колко стъпки назад (текущото състояние не се брои)
-const NOTE_EDIT_UNDO_DELAY = 900; // пауза в писането без граница на дума, след която се записва снимка
-let noteEditUndoRestoring = false; // връщането не бива да записва нова снимка
+// A snapshot is taken on a word boundary (space, new line, punctuation), at B/I/U/S, at a paste,
+// at ▦ and when a field loses focus - not on every character. So undo goes back word by word
+// instead of letter by letter; if no boundary comes, a pause (NOTE_EDIT_UNDO_DELAY) takes one.
+// The snapshot carries the body text and the title, their formats (dataset.format /
+// dataset.titleFormat), the caret and the field it was in. The history belongs to the note (it lives
+// on the #modal-body element of that window), so it does not jump from note to note.
+const NOTE_EDIT_UNDO_STEPS = 50; // how many steps back (the current state is not counted)
+const NOTE_EDIT_UNDO_DELAY = 900; // pause in typing with no word boundary after which a snapshot is taken
+let noteEditUndoRestoring = false; // restoring must not take a new snapshot
 
-// Кой #modal-body (или неговият скрит двойник при няколко отворени бележки) стои зад елемент.
+// Which #modal-body (or its hidden twin when several notes are open) stands behind an element.
 function getNoteEditUndoBodyFrom(el) {
     if (el && el._undoBody) return el._undoBody;
     const box = el && el.closest ? el.closest('.modal-content-box') : null;
@@ -23275,8 +23444,8 @@ function getNoteEditUndoHistory(modalBodyElem, create = true) {
     return modalBodyElem._noteEditUndo || null;
 }
 
-// Текущото състояние на редактора като снимка. При отворени полета на таблица (▦) скритата
-// текстова кутия пак държи цялата бележка, значи снимката се чете само от нея.
+// The editor's current state as a snapshot. With open table fields (▦) the hidden textarea still
+// holds the whole note, so the snapshot is read from it alone.
 function takeNoteEditUndoSnapshot(modalBodyElem) {
     const body = getNoteEditUndoBodyFrom(modalBodyElem) || modalBodyElem;
     const main = document.getElementById('note-edit-textarea');
@@ -23290,7 +23459,7 @@ function takeNoteEditUndoSnapshot(modalBodyElem) {
         caretStart = title.selectionStart;
         caretEnd = title.selectionEnd;
     } else if (active && active !== main && isNoteEditBodyField(active)) {
-        // Поле от таблицата: позицията се брои в бележката, не в полето.
+        // A table field: the position counts in the note, not in the field.
         const ctx = getNoteEditContext(active);
         if (ctx && ctx.off >= 0) {
             fieldId = 'note-edit-textarea';
@@ -23317,13 +23486,14 @@ function noteEditUndoSnapshotEqual(a, b) {
         && a.titleFormat === b.titleFormat;
 }
 
-// Записва снимка, ако има промяна. Нова промяна след отмяна изтрива стъпките напред.
+// Takes a snapshot if anything changed. A new change after an undo drops the steps ahead.
 function commitNoteEditUndo(modalBodyElem) {
     if (noteEditUndoRestoring) return;
     const body = modalBodyElem || document.getElementById('modal-body');
     const hist = getNoteEditUndoHistory(body);
     if (!hist) return;
-    // Само по активния прозорец: иначе отложена снимка ще смеси текста на една бележка с форматите на друга.
+    // Only on the active window: a delayed snapshot would otherwise mix one note's text with
+    // another note's formats.
     const activeBody = getNoteEditUndoBodyFrom(document.getElementById('note-edit-textarea'));
     if (activeBody && body !== activeBody) return;
     if (hist.timer) {
@@ -23338,7 +23508,7 @@ function commitNoteEditUndo(modalBodyElem) {
     }
     if (hist.cursor < hist.entries.length - 1) hist.entries = hist.entries.slice(0, hist.cursor + 1);
     hist.entries.push(snap);
-    // Най-старото излиза: пазят се 50 стъпки назад плюс текущото състояние.
+    // The oldest one leaves: 50 steps back plus the current state are kept.
     if (hist.entries.length > NOTE_EDIT_UNDO_STEPS + 1) {
         hist.entries = hist.entries.slice(hist.entries.length - (NOTE_EDIT_UNDO_STEPS + 1));
     }
@@ -23346,7 +23516,7 @@ function commitNoteEditUndo(modalBodyElem) {
     updateNoteEditUndoUI(body);
 }
 
-// Отлага снимка с ~900 ms след последния натиснат клавиш (само когато няма граница на дума).
+// Delays a snapshot by ~900 ms after the last key pressed (only when there was no word boundary).
 function scheduleNoteEditUndoCommit(field) {
     if (noteEditUndoRestoring) return;
     const body = getNoteEditUndoBodyFrom(field);
@@ -23359,8 +23529,8 @@ function scheduleNoteEditUndoCommit(field) {
     }, NOTE_EDIT_UNDO_DELAY);
 }
 
-// Връща една снимка: текст, заглавие, форматите им и курсора. При отворена таблица (▦) полетата
-// се затварят първо и се отварят пак само ако това няма да препише върнатия текст.
+// Puts one snapshot back: text, title, their formats and the caret. With table fields open (▦) the
+// fields are closed first and reopened only if that does not overwrite the restored text.
 function applyNoteEditUndoSnapshot(modalBodyElem, snap) {
     if (!snap) return;
     const body = modalBodyElem || document.getElementById('modal-body');
@@ -23373,7 +23543,8 @@ function applyNoteEditUndoSnapshot(modalBodyElem, snap) {
         if (main && getNoteTableSplit(main)) closeNoteTableSplit(main);
         if (main) {
             main.value = snap.body;
-            // lastVal се вдига преди handleEditInput: разлика няма, значи форматите не се местят сами.
+            // lastVal is raised before handleEditInput: no difference, so the formats do not move by
+            // themselves.
             main.dataset.lastVal = snap.body;
             handleEditInput(main, mainBackdrop);
         }
@@ -23382,7 +23553,7 @@ function applyNoteEditUndoSnapshot(modalBodyElem, snap) {
             title.dataset.lastVal = snap.title;
             handleEditInput(title, titleBackdrop);
         }
-        // Форматите се връщат точно както са били записани.
+        // The formats go back exactly as they were recorded.
         if (body) {
             body.dataset.format = snap.bodyFormat || '';
             body.dataset.titleFormat = snap.titleFormat || '';
@@ -23412,7 +23583,7 @@ function applyNoteEditUndoSnapshot(modalBodyElem, snap) {
 
 function undoNoteEdit(modalBodyElem) {
     const body = modalBodyElem || document.getElementById('modal-body');
-    // Първо се записва какво е написано от последната пауза, за да не се загуби.
+    // First record what was typed since the last pause, so it is not lost.
     commitNoteEditUndo(body);
     const hist = getNoteEditUndoHistory(body);
     if (!hist || hist.cursor <= 0) {
@@ -23437,8 +23608,8 @@ function redoNoteEdit(modalBodyElem) {
     updateNoteEditUndoUI(body);
 }
 
-// Нова начална точка: една снимка (по подразбиране текущото състояние). Извиква се при отваряне на
-// бележка, при смяна на прозореца и след Запис.
+// A new starting point: one snapshot (the current state by default). Called when a note is opened,
+// when the window changes and after Save.
 function resetNoteEditUndoHistory(modalBodyElem, state = null) {
     const body = getNoteEditUndoBodyFrom(modalBodyElem) || modalBodyElem || document.getElementById('modal-body');
     if (!body) return;
@@ -23453,8 +23624,7 @@ function resetNoteEditUndoHistory(modalBodyElem, state = null) {
     updateNoteEditUndoUI(body);
 }
 
-// Стрелките се приглушават, когато не могат нищо. (Брояч на стъпките няма: заемаше място и
-// сваляше бутони на долния ред.)
+// The arrows dim when they can do nothing. (No step counter: it took a button's place.)
 function updateNoteEditUndoUI(modalBodyElem) {
     const body = modalBodyElem || document.getElementById('modal-body');
     if (!body || !body.closest) return;
@@ -23470,16 +23640,14 @@ function updateNoteEditUndoUI(modalBodyElem) {
     if (redoBtn) redoBtn.classList.toggle('is-disabled', cursor >= total - 1);
 }
 
-// Закача полетата на редактора към историята на своята бележка. Повторно извикване не слага
-// втори слушател на същото поле.
-// Граница на дума: интервал, нов ред или пунктуация. На граница снимка се записва веднага, за да
-// връща отмяната дума по дума; буквите между две граници се събират в една стъпка.
+// A word boundary: a space, a new line or punctuation. On a boundary a snapshot is taken at once, so
+// undo goes back word by word; the letters between two boundaries collect into one step.
 const NOTE_EDIT_UNDO_BOUNDARY = /[\s\u00a0.,;:!?…·—–\-()\[\]{}"'«»„“”*_~/\\|+=<>@#$%^&]/;
 
 function isNoteEditUndoBoundaryInput(event) {
     if (!event) return false;
     if (event.inputType === 'insertLineBreak' || event.inputType === 'insertParagraph') return true;
-    // Изтриване на цяла дума или на изрязано: също е завършено действие, не буква по буква.
+    // Deleting a whole word, or a cut: also a finished action, not letter by letter.
     if (event.inputType === 'deleteByCut' || event.inputType === 'deleteWordBackward' || event.inputType === 'deleteWordForward') return true;
     const data = event.data;
     return typeof data === 'string' && data.length === 1 && NOTE_EDIT_UNDO_BOUNDARY.test(data);
@@ -23508,6 +23676,22 @@ function initNoteEditUndo(modalBodyElem) {
     updateNoteEditUndoUI(body);
 }
 
+// The strip scrolls sideways, so it needs to say it continues: the right edge fades while there is
+// more to the right. Re-measured when the strip resizes (rotation, a window widening).
+function updateModalEditToolbarOverflow(toolbar) {
+    if (!toolbar) return;
+    toolbar.classList.toggle('is-scrollable', toolbar.scrollWidth > toolbar.clientWidth + 1);
+}
+
+function observeModalEditToolbarOverflow(toolbar) {
+    updateModalEditToolbarOverflow(toolbar);
+    if (typeof ResizeObserver !== 'function') return;
+    if (toolbar._overflowObserver) toolbar._overflowObserver.disconnect();
+    const observer = new ResizeObserver(() => updateModalEditToolbarOverflow(toolbar));
+    observer.observe(toolbar);
+    toolbar._overflowObserver = observer;
+}
+
 function createModalEditToolbar(modalContentBox) {
     if (!modalContentBox) return;
     restoreModalHeaderListButtons();
@@ -23517,7 +23701,7 @@ function createModalEditToolbar(modalContentBox) {
     const toolbar = document.createElement('div');
     toolbar.className = 'modal-edit-toolbar';
     toolbar.setAttribute('aria-label', 'Инструменти за форматиране');
-    const addButton = ({ label, title, className = '', action, onLongPress }, parent = toolbar) => {
+    const addButton = ({ label, title, className = '', action, onLongPress }) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `modal-edit-toolbar-btn modal-header-btn ${className}`.trim();
@@ -23576,7 +23760,7 @@ function createModalEditToolbar(modalContentBox) {
         } else {
             button.addEventListener('click', action);
         }
-        parent.appendChild(button);
+        toolbar.appendChild(button);
     };
     const applyMarkdown = (type) => {
         const textarea = getActiveModalEditor();
@@ -23592,19 +23776,19 @@ function createModalEditToolbar(modalContentBox) {
             type === 'underline',
             type === 'strike'
         );
-        // Форматирането се записва като отделна стъпка веднага, без да чака пауза.
+        // Formatting is recorded as its own step at once, without waiting for a pause.
         commitNoteEditUndo(getNoteEditUndoBodyFrom(textarea));
     };
-    // Отмяна ↶ / връщане напред ↷: най-отляво, преди B - историята е за текста, не за навигация.
+    // Undo ↶ / redo ↷: first, before B - the history is the text's, not navigation's.
     addButton({
         label: '↶',
-        title: _('undoTooltip') || 'Назад · Undo (Ctrl+Z)',
+        title: _('undoTooltip') || 'Undo (Ctrl+Z)',
         className: 'is-undo',
         action: () => undoNoteEdit(getNoteEditUndoBodyFrom(toolbar))
     });
     addButton({
         label: '↷',
-        title: _('redoTooltip') || 'Напред · Redo (Ctrl+Shift+Z)',
+        title: _('redoTooltip') || 'Redo (Ctrl+Shift+Z)',
         className: 'is-redo',
         action: () => redoNoteEdit(getNoteEditUndoBodyFrom(toolbar))
     });
@@ -23618,10 +23802,6 @@ function createModalEditToolbar(modalContentBox) {
         button.style.display = 'flex';
         toolbar.appendChild(button);
     });
-    // Навигацията (← → ▦) е в собствена група, която не се цепи: ако лентата се събере на два реда,
-    // тези три минават на втория ред заедно, а не по един-два.
-    const navGroup = document.createElement('div');
-    navGroup.className = 'modal-edit-toolbar-nav';
     addButton({
         label: '←',
         title: _('lineStartTooltip') || 'One character left · Ctrl/hold: line start',
@@ -23629,7 +23809,7 @@ function createModalEditToolbar(modalContentBox) {
             ? moveCaretToLineEdge(getActiveModalEditor(), false, false)
             : moveCaretByOne(getActiveModalEditor(), -1),
         onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, false)
-    }, navGroup);
+    });
     addButton({
         label: '→',
         title: _('lineEndTooltip') || 'One character right · Ctrl/hold: line end',
@@ -23637,15 +23817,14 @@ function createModalEditToolbar(modalContentBox) {
             ? moveCaretToLineEdge(getActiveModalEditor(), true, false)
             : moveCaretByOne(getActiveModalEditor(), 1),
         onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, false)
-    }, navGroup);
+    });
     addButton({
         label: '▦',
         title: _('tableAlignTooltip') || 'Align the table under the caret and show it in its place in a field you can type in (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables',
         className: 'is-table',
         action: (e) => applyMarkdownTableAlignment(!!(e && (e.ctrlKey || e.metaKey))),
         onLongPress: () => applyMarkdownTableAlignment(true)
-    }, navGroup);
-    toolbar.appendChild(navGroup);
+    });
     headerToolbar.appendChild(toolbar);
     const noteTextarea = document.getElementById('note-edit-textarea');
     // The button state follows the table under the caret, so caret moves refresh it too.
@@ -23655,6 +23834,8 @@ function createModalEditToolbar(modalContentBox) {
     updateTableAlignButtonState();
     updateNoteStickyButtons();
     modalContentBox.classList.add('has-edit-toolbar');
+    // The strip is one row and scrolls: it fades at its right edge while there is more to the right.
+    observeModalEditToolbarOverflow(toolbar);
 }
 
 function initNoteEditUI() {
@@ -24735,7 +24916,6 @@ function saveEditedNote(forceClose = false) {
             showToast(_(msgKey).replace('{boardName}', boardTitle));
             updateReloadButtonState();
             scheduleGcalSync(); // събитието в Google Календар (етап 3)
-            if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync(); // b2.23: индексът за търсене по смисъл
         }
 
         // If modal was not closed, refresh its content to show the saved state
@@ -26151,7 +26331,9 @@ async function showNewBoardModal() {
             return;
         }
 
-        if (!currentEditingBoard && isOffline) {
+        // В демо режим бордът се записва само в локалната демо база, затова офлайн
+        // забраната не важи: тя пази синхронизацията с Google Drive, а демото няма такава.
+        if (!currentEditingBoard && isOffline && !IS_DEMO_MODE) {
             showToast(_('errorOfflineBoardCreate') || "Не може да създавате нов борд в офлайн режим.", 5000);
             return;
         }
@@ -26250,6 +26432,12 @@ async function showNewBoardModal() {
             }
 
             const updateGDriveNow = useGoogleDb && !isOffline;
+            // Без Google Drive ключът на борда (gdid) идва оттам. Офлайн такъв няма и
+            // празен gdid караше всеки нов борд да презаписва предишния — затова тук
+            // бордът получава собствен локален ключ.
+            if (!updateGDriveNow && !boardToSave.gdid) {
+                boardToSave.gdid = 'local-board-' + boardToSave.id;
+            }
             if (updateGDriveNow) {
                 let updated = false;
                 if (currentEditingBoard && currentEditingBoard.gdid) {
@@ -26538,7 +26726,9 @@ function populateFoldersDropdown() {
 function updateReloadButtonState() {
     const btn = document.getElementById('reload_button');
     if (!btn) return;
-    const hasDirty = allNotesData && allNotesData.some(n => n.type === -1);
+    // В демо режим няма къде да се синхронизира: бележките се маркират с type = -1
+    // (офлайн път), но бутонът не бива да става червен квадрат — остава както е.
+    const hasDirty = !IS_DEMO_MODE && allNotesData && allNotesData.some(n => n.type === -1);
     const img = btn.querySelector('img');
     if (hasDirty) {
         btn.style.background = '#e74c3c';

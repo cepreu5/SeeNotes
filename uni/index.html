@@ -5,6 +5,25 @@
     <title>CX Notes</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        // Демо режимът (?demo=1 или запазен флаг) трябва да е известен още преди първия
+        // външен ресурс на страницата - иначе widget-ът на Ko-fi тръгва към външен адрес.
+        (function () {
+            var on = false;
+            try {
+                var raw = new URLSearchParams(window.location.search).get('demo');
+                if (raw !== null) {
+                    var value = String(raw).toLowerCase();
+                    on = (value === '1' || value === 'true' || value === 'yes' || value === 'on');
+                    if (value === '0' || value === 'false' || value === 'no' || value === 'off') {
+                        localStorage.removeItem('cxNotesDemoMode');
+                    }
+                }
+                if (!on && localStorage.getItem('cxNotesDemoMode') === '1') on = true;
+            } catch (e) { }
+            window.__cxDemoMode = on;
+        })();
+    </script>
     <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.webmanifest">
@@ -68,34 +87,6 @@
                 transform: rotate(360deg);
             }
         }
-
-        /* b2.23: „Търсене по смисъл“ в Настройки */
-        #semantic-search-header { cursor: pointer; }
-        #semantic-head-state:empty { display: none; }
-        #semantic-head-state { margin-left: 6px; font-size: 0.85em; opacity: 0.75; font-variant-numeric: tabular-nums; }
-        .sem-body { padding: 4px 0 10px; text-align: left; }
-        .sem-body [hidden] { display: none !important; }
-        .sem-note { margin: 0 0 10px; font-size: 0.9em; line-height: 1.4; }
-        .sem-note.bad { color: #b3261e; }
-        .sem-fine { margin: 6px 0 0; font-size: 0.82em; line-height: 1.35; opacity: 0.75; font-variant-numeric: tabular-nums; }
-        .sem-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; font-size: 0.9em; }
-        .sem-muted { opacity: 0.7; font-size: 0.9em; }
-        .sem-link { background: none; border: none; padding: 2px 4px; color: #1f3b52; text-decoration: underline; cursor: pointer; font: inherit; }
-        .sem-bar { height: 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.15); overflow: hidden; }
-        .sem-bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: #1f3b52; transition: width 0.2s ease; }
-        .sem-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.82em; font-weight: 600; margin-bottom: 8px; }
-        .sem-chip.good { background: rgba(46, 125, 50, 0.15); color: #1b5e20; }
-        .sem-chip.bad { background: rgba(179, 38, 30, 0.12); color: #b3261e; }
-        .sem-kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 0.9em; margin-bottom: 10px; max-width: 420px; }
-        .sem-kv em { font-style: normal; font-variant-numeric: tabular-nums; opacity: 0.85; }
-        .sem-body .zoom-btn { margin: 0; }
-        /* b2.25: фон като на допълнителните бордове; десният отстъп пази съдържанието от скролбара на панела, левият ръб остава с другите редове */
-        #semantic-section { background-color: #909090; padding: 6px 20px 0 0; box-sizing: border-box; }
-        #semantic-enabled { flex-shrink: 0; margin: 0 0 0 6px; }
-        /* на тесен екран етикетът (265px) отстъпва място на „Готово“ + отметката + стрелката, иначе стрелката отива под скролбара */
-        #semantic-search-header label { flex-shrink: 1 !important; min-width: 0; }
-        #semantic-head-state, #semantic-arrow { white-space: nowrap; flex-shrink: 0; }
-        #semantic-delete-btn { width: 100%; box-sizing: border-box; }
     </style>
     <script>
         (function () {
@@ -121,8 +112,6 @@
         </div>
         <div id="search-wrapper">
             <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder">
-            <!-- b2.26: редът на сливането — само знакът и броят („≈ 5 от 12 бележки“) -->
-            <div id="search-hybrid-line" aria-live="polite" hidden></div>
         </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
@@ -185,6 +174,12 @@
         </div>
     </header>
 
+    <!-- Лента на демо режима: текст под хедъра, без собствен бутон и без допълнителен
+         отстъп. Изходът е бутонът за изход в хедъра. Показва се само в демо. -->
+    <div id="demo-banner" class="demo-banner" hidden><span class="demo-banner-label"
+            data-key="demoBannerLabel">Демо режим</span><span class="demo-banner-text"
+            data-key="demoBannerText">Приложението е напълно функционално. Всички бележки се записват в базата на браузъра и се пазят до изтриване на кеша. Единствено не се прави синхронизация с Google Drive.</span></div>
+
     <div id="login-page" class="login-div" hidden>
         <!-- Language switcher извън login-box, винаги видим -->
         <div style="display: flex; flex-direction: column; align-items: center;">
@@ -196,6 +191,9 @@
                 <button id="request-access-btn" type="button" class="zoom-btn"
                     style="margin: 8px auto 0 auto; width: 100%; max-width: 260px; display: block; cursor: pointer; box-sizing: border-box;"
                     data-key="requestAccessBtn">Заяви достъп</button>
+                <!-- Демо режимът е в същия панел, под заявката за достъп. -->
+                <button id="demo-start-btn" type="button" class="zoom-btn demo-start-btn"
+                    data-key="demoButton">Демо режим</button>
             </div>
         </div>
 
@@ -413,8 +411,11 @@
                     </button>
                     <button data-mwid="modal-expand-btn" class="modal-header-btn nw-modal-expand-btn" data-key-title="modalExpandTooltip"
                         title="Expand modal">&#9650;</button>
-                    <button class="modal-close" data-key-title="closeButton" title="Close">&times;</button>
                 </div>
+                <!-- Close is its own grid cell below (see .modal-header-toolbar > .modal-close):
+                     the button row may shrink and scroll sideways, the way out of the window never
+                     leaves the window. -->
+                <button class="modal-close" data-key-title="closeButton" title="Close">&times;</button>
             </div>
             <div data-mwid="modal-body" class="nw-modal-body"></div>
             <div class="modal-resize-handle"></div>
@@ -848,63 +849,6 @@
                     </div>
                 </div>
 
-                <!-- b2.23: Търсене по смисъл — акордеон, свит по подразбиране -->
-                <div class="settings-mobile-row zoom-control-wrapper" id="semantic-search-header" style="margin-top: 5px;"
-                    role="button" aria-expanded="false" aria-controls="semantic-section">
-                    <label style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; cursor: pointer;"
-                        data-key="semanticTitle">Search by meaning:</label>
-                    <span id="semantic-head-state"></span>
-                    <input type="checkbox" id="semantic-enabled" class="settings-checkbox" data-key-title="semanticEnableTitle"
-                        title="Use search by meaning">
-                    <span id="semantic-arrow" class="accordion-arrow" style="margin-left: 5px; cursor: pointer;">▼</span>
-                </div>
-
-                <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-
-                <div id="semantic-section" style="display: none;">
-                    <div class="sem-body">
-                        <div data-sem="idle">
-                            <p class="sem-note" data-key="semanticIntro">Finds notes even when they use different words.</p>
-                            <button type="button" id="semantic-download-btn" class="zoom-btn" data-key="semanticDownloadBtn">Download the model · 118 MB</button>
-                            <p class="sem-fine" data-key="semanticIdleFine">Needs internet only for the download.</p>
-                        </div>
-                        <div data-sem="downloading" hidden>
-                            <div class="sem-row"><span data-key="semanticDownloading">Downloading the model</span>
-                                <button type="button" id="semantic-cancel-btn" class="sem-link" data-key="semanticCancel">Cancel</button></div>
-                            <div class="sem-bar"><i id="semantic-dl-bar"></i></div>
-                            <p class="sem-fine" id="semantic-dl-text"></p>
-                        </div>
-                        <div data-sem="indexing" hidden>
-                            <div class="sem-row"><span data-key="semanticIndexing">Indexing notes</span>
-                                <span class="sem-muted" data-key="semanticCanContinue">you can keep working</span></div>
-                            <div class="sem-bar"><i id="semantic-ix-bar"></i></div>
-                            <p class="sem-fine" id="semantic-ix-text"></p>
-                        </div>
-                        <div data-sem="ready" hidden>
-                            <span class="sem-chip good" data-key="semanticReady">ready</span>
-                            <div class="sem-kv">
-                                <span data-key="semanticModelOnDevice">Model on the device</span><em>118 MB</em>
-                                <span data-key="semanticIndexedNotes">Indexed notes</span><em id="semantic-ready-count"></em>
-                                <span data-key="semanticWorksOffline">Works offline</span><em data-key="semanticYes">yes</em>
-                            </div>
-                            <button type="button" id="semantic-delete-btn" class="zoom-btn" data-key="semanticDeleteBtn">Delete the model</button>
-                            <p class="sem-fine" data-key="semanticDeleteFine">Deleting frees 118 MB.</p>
-                        </div>
-                        <div data-sem="error" hidden>
-                            <span class="sem-chip bad" data-key="semanticFailed">failed</span>
-                            <p class="sem-note bad" id="semantic-error-text"></p>
-                            <button type="button" id="semantic-retry-btn" class="zoom-btn" data-key="semanticRetry">Try again</button>
-                        </div>
-                        <div data-sem="missing" hidden>
-                            <span class="sem-chip bad" data-key="semanticMissingWord">model missing</span>
-                            <p class="sem-note" data-key="semanticMissingNote">The model is no longer on this device (the system cleared its cache). Until you download it again, search matches words only.</p>
-                            <button type="button" id="semantic-redownload-btn" class="zoom-btn" data-key="semanticRedownloadBtn">Download again · 118 MB</button>
-                        </div>
-                        <div data-sem="checking" hidden></div>
-                    </div>
-                    <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
-                </div>
-
                 <div class="settings-section" id="db-section-wrapper" style="margin-top: 5px; padding-top: 5px;">
                     <label style="font-weight: bold; display: block; margin-bottom: 10px;"
                         data-key="dataManagementTitle">Data Loading</label>
@@ -1214,14 +1158,25 @@
     </button>
 
     <div style="display: flex; align-items: center; gap: 15px; margin-top: 15px;">
-        <script src='https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'></script>
+        <!-- Демо режимът не тегли нищо от външен адрес: widget-ът на Ko-fi се зарежда само извън демо. -->
         <script>
-            kofiWidgetOverlay.draw('multinotes', {
-                'type': 'floating-chat',
-                'floating-chat.donateButton.text': '',
-                'floating-chat.donateButton.background-color': 'transparent',
-                'floating-chat.donateButton.text-color': '#323842'
-            });
+            (function () {
+                if (window.__cxDemoMode) return;
+                var s = document.createElement('script');
+                s.src = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
+                s.async = true;
+                s.onload = function () {
+                    try {
+                        kofiWidgetOverlay.draw('multinotes', {
+                            'type': 'floating-chat',
+                            'floating-chat.donateButton.text': '',
+                            'floating-chat.donateButton.background-color': 'transparent',
+                            'floating-chat.donateButton.text-color': '#323842'
+                        });
+                    } catch (e) { console.warn('[Ko-fi] overlay not available:', e); }
+                };
+                document.head.appendChild(s);
+            })();
         </script>
     </div>
 
@@ -1231,9 +1186,6 @@
     <script src="msm.js"></script>
     <script src="main.js"></script>
     <script src="fs.js"></script>
-    <!-- b2.22: семантичен двигател — само window.SeeNotesSemantic; нищо не се тегли до изрично init() -->
-    <script src="semantic.js"></script>
-    <script src="semantic-index.js"></script>
     <script>
         // PWA Install Prompt
         let deferredPrompt;
