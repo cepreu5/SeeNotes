@@ -810,6 +810,18 @@ code {
     text-decoration: underline;
 }
 
+/* На борда URL-ът е гол текст (не линк, освен при one-tap режим), но трябва да изглежда като в
+   модала: един ред, съкратен със „…“ на ръба на картата, вместо разлят на няколко реда.
+   Същото поведение като .note-content a по-горе, само че не е котва и не носи цвят на линк. */
+.note-content .nmd-link-elide {
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: text-bottom;
+}
+
 .note-footer {
     flex-shrink: 0;
     display: flex;

@@ -19005,7 +19005,10 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     if (isForModal || oneTapLinksEnabled) {
         escapedText = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     } else {
-        escapedText = escapedText.replace(urlRegex, '$1');
+        // На борда URL-ът не е линк (освен при one-tap), но трябва да се съкращава със „…“ като в
+        // модала, вместо да се пренася на няколко реда. Затова го обвиваме в елемент със същото
+        // поведение като .note-content a — виж nmd-link-elide в style.css.
+        escapedText = escapedText.replace(urlRegex, '<span class="nmd-link-elide">$1</span>');
     }
     escapedText = escapedText.replace(/`([^`\n]+)`/g, '<code class="md-inline-code" style="background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; font-family: monospace;">$1</code>');
     const symBold = (localStorage.getItem('mdBold') || '**').trim();
