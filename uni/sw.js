@@ -6,7 +6,6 @@ const OFFLINE_PAGE = 'index.html';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './set.html',
   './manifest.webmanifest',
   './style.css',
   './main.js',

@@ -3749,27 +3749,6 @@ async function mainLogic() {
     if (!appTranslations[currentLang]) {
         await loadTranslations(currentLang);
     }
-    const settingsOverride = localStorage.getItem('settings_json_full_override'); //@@ прилагане на промени, направени в set.html
-    if (settingsOverride) {
-        localStorage.removeItem('settings_json_full_override');
-        try {
-            const parsed = JSON.parse(settingsOverride);
-            const currentDevice = localStorage.getItem('deviceName') || 'Default';
-            if (parsed[currentDevice]) {
-                const devSettings = parsed[currentDevice];
-                Object.keys(devSettings).forEach(k => {
-                    let val = devSettings[k];
-                    if (k === 'boardMenuOrder' && (!val || (Array.isArray(val) && val.length === 0))) return;
-                    if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
-                    localStorage.setItem(k, val);
-                });
-                console.log("[Settings-Override] Applied settings for device:", currentDevice);
-            }
-        } catch (e) {
-            console.error("Error applying settings override:", e);
-        }
-    }
-
     // --- Локален режим: зареждане само от IndexedDB ---
     isOffline = true;
     updateGlobalStateFlags();
@@ -5285,56 +5264,6 @@ async function closeAllNoteWindows() {
     getOpenNoteWindows().forEach(closeNoteWindow);
 }
 window.closeAllNoteWindows = closeAllNoteWindows;
-
-// set.html "Изтрий бележки на борд" изтри тези бележки от Drive и NotesDB: махаме ги и от паметта
-// (иначе следващият запис ще ги върне в Drive) и затваряме прозорците им. Опреснява същото като
-// permanentlyDeleteNote. Празен или непознат списък - нищо не прави; никога не хвърля грешка.
-window.forgetDeletedNotes = function (ids) {
-    try {
-        const wanted = new Set((Array.isArray(ids) ? ids : []).filter(x => x !== undefined && x !== null && x !== '').map(String));
-        if (!wanted.size) return 0;
-        const gone = allNotesData.filter(n => n && ((n.gdid && wanted.has(String(n.gdid))) || (n.id !== undefined && n.id !== null && wanted.has(String(n.id)))));
-        const closeWin = (id, gdid) => {
-            try {
-                const win = findNoteWindow(id, gdid);
-                if (win) closeNoteWindow(win);
-            } catch (e) { console.warn('forgetDeletedNotes: close window failed', e); }
-        };
-        const boardIds = new Set();
-        gone.forEach(note => {
-            closeWin(note.id, note.gdid);
-            const idx = allNotesData.indexOf(note);
-            if (idx !== -1) allNotesData.splice(idx, 1);
-            try {
-                const noteEl = (note.gdid ? document.querySelector(`.note[data-g="${CSS.escape(String(note.gdid))}"]`) : null) ||
-                    ((note.id !== undefined && note.id !== null) ? document.querySelector(`.note[data-i="${CSS.escape(String(note.id))}"]`) : null);
-                if (noteEl) noteEl.remove();
-            } catch (e) { }
-            if (note.boardid !== undefined && note.boardid !== null && note.boardid !== '') boardIds.add(note.boardid);
-        });
-        // Прозорец на бележка, която вече не е в паметта.
-        wanted.forEach(gdid => closeWin(null, gdid));
-        if (!gone.length) return 0;
-        const safe = (fn) => { try { fn(); } catch (e) { console.warn('forgetDeletedNotes: refresh failed', e); } };
-        boardIds.forEach(b => safe(() => updateBoardCounterUI(b)));
-        safe(() => updateBoardCounterUI('trash'));
-        safe(() => applyFilters());
-        safe(() => {
-            const cal = document.getElementById('calendar-container');
-            if (cal && cal.style.display !== 'none') renderCalendarView();
-        });
-        safe(() => {
-            const week = document.getElementById('weekly-calendar-container');
-            if (week && week.style.display !== 'none' && typeof renderWeeklyCalendarView === 'function') {
-                renderWeeklyCalendarView(currentWeeklyViewDate);
-            }
-        });
-        return gone.length;
-    } catch (e) {
-        console.warn('forgetDeletedNotes failed:', e);
-        return 0;
-    }
-};
 
 // A window opened a moment ago gets 'visible' only in the next frame: closing it then must not let it appear.
 function closeNoteWindow(win) {
@@ -9528,28 +9457,6 @@ async function createSettingsUI(boardsData, boardParseError) {
                 if (file) backupImport(file);
                 importBackupInput.value = '';
             };
-        }
-        const showSettingsBtn = document.getElementById('show-settings-btn');
-        if (showSettingsBtn) {
-            showSettingsBtn.style.display = (typeof debug !== 'undefined' && debug) ? '' : 'none';
-            showSettingsBtn.onclick = null;
-            showSettingsBtn.addEventListener('click', () => {
-                const content = localStorage.getItem('settings_multinotes_data');
-                if (content) {
-                    sessionStorage.setItem('full_settings_json', content);
-                }
-                sessionStorage.setItem('boardMenuOrder', localStorage.getItem('boardMenuOrder') || '[]');
-                const boardsToStore = (typeof boardsData !== 'undefined' && boardsData.length > 0) ? boardsData : [];
-                sessionStorage.setItem('boardsData', JSON.stringify(boardsToStore));
-                const titlesMap = {};
-                boardsToStore.forEach(b => {
-                    const bid = String(b.gdid || b.id);
-                    if (bid && bid !== 'undefined' && b.title) titlesMap[bid] = b.title;
-                    if (b.title) titlesMap[b.title] = b.title;
-                });
-                sessionStorage.setItem('boardTitlesMap', JSON.stringify(titlesMap));
-                window.open('set.html', '_blank');
-            });
         }
         settingsModalBody.dataset.initializedListeners = 'true';
     }
