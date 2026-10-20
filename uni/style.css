@@ -2035,10 +2035,11 @@ code {
         /* Ensure labels are left-aligned */
     }
 
+    /* Ширината НЕ се пипа тук (20 Oct 2026): от 400px нагоре модалът пази същите
+       400px, с които е на екран над 900px. По цялата ширина е само под 400px —
+        виж @media (max-width: 399px) по-долу. */
     #settings-modal .modal-content-box {
         height: 90% !important;
-        width: 100% !important;
-        max-width: 100% !important;
         max-height: 100% !important;
         border-radius: 0 !important;
         margin: 10px 0 0px 0 !important;
@@ -2062,6 +2063,15 @@ code {
     #scale-wrapper #scaleInput::-webkit-inner-spin-button {
         -webkit-appearance: none;
         margin: 0;
+    }
+}
+
+/* Модалът Настройки е по цялата ширина само на съвсем тесни екрани (под 400px).
+   От 400px до 900px е със същата ширина като на широк екран (max 400px). */
+@media (max-width: 399px) {
+    #settings-modal .modal-content-box {
+        width: 100% !important;
+        max-width: 100% !important;
     }
 }
 
