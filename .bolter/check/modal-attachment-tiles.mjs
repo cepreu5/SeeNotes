@@ -71,7 +71,9 @@ const MEDIA = [];
 // Само тези идемета имат съдържание: WAV с тишина, достатъчен <audio> да тръгне.
 const AUDIO_IDS = ['AUD', 'AU1', 'AU2', 'AUSLOW'];
 const WAV = (() => {
-  const rate = 8000, samples = rate / 2;
+  // 4 секунди, не 0.5: при къс файл аудиото свършва само по време на проверката и „спря" изглежда
+  // изпълнено, без никой да го е спрял.
+  const rate = 8000, samples = rate * 4;
   const buf = Buffer.alloc(44 + samples * 2);
   buf.write('RIFF', 0); buf.writeUInt32LE(36 + samples * 2, 4); buf.write('WAVE', 8);
   buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
@@ -140,7 +142,7 @@ await page.evaluate(() => {
   const notFound = (m) => { const e = new Error(m); e.name = 'NotFoundError'; return e; };
   // Малък валиден WAV (0.5s тишина): истински звук, който <audio> пуска и в headless Chrome.
   const makeWavFile = (name) => {
-    const rate = 8000, samples = rate / 2;
+    const rate = 8000, samples = rate * 4;
     const buf = new ArrayBuffer(44 + samples * 2);
     const v = new DataView(buf);
     const put = (off, str) => { for (let i = 0; i < str.length; i++) v.setUint8(off + i, str.charCodeAt(i)); };
@@ -712,10 +714,14 @@ const videoStopsAudio = await page.evaluate(async () => {
   const before = {
     audioLeft: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
     paused: aud ? aud.paused : null,
+    ended: aud ? aud.ended : null,
+    duration: aud ? aud.duration : null,
     playing: audioTile.classList.contains('is-playing'),
   };
   videoTile.click();
-  const deadline = Date.now() + 5000;
+  // Чака се кратко и се гледа ended: ако файлът просто е свършил, това не е спирането от видеото.
+  const clickedAt = Date.now();
+  const deadline = clickedAt + 1500;
   while (Date.now() < deadline && document.querySelector('audio[data-nm-attach-audio="1"]')) await new Promise(r => setTimeout(r, 40));
   return {
     missing: false,
@@ -724,16 +730,21 @@ const videoStopsAudio = await page.evaluate(async () => {
       audioLeft: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
       paused: aud ? aud.paused : null,
       connected: aud ? aud.isConnected : null,
+      ended: aud ? aud.ended : null,
+      elapsedMs: Date.now() - clickedAt,
       playingTiles: document.querySelectorAll('#modal-body .nm-attach-tile.is-playing').length,
       audioTileState: audioTile.dataset.state,
       pressed: audioTile.getAttribute('aria-pressed'),
     },
   };
 });
-ok(!videoStopsAudio.missing && videoStopsAudio.before.audioLeft === 1 && videoStopsAudio.before.paused === false,
+ok(!videoStopsAudio.missing && videoStopsAudio.before.audioLeft === 1 && videoStopsAudio.before.paused === false
+  && videoStopsAudio.before.ended === false,
   `видео: преди клика звукът от плочката свири (брой=${videoStopsAudio.before && videoStopsAudio.before.audioLeft}, paused=${videoStopsAudio.before && videoStopsAudio.before.paused})`, videoStopsAudio);
 ok(videoStopsAudio.after.audioLeft === 0 && videoStopsAudio.after.paused === true && videoStopsAudio.after.connected === false,
   `видео: клик на видеото спира звука от плочката (остават ${videoStopsAudio.after && videoStopsAudio.after.audioLeft}, paused=${videoStopsAudio.after && videoStopsAudio.after.paused})`, videoStopsAudio);
+ok(videoStopsAudio.after.ended === false,
+  `видео: звукът е спрян от клика, а не е свършил сам (ended=${videoStopsAudio.after && videoStopsAudio.after.ended}, след ${videoStopsAudio.after && videoStopsAudio.after.elapsedMs}ms)`, videoStopsAudio.after);
 ok(videoStopsAudio.after.playingTiles === 0 && videoStopsAudio.after.audioTileState === 'plain' && videoStopsAudio.after.pressed === null,
   `видео: аудио плочката се връща в неутрално състояние (свирещи=${videoStopsAudio.after && videoStopsAudio.after.playingTiles}, state=${videoStopsAudio.after && videoStopsAudio.after.audioTileState})`, videoStopsAudio);
 
