@@ -7063,12 +7063,14 @@ function renderNoteContent(text) {
 // --- Вградени картинки в бележката (text_span type=8) ------------------------------------
 // Android записва в text_span {"start":34,"end":35,"type":8,"paramstring":".../Wallet.jpg",
 // "paramint":4}: диапазонът покрива ЕДИН маркер в текста (звездичка), paramstring е пътят на
-// прикачения файл (интересува ни само името - файлът се търси по име в папка Images в Drive),
+// прикачения файл (интересува ни само името - файлът се търси по име, точно както прикачените:
+// в папка Images в Drive, в Images на локалната папка или направо в плоския архив),
 // а paramint е ширината в десетки проценти: 1 = 10%, 10 = 100%.
 // Ширината е процент от КОЛОНАТА на бележката (.note-content / #modal-body), не от прозореца -
 // един и същ запис се показва и на 250px карта на борда, и в модала.
 // formatText слага на мястото на маркера рамка с резервирана височина и ширина;
-// hydrateInlineImages после я превръща в картинка, щом файлът се намери по име в Drive.
+// hydrateInlineImages после я превръща в картинка, щом файлът се намери по име - в Drive, в
+// локалната папка или в архива (в кой режим сме решава inlineImageSourceMode).
 // Приложението на main е VIEWER: type=8 се пипа само в рендера, никъде в път за редакция.
 const INLINE_IMAGE_PLACEHOLDER = '\uE002'; // един знак - processNoteContent не го пипа
 const INLINE_IMAGE_FOLDER = 'Images';
@@ -7277,6 +7279,106 @@ function markInlineImageUnavailable(box, state) {
 }
 
 /**
+ * Откъде се взимат вградените картинки: 'gdrive' | 'local' | 'archive'.
+ * Същата логика като при прикачените файлове (footer иконите в createNoteElement): и двата пътя
+ * водят до един и същ файл, различно е само мястото, от което се чете. Без това вграденият
+ * placeholder пита Drive и в архив/локална папка чака отговор, който никога не идва.
+ */
+async function inlineImageSourceMode() {
+    if (typeof useArhDb !== 'undefined' && useArhDb) return 'archive';
+    if (typeof useLocalFolder !== 'undefined' && useLocalFolder) return 'local';
+    if (typeof useIndexedDb !== 'undefined' && useIndexedDb &&
+        !(typeof useGoogleDb !== 'undefined' && useGoogleDb) &&
+        !(typeof useLocalFolder !== 'undefined' && useLocalFolder) &&
+        !(typeof useArhDb !== 'undefined' && useArhDb)) {
+        // Режимът е само в базата: dbSourceGlobal се пълни при старт, но при рендер преди това
+        // (или след презареждане) се чете от конфига - както прави loadMedia.
+        let source = dbSourceGlobal;
+        if (source === null || source === undefined) {
+            try { source = await getConfig('dbSource'); } catch (e) { source = null; }
+        }
+        if (Number(source) === 3) return 'archive';
+        if (Number(source) === 2) return 'local';
+    }
+    return 'gdrive';
+}
+
+/**
+ * Handle на избраната от потребителя папка (или null, ако няма такъв).
+ * При старт от база глобалният dirHandle е null, а handle-ът стои в IndexedDB - затова се
+ * възстановява точно както в loadMedia, за да работят вградените картинки и без ново избиране.
+ */
+async function ensureInlineDirHandle(sourceMode) {
+    if (dirHandle) return dirHandle;
+    if (sourceMode !== 'local' && sourceMode !== 'archive') return null;
+    try {
+        const dbSource = await getConfig('dbSource');
+        let handleKey = null;
+        if (Number(dbSource) === 2) handleKey = 'directoryHandle';
+        else if (Number(dbSource) === 3) handleKey = 'arhHandle';
+        if (!handleKey) return null;
+        const handle = await getConfig(handleKey);
+        const verifiedHandle = handle ? await verifyPermission(handle) : null;
+        if (verifiedHandle) {
+            dirHandle = verifiedHandle;
+            return verifiedHandle;
+        }
+    } catch (e) {
+        console.warn('inline image: no directory handle', e);
+    }
+    return null;
+}
+
+// Един файл се чете от диска веднъж за сесията: същата снимка стои на борда, в модала и в още
+// няколко карти, а читането на файл от папка не е безплатно. Ключът носи и режима, защото един и
+// същ файл се търси на различни места в локален режим и в архива.
+const inlineImageBlobCache = new Map();
+
+/**
+ * Файлът по име от локалната папка или от архива, като blob URL.
+ * Отговорът: { status: 'ok', url } | { status: 'missing' } (папката отговори и няма такъв файл)
+ * | { status: 'unavailable' } (няма handle или файлът не може да се прочете).
+ * Blob URL, а не Drive thumbnail: в тези режими няма нито токен, нито папка в Drive - файлът е
+ * на диска и се чете директно. URL-ите НЕ се отменят - живеят колкото сесията, като
+ * inlineImageThumbCache, иначе карта, преизградена след минута, остава празна.
+ */
+async function resolveInlineImageBlobUrl(fileName, mode) {
+    const name = String(fileName || '');
+    if (!name || (mode !== 'local' && mode !== 'archive')) return { status: 'missing' };
+    const key = `${mode}\u0000${name}`;
+    const cached = inlineImageBlobCache.get(key);
+    if (cached) return cached; // и „в процес на четене" се помни - две карти не четат един файл два пъти
+    const entry = (async () => {
+        const handle = await ensureInlineDirHandle(mode);
+        if (!handle) return { status: 'unavailable' };
+        try {
+            let fileHandle;
+            if (mode === 'local') {
+                // Локалната папка пази файловете в подпапки по тип - същото като при прикачените.
+                const folderHandle = await handle.getDirectoryHandle(INLINE_IMAGE_FOLDER, { create: false });
+                fileHandle = await folderHandle.getFileHandle(name);
+            } else {
+                // Архивът е ПЛОСЪК: всички файлове са в една папка, без Images/Video/Sound.
+                fileHandle = await handle.getFileHandle(name);
+            }
+            const file = await fileHandle.getFile();
+            return { status: 'ok', url: URL.createObjectURL(file) };
+        } catch (e) {
+            // Липсващ файл се различава от недостъпен: първото е сигурно, второто - не знаем.
+            const errName = e && e.name;
+            if (errName === 'NotFoundError' || errName === 'TypeMismatchError') return { status: 'missing' };
+            return { status: 'unavailable' };
+        }
+    })();
+    inlineImageBlobCache.set(key, entry);
+    // Провалът не се помни: архивът се обновява и файлът може да се появи - следващият рендер
+    // пак ще опита, вместо да показва „няма такъв файл" до края на сесията.
+    entry.then(r => { if (!r || r.status !== 'ok') inlineImageBlobCache.delete(key); })
+        .catch(() => inlineImageBlobCache.delete(key));
+    return entry;
+}
+
+/**
  * Превръща рамките на вградените картинки в самите картинки.
  * Вика се веднага след всяко задаване на innerHTML от formatText/processNoteContent (борд, модал).
  * Идемпотентна: рамка, която вече се тегли или е готова, не се пипа.
@@ -7284,32 +7386,57 @@ function markInlineImageUnavailable(box, state) {
 function hydrateInlineImages(rootEl) {
     if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return;
     const boxes = Array.from(rootEl.querySelectorAll('.nm-inline-img[data-nm-file]'));
+    if (!boxes.length) return;
+    // Режимът се пита ВЕДНЪЖ за целия рендер, не за всяка рамка: в режим „само база" това е
+    // четене от IndexedDB, а една бележка може да има няколко вградени картинки.
+    const modePromise = inlineImageSourceMode();
+    // Едно и също поставяне на картинката в рамката за всички режими, за да не се разминават
+    // състоянията (is-loading / is-ready / data-nmState) между Drive и файла от диска.
+    const putImage = (box, fileName, src) => {
+        if (!box.isConnected) return false; // картата вече е преизградена - новата рамка ще поеме
+        if (!src) { markInlineImageUnavailable(box, 'unavailable'); return false; }
+        const img = document.createElement('img');
+        img.alt = fileName;
+        img.decoding = 'async';
+        img.addEventListener('load', () => {
+            box.classList.remove('is-loading');
+            box.classList.add('is-ready');
+            box.dataset.nmState = 'ready';
+        });
+        img.addEventListener('error', () => markInlineImageUnavailable(box, 'unavailable'));
+        img.src = src;
+        box.appendChild(img);
+        return true;
+    };
     for (const box of boxes) {
         if (box.dataset.nmState !== 'loading' || box.dataset.nmLoading === 'true') continue;
         box.dataset.nmLoading = 'true';
         const fileName = box.dataset.nmFile;
-        resolveInlineImageFile(fileName).then(async info => {
+        modePromise.then(async mode => {
+            if (mode === 'gdrive') {
+                const info = await resolveInlineImageFile(fileName);
+                if (info.status !== 'ok') {
+                    markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
+                    return;
+                }
+                const src = await inlineImageThumbUrl(info.fileId);
+                if (!putImage(box, fileName, src)) return;
+                // Клик отваря съществуващия преглед на бележката - същият overlay като при прикачените
+                // (addInNotePreviewListener -> showInNotePreview, легаси подписът с fileId и 'gdrive').
+                addInNotePreviewListener(box, info.fileId, 'gdrive', false);
+                return;
+            }
+            // Локална папка или архив: файлът се чете от диска. Drive не се пита - тук офлайн не е
+            // грешка, файловете са при потребителя.
+            const info = await resolveInlineImageBlobUrl(fileName, mode);
             if (info.status !== 'ok') {
                 markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
                 return;
             }
-            const src = await inlineImageThumbUrl(info.fileId);
-            if (!box.isConnected) return; // картата вече е преизградена - новата рамка ще поеме
-            if (!src) { markInlineImageUnavailable(box, 'unavailable'); return; }
-            const img = document.createElement('img');
-            img.alt = fileName;
-            img.decoding = 'async';
-            img.addEventListener('load', () => {
-                box.classList.remove('is-loading');
-                box.classList.add('is-ready');
-                box.dataset.nmState = 'ready';
-            });
-            img.addEventListener('error', () => markInlineImageUnavailable(box, 'unavailable'));
-            img.src = src;
-            box.appendChild(img);
-            // Клик отваря съществуващия преглед на бележката - същият overlay като при прикачените
-            // (addInNotePreviewListener -> showInNotePreview, легаси подписът с fileId и 'gdrive').
-            addInNotePreviewListener(box, info.fileId, 'gdrive', false);
+            if (!putImage(box, fileName, info.url)) return;
+            // Клик: същият overlay, но с пътя до файла - showInNotePreview сам го прочита в пълен
+            // размер по същите три клона като прикачените (тук - 'local' / 'archive').
+            addInNotePreviewListener(box, [{ path: fileName, type: 1 }], 0, mode, false);
         }).catch(() => markInlineImageUnavailable(box, 'unavailable'));
     }
 }
