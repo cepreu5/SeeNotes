@@ -2725,6 +2725,8 @@ function initApp() {
     // as it might be changed by other parts of the app (like formatText).
     contentModal.addEventListener('transitionend', () => {
         if (!contentModal.classList.contains('visible')) {
+            // Модалът се е затворил (по който и да е път) - звукът от плочката не остава да свири.
+            stopAttachmentAudio();
             modalBody.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
         }
     });
@@ -4993,6 +4995,8 @@ function makeElementDraggable(element, storageKey) {
 }
 
 function showModal(options, noteElement = null) {
+    // Нова бележка в модала: звукът от предишната спира тук, преди да се строи новата лента.
+    stopAttachmentAudio();
     let rawContent, formatString, displayContent, noteColor, noteId, noteGdid;
     if (typeof options === 'string') {
         rawContent = options;
@@ -5393,6 +5397,8 @@ function formatTime(timestamp) {
 // Add an event listener to the modal's close button to reset button visibility
 document.querySelectorAll('.modal-close').forEach(btn => {
     btn.addEventListener('click', () => {
+        // Затворен viewer не трябва да оставя звук: плочката, която е свирила, вече я няма.
+        stopAttachmentAudio();
         copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
         contentModal.classList.remove('popup-mode'); // Reset popup mode on close
         const modalBox = contentModal.querySelector('.modal-content-box');
@@ -7625,6 +7631,180 @@ function dropAttachmentThumb(photoEl, tile, state) {
     tile.dataset.state = state;
 }
 
+// --- Звукът остава в плочката ---------------------------------------------------------------
+// Собственикът (21.10): кликът на аудио файл отваряше черно поле в бележката и звукът тръгваше
+// там. Иска се обратното - звукът да излезе от самата плочка, иконата да пулсира, докато свири, и
+// втори клик да го спре. Затова има един скрит <audio> за цялото приложение: два гласа един върху
+// друг не се получават, а вторият клик винаги спира това, което се чува.
+
+// Как се казва подпапката със звука в локалната папка - същото име ползва и прегледът. Архивът
+// е плосък, там файлът е в корена.
+const ATTACHMENT_AUDIO_FOLDER = 'Sound';
+
+// Пуснатото аудио: { tile, audio, url, prevState }. Едно за цялото приложение.
+let attachmentAudio = null;
+// Искането, което още се тегли: { tile, cancelled }. Втори клик го отменя, вместо да пусне второ.
+let attachmentAudioPending = null;
+
+/**
+ * Токен за теглене на самия файл от Drive (не thumbnail).
+ * Същата проверка като в прегледа (loadMedia): липсващ или изтекъл токен се обновява през
+ * checkAuth. Изнесена е отделно, за да не се пипа прегледът, който работи.
+ * @returns {Promise<string|null>} Токенът или null, ако го няма.
+ */
+async function driveMediaToken() {
+    if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+        await loadGoogleApis();
+    }
+    let isTokenExpired = true;
+    if (authToken && authToken.issued_at) {
+        const elapsedSeconds = (Date.now() - authToken.issued_at) / 1000;
+        if (elapsedSeconds < ((authToken.expires_in || 3599) - 300)) isTokenExpired = false;
+    }
+    if (!authToken || isTokenExpired) {
+        const newToken = await checkAuth();
+        if (newToken) {
+            authToken = newToken;
+            if (gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
+        }
+    }
+    const tokenObj = (typeof authToken !== 'undefined' && authToken)
+        ? authToken
+        : (gapi.auth && typeof gapi.auth.getToken === 'function' ? gapi.auth.getToken() : null);
+    return tokenObj && tokenObj.access_token ? tokenObj.access_token : null;
+}
+
+/**
+ * Blob URL на звуковия файл - по същите три пътя, по които го чете и прегледът: Drive по
+ * attachment.pathGD, локалната папка през Sound/, архивът плоско по име. Нищо не се строи на
+ * екрана, затова и не се преизползва кешът на миниатюрите: ключът там е по име на файл, а тук
+ * файлът може да е по id.
+ * @returns {Promise<string|null>} Blob URL или null, ако файлът липсва или не е достъпен.
+ */
+async function attachmentAudioBlobUrl(attachment, fileName, mode) {
+    if (mode === 'gdrive') {
+        const fileId = String(attachment.pathGD || attachment.path || '');
+        if (!fileId) return null;
+        const token = await driveMediaToken();
+        if (!token) return null;
+        // Без Range, за разлика от прегледа: там 'bytes=0-10000000' реже дългия файл и звукът
+        // спира по средата, без нищо да каже. Тук файлът се тегли цял - това е единственият
+        // начин записът да се чуе до края.
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return null;
+        return URL.createObjectURL(await response.blob());
+    }
+    if (!fileName) return null;
+    const handle = await ensureInlineDirHandle(mode);
+    if (!handle) return null;
+    const fileHandle = mode === 'local'
+        ? await (await handle.getDirectoryHandle(ATTACHMENT_AUDIO_FOLDER, { create: false })).getFileHandle(fileName)
+        : await handle.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    return URL.createObjectURL(file);
+}
+
+/**
+ * Спира звука от плочката и връща плочката в неутрално състояние.
+ * Безопасна е по всяко време: няма пуснато аудио - не прави нищо. Вика се и при затваряне на
+ * модала, и при смяна на бележката, иначе звукът продължава да свири след затворен viewer.
+ */
+function stopAttachmentAudio() {
+    // Теглене, което още не е стигнало до звук, се отменя: иначе файлът пристига след затворен
+    // модал и тръгва сам.
+    if (attachmentAudioPending) {
+        const loadingTile = attachmentAudioPending.tile;
+        attachmentAudioPending.cancelled = true;
+        attachmentAudioPending = null;
+        if (loadingTile) {
+            loadingTile.classList.remove('is-loading');
+            if (loadingTile.dataset.state === 'loading') loadingTile.dataset.state = 'plain';
+        }
+    }
+    const state = attachmentAudio;
+    attachmentAudio = null;
+    if (!state) return;
+    const { tile, audio, url, prevState } = state;
+    try { audio.pause(); } catch (e) { /* вече е спряно - няма какво да се прави */ }
+    audio.removeAttribute('src');
+    if (audio.parentNode) audio.parentNode.removeChild(audio);
+    if (url) URL.revokeObjectURL(url);
+    if (tile) {
+        tile.classList.remove('is-playing', 'is-loading');
+        tile.removeAttribute('aria-pressed');
+        // Липсващият файл си остава пунктиран - състоянието се връща каквото е било.
+        tile.dataset.state = prevState || 'plain';
+    }
+}
+
+/**
+ * Клик на аудио плочка: пуска я на място, ако още не свири, и я спира, ако свири тя.
+ * Друга плочка, която свири или се тегли, се спира преди тази - чува се само едно.
+ * @param {HTMLElement} tile - Плочката, по която е кликнато.
+ * @param {object} attachment - Прикаченият файл (type=2).
+ */
+async function toggleAttachmentAudio(tile, attachment) {
+    if (!tile) return;
+    // Втори клик по същата плочка е „стоп": или спира звука, или отказва чакането.
+    if (attachmentAudio && attachmentAudio.tile === tile) { stopAttachmentAudio(); return; }
+    if (attachmentAudioPending && attachmentAudioPending.tile === tile) { stopAttachmentAudio(); return; }
+    // Клик по друга плочка сменя звука, не добавя втори.
+    stopAttachmentAudio();
+
+    const path = String(attachment.path || '');
+    const fileName = path ? path.split('/').pop() : '';
+    // Липсващ файл (няма нито име, нито id в Drive) не пуска нищо.
+    if (!fileName && !attachment.pathGD) return;
+
+    const pending = { tile, cancelled: false };
+    attachmentAudioPending = pending;
+    const prevState = tile.dataset.state;
+    tile.classList.add('is-loading');
+    tile.dataset.state = 'loading';
+    let url = null;
+    try {
+        const mode = await inlineImageSourceMode();
+        url = await attachmentAudioBlobUrl(attachment, fileName, mode);
+        if (!url) throw new Error('звукът не е достъпен');
+        // Докато файлът се тегли, бележката може да е сменена или модалът затворен.
+        if (pending.cancelled || !tile.isConnected) { URL.revokeObjectURL(url); return; }
+        const audio = document.createElement('audio');
+        audio.controls = false;
+        audio.hidden = true;
+        // Скрит нарочно: звукът излиза от плочката, а не от плеър в бележката.
+        audio.style.display = 'none';
+        audio.preload = 'auto';
+        // Атрибутът е за проверката - по него се намира пуснатият звук в страницата.
+        audio.dataset.nmAttachAudio = '1';
+        audio.src = url;
+        // Свърши ли файлът, плочката не остава завинаги в „свири".
+        audio.addEventListener('ended', () => {
+            if (attachmentAudio && attachmentAudio.audio === audio) stopAttachmentAudio();
+        });
+        document.body.appendChild(audio);
+        attachmentAudio = { tile, audio, url, prevState };
+        tile.classList.remove('is-loading');
+        tile.classList.add('is-playing');
+        tile.dataset.state = 'playing';
+        tile.setAttribute('aria-pressed', 'true');
+        audio.play().catch(err => {
+            // AbortError значи, че потребителят вече е спрял - това не е провал.
+            if (err && err.name === 'AbortError') return;
+            if (attachmentAudio && attachmentAudio.audio === audio) stopAttachmentAudio();
+            showToast(_('noSoundPreview'));
+        });
+    } catch (e) {
+        if (url) URL.revokeObjectURL(url);
+        tile.classList.remove('is-loading');
+        if (tile.dataset.state === 'loading') tile.dataset.state = prevState || 'plain';
+        showToast(_('noSoundPreview'));
+    } finally {
+        if (attachmentAudioPending === pending) attachmentAudioPending = null;
+    }
+}
+
 /**
  * Плочка в лентата с прикачени файлове във viewer-а (модала).
  * Плочката НЕ отваря файла сама: тя натиска съществуващия линк от футъра, който
@@ -7688,12 +7868,15 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
     const sourceLink = attachmentWrapper.querySelector('a');
     const showAttachmentJson = () => showModal(JSON.stringify(attachment, null, 2));
     const openSource = () => { if (sourceLink) sourceLink.click(); };
+    // Звукът не отваря нищо: нито черното поле в бележката, нито нов раздел - свири от плочката.
+    const isAudioTile = attachment.type === 2;
 
     // Плочката е <button>, значи Enter и Space идват като click - клавиатурата работи като мишката.
     tile.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (e.ctrlKey || e.metaKey) { showAttachmentJson(); return; }
+        if (isAudioTile) { toggleAttachmentAudio(tile, attachment); return; }
         openSource();
     });
     // На macOS Ctrl+клик идва като contextmenu, не като click - иначе там би се отворил файлът.

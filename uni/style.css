@@ -656,6 +656,49 @@ main {
     max-height: 100%;
 }
 
+/* Звукът свири от плочката: иконата пулсира, защото самата тя е и бутонът за спиране. Състоянието
+   трябва да се вижда и без анимация, затова плочката е и по-тъмна. */
+@keyframes nm-attach-audio-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: .55;
+        transform: scale(1.12);
+    }
+}
+
+#modal-body .nm-attach-tile.is-playing {
+    background: rgba(127, 127, 127, .3);
+}
+
+#modal-body .nm-attach-tile.is-playing .nm-attach-tile-icon {
+    animation: nm-attach-audio-pulse .9s ease-in-out infinite;
+}
+
+/* Докато файлът се тегли: плочката притъмнява, но не се върти - тя си остава същата плочка. */
+#modal-body .nm-attach-tile.is-loading {
+    background: rgba(127, 127, 127, .07);
+    color: rgba(34, 38, 43, .5);
+}
+
+/* Без движение: пулсът пада, но „свири" остава ясно - по-тъмна плочка и тъмна рамка отвътре,
+   за да се разбира, че втори клик спира звука. */
+@media (prefers-reduced-motion: reduce) {
+    #modal-body .nm-attach-tile.is-playing .nm-attach-tile-icon {
+        animation: none;
+        opacity: 1;
+    }
+
+    #modal-body .nm-attach-tile.is-playing {
+        background: rgba(127, 127, 127, .42);
+        box-shadow: inset 0 0 0 1.5px rgba(34, 38, 43, .45);
+    }
+}
+
 /* Снимката е самата снимка, без рамка и без заобляне на ъглите вътре в плочката: пълни я цялата. */
 #modal-body .nm-attach-tile-photo {
     position: absolute;

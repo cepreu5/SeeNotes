@@ -27,7 +27,7 @@ let fails = 0, n = 0;
 const SHOTS = process.env.SHOTS || '';
 const ok = (cond, msg, extra) => { n++; console.log((cond ? 'ok   ' : 'FAIL ') + msg + (extra !== undefined && !cond ? ' :: ' + JSON.stringify(extra) : '')); if (!cond) fails++; };
 
-const browser = await chromium.launch({ args: ['--num-raster-threads=4'] });
+const browser = await chromium.launch({ args: ['--num-raster-threads=4', '--autoplay-policy=no-user-gesture-required'] });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
 const shot = async (name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}-${name}.png` }); };
 
@@ -66,8 +66,29 @@ await ctx.addInitScript(() => {
 });
 
 const THUMBS = [];
+// Тегленията на самите файлове (alt=media) - по тях се вижда дали звукът наистина е поискан.
+const MEDIA = [];
+// Само тези идемета имат съдържание: WAV с тишина, достатъчен <audio> да тръгне.
+const AUDIO_IDS = ['AUD', 'AU1', 'AU2'];
+const WAV = (() => {
+  const rate = 8000, samples = rate / 2;
+  const buf = Buffer.alloc(44 + samples * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + samples * 2, 4); buf.write('WAVE', 8);
+  buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22); buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
+  buf.write('data', 36); buf.writeUInt32LE(samples * 2, 40);
+  return buf;
+})();
 await ctx.route(/^https?:\/\/(?!localhost)/, route => {
   const url = route.request().url();
+  const media = url.match(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^?]+)\?alt=media/);
+  if (media) {
+    const fileId = decodeURIComponent(media[1]);
+    MEDIA.push(fileId);
+    if (!AUDIO_IDS.includes(fileId)) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+    return route.fulfill({ status: 200, contentType: 'audio/wav', body: WAV });
+  }
   const meta = url.match(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^?]+)\?fields=thumbnailLink/);
   if (meta) {
     const fileId = decodeURIComponent(meta[1]);
@@ -115,14 +136,40 @@ await page.evaluate(() => {
     return new Promise(res => c.toBlob(b => res(new File([b], 'Wallet.jpg', { type: 'image/png' })), 'image/png'));
   };
   const notFound = (m) => { const e = new Error(m); e.name = 'NotFoundError'; return e; };
-  const fileHandleFor = async (name) => ({ kind: 'file', name, getFile: async () => makeFile() });
+  // Малък валиден WAV (0.5s тишина): истински звук, който <audio> пуска и в headless Chrome.
+  const makeWavFile = (name) => {
+    const rate = 8000, samples = rate / 2;
+    const buf = new ArrayBuffer(44 + samples * 2);
+    const v = new DataView(buf);
+    const put = (off, str) => { for (let i = 0; i < str.length; i++) v.setUint8(off + i, str.charCodeAt(i)); };
+    put(0, 'RIFF'); v.setUint32(4, 36 + samples * 2, true); put(8, 'WAVE');
+    put(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    put(36, 'data'); v.setUint32(40, samples * 2, true);
+    return new File([buf], name, { type: 'audio/wav' });
+  };
+  // Файлът по име: звукът е истински WAV, всичко останало - снимка.
+  const fileHandleFor = async (name) => ({
+    kind: 'file', name,
+    getFile: async () => (/\.(mp3|wav|m4a|ogg)$/i.test(name) ? makeWavFile(name) : makeFile()),
+  });
   const LOCAL_FILES = ['Wallet.jpg'];
-  const ARCHIVE_FILES = ['Wallet.jpg'];
+  // Звукът в локалната папка е в подпапка Sound, архивът е плоски.
+  const LOCAL_SOUND = ['5. MONEY.mp3'];
+  const ARCHIVE_FILES = ['Wallet.jpg', '5. MONEY.mp3'];
   window.__fsCalls = [];
   window.__localHandle = {
     kind: 'directory', name: 'fake-local',
     async getDirectoryHandle(name) {
       window.__fsCalls.push({ fs: 'local', op: 'getDirectoryHandle', name });
+      if (name === 'Sound') return {
+        kind: 'directory',
+        async getFileHandle(fname) {
+          window.__fsCalls.push({ fs: 'local/Sound', op: 'getFileHandle', name: fname });
+          if (!LOCAL_SOUND.includes(fname)) throw notFound('Sound: no ' + fname);
+          return fileHandleFor(fname);
+        },
+      };
       if (name !== 'Images') throw notFound('local: no ' + name);
       return {
         kind: 'directory',
@@ -383,7 +430,7 @@ ok(localClick.length === 1 && String(localClick[0]).startsWith('blob:'),
 // В архив бележките се броят по числово id, не по gdid (така е и в приложението).
 await setMode('archive');
 await useDir('archive');
-await page.evaluate(() => { mediaData.push({ noteid: '501', path: 'Wallet.jpg', type: 1 }); });
+await page.evaluate(() => { mediaData.push({ noteid: '501', path: 'Wallet.jpg', type: 1 }, { noteid: '501', path: '5. MONEY.mp3', type: 2, description: 'voice' }); });
 await openModal({ id: '501' });
 const arch = await readTiles();
 const aw = arch.tiles[0] || {};
@@ -392,7 +439,198 @@ const archCalls = await page.evaluate(() => window.__fsCalls.slice());
 ok(archCalls.some(c => c.fs === 'archive' && c.op === 'getFileHandle' && c.name === 'Wallet.jpg'),
   'архив: файлът е потърсен плоско, по име', archCalls);
 
-// ======================= 10. Бордът не се пипа =======================
+// ======================= 10. Звукът свири от плочката =======================
+// Собственикът (21.10): клик на аудио файл отваряше черно поле в бележката и звукът тръгваше там.
+// Сега звукът излиза от самата плочка, иконата пулсира, а втори клик го спира.
+
+// Клик на аудио плочка; чака се състоянието, не фиксирано време.
+const playAudioTile = (index) => page.evaluate(async (index) => {
+  const tiles = [...document.querySelectorAll('#modal-body .nm-attach-tile')].filter(t => t.dataset.type === '2');
+  const tile = tiles[index];
+  if (!tile) return { missing: true, count: tiles.length };
+  window.__opened.length = 0;
+  const overlaysBefore = document.querySelectorAll('.image-preview-overlay').length;
+  tile.click();
+  const deadline = Date.now() + 8000;
+  let audio = null;
+  while (Date.now() < deadline) {
+    audio = document.querySelector('audio[data-nm-attach-audio="1"]');
+    if (audio && !audio.paused && tile.classList.contains('is-playing')) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  window.__aud = audio;
+  const icon = tile.querySelector('.nm-attach-tile-icon');
+  const ics = icon ? getComputedStyle(icon) : null;
+  return {
+    missing: false,
+    count: tiles.length,
+    playing: tile.classList.contains('is-playing'),
+    loading: tile.classList.contains('is-loading'),
+    state: tile.dataset.state,
+    pressed: tile.getAttribute('aria-pressed'),
+    audioCount: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    audio: audio ? {
+      paused: audio.paused, hidden: audio.hidden, display: getComputedStyle(audio).display,
+      blob: String(audio.src).startsWith('blob:'), readyState: audio.readyState,
+      error: audio.error ? audio.error.code : null,
+    } : null,
+    animation: ics ? ics.animationName : null,
+    animationDuration: ics ? ics.animationDuration : null,
+    overlaysBefore,
+    overlays: document.querySelectorAll('.image-preview-overlay').length,
+    opened: window.__opened.slice(),
+  };
+}, index);
+
+// --- 10а. Архив: плоският път (модалът от предишната проверка е отворен) ---
+const aa = await playAudioTile(0);
+ok(!aa.missing && aa.audio && aa.audio.paused === false && aa.audio.blob,
+  `архив: клик на звуковата плочка пуска звука на място (paused=${aa.audio && aa.audio.paused}, blob=${aa.audio && aa.audio.blob}, error=${aa.audio && aa.audio.error})`, aa);
+ok(aa.overlaysBefore === 0 && aa.overlays === 0, `архив: НЕ се появява черното поле .image-preview-overlay (${aa.overlays})`, aa);
+ok(aa.opened.length === 0, `архив: не се отваря нов раздел - window.open не е викан (${JSON.stringify(aa.opened)})`, aa);
+ok(aa.playing === true && aa.state === 'playing' && aa.pressed === 'true' && aa.loading === false,
+  `архив: плочката влиза в състояние „свири" (is-playing=${aa.playing}, state=${aa.state}, aria-pressed=${aa.pressed})`, aa);
+ok(aa.audio && aa.audio.hidden === true && aa.audio.display === 'none' && aa.audioCount === 1,
+  `архив: звукът е един скрит <audio> в страницата, не плеър в бележката (hidden=${aa.audio && aa.audio.hidden}, display=${aa.audio && aa.audio.display}, брой=${aa.audioCount})`, aa);
+ok(aa.animation === 'nm-attach-audio-pulse' && aa.animationDuration === '0.9s',
+  `архив: иконата на плочката пулсира, докато свири (${aa.animation} ${aa.animationDuration})`, aa);
+await shot('audio-playing');
+
+// --- 10б. Втори клик спира звука ---
+const stopClick = await page.evaluate(async () => {
+  const tile = document.querySelector('#modal-body .nm-attach-tile.is-playing');
+  const aud = window.__aud;
+  const before = { paused: aud ? aud.paused : null, connected: aud ? aud.isConnected : null };
+  tile.click();
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && document.querySelector('audio[data-nm-attach-audio="1"]')) await new Promise(r => setTimeout(r, 40));
+  return {
+    before,
+    audioLeft: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    paused: aud ? aud.paused : null,
+    connected: aud ? aud.isConnected : null,
+    playing: tile.classList.contains('is-playing'),
+    loading: tile.classList.contains('is-loading'),
+    state: tile.dataset.state,
+    pressed: tile.getAttribute('aria-pressed'),
+    overlays: document.querySelectorAll('.image-preview-overlay').length,
+  };
+});
+ok(stopClick.audioLeft === 0 && stopClick.paused === true && stopClick.connected === false,
+  `втори клик: аудиото спира и се маха от страницата (остават ${stopClick.audioLeft}, paused=${stopClick.paused})`, stopClick);
+ok(stopClick.playing === false && stopClick.loading === false && stopClick.state === 'plain' && stopClick.pressed === null,
+  `втори клик: плочката излиза от „свири" (is-playing=${stopClick.playing}, state=${stopClick.state}, aria-pressed=${stopClick.pressed})`, stopClick);
+ok(stopClick.overlays === 0, `втори клик: пак никакво черно поле (${stopClick.overlays})`, stopClick);
+
+// --- 10в. Локална папка: звукът се чете от Sound/, както при прикачените ---
+await setMode('local');
+await useDir('local');
+await openModal({ gdid: 'G1' });
+const la = await playAudioTile(0);
+const localSoundCalls = await page.evaluate(() => window.__fsCalls.slice());
+ok(!la.missing && la.audio && la.audio.paused === false && la.playing === true && la.overlays === 0 && la.opened.length === 0,
+  `локална папка: клик на звуковата плочка свири на място, без overlay и без нов раздел (paused=${la.audio && la.audio.paused}, overlays=${la.overlays})`, la);
+ok(localSoundCalls.some(c => c.fs === 'local/Sound' && c.op === 'getFileHandle' && c.name === '5. MONEY.mp3'),
+  'локална папка: файлът е потърсен в Sound/, по същия път като прегледа', localSoundCalls);
+await page.evaluate(() => { stopAttachmentAudio(); });
+
+// --- 10г. Drive: две аудио плочки, чува се само едната ---
+await page.evaluate(() => {
+  mediaData.push(
+    { noteid: 'A1', path: 'one.mp3', pathGD: 'AU1', type: 2 },
+    { noteid: 'A1', path: 'two.mp3', pathGD: 'AU2', type: 2 },
+  );
+});
+await setMode('drive');
+await openModal({ gdid: 'A1' });
+const switchAudio = await page.evaluate(async () => {
+  const tiles = [...document.querySelectorAll('#modal-body .nm-attach-tile')].filter(t => t.dataset.type === '2');
+  if (tiles.length < 2) return { missing: true, count: tiles.length };
+  const waitPlaying = async (tile) => {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const audio = document.querySelector('audio[data-nm-attach-audio="1"]');
+      if (tile.classList.contains('is-playing') && audio && !audio.paused) return audio;
+      await new Promise(r => setTimeout(r, 40));
+    }
+    return document.querySelector('audio[data-nm-attach-audio="1"]');
+  };
+  tiles[0].click();
+  const first = await waitPlaying(tiles[0]);
+  // Състоянието на първото аудио се помни ТУК: след втория клик то вече е спряно по замисъл.
+  const afterFirst = {
+    audios: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    paused: first ? first.paused : null,
+    src: first ? first.src : null,
+  };
+  tiles[1].click();
+  const second = await waitPlaying(tiles[1]);
+  return {
+    missing: false,
+    afterFirst,
+    audios: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    firstPlaying: tiles[0].classList.contains('is-playing'),
+    secondPlaying: tiles[1].classList.contains('is-playing'),
+    firstPaused: first ? first.paused : null,
+    firstConnected: first ? first.isConnected : null,
+    firstState: tiles[0].dataset.state,
+    secondPaused: second ? second.paused : null,
+    secondSrc: second ? second.src : null,
+    differentFiles: !!(first && second && second.src !== first.src),
+    overlays: document.querySelectorAll('.image-preview-overlay').length,
+  };
+});
+ok(!switchAudio.missing && switchAudio.afterFirst.audios === 1 && switchAudio.afterFirst.paused === false,
+  `Drive: първата аудио плочка свири, едно аудио в страницата (${switchAudio.afterFirst && switchAudio.afterFirst.audios}, paused=${switchAudio.afterFirst && switchAudio.afterFirst.paused})`, switchAudio);
+ok(switchAudio.audios === 1 && switchAudio.secondPlaying === true && switchAudio.secondPaused === false,
+  `Drive: клик на втората оставя само едно свирещо аудио (брой=${switchAudio.audios}, втора свири=${switchAudio.secondPlaying})`, switchAudio);
+ok(switchAudio.firstPlaying === false && switchAudio.firstPaused === true && switchAudio.firstConnected === false && switchAudio.firstState === 'plain',
+  `Drive: първата плочка е спряна и върната в неутрално състояние (is-playing=${switchAudio.firstPlaying}, paused=${switchAudio.firstPaused}, state=${switchAudio.firstState})`, switchAudio);
+ok(switchAudio.differentFiles === true, `Drive: втората плочка пуска своя файл, не първия (${String(switchAudio.secondSrc).slice(0, 40)})`, switchAudio);
+ok(MEDIA.includes('AU1') && MEDIA.includes('AU2'), `Drive: файловете са поискани от Drive по id (${JSON.stringify(MEDIA)})`);
+
+// --- 10д. Затваряне на модала спира звука ---
+const closeStop = await page.evaluate(async () => {
+  const aud = document.querySelector('audio[data-nm-attach-audio="1"]');
+  const before = document.querySelectorAll('audio[data-nm-attach-audio="1"]').length;
+  const closeBtn = document.querySelector('#content-modal .modal-close');
+  if (!closeBtn) return { missingClose: true, before };
+  closeBtn.click();
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && document.querySelector('audio[data-nm-attach-audio="1"]')) await new Promise(r => setTimeout(r, 40));
+  return {
+    before,
+    after: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    paused: aud ? aud.paused : null,
+    playingTiles: document.querySelectorAll('#modal-body .nm-attach-tile.is-playing').length,
+    visible: document.getElementById('content-modal').classList.contains('visible'),
+  };
+});
+ok(closeStop.before === 1 && closeStop.after === 0 && closeStop.paused === true,
+  `затваряне на модала: звукът спира (преди ${closeStop.before}, след ${closeStop.after}, paused=${closeStop.paused})`, closeStop);
+ok(closeStop.playingTiles === 0, `затваряне на модала: никоя плочка не остава в „свири" (${closeStop.playingTiles})`, closeStop);
+
+// --- 10е. Ctrl+клик на аудио плочка пак показва JSON записа ---
+await openModal({ gdid: 'A1' });
+const ctrlAudio = await page.evaluate(async () => {
+  const tile = [...document.querySelectorAll('#modal-body .nm-attach-tile')].find(t => t.dataset.type === '2');
+  if (!tile) return { missing: true };
+  window.__opened.length = 0;
+  tile.dispatchEvent(new MouseEvent('click', { ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise(r => setTimeout(r, 200));
+  return {
+    text: document.getElementById('modal-body').textContent.replace(/\s+/g, ' ').trim(),
+    audios: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    opened: window.__opened.slice(),
+    overlays: document.querySelectorAll('.image-preview-overlay').length,
+  };
+});
+ok(!ctrlAudio.missing && /"pathGD"\s*:\s*"AU1"/.test(String(ctrlAudio.text)),
+  `Ctrl+клик на аудио плочка: показва JSON записа (${String(ctrlAudio.text).slice(0, 90)})`, ctrlAudio);
+ok(ctrlAudio.audios === 0 && ctrlAudio.opened.length === 0 && ctrlAudio.overlays === 0,
+  `Ctrl+клик на аудио плочка: не пуска звук, не отваря нищо (аудио=${ctrlAudio.audios})`, ctrlAudio);
+
+// ======================= 11. Бордът не се пипа =======================
 const board = await page.evaluate(async () => {
   useArhDb = false; useLocalFolder = false; useGoogleDb = true; useIndexedDb = false; dirHandle = null;
   localStorage.setItem('oneTapLink', 'true');
@@ -422,7 +660,7 @@ ok(board.links.includes('Wallet.jpg') && board.links.includes('Винетка 20
   `борд: остава старият изглед - имената като линкове (${JSON.stringify(board.links)})`);
 ok(board.text.includes('Wallet.jpg'), `борд: името се вижда на картата (${JSON.stringify(board.text)})`);
 
-// ======================= 11. Никакви грешки =======================
+// ======================= 12. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
 if (fails) {
   console.log('плочки: ' + JSON.stringify((await readTiles()).tiles, null, 1));
