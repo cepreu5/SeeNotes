@@ -3313,7 +3313,7 @@ function handleAuthClick() {
         }
     } else {
         console.error("Google Identity Services not loaded.");
-        alert("Google services are not loaded yet. Please check your connection and reload via F5.");
+        alert(_('errorGoogleLibs'));
     }
 }
 
@@ -3402,7 +3402,7 @@ async function checkAuth() {
         localStorage.removeItem('google_auth_token');
         // Показваме login страницата вместо безкраен reload
         initLoginPage();
-        alert(_('sessionExpired'));
+        alert(_('errorSessionExpired'));
         return null; // Stop execution
     }
     // --- 🔐 Проверка на лиценз (използва кеширана функция) ---
@@ -5547,7 +5547,7 @@ function closeAllNoteWindows() {
 // с икона - името му (от превода) живее в title и aria-label, защото текст няма.
 function updateCloseAllNotesBar() {
     const openCount = getOpenNoteWindows().length;
-    const label = _('closeAllNotes') || 'Затвори всички';
+    const label = _('closeAllNotes') || 'Close all';
     noteWindows.forEach(win => {
         const btn = win.closeAllBtn;
         if (!btn) return;
@@ -7811,7 +7811,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                         setTimeout(() => window.location.reload(), 1000);
                     } catch (err) {
                         console.error("Error importing settings:", err);
-                        showToast("Error importing settings", 5000);
+                        showToast(_('errorImportSettings'), 5000);
                     }
                 };
                 reader.readAsText(file);
@@ -8231,7 +8231,7 @@ function markInlineImageUnavailable(box, state) {
     const why = document.createElement('span');
     why.className = 'nm-inline-img-why';
     why.textContent = (state === 'missing' ? _('inlineImgMissing') : _('inlineImgUnavailable')) ||
-        (state === 'missing' ? 'няма такъв файл в Images' : 'файлът не е достъпен сега');
+        (state === 'missing' ? 'no such file in Images' : 'file not available right now');
     box.replaceChildren(name, why);
 }
 
@@ -8994,7 +8994,7 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
         linkElement.textContent = textPrefix + filename;
         linkElement.dataset.folderName = folderName; // Запазваме името на папката в data атрибут.
         linkElement.dataset.fileName = filename;     // Запазваме името на файла в data атрибут.
-        linkElement.title = `Click to open ${filename} from Google Drive`;
+        linkElement.title = _('openFromDriveTooltip').replace('{fileName}', filename);
         linkElement.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -9783,7 +9783,7 @@ async function loadCustomTranslation() {
                     resolve(json);
                 } catch (err) {
                     console.error("Invalid JSON:", err);
-                    showToast("Invalid JSON file structure.", 5000);
+                    showToast(_('errorInvalidJson'), 5000);
                     resolve(null);
                 }
             };

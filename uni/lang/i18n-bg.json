@@ -22,8 +22,13 @@
   "reloadButtonTooltip": "Презареди",
   "signoutButtonTooltip": "Изход",
   "modeButtonTooltip": "Режим",
+  "settingsButtonTooltip": "Настройки",
   "copyTooltip": "Копирай съдържанието",
   "topTooltip": "Към началото",
+  "prevNoteTooltip": "Предишна бележка",
+  "nextNoteTooltip": "Следваща бележка",
+  "goToBoard": "Към борда",
+  "openFromDriveTooltip": "Клик за отваряне на {fileName} от Google Drive",
   "loadingFile": "Четене...",
   "of": "от",
   "skippedFileScan": "Пропускане на обновяването. Зареждане от базата...",
@@ -240,5 +245,13 @@
   "day_saturday_short": "Съб",
   "day_sunday_short": "Нед",
   "inlineImgMissing": "няма такъв файл в Images",
-  "inlineImgUnavailable": "файлът не е достъпен сега"
+  "inlineImgUnavailable": "файлът не е достъпен сега",
+  "promptFolderId": "Папката не е намерена",
+  "folderIdInputPlaceholder": "ID на папката",
+  "loadingFromDb": "Зареждане от локалната база...",
+  "offlineModeDriveDisabled": "Google Drive е изключен в офлайн режим",
+  "errorLocalFolderNotFound": "Локалната папка не е намерена. Изберете я отново в Настройки.",
+  "errorFetchFileId": "Файлът {fileName} не може да бъде изтеглен.",
+  "errorImportSettings": "Грешка при четене на настройките",
+  "errorInvalidJson": "Невалидна структура на JSON файла."
 }

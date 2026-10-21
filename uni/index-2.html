@@ -18,12 +18,12 @@
             <h1 ID="app-title">CX MultiNotes Viewer</h1>
         </div>
         <div id="search-wrapper">
-            <input type="search" id="search-box" autocomplete="off" data-key-placeholder="Type text"
+            <input type="search" id="search-box" autocomplete="off" data-key-placeholder="searchPlaceholder"
                 placeholder="Type text">
         </div>
         <div id="header-buttons">
             <div id="note-counter" class="note-counter">0</div>
-            <button id="mode_button" class="header-btn" title="Режим" data-key-title="Mode">
+            <button id="mode_button" class="header-btn" title="Mode" data-key-title="modeButtonTooltip">
                 <!-- Иконата се вмъква от JS -->
                 <div class="mode-icon-wrapper">
                     <img id="mode-main-icon" src="NoteFav.png" alt="" style="width:24px; height:24px;">
@@ -32,7 +32,7 @@
                     </div>
                 </div>
             </button>
-            <button id="calendar_button" class="header-btn" data-key-title="Monthly calendar" title="Monthly calendar">
+            <button id="calendar_button" class="header-btn" data-key-title="calendarButtonTooltip" title="Monthly calendar">
                 <svg width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2"
                     stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -43,7 +43,7 @@
 
                 </svg>
             </button>
-            <button id="settings_button" class="header-btn" data-key-title="Settings" title="Settings">
+            <button id="settings_button" class="header-btn" data-key-title="settingsButtonTooltip" title="Settings">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                     fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -52,10 +52,10 @@
                     <circle cx="12" cy="12" r="3" />
                 </svg>
             </button>
-            <button id="reload_button" class="header-btn" data-key-title="Reload" title="Reload">
+            <button id="reload_button" class="header-btn" data-key-title="reloadButtonTooltip" title="Reload">
                 <img src="Refresh.png" alt="Reload" style="width:24px; height:24px;">
             </button>
-            <button id="signout_button" class="header-btn" data-key-title="Sign Out" title="Sign Out">
+            <button id="signout_button" class="header-btn" data-key-title="signoutButtonTooltip" title="Sign Out">
                 <img src="Logout.png" alt="Logout" style="width:24px; height:24px;">
             </button>
             <div id="boards-menu-container"></div>
@@ -162,9 +162,9 @@
             <div class="note-header-toolbar">
                 <div id="modal-board-name"></div>
                 <div class="note-header-buttons">
-                    <button id="prev-note-btn" class="modal-header-btn modal-nav-btn" title="Предишна бележка">&lt;</button>
-                    <button id="next-note-btn" class="modal-header-btn modal-nav-btn" title="Следваща бележка">&gt;</button>
-                    <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="Calculate expression"
+                    <button id="prev-note-btn" class="modal-header-btn modal-nav-btn" title="Previous note" data-key-title="prevNoteTooltip">&lt;</button>
+                    <button id="next-note-btn" class="modal-header-btn modal-nav-btn" title="Next note" data-key-title="nextNoteTooltip">&gt;</button>
+                    <button id="calculate-modal-btn" class="modal-header-btn" data-key-title="calculateTooltip"
                         title="Calculate expression">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                             fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -179,9 +179,9 @@
                             <line x1="16" y1="17" x2="16" y2="17.01" />
                         </svg>
                     </button>
-                    <button id="copy-modal-btn" class="modal-header-btn" data-key-title="Copy content"
+                    <button id="copy-modal-btn" class="modal-header-btn" data-key-title="copyTooltip"
                         title="Copy content"></button>
-                    <button id="delete-modal-btn" class="modal-header-btn" data-key-title="Delete note"
+                    <button id="delete-modal-btn" class="modal-header-btn" data-key-title="deleteNoteTooltip"
                         title="Delete note">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
                             fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -210,7 +210,7 @@
         </div>
     </div>
 
-    <button id="scrollTopBtn" data-key-title="Go to top" title="Go to top"></button>
+    <button id="scrollTopBtn" data-key-title="topTooltip" title="Go to top"></button>
 
     <div id="toastNotification" class="toast-notification"></div>
 

@@ -25,5 +25,6 @@
     "cta_btn": "Continue with Google",
     "popup_info_title": "Information",
     "popup_info_msg": "You can improve the translation with a convenient interactive tool by starting the application at:",
-    "popup_info_btn": "Got it"
+    "popup_info_btn": "Got it",
+    "s_btn": "Sign-in"
 }
