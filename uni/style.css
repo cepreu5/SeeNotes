@@ -574,6 +574,144 @@ main {
     opacity: .85;
 }
 
+/* Футър с миниатюри на прикачените файлове във viewer-а (#modal-body).
+   Плочка 40x40, междина 8, заобляне 6 - точно колкото е плочката в оригинала на телефон 360px
+   (процент от ширината в модал на десктоп дава различен размер всеки път).
+   Лентата се плъзга настрани с пръст, колелце и стрелки, а скролбарът е скрит - видим скролбар
+   под футъра изглежда като чужд елемент върху бележката, както при лентата с икони в хедъра. */
+#modal-body .nm-attach-strip {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 0 3px;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    white-space: normal;
+}
+
+#modal-body .nm-attach-strip::-webkit-scrollbar {
+    display: none;
+}
+
+#modal-body .nm-attach-slot {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+}
+
+/* Редът, който футърът строеше досега (икона + линк към файла), остава в страницата, защото
+   плочката натиска точно него - така отварянето на файла не се пренаписва, сменя се само
+   изгледът. Видим е само ако строенето на плочката се счупи. */
+#modal-body .nm-attach-source {
+    display: none;
+}
+
+#modal-body .nm-attach-tile {
+    position: relative;
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(127, 127, 127, .16);
+    color: #22262b;
+    overflow: hidden;
+    cursor: pointer;
+    font: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+    scroll-snap-align: start;
+}
+
+#modal-body .nm-attach-tile:hover {
+    background: rgba(127, 127, 127, .26);
+}
+
+#modal-body .nm-attach-tile:active {
+    background: rgba(127, 127, 127, .34);
+}
+
+#modal-body .nm-attach-tile:focus-visible {
+    outline: 2px solid #3a6ff0;
+    outline-offset: 1px;
+}
+
+#modal-body .nm-attach-tile-icon {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+#modal-body .nm-attach-tile-icon svg {
+    width: 22px;
+    height: 22px;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* Снимката е самата снимка, без рамка и без заобляне на ъглите вътре в плочката: пълни я цялата. */
+#modal-body .nm-attach-tile-photo {
+    position: absolute;
+    inset: 0;
+    display: block;
+    overflow: hidden;
+}
+
+#modal-body .nm-attach-tile-photo.is-loading {
+    background: rgba(127, 127, 127, .16);
+}
+
+#modal-body .nm-attach-tile-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: cover;
+}
+
+/* Докато има снимка, иконата на типа не се показва - иначе би надничала под нея. */
+#modal-body .nm-attach-tile.has-photo .nm-attach-tile-icon {
+    display: none;
+}
+
+/* PDF: червена плочка с "PDF", както е в оригиналното приложение. */
+#modal-body .nm-attach-tile.is-pdf {
+    background: #d5453b;
+    color: #fff;
+}
+
+#modal-body .nm-attach-tile.is-pdf .nm-attach-tile-icon {
+    display: none;
+}
+
+#modal-body .nm-attach-tile-tag {
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 9px;
+    line-height: 1;
+    letter-spacing: .02em;
+}
+
+/* Липсващ или недостъпен файл: плочката пази мястото и показва иконата на типа с пунктир, за да
+   не изглежда футърът счупен. */
+#modal-body .nm-attach-tile.is-missing,
+#modal-body .nm-attach-tile.is-unavailable {
+    border: 1px dashed #b4534a;
+    background: rgba(180, 83, 74, .08);
+}
+
+#modal-body .nm-attach-tile.is-missing .nm-attach-tile-icon,
+#modal-body .nm-attach-tile.is-unavailable .nm-attach-tile-icon {
+    opacity: .55;
+}
+
 pre,
 code {
     font-size: 100%;

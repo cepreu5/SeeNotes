@@ -5167,22 +5167,43 @@ function showModal(options, noteElement = null) {
             separator.style.marginTop = '10px';
             separator.style.marginBottom = '10px';
             modalBody.appendChild(separator);
-            attachments.forEach(async attachment => {
+            // Футърът е лента от плочки като в оригиналното приложение: снимките се виждат самите те,
+            // другите файлове носят иконата на типа си, лентата се плъзга настрани, когато не се
+            // събират. Имената не стоят под плочките (излизат при задържане), както в оригинала.
+            const stripEl = document.createElement('div');
+            stripEl.className = 'nm-attach-strip';
+            modalBody.appendChild(stripEl);
+            // Мястото на плочката се заема веднага и в реда на файловете, а съдържанието идва, когато
+            // файлът бъде намерен - иначе редът зависи от това кой файл се чете по-бързо.
+            attachments.forEach(attachment => {
                 const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
                 if (!iconData) return;
+                const slot = document.createElement('div');
+                slot.className = 'nm-attach-slot';
+                stripEl.appendChild(slot);
                 const attachmentWrapper = document.createElement('div');
                 attachmentWrapper.style.display = 'flex';
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
                 attachmentWrapper.style.marginTop = '5px';
-                if (useArhDb) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
-                } else if (useLocalFolder) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
-                } else {
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
-                }
-                modalBody.appendChild(attachmentWrapper);
+                (async () => {
+                    try {
+                        if (useArhDb) {
+                            await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
+                        } else if (useLocalFolder) {
+                            await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
+                        } else {
+                            await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
+                        }
+                    } catch (err) {
+                        // Ако строенето на плочката се счупи, по-добре обикновеният ред с име, отколкото
+                        // изчезнал файл.
+                        console.warn('attachment tile: falling back to the plain row', err);
+                        slot.appendChild(attachmentWrapper);
+                        return;
+                    }
+                    buildAttachmentTile(attachment, attachmentWrapper, iconData, slot);
+                })();
             });
 
         }
@@ -7379,6 +7400,28 @@ async function resolveInlineImageBlobUrl(fileName, mode) {
 }
 
 /**
+ * Един адрес за картинка по име, независимо от режима - за вградените картинки (type=8) и за
+ * миниатюрите в лентата на прикачените файлове. Двата пътя са същите, по които се чете и днес:
+ * Drive - файлът по име в папка Images, после thumbnail със токена; локална папка/архив - файлът
+ * направо от диска (resolveInlineImageBlobUrl). Втори начин за четене на същия файл няма.
+ * Отговорът: { status: 'ok', src, fileId } | { status: 'missing' } | { status: 'unavailable' }.
+ */
+async function resolveNoteImageSrc(fileName, mode) {
+    if (mode === 'gdrive') {
+        const info = await resolveInlineImageFile(fileName);
+        if (info.status !== 'ok') return { status: info.status === 'missing' ? 'missing' : 'unavailable' };
+        const src = await inlineImageThumbUrl(info.fileId);
+        if (!src) return { status: 'unavailable', fileId: info.fileId };
+        return { status: 'ok', src, fileId: info.fileId };
+    }
+    // Локална папка или архив: файлът се чете от диска. Drive не се пита - тук офлайн не е
+    // грешка, файловете са при потребителя.
+    const info = await resolveInlineImageBlobUrl(fileName, mode);
+    if (info.status !== 'ok' || !info.url) return { status: info.status === 'missing' ? 'missing' : 'unavailable' };
+    return { status: 'ok', src: info.url, fileId: null };
+}
+
+/**
  * Превръща рамките на вградените картинки в самите картинки.
  * Вика се веднага след всяко задаване на innerHTML от formatText/processNoteContent (борд, модал).
  * Идемпотентна: рамка, която вече се тегли или е готова, не се пипа.
@@ -7413,27 +7456,18 @@ function hydrateInlineImages(rootEl) {
         box.dataset.nmLoading = 'true';
         const fileName = box.dataset.nmFile;
         modePromise.then(async mode => {
+            const info = await resolveNoteImageSrc(fileName, mode);
+            if (info.status !== 'ok') {
+                markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
+                return;
+            }
+            if (!putImage(box, fileName, info.src)) return;
             if (mode === 'gdrive') {
-                const info = await resolveInlineImageFile(fileName);
-                if (info.status !== 'ok') {
-                    markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
-                    return;
-                }
-                const src = await inlineImageThumbUrl(info.fileId);
-                if (!putImage(box, fileName, src)) return;
                 // Клик отваря съществуващия преглед на бележката - същият overlay като при прикачените
                 // (addInNotePreviewListener -> showInNotePreview, легаси подписът с fileId и 'gdrive').
                 addInNotePreviewListener(box, info.fileId, 'gdrive', false);
                 return;
             }
-            // Локална папка или архив: файлът се чете от диска. Drive не се пита - тук офлайн не е
-            // грешка, файловете са при потребителя.
-            const info = await resolveInlineImageBlobUrl(fileName, mode);
-            if (info.status !== 'ok') {
-                markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
-                return;
-            }
-            if (!putImage(box, fileName, info.url)) return;
             // Клик: същият overlay, но с пътя до файла - showInNotePreview сам го прочита в пълен
             // размер по същите три клона като прикачените (тук - 'local' / 'archive').
             addInNotePreviewListener(box, [{ path: fileName, type: 1 }], 0, mode, false);
@@ -7551,6 +7585,131 @@ function formatText(text, formatString, isForModal = false) {
     // на картинката стои един знак и не пречи на обработката на сегмента.
     html = insertInlineImageSlots(html, inlineImageSlots);
     return html;
+}
+
+/**
+ * Миниатюрата в плочката: същият път като вградените картинки (resolveNoteImageSrc), режимът се
+ * пита по същия начин (inlineImageSourceMode), за да работят Drive, локална папка и архив.
+ * Докато файлът се търси, плочката пази мястото с празна подложка; при липсващ файл остава
+ * иконата на типа и пунктир, вместо празна дупка.
+ */
+async function fillAttachmentThumb(photoEl, tile, fileName) {
+    if (!photoEl || !fileName) return;
+    try {
+        const mode = await inlineImageSourceMode();
+        const info = await resolveNoteImageSrc(fileName, mode);
+        if (!photoEl.isConnected) return; // плочката вече не е на екрана
+        if (info.status !== 'ok') { dropAttachmentThumb(photoEl, tile, info.status); return; }
+        const img = document.createElement('img');
+        img.alt = ''; // името е в title/aria-label на плочката, тук би се повторило
+        img.decoding = 'async';
+        img.addEventListener('load', () => {
+            photoEl.classList.remove('is-loading');
+            photoEl.classList.add('is-ready');
+            tile.dataset.state = 'ready';
+        });
+        img.addEventListener('error', () => dropAttachmentThumb(photoEl, tile, 'unavailable'));
+        img.src = info.src;
+        photoEl.appendChild(img);
+    } catch (e) {
+        if (photoEl.isConnected) dropAttachmentThumb(photoEl, tile, 'unavailable');
+    }
+}
+
+/** Миниатюра няма: плочката се връща към иконата на типа и казва защо с пунктир. */
+function dropAttachmentThumb(photoEl, tile, state) {
+    if (photoEl) photoEl.remove();
+    if (!tile) return;
+    tile.classList.remove('has-photo');
+    tile.classList.add(state === 'missing' ? 'is-missing' : 'is-unavailable');
+    tile.dataset.state = state;
+}
+
+/**
+ * Плочка в лентата с прикачени файлове във viewer-а (модала).
+ * Плочката НЕ отваря файла сама: тя натиска съществуващия линк от футъра, който
+ * handleAttachment / handleGoogleDriveAttachment вече е построил, за да остане отварянето точно
+ * такова, каквото беше при клик върху името (преглед при Drive за снимка/видео/звук, файл в нов
+ * раздел при локална папка и архив, картата при type=5).
+ * Ctrl+клик показва JSON записа на прикачения файл - същото, което правеше иконата в debug режим,
+ * но винаги, защото в лентата отделна икона вече няма.
+ * @param {object} attachment - Обектът на прикачения файл.
+ * @param {HTMLElement} attachmentWrapper - Готовият ред на футъра (икона + линк) - остава скрит.
+ * @param {object} iconData - SVG иконата за типа на файла.
+ * @param {HTMLElement} slot - Мястото в лентата, в което влиза плочката (по ред на файловете).
+ */
+function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
+    const path = String(attachment.path || '');
+    const fileName = path ? path.split('/').pop() : '';
+    // type=5 (място) не е файл: "lat|lng|label", името за подсказката е етикетът.
+    const label = attachment.type === 5 ? (path.split('|')[2] || '') : fileName;
+    const hint = attachment.description ? `${label} — ${attachment.description}` : label;
+
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'nm-attach-tile';
+    tile.dataset.type = String(attachment.type);
+    tile.dataset.state = path ? 'plain' : 'missing';
+    if (hint) {
+        // Името не стои под плочката (както в оригинала), но остава достъпно: при задържане и за
+        // екранните четци.
+        tile.title = hint;
+        tile.setAttribute('aria-label', hint);
+    }
+
+    const icon = document.createElement('span');
+    icon.className = 'nm-attach-tile-icon';
+    icon.innerHTML = iconData.svg;
+    tile.appendChild(icon);
+
+    // PDF-ът е червена плочка с "PDF", както в оригиналното приложение.
+    if (/\.pdf$/i.test(fileName)) {
+        tile.classList.add('is-pdf');
+        const tag = document.createElement('span');
+        tag.className = 'nm-attach-tile-tag';
+        tag.textContent = 'PDF';
+        tile.appendChild(tag);
+    }
+
+    // Снимката показва себе си, всичко останало - иконата на типа. Файл, който липсва (няма
+    // път), си остава плочка с иконата и пунктир.
+    if (attachment.type === 1 && fileName) {
+        const photo = document.createElement('span');
+        photo.className = 'nm-attach-tile-photo is-loading';
+        tile.classList.add('has-photo');
+        tile.insertBefore(photo, icon);
+        fillAttachmentThumb(photo, tile, fileName);
+    } else if (!path) {
+        tile.classList.add('is-missing');
+    }
+
+    // Кликът: съществуващият линк върши истинската работа, плочката само го натиска.
+    // Във viewer-а линкът винаги е <a> (isForModal), затова го търсим директно.
+    const sourceLink = attachmentWrapper.querySelector('a');
+    const showAttachmentJson = () => showModal(JSON.stringify(attachment, null, 2));
+    const openSource = () => { if (sourceLink) sourceLink.click(); };
+
+    // Плочката е <button>, значи Enter и Space идват като click - клавиатурата работи като мишката.
+    tile.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.ctrlKey || e.metaKey) { showAttachmentJson(); return; }
+        openSource();
+    });
+    // На macOS Ctrl+клик идва като contextmenu, не като click - иначе там би се отворил файлът.
+    tile.addEventListener('contextmenu', (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        showAttachmentJson();
+    });
+
+    attachmentWrapper.classList.add('nm-attach-source');
+    // Редът има inline display от строежа си (за борда е нужно), затова тук се скрива със inline
+    // style - иначе остава видим и имената пак излизат под плочките.
+    attachmentWrapper.style.display = 'none';
+    if (slot) slot.append(tile, attachmentWrapper);
+    return tile;
 }
 
 /**
