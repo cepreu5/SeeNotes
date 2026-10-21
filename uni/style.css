@@ -517,7 +517,6 @@ main {
     box-sizing: border-box;
     max-width: 100%;
     margin: 2px 0;
-    border-radius: 7px;
     vertical-align: middle;
     cursor: pointer;
     overflow: hidden;
@@ -543,7 +542,6 @@ main {
     height: auto;
     box-sizing: border-box;
     border: 0;
-    border-radius: 7px;
 }
 
 /* Липсващ или недостъпен файл: рамката казва, че там е имало снимка, и коя.
