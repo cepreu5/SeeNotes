@@ -4994,7 +4994,15 @@ let noteWindowNavInPlace = 0;
 // Редът се строи ВЕДНЪЖ за сесията - вж. stepNoteWindowWalk.
 let noteWindowWalk = null;
 let noteWindowWalkTimer = 0;
-let noteWindowWalkAdvancing = false; // стрелката мести активния прозорец: обхождането не се строи наново
+// Кой прозорец е бил активен в момента, в който е започнало натискането. Стрелката прави своя
+// прозорец активен още на pointerdown, така че без това обхождането не знае откъде е тръгнало.
+let noteWindowPressFrom = null;
+// Кой прозорец чиято стрелка беше натисната последно: повторен натиск в същата стрелка продължава
+// обхождането, натиск в друга стрелка тръгва от нея.
+let noteWindowLastArrowWin = null;
+// Натискането е започнало върху стрелка: тогава активирането на прозореца НЕ строи обхождането
+// наново (иначе всеки натиск тръгва от натиснатата стрелка - вж. stepNoteWindowWalk).
+let noteWindowPressOnArrow = false;
 
 // Слоят и шаблонът се правят от самия #content-modal, за да няма две копия на една и съща
 // разметка в index-2.html. Самият #content-modal влиза в слоя и е първият прозорец: иначе, като
@@ -5027,49 +5035,7 @@ function ensureNoteWindowLayer() {
         layer.parentNode.insertBefore(tpl, layer);
     }
     if (src.parentNode !== layer) layer.appendChild(src);
-    installNoteWindowArrowRouter();
     return layer;
-}
-
-// Стрелките < / > стоят в хедъра на всеки прозорец и прозорците се застъпват един по друг (отместване
-// по диагонала). Затова натискането върху стрелка на по-долен прозорец реално пада върху тялото на
-// по-горния и изглежда, че стрелката не работи. Затова тук хващаме натискането по КООРДИНАТИ: ако
-// точката е в правоъгълника на някоя видима стрелка, тя се изпълнява, независимо кой е отгоре.
-let noteWindowArrowRouterInstalled = false;
-function installNoteWindowArrowRouter() {
-    if (noteWindowArrowRouterInstalled) return;
-    noteWindowArrowRouterInstalled = true;
-    const handle = (e) => {
-        if (e.button !== undefined && e.button !== 0) return;
-        const hit = noteWindowArrowAtPoint(e.clientX, e.clientY);
-        if (!hit) return;
-        e.preventDefault();
-        e.stopPropagation();
-        // stopPropagation стига, за да не брои същото натискане и onclick на самия бутон.
-        if (noteWindowWalkEnabled()) stepNoteWindowWalk(hit.dir, hit.win);
-        else navigateBoardNote(hit.win, hit.dir);
-    };
-    // Само 'click', веднъж на натискане: pointerdown + mousedown + click заедно биха преместили
-    // обхождането два-три пъти за едно натискане и после пак да стигнат до тялото на горния прозорец.
-    document.addEventListener('click', handle, true);
-}
-
-// Най-горната стрелка, чийто правоъгълник съдържа точката. При застъпване печели прозорецът с
-// по-голям z-index, тоест тази, която човек вижда най-отгоре.
-function noteWindowArrowAtPoint(x, y) {
-    let best = null;
-    getOpenNoteWindows().forEach(win => {
-        [['prev', -1], ['next', 1]].forEach(([name, dir]) => {
-            const btn = win.el.querySelector(`#${name}-note-btn, [data-mwid="${name}-note-btn"]`);
-            if (!btn || getComputedStyle(btn).display === 'none') return;
-            const r = btn.getBoundingClientRect();
-            if (!r.width || !r.height) return;
-            if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
-            const z = Number(win.el.style.zIndex) || 0;
-            if (!best || z > best.z) best = { win, dir, z };
-        });
-    });
-    return best;
 }
 
 // Класовете .nw-<id> остават и когато id-то бъде прибрано: CSS-ът на бележката (#modal-body ...)
@@ -5101,10 +5067,15 @@ function restoreNoteWindowIds(win) {
 
 function activateNoteWindow(win, front = true) {
     if (!win) return;
+    // Клик в самата бележка (или програматично активиране) е съзнателен избор на прозорец: следващото
+    // натискане на стрелка тръгва от него. Натиск върху стрелка не брои - там стъпката решава.
+    if (!noteWindowPressOnArrow && activeNoteWindow && activeNoteWindow !== win) {
+        resetNoteWindowWalk();
+        noteWindowLastArrowWin = null;
+    }
+    dbgArrow('activate', dbgWindowLabel(activeNoteWindow) + ' → ' + dbgWindowLabel(win)
+        + ' front=' + front + ' от ' + dbgCaller());
     if (activeNoteWindow !== win) {
-        // Смяна на активния прозорец по друг начин освен със стрелка: обхождането тръгва от него.
-        // Самата стрелка минава през noteWindowWalkAdvancing, за да продължи поредицата си.
-        if (!noteWindowWalkAdvancing) resetNoteWindowWalk();
         const prev = activeNoteWindow;
         if (prev) {
             prev.state.currentModalContent = currentModalContent;
@@ -5169,28 +5140,41 @@ function resetNoteWindowWalk() {
     }
 }
 
-function stepNoteWindowWalk(direction, source) {
+function stepNoteWindowWalk(direction, pressed) {
     const open = getOpenNoteWindows();
     if (open.length < 2) return;
+    const active = (activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : null;
+    // Откъде тръгва стъпката:
+    // - натиск върху ДРУГА стрелка (друг прозорец) тръгва от нея - това е съзнателен избор;
+    // - повторен натиск върху СЪЩАТА стрелка продължава курса на обхождането. Иначе всеки натиск
+    //   в нея щеше да тръгва от нея и да стига винаги до един и същ съсед (от бележка 1 винаги 2);
+    // - след изтичане на NOTE_WINDOW_WALK_IDLE обхождането се строи наново от прозореца, който е
+    //   бил активен ПРЕДИ натискането (noteWindowPressFrom): самата стрелка прави своя прозорец
+    //   активен още на pointerdown.
+    const otherArrow = pressed && noteWindowLastArrowWin !== pressed;
+    const from = otherArrow ? pressed
+        : ((noteWindowPressFrom && noteWindowPressFrom.open && open.includes(noteWindowPressFrom))
+            ? noteWindowPressFrom : active);
     let walk = noteWindowWalk;
-    if (!walk || !sameNoteWindowOrder(walk.order, open)) {
-        const from = (source && source.open) ? source
-            : ((activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : open[0]);
+    const dbgRebuilt = !walk || !sameNoteWindowOrder(walk.order, open);
+    if (dbgRebuilt) {
         walk = noteWindowWalk = { order: open.slice(), index: Math.max(0, open.indexOf(from)) };
+    } else if (otherArrow) {
+        walk.index = Math.max(0, walk.order.indexOf(pressed));
     }
+    noteWindowLastArrowWin = pressed || null;
+    dbgArrow('step', (direction < 0 ? '<' : '>') + ' от ' + dbgWindowLabel(active)
+        + ' | отворени=[' + open.map(w => noteWindows.indexOf(w)).join(',') + ']'
+        + ' | ' + (dbgRebuilt ? 'ПОСТРОЕН НАНОВО ' : '') + 'преди: ' + dbgWalkState());
+    // Курсът НЕ се мести към натиснатия прозорец: той е състояние на сесията и всеки натиск го
+    // мести само с една стъпка. Иначе многократно натискане в една стрелка се връщаше в началото.
     walk.index = (walk.index + (direction < 0 ? -1 : 1) + walk.order.length) % walk.order.length;
     const target = walk.order[walk.index];
-    if (target && target.open) {
-        // Стрелката сама мести активния прозорец: това НЕ е ново начало на обхождането.
-        // Прозорецът се вдига отпред: така стрелката, която човек вижда, е винаги на активния прозорец.
-        // Че натискането стига и когато стрелката е закрита от друг прозорец, се грижи
-        // installNoteWindowArrowRouter (по координати, не по това кой елемент е отгоре).
-        noteWindowWalkAdvancing = true;
-        try { activateNoteWindow(target, true); }
-        finally { noteWindowWalkAdvancing = false; }
-    }
+    dbgArrow('step→', 'след: ' + dbgWalkState() + ' цел=' + dbgWindowLabel(target));
+    if (target && target.open) activateNoteWindow(target, true);
     if (noteWindowWalkTimer) clearTimeout(noteWindowWalkTimer);
     noteWindowWalkTimer = setTimeout(resetNoteWindowWalk, NOTE_WINDOW_WALK_IDLE);
+    noteWindowPressOnArrow = false;
 }
 
 // Съседната бележка от борда влиза в СЪЩИЯ прозорец (noteWindowNavInPlace), не отваря втори.
@@ -5211,15 +5195,18 @@ function updateNoteWindowNav(win) {
     const prevBtn = win.el.querySelector('#prev-note-btn, [data-mwid="prev-note-btn"]');
     const nextBtn = win.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
     if (!prevBtn || !nextBtn) return;
-    const press = (dir) => {
-        // Натисканията, поети от прихващача по координати, не стигат дотук (stopPropagation).
-        if (noteWindowWalkEnabled()) {
-            if (win !== activeNoteWindow) resetNoteWindowWalk();
-            stepNoteWindowWalk(dir, win);
-        } else navigateBoardNote(win, dir);
+    prevBtn.onclick = (e) => {
+        dbgArrow('arrow:<', 'стрелка на ' + dbgWindowLabel(win) + ' @' + Math.round(e.clientX || 0) + ','
+            + Math.round(e.clientY || 0) + ' обхождане=' + noteWindowWalkEnabled());
+        if (noteWindowWalkEnabled()) stepNoteWindowWalk(-1, win);
+        else navigateBoardNote(win, -1);
     };
-    prevBtn.onclick = () => press(-1);
-    nextBtn.onclick = () => press(1);
+    nextBtn.onclick = (e) => {
+        dbgArrow('arrow:>', 'стрелка на ' + dbgWindowLabel(win) + ' @' + Math.round(e.clientX || 0) + ','
+            + Math.round(e.clientY || 0) + ' обхождане=' + noteWindowWalkEnabled());
+        if (noteWindowWalkEnabled()) stepNoteWindowWalk(1, win);
+        else navigateBoardNote(win, 1);
+    };
     if (noteWindowWalkEnabled()) {
         prevBtn.style.display = 'flex';
         nextBtn.style.display = 'flex';
@@ -5228,6 +5215,191 @@ function updateNoteWindowNav(win) {
     const notes = win.navNotes, idx = (typeof win.navIndex === 'number') ? win.navIndex : -1;
     prevBtn.style.display = (notes && idx > 0) ? 'flex' : 'none';
     nextBtn.style.display = (notes && idx >= 0 && idx < notes.length - 1) ? 'flex' : 'none';
+}
+
+// --- ДЕБЪГ: обхождането на отворените прозорци със стрелките ------------------------------------
+// Панелът се показва при натиск на стрелка и при активиране на прозорец и пише по ред: какво е
+// натиснато и по кои координати, кое стои най-отгоре в тази точка, кой прозорец е бил активен,
+// какъв е бил редът на обхождането (order + индекс) преди и след стъпката, кой е активиран и откъде.
+// Скрива се с ×; изключва се с localStorage.noteArrowDebug = '0'.
+// За махане: този блок и редовете dbgArrow(...) в activateNoteWindow, stepNoteWindowWalk и
+// updateNoteWindowNav.
+const NOTE_ARROW_DEBUG_KEY = 'noteArrowDebug';
+const DBG_MAX_LINES = 200;
+let dbgArrowLines = [];
+let dbgArrowPanel = null;
+let dbgArrowBody = null;
+let dbgArrowT0 = Date.now();
+
+function dbgArrowOn() {
+    // При автоматизиран браузър (Playwright) панелът само би пречил на тестовете.
+    if (navigator.webdriver) return false;
+    try { return localStorage.getItem(NOTE_ARROW_DEBUG_KEY) !== '0'; } catch (_) { return true; }
+}
+
+// Етикет на прозорец: редът му в noteWindows, звезда за активния и началото на текста.
+function dbgWindowLabel(win) {
+    if (!win) return '-';
+    const i = noteWindows.indexOf(win);
+    const txt = (win.body ? (win.body.textContent || '') : '').replace(/\s+/g, ' ').trim().slice(0, 12);
+    return 'w' + i + (win === activeNoteWindow ? '*' : '') + '«' + txt + '»';
+}
+
+function dbgDescEl(el) {
+    if (!el || !el.tagName) return 'null';
+    const mwid = el.getAttribute ? (el.getAttribute('data-mwid') || el.id) : '';
+    const cls = (typeof el.className === 'string' ? el.className : '').split(/\s+/).filter(Boolean).slice(0, 2);
+    return el.tagName.toLowerCase() + (mwid ? '#' + mwid : '') + (cls.length ? '.' + cls.join('.') : '');
+}
+
+// Редът на елементите в точката: кой прозорец поема натиска и какво има под него.
+function dbgStackAt(x, y) {
+    const out = [];
+    (document.elementsFromPoint(x, y) || []).forEach(el => {
+        const w = el.closest ? el.closest('.note-window') : null;
+        const wi = w ? noteWindows.findIndex(n => n.el === w) : -1;
+        let lbl = wi >= 0 ? ('w' + wi) : 'page';
+        const mwid = el.getAttribute ? (el.getAttribute('data-mwid') || el.id) : '';
+        if (mwid) lbl += ':' + mwid;
+        if (out[out.length - 1] !== lbl) out.push(lbl);
+    });
+    return out.slice(0, 4).join(' > ');
+}
+
+function dbgWalkState() {
+    if (!noteWindowWalk) return 'walk=null';
+    return 'walk=[' + noteWindowWalk.order.map(w => noteWindows.indexOf(w)).join(',') + '] i=' + noteWindowWalk.index;
+}
+
+// Мястото на стрелките и z-редът: така се вижда дали стрелката се мести под курсора след натиск.
+function dbgArrowRects() {
+    return getOpenNoteWindows().map(w => {
+        const b = w.el.querySelector('[data-mwid="next-note-btn"], #next-note-btn');
+        const z = Number(w.el.style.zIndex) || 0;
+        if (!b) return 'w' + noteWindows.indexOf(w) + ':няма стрелка z' + z;
+        const r = b.getBoundingClientRect();
+        const hidden = (b.style.display === 'none' || !r.width) ? ' скрита' : '';
+        return 'w' + noteWindows.indexOf(w) + ' стрелка@' + Math.round(r.left) + ',' + Math.round(r.top)
+            + ' z' + z + hidden;
+    }).join(' | ');
+}
+
+// Кой е извикал активирането: първите два реда от стека без самите дебъг функции.
+function dbgCaller() {
+    const lines = (new Error().stack || '').split('\n').slice(1);
+    const names = [];
+    for (const line of lines) {
+        const m = line.match(/at\s+([^\s(]+)/);
+        if (!m) continue;
+        const fn = m[1].replace(/^.*\./, '');
+        if (/^dbg/.test(fn) || fn === 'activateNoteWindow' || fn === 'stepNoteWindowWalk') continue;
+        names.push(fn);
+        if (names.length === 2) break;
+    }
+    return names.length ? names.join('<') : '?';
+}
+
+function dbgArrowEnsurePanel() {
+    if (dbgArrowPanel && document.body.contains(dbgArrowPanel)) return dbgArrowPanel;
+    if (!document.body) return null;
+    const panel = document.createElement('div');
+    panel.id = 'note-arrow-debug';
+    panel.style.cssText = 'position:fixed;left:8px;bottom:8px;width:660px;max-width:calc(100vw - 16px);'
+        + 'max-height:48vh;background:#0d1117;color:#d7e2ee;border:1px solid #30475e;border-radius:8px;'
+        + 'font:11px/1.45 ui-monospace,Consolas,monospace;z-index:2147483000;'
+        + 'box-shadow:0 8px 24px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden;'
+        // Панелът е само за четене: не бива да поема натисканията, които са за бележките под него.
+        + 'pointer-events:none';
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 8px;background:#16212e;'
+        + 'border-bottom:1px solid #30475e;cursor:move;pointer-events:auto';
+    const title = document.createElement('span');
+    title.textContent = 'Дебъг: стрелки';
+    title.style.cssText = 'flex:1;font-weight:600;color:#8fb6d9';
+    const mkBtn = (label, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.style.cssText = 'background:#22303f;color:#d7e2ee;border:1px solid #3a5570;border-radius:4px;'
+            + 'font:11px ui-monospace,monospace;padding:1px 7px;cursor:pointer';
+        b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+        return b;
+    };
+    head.appendChild(title);
+    head.appendChild(mkBtn('Копирай', () => {
+        const txt = dbgArrowLines.join('\n');
+        if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+    }));
+    head.appendChild(mkBtn('Изчисти', () => { dbgArrowLines = []; dbgArrowRender(); }));
+    head.appendChild(mkBtn('×', () => {
+        panel.remove();
+        dbgArrowPanel = null;
+        dbgArrowBody = null;
+    }));
+    const body = document.createElement('pre');
+    body.style.cssText = 'margin:0;padding:6px 8px;overflow:auto;white-space:pre-wrap;'
+        + 'word-break:break-word;flex:1;font:inherit';
+    panel.appendChild(head);
+    panel.appendChild(body);
+    document.body.appendChild(panel);
+    // Плъзгане за хедъра: панелът да не закрива бележките, които се гледат.
+    let drag = null;
+    head.addEventListener('pointerdown', (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        const r = panel.getBoundingClientRect();
+        drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+        panel.style.left = r.left + 'px';
+        panel.style.top = r.top + 'px';
+        panel.style.bottom = 'auto';
+    });
+    window.addEventListener('pointermove', (e) => {
+        if (!drag) return;
+        panel.style.left = Math.max(0, e.clientX - drag.dx) + 'px';
+        panel.style.top = Math.max(0, e.clientY - drag.dy) + 'px';
+    });
+    window.addEventListener('pointerup', () => { drag = null; });
+    dbgArrowPanel = panel;
+    dbgArrowBody = body;
+    dbgArrowRender();
+    return panel;
+}
+
+function dbgArrowRender() {
+    if (!dbgArrowBody) return;
+    dbgArrowBody.textContent = dbgArrowLines.join('\n');
+    dbgArrowBody.scrollTop = dbgArrowBody.scrollHeight;
+}
+
+function dbgArrow(kind, msg) {
+    if (!dbgArrowOn()) return;
+    const ms = Date.now() - dbgArrowT0;
+    dbgArrowLines.push('+' + String(ms).padStart(6, ' ') + 'ms ' + kind.padEnd(11, ' ') + ' ' + msg);
+    if (dbgArrowLines.length > DBG_MAX_LINES) dbgArrowLines = dbgArrowLines.slice(-DBG_MAX_LINES);
+    dbgArrowEnsurePanel();
+    dbgArrowRender();
+}
+
+// Всяко натискане в прозорец: какво е натиснато, къде и кой прозорец поема натиска в тази точка.
+function dbgArrowInstall() {
+    if (!dbgArrowOn()) return;
+    ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(type => {
+        document.addEventListener(type, (e) => {
+            const t = e.target;
+            const inNote = t && t.closest ? t.closest('.note-window') : null;
+            if (!inNote) return;
+            const x = Math.round(e.clientX || 0), y = Math.round(e.clientY || 0);
+            dbgArrow('dom:' + type, 'target=' + dbgDescEl(t) + ' @' + x + ',' + y
+                + ' | ред в точката: ' + dbgStackAt(x, y)
+                + ' | активен=' + dbgWindowLabel(activeNoteWindow));
+            if (type === 'click') {
+                // След активирането: стрелките и z-редът - дали стрелката не е отишла под курсора.
+                setTimeout(() => dbgArrow('after+0', 'активен=' + dbgWindowLabel(activeNoteWindow)
+                    + ' ' + dbgWalkState() + ' | ' + dbgArrowRects()), 0);
+                setTimeout(() => dbgArrow('after+250', 'активен=' + dbgWindowLabel(activeNoteWindow)
+                    + ' ' + dbgWalkState() + ' | ' + dbgArrowRects()), 250);
+            }
+        }, true);
+    });
 }
 
 function findNoteWindow(id, gdid) {
@@ -5619,21 +5791,15 @@ function wireNoteWindow(win) {
     const pick = (mwid) => el.querySelector(`[data-mwid="${mwid}"]`);
     // Натиск или фокус навсякъде в прозореца го прави активния - преди собствените му обработчици.
     const activate = () => { if (noteWindows.includes(win)) activateNoteWindow(win, true); };
-    // Натиск върху САМАТА стрелка не е ново начало: тя мести активния прозорец и поредицата продължава.
-    // Иначе клик върху ">" в бележка 1 я прави активна, курсорът се връща на 1 и всеки натиск стига
-    // само до бележка 2.
-    const activateFor = (e) => {
-        const t = e && e.target;
-        const onArrow = t && t.closest && t.closest('#prev-note-btn, #next-note-btn, [data-mwid="prev-note-btn"], [data-mwid="next-note-btn"]');
-        if (onArrow && noteWindowWalk) {
-            noteWindowWalkAdvancing = true;
-            try { activate(); } finally { noteWindowWalkAdvancing = false; }
-            return;
-        }
-        activate();
-    };
-    el.addEventListener('pointerdown', activateFor, true);
-    el.addEventListener('mousedown', activateFor, true);
+    // Първо се запомня кой е бил активен, после натиснатият става активен (важен е редът).
+    el.addEventListener('pointerdown', (e) => {
+        noteWindowPressFrom = activeNoteWindow;
+        noteWindowPressOnArrow = !!(e.target && e.target.closest
+            && e.target.closest('#prev-note-btn, #next-note-btn, [data-mwid="prev-note-btn"], [data-mwid="next-note-btn"]'));
+    }, true);
+    el.addEventListener('touchstart', () => { noteWindowPressFrom = activeNoteWindow; }, { capture: true, passive: true });
+    el.addEventListener('pointerdown', activate, true);
+    el.addEventListener('mousedown', activate, true);
     el.addEventListener('touchstart', activate, { capture: true, passive: true });
     el.addEventListener('focusin', activate, true);
     el.addEventListener('click', (e) => {
@@ -10300,3 +10466,5 @@ async function showBoardReorderPopup() {
     document.body.appendChild(overlay);
     setTimeout(() => overlay.classList.add('visible'), 10);
 }
+
+dbgArrowInstall();
