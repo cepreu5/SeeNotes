@@ -8206,8 +8206,10 @@ if ('serviceWorker' in navigator) {
             // Global set to track which SW versions we've already notified about
             window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
 
-                // Allow the notification to show for any waiting worker since a waiting worker
-                // always implies a byte-level change in the service worker file.
+            // Function to show update notification as a persistent floating bar
+            const showUpdateNotification = (waitingSW) => {
+                if (!waitingSW) return;
+                const swUrl = waitingSW.scriptURL;
 
                 // Extract version from SW URL if possible
                 const swVersionMatch = swUrl.match(/[?&]v=([^&]+)/);
