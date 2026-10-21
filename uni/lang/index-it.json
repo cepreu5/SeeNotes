@@ -24,5 +24,8 @@
     "cta_p1": "Accedi una sola volta. Potrai accedere ai tuoi appunti da qualsiasi dispositivo, in qualsiasi momento, online o offline.",
     "cta_h3": "Accedi per iniziare",
     "cta_p2": "Utilizza lo stesso account Google che usi sul tuo dispositivo Android.",
-    "cta_btn": "Continua con Google"
+    "cta_btn": "Continua con Google",
+    "popup_info_title": "Informazione",
+    "popup_info_msg": "Puoi migliorare la traduzione dell'interfaccia con un comodo strumento interattivo avviando l'applicazione all'indirizzo:",
+    "popup_info_btn": "Ho capito"
 }

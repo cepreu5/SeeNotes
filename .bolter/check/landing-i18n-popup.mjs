@@ -33,6 +33,9 @@ const URL_ = `http://127.0.0.1:${PORT}/index.html`;
 const lang = async (id) => JSON.parse(await readFile(path.join(root, `lang/index-${id}.json`), 'utf8'));
 const EN = await lang('en');
 const BG = await lang('bg');
+const RU = await lang('ru');
+const IT = await lang('it');
+const ALL_LANGS = { en: EN, bg: BG, ru: RU, it: IT };
 
 let fails = 0, n = 0;
 const ok = (cond, msg, extra) => {
@@ -176,6 +179,69 @@ const browser = await chromium.launch();
   ok(m.h <= m.winH, '390: попъпът се побира по височина', m);
   ok(m.docW <= m.winW, '390: няма хоризонтален скрол', { docW: m.docW, winW: m.winW });
   await page.close();
+}
+
+// ---------- Текстът на попъпа е „превод на потребителския интерфейс“ на всички езици ----------
+{
+  // статично: четирите езикови файла имат трите ключа и новия текст
+  const wantWord = { en: /user interface/i, bg: /интерфейса/i, ru: /интерфейса/i, it: /interfaccia/i };
+  for (const [id, L] of Object.entries(ALL_LANGS)) {
+    ok(typeof L.popup_info_title === 'string' && L.popup_info_title.trim() !== '', `${id}: има popup_info_title`, L.popup_info_title);
+    ok(typeof L.popup_info_msg === 'string' && L.popup_info_msg.trim() !== '', `${id}: има popup_info_msg`, L.popup_info_msg);
+    ok(typeof L.popup_info_btn === 'string' && L.popup_info_btn.trim() !== '', `${id}: има popup_info_btn`, L.popup_info_btn);
+    ok(wantWord[id].test(L.popup_info_msg), `${id}: текстът казва „превод на интерфейса“`, L.popup_info_msg);
+    ok(!/(machine|машинн|машин)/i.test(L.popup_info_msg), `${id}: няма „машинен“ в текста`, L.popup_info_msg);
+  }
+
+  // живо: смяна на езика -> попъпът показва текста на съответния език
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto(URL_, { waitUntil: 'load' });
+  await page.waitForSelector('.i18n-popup.visible', { timeout: 4000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  for (const id of ['ru', 'en', 'bg']) {
+    await page.selectOption('.lang-select', id);
+    await page.waitForTimeout(700);
+    const st = await page.evaluate(() => {
+      const popup = document.querySelector('.i18n-popup');
+      return {
+        visible: popup.classList.contains('visible'),
+        title: (popup.querySelector('h4') || {}).textContent,
+        msg: (popup.querySelector('p') || {}).textContent,
+        btn: (popup.querySelector('.close-btn') || {}).textContent,
+      };
+    });
+    const L = ALL_LANGS[id];
+    ok(st.visible && st.msg === L.popup_info_msg && st.btn === L.popup_info_btn && st.title === L.popup_info_title,
+      `смяна на ${id}: попъпът е с текста от index-${id}.json`, { got: st, want: L.popup_info_msg });
+  }
+  ok(errors.length === 0, 'няма JS грешки при обикаляне на езиците', errors);
+  await page.close();
+
+  // it не е в превключвателя: при запазен it страницата се зарежда от index-it.json,
+  // а попъпът при отваряне пак е на английски (същото правило като за bg)
+  const itPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await itPage.goto(URL_, { waitUntil: 'load' });
+  await itPage.waitForTimeout(800);
+  await itPage.evaluate(() => localStorage.setItem('language', 'it'));
+  await itPage.reload({ waitUntil: 'load' });
+  await itPage.waitForSelector('.i18n-popup.visible', { timeout: 4000 }).catch(() => {});
+  await itPage.waitForTimeout(500);
+  const itState = await itPage.evaluate(() => {
+    const popup = document.querySelector('.i18n-popup');
+    return {
+      visible: popup.classList.contains('visible'),
+      title: (popup.querySelector('h4') || {}).textContent,
+      msg: (popup.querySelector('p') || {}).textContent,
+      btn: (popup.querySelector('.close-btn') || {}).textContent,
+      hero: (document.querySelector('.hero-title') || {}).innerText,
+    };
+  });
+  ok(itState.visible && itState.msg === EN.popup_info_msg, 'запазен it: попъпът при отваряне е на английски, както при bg', itState);
+  ok(itState.hero.replace(/\s+/g, ' ').trim() === String(IT.hero_title || '').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim(),
+    'запазен it: самата страница е на италиански (index-it.json се зарежда)', { got: itState.hero, want: IT.hero_title });
+  await itPage.close();
 }
 
 await browser.close();
