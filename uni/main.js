@@ -4994,6 +4994,7 @@ let noteWindowNavInPlace = 0;
 // Редът се строи ВЕДНЪЖ за сесията - вж. stepNoteWindowWalk.
 let noteWindowWalk = null;
 let noteWindowWalkTimer = 0;
+let noteWindowWalkAdvancing = false; // стрелката мести активния прозорец: обхождането не се строи наново
 
 // Слоят и шаблонът се правят от самия #content-modal, за да няма две копия на една и съща
 // разметка в index-2.html. Самият #content-modal влиза в слоя и е първият прозорец: иначе, като
@@ -5059,6 +5060,9 @@ function restoreNoteWindowIds(win) {
 function activateNoteWindow(win, front = true) {
     if (!win) return;
     if (activeNoteWindow !== win) {
+        // Смяна на активния прозорец по друг начин освен със стрелка: обхождането тръгва от него.
+        // Самата стрелка минава през noteWindowWalkAdvancing, за да продължи поредицата си.
+        if (!noteWindowWalkAdvancing) resetNoteWindowWalk();
         const prev = activeNoteWindow;
         if (prev) {
             prev.state.currentModalContent = currentModalContent;
@@ -5123,21 +5127,23 @@ function resetNoteWindowWalk() {
     }
 }
 
-function stepNoteWindowWalk(direction) {
+function stepNoteWindowWalk(direction, source) {
     const open = getOpenNoteWindows();
     if (open.length < 2) return;
-    const active = (activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : null;
     let walk = noteWindowWalk;
     if (!walk || !sameNoteWindowOrder(walk.order, open)) {
-        walk = noteWindowWalk = { order: open.slice(), index: Math.max(0, open.indexOf(active)) };
+        const from = (source && source.open) ? source
+            : ((activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : open[0]);
+        walk = noteWindowWalk = { order: open.slice(), index: Math.max(0, open.indexOf(from)) };
     }
-    // Натиск в прозорец, който не е бил активният: слушателят на прозореца вече го е направил активен
-    // (преди този клик), значи броенето тръгва от него, а не от стария курсор.
-    const activePos = active ? walk.order.indexOf(active) : -1;
-    if (activePos >= 0) walk.index = activePos;
     walk.index = (walk.index + (direction < 0 ? -1 : 1) + walk.order.length) % walk.order.length;
     const target = walk.order[walk.index];
-    if (target && target.open) activateNoteWindow(target, true);
+    if (target && target.open) {
+        // Стрелката сама мести активния прозорец: това НЕ е ново начало на обхождането.
+        noteWindowWalkAdvancing = true;
+        try { activateNoteWindow(target, true); }
+        finally { noteWindowWalkAdvancing = false; }
+    }
     if (noteWindowWalkTimer) clearTimeout(noteWindowWalkTimer);
     noteWindowWalkTimer = setTimeout(resetNoteWindowWalk, NOTE_WINDOW_WALK_IDLE);
 }
@@ -5161,11 +5167,11 @@ function updateNoteWindowNav(win) {
     const nextBtn = win.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
     if (!prevBtn || !nextBtn) return;
     prevBtn.onclick = () => {
-        if (noteWindowWalkEnabled()) stepNoteWindowWalk(-1);
+        if (noteWindowWalkEnabled()) stepNoteWindowWalk(-1, win);
         else navigateBoardNote(win, -1);
     };
     nextBtn.onclick = () => {
-        if (noteWindowWalkEnabled()) stepNoteWindowWalk(1);
+        if (noteWindowWalkEnabled()) stepNoteWindowWalk(1, win);
         else navigateBoardNote(win, 1);
     };
     if (noteWindowWalkEnabled()) {
@@ -5567,8 +5573,21 @@ function wireNoteWindow(win) {
     const pick = (mwid) => el.querySelector(`[data-mwid="${mwid}"]`);
     // Натиск или фокус навсякъде в прозореца го прави активния - преди собствените му обработчици.
     const activate = () => { if (noteWindows.includes(win)) activateNoteWindow(win, true); };
-    el.addEventListener('pointerdown', activate, true);
-    el.addEventListener('mousedown', activate, true);
+    // Натиск върху САМАТА стрелка не е ново начало: тя мести активния прозорец и поредицата продължава.
+    // Иначе клик върху ">" в бележка 1 я прави активна, курсорът се връща на 1 и всеки натиск стига
+    // само до бележка 2.
+    const activateFor = (e) => {
+        const t = e && e.target;
+        const onArrow = t && t.closest && t.closest('#prev-note-btn, #next-note-btn, [data-mwid="prev-note-btn"], [data-mwid="next-note-btn"]');
+        if (onArrow && noteWindowWalk) {
+            noteWindowWalkAdvancing = true;
+            try { activate(); } finally { noteWindowWalkAdvancing = false; }
+            return;
+        }
+        activate();
+    };
+    el.addEventListener('pointerdown', activateFor, true);
+    el.addEventListener('mousedown', activateFor, true);
     el.addEventListener('touchstart', activate, { capture: true, passive: true });
     el.addEventListener('focusin', activate, true);
     el.addEventListener('click', (e) => {
