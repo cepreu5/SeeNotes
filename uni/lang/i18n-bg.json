@@ -553,5 +553,7 @@
     "demoBannerText": "Приложението е напълно функционално. Всички бележки се записват в базата на браузъра и се пазят до изтриване на кеша. Единствено не се прави синхронизация с Google Drive, затова бележките са налични само на това устройство.",
     "demoExitTooltip": "Изход от демо режима",
     "demoWelcomeBoard": "Добре дошли",
-    "demoWelcomeNote": "welcome"
+    "demoWelcomeNote": "welcome",
+    "inlineImgMissing": "няма такъв файл в Images",
+    "inlineImgUnavailable": "файлът не е достъпен сега"
 }

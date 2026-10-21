@@ -640,6 +640,77 @@ main {
     cursor: pointer;
 }
 
+/* Вградена картинка в бележката (text_span type=8).
+   Картинката застава точно на мястото на маркера (звездичката) в изречението, затова е
+   inline-block, а не блок: думите преди и след нея остават на същия ред.
+   Ширината идва от paramint (10..100%) и е процент от КОЛОНАТА на бележката (.note-content
+   на борда, #modal-body в модала), не от прозореца - иначе на 240px карта 100% би излязло
+   извън картата. Виж и :is(#modal-body, .nw-modal-body) по-долу в този блок.
+   Докато файлът се търси в Drive, рамката пази мястото (aspect-ratio), за да не подскача картата. */
+.note-content .nm-inline-img,
+:is(#modal-body, .nw-modal-body) .nm-inline-img {
+    display: inline-block;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 2px 0;
+    border-radius: 7px;
+    vertical-align: middle;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.note-content .nm-inline-img.is-loading,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-loading {
+    aspect-ratio: 4 / 3;
+    background: rgba(127, 127, 127, .16);
+    border: 1px solid rgba(127, 127, 127, .28);
+}
+
+.note-content .nm-inline-img.is-ready,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-ready {
+    aspect-ratio: auto;
+}
+
+.note-content .nm-inline-img img,
+:is(#modal-body, .nw-modal-body) .nm-inline-img img {
+    display: block;
+    width: 100%;
+    height: auto;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, .14);
+    border-radius: 7px;
+}
+
+/* Липсващ или недостъпен файл: рамката казва, че там е имало снимка, и коя.
+   Иначе текстът изглежда счупен без причина. */
+.note-content .nm-inline-img.is-missing,
+.note-content .nm-inline-img.is-unavailable,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-missing,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-unavailable {
+    aspect-ratio: auto;
+    border: 1px dashed #b4534a;
+    border-radius: 7px;
+    background: rgba(180, 83, 74, .08);
+    color: #9d3f37;
+    padding: 4px 6px;
+    font-size: 78%;
+    line-height: 1.35;
+    white-space: normal;
+}
+
+.note-content .nm-inline-img-note,
+:is(#modal-body, .nw-modal-body) .nm-inline-img-note {
+    display: block;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.note-content .nm-inline-img-why,
+:is(#modal-body, .nw-modal-body) .nm-inline-img-why {
+    display: block;
+    opacity: .85;
+}
+
 pre,
 code {
     font-size: 100%;

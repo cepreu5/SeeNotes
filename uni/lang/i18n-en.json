@@ -553,5 +553,7 @@
     "demoBannerText": "The app is fully functional. All notes are saved in the browser's database and kept until the cache is cleared. The only thing missing is syncing with Google Drive, so the notes are only available on this device.",
     "demoExitTooltip": "Exit demo mode",
     "demoWelcomeBoard": "Welcome",
-    "demoWelcomeNote": "welcome"
+    "demoWelcomeNote": "welcome",
+    "inlineImgMissing": "no such file in Images",
+    "inlineImgUnavailable": "file not available right now"
 }
