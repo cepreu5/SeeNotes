@@ -195,7 +195,7 @@
   "rememberMeLabel": "Запомнить меня",
   "trialButton": "Начать 30-дневный пробный период",
   "authFailed": "Ошибка авторизации. Пожалуйста, попробуйте снова.",
-  "intro1": "<strong>CX MultiNotes Viewer</strong> — это простой браузерный инструмент, позволяющий открывать ваши заметки <a href=\"https://play.google.com/store/apps/details?id=monitor.kmv.multinotes\" target=\"_blank\"><strong>Multinotes</strong></a> Android на любом устройстве — ПК, планшете, iPhone или любом другом, независимо от того, используете ли вы Windows, Android, macOS, iOS или Linux.",
+  "intro1": "<strong>CX MultiNotes Viewer</strong> — это простой браузерный инструмент, позволяющий открывать ваши заметки <a href=\"https://play.google.com/store/apps/details?id=monitor.kmv.multinotes\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>Multinotes</strong></a> Android на любом устройстве — ПК, планшете, iPhone или любом другом, независимо от того, используете ли вы Windows, Android, macOS, iOS или Linux.",
   "intro1a": "В настоящее время эта функция доступна только для пользователей Android-версии <b>MultiNotes</b>, загруженной из <b>Google Play</b>, с включенной синхронизацией в <b>Google Drive</b>. Скоро ожидается поддержка версии для <b>Huawei</b>.",
   "intro2": "С <strong>CX MultiNotes Viewer</strong> у вас есть быстрый доступ к своим заметкам без необходимости установки — и даже в автономном режиме, когда это необходимо. Ваш браузер хранит локальную копию заметок и автоматически обновляет её при каждой новой или измененной заметке, поэтому всё работает молниеносно.",
   "modeDbTitle": "Вот как это работает:",
