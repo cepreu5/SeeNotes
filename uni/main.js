@@ -5027,7 +5027,49 @@ function ensureNoteWindowLayer() {
         layer.parentNode.insertBefore(tpl, layer);
     }
     if (src.parentNode !== layer) layer.appendChild(src);
+    installNoteWindowArrowRouter();
     return layer;
+}
+
+// Стрелките < / > стоят в хедъра на всеки прозорец и прозорците се застъпват един по друг (отместване
+// по диагонала). Затова натискането върху стрелка на по-долен прозорец реално пада върху тялото на
+// по-горния и изглежда, че стрелката не работи. Затова тук хващаме натискането по КООРДИНАТИ: ако
+// точката е в правоъгълника на някоя видима стрелка, тя се изпълнява, независимо кой е отгоре.
+let noteWindowArrowRouterInstalled = false;
+function installNoteWindowArrowRouter() {
+    if (noteWindowArrowRouterInstalled) return;
+    noteWindowArrowRouterInstalled = true;
+    const handle = (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        const hit = noteWindowArrowAtPoint(e.clientX, e.clientY);
+        if (!hit) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // stopPropagation стига, за да не брои същото натискане и onclick на самия бутон.
+        if (noteWindowWalkEnabled()) stepNoteWindowWalk(hit.dir, hit.win);
+        else navigateBoardNote(hit.win, hit.dir);
+    };
+    // Само 'click', веднъж на натискане: pointerdown + mousedown + click заедно биха преместили
+    // обхождането два-три пъти за едно натискане и после пак да стигнат до тялото на горния прозорец.
+    document.addEventListener('click', handle, true);
+}
+
+// Най-горната стрелка, чийто правоъгълник съдържа точката. При застъпване печели прозорецът с
+// по-голям z-index, тоест тази, която човек вижда най-отгоре.
+function noteWindowArrowAtPoint(x, y) {
+    let best = null;
+    getOpenNoteWindows().forEach(win => {
+        [['prev', -1], ['next', 1]].forEach(([name, dir]) => {
+            const btn = win.el.querySelector(`#${name}-note-btn, [data-mwid="${name}-note-btn"]`);
+            if (!btn || getComputedStyle(btn).display === 'none') return;
+            const r = btn.getBoundingClientRect();
+            if (!r.width || !r.height) return;
+            if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
+            const z = Number(win.el.style.zIndex) || 0;
+            if (!best || z > best.z) best = { win, dir, z };
+        });
+    });
+    return best;
 }
 
 // Класовете .nw-<id> остават и когато id-то бъде прибрано: CSS-ът на бележката (#modal-body ...)
@@ -5140,6 +5182,9 @@ function stepNoteWindowWalk(direction, source) {
     const target = walk.order[walk.index];
     if (target && target.open) {
         // Стрелката сама мести активния прозорец: това НЕ е ново начало на обхождането.
+        // Прозорецът се вдига отпред: така стрелката, която човек вижда, е винаги на активния прозорец.
+        // Че натискането стига и когато стрелката е закрита от друг прозорец, се грижи
+        // installNoteWindowArrowRouter (по координати, не по това кой елемент е отгоре).
         noteWindowWalkAdvancing = true;
         try { activateNoteWindow(target, true); }
         finally { noteWindowWalkAdvancing = false; }
@@ -5166,14 +5211,15 @@ function updateNoteWindowNav(win) {
     const prevBtn = win.el.querySelector('#prev-note-btn, [data-mwid="prev-note-btn"]');
     const nextBtn = win.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
     if (!prevBtn || !nextBtn) return;
-    prevBtn.onclick = () => {
-        if (noteWindowWalkEnabled()) stepNoteWindowWalk(-1, win);
-        else navigateBoardNote(win, -1);
+    const press = (dir) => {
+        // Натисканията, поети от прихващача по координати, не стигат дотук (stopPropagation).
+        if (noteWindowWalkEnabled()) {
+            if (win !== activeNoteWindow) resetNoteWindowWalk();
+            stepNoteWindowWalk(dir, win);
+        } else navigateBoardNote(win, dir);
     };
-    nextBtn.onclick = () => {
-        if (noteWindowWalkEnabled()) stepNoteWindowWalk(1, win);
-        else navigateBoardNote(win, 1);
-    };
+    prevBtn.onclick = () => press(-1);
+    nextBtn.onclick = () => press(1);
     if (noteWindowWalkEnabled()) {
         prevBtn.style.display = 'flex';
         nextBtn.style.display = 'flex';
