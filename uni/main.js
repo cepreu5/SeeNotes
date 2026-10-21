@@ -4684,35 +4684,65 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 if (!authToken || isTokenExpired) {
                     console.log("Token expired or missing in preview, refreshing...");
                     const newToken = await checkAuth(); // checkAuth handles the actual refresh logic
-                    if (newToken) {
-                        authToken = newToken;
+                    // checkAuth връща обвивка { pass, tokenData }, не самия tokenData. В authToken
+                    // стои САМО tokenData - иначе хедърът излиза 'Bearer undefined' и Drive
+                    // отговаря с 401 точно когато токенът тъкмо е бил обновен.
+                    const newTokenData = newToken && (newToken.tokenData || (newToken.access_token ? newToken : null));
+                    if (newTokenData) {
+                        authToken = newTokenData;
                         // Update gapi client if needed
                         if (gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
                     }
                 }
                 const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken : gapi.auth.getToken();
                 if (!tokenObj) throw new Error(_('errorTokenMissing'));
+                // При 401 токенът се обновява веднъж и заявката се повтаря веднъж - същата схема
+                // като inlineImageThumbUrl. 401 значи изтекъл токен, не липсващ файл.
+                const refreshPreviewToken = async () => {
+                    const refresh = await refreshAuthToken().catch(() => null);
+                    if (!refresh || !refresh.pass || !refresh.tokenData || !refresh.tokenData.access_token) return null;
+                    authToken = refresh.tokenData;
+                    if (typeof gapi !== 'undefined' && gapi.client) {
+                        gapi.client.setToken({ access_token: authToken.access_token });
+                    }
+                    return authToken.access_token;
+                };
+                const fetchFromDrive = async (url, extraHeaders = {}) => {
+                    const send = (token) => fetch(url, { headers: { ...extraHeaders, 'Authorization': `Bearer ${token}` } });
+                    let response = await send(tokenObj.access_token);
+                    if (response.status === 401) {
+                        const refreshedToken = await refreshPreviewToken();
+                        if (refreshedToken) response = await send(refreshedToken);
+                    }
+                    return response;
+                };
+                // И след опресняването 401 значи изтекла сесия. Показва се точно това, а не
+                // английското „Thumbnail fetch failed: 401".
+                const sessionExpired = () => {
+                    const err = new Error(_('errorSessionExpired'));
+                    err.sessionExpired = true;
+                    return err;
+                };
                 if (isActuallyVideo || isActuallySound) {
                     try {
-                        const mediaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
-                            headers: {
-                                'Authorization': `Bearer ${tokenObj.access_token}`,
-                                'Range': 'bytes=0-10000000'
-                            }
+                        const mediaResponse = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
+                            'Range': 'bytes=0-10000000'
                         });
+                        if (mediaResponse.status === 401) throw sessionExpired();
                         if (!mediaResponse.ok) throw new Error(`Media fetch failed: ${mediaResponse.status}`);
                         const mediaBlob = await mediaResponse.blob();
                         mediaUrl = URL.createObjectURL(mediaBlob);
                         overlay.mediaUrlToRevoke = mediaUrl;
                     } catch (err) {
                         console.log("Failed to load GDrive media blob:", err);
+                        // Изтеклата сесия не е „няма преглед на този файл" - казва се, че е изтекла.
+                        if (err && err.sessionExpired) throw err;
                         throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
                     }
                 } else {
                     // Image high-res thumbnail
-                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`, {
-                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
-                    });
+                    const response = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`);
+                    if (response.status === 401) throw sessionExpired();
                     if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
                     const fileMetadata = await response.json();
                     const thumbnailUrl = fileMetadata.thumbnailLink;
@@ -8185,7 +8215,7 @@ function resolveInlineImageFile(fileName) {
 /**
  * URL на thumbnail-а на файла, с токена - същият път като прегледа в бележката (showInNotePreview):
  * метаданни с fields=thumbnailLink, после самият адрес, смален до =s400 за вградения размер.
- * Един файл = една заявка за цялата сесия.
+ * Успешен файл = една заявка за цялата сесия; провал не се помни (виж края на функцията).
  */
 function inlineImageThumbUrl(fileId) {
     if (!fileId) return Promise.resolve(null);
@@ -8215,6 +8245,11 @@ function inlineImageThumbUrl(fileId) {
         }
     })();
     inlineImageThumbCache.set(fileId, promise);
+    // Провалът НЕ се помни: иначе една изтекла сесия оставя картинката без адрес до края на
+    // сесията, дори след като токенът вече е опреснен - същото правило като в
+    // resolveInlineImageBlobUrl. Следващият рендер пак ще опита.
+    promise.then(src => { if (!src) inlineImageThumbCache.delete(fileId); })
+        .catch(() => inlineImageThumbCache.delete(fileId));
     return promise;
 }
 
@@ -8593,8 +8628,11 @@ async function driveMediaToken() {
     }
     if (!authToken || isTokenExpired) {
         const newToken = await checkAuth();
-        if (newToken) {
-            authToken = newToken;
+        // checkAuth връща обвивка { pass, tokenData }: в authToken стои само tokenData, иначе
+        // заявката тръгва с 'Bearer undefined' и Drive отговаря с 401.
+        const newTokenData = newToken && (newToken.tokenData || (newToken.access_token ? newToken : null));
+        if (newTokenData) {
+            authToken = newTokenData;
             if (gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
         }
     }
