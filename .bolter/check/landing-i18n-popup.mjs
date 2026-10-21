@@ -130,6 +130,8 @@ const browser = await chromium.launch();
 {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await page.goto(URL_, { waitUntil: 'load' });
+  // изчакваме самата страница да си запише езика, иначе презаписва нашия
+  await page.waitForTimeout(800);
   await page.evaluate(() => localStorage.setItem('language', 'bg'));
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('.i18n-popup.visible', { timeout: 4000 }).catch(() => {});
