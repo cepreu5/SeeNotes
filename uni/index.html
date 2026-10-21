@@ -240,6 +240,17 @@
             object-fit: cover;
         }
 
+        /* Section 3b: the screenshot is shown whole, no cropping — only rounded corners */
+        #feature-multinotes .feature-image {
+            height: auto;
+        }
+
+        #feature-multinotes .feature-image img {
+            display: block;
+            height: auto;
+            object-fit: contain;
+        }
+
         .feature-content {
             display: flex;
             flex-direction: column;
