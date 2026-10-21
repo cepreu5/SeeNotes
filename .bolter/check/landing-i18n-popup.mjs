@@ -200,7 +200,7 @@ const browser = await chromium.launch();
   await page.goto(URL_, { waitUntil: 'load' });
   await page.waitForSelector('.i18n-popup.visible', { timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(300);
-  for (const id of ['ru', 'en', 'bg']) {
+  for (const id of ['ru', 'it', 'en', 'bg']) {
     await page.selectOption('.lang-select', id);
     await page.waitForTimeout(700);
     const st = await page.evaluate(() => {
@@ -241,6 +241,8 @@ const browser = await chromium.launch();
   ok(itState.visible && itState.msg === EN.popup_info_msg, 'запазен it: попъпът при отваряне е на английски, както при bg', itState);
   ok(itState.hero.replace(/\s+/g, ' ').trim() === String(IT.hero_title || '').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim(),
     'запазен it: самата страница е на италиански (index-it.json се зарежда)', { got: itState.hero, want: IT.hero_title });
+  const opts = await itPage.evaluate(() => [...document.querySelectorAll('.lang-select option')].map(o => o.value));
+  ok(opts.join(',') === 'en,ru,bg,it', 'превключвателят предлага EN, RU, BG и IT', opts);
   await itPage.close();
 }
 
