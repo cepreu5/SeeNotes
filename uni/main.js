@@ -5174,6 +5174,9 @@ function stepNoteWindowWalk(direction, pressed) {
     if (target && target.open) activateNoteWindow(target, true);
     if (noteWindowWalkTimer) clearTimeout(noteWindowWalkTimer);
     noteWindowWalkTimer = setTimeout(resetNoteWindowWalk, NOTE_WINDOW_WALK_IDLE);
+    // Изяждат се след стъпката: иначе при натискане без pointerdown (програмно) остава стар
+    // "предишен прозорец" и обхождането тръгва от него.
+    noteWindowPressFrom = null;
     noteWindowPressOnArrow = false;
 }
 
