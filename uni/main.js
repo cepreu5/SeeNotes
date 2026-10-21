@@ -5232,8 +5232,7 @@ let dbgArrowBody = null;
 let dbgArrowT0 = Date.now();
 
 function dbgArrowOn() {
-    // При автоматизиран браузър (Playwright) панелът само би пречил на тестовете.
-    if (navigator.webdriver) return false;
+    // Включен по подразбиране; изключва се с localStorage.noteArrowDebug = '0'.
     try { return localStorage.getItem(NOTE_ARROW_DEBUG_KEY) !== '0'; } catch (_) { return true; }
 }
 
