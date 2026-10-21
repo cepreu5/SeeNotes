@@ -5109,6 +5109,7 @@ function showModal(options, noteElement = null) {
         displayContent = processNoteContent(rawContent, true); // isForModal = true
     }
     modalBody.innerHTML = displayContent;
+    hydrateInlineImages(modalBody); // вградените картинки (type=8) влизат в рамките си
     // Set modal background color
     const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
     if (isPromo) {
@@ -7059,6 +7060,260 @@ function renderNoteContent(text) {
     return html;
 }
 
+// --- Вградени картинки в бележката (text_span type=8) ------------------------------------
+// Android записва в text_span {"start":34,"end":35,"type":8,"paramstring":".../Wallet.jpg",
+// "paramint":4}: диапазонът покрива ЕДИН маркер в текста (звездичка), paramstring е пътят на
+// прикачения файл (интересува ни само името - файлът се търси по име в папка Images в Drive),
+// а paramint е ширината в десетки проценти: 1 = 10%, 10 = 100%.
+// Ширината е процент от КОЛОНАТА на бележката (.note-content / #modal-body), не от прозореца -
+// един и същ запис се показва и на 250px карта на борда, и в модала.
+// formatText слага на мястото на маркера рамка с резервирана височина и ширина;
+// hydrateInlineImages после я превръща в картинка, щом файлът се намери по име в Drive.
+// Приложението на main е VIEWER: type=8 се пипа само в рендера, никъде в път за редакция.
+const INLINE_IMAGE_PLACEHOLDER = '\uE002'; // един знак - processNoteContent не го пипа
+const INLINE_IMAGE_FOLDER = 'Images';
+// Едно търсене в Drive за всички карти с един и същ файл: точното име на файла -> запис с promise.
+// Точното име, не с малки букви: Drive различава главни от малки и иначе два различни файла
+// биха споделили един кеширан отговор.
+const inlineImageFileCache = new Map();
+// Един thumbnail на файл: fileId -> promise на URL (или null). Една снимка в пет бележки = една заявка.
+const inlineImageThumbCache = new Map();
+// Липсващ файл се помни кратко: може да се появи при следващата синхронизация.
+const INLINE_IMAGE_MISSING_TTL = 60 * 1000;
+
+/** Името на файла от paramstring (път от Android: "/storage/.../Images/Wallet.jpg" -> "Wallet.jpg"). */
+function inlineImageName(paramstring) {
+    const raw = String(paramstring || '').trim().replace(/\\/g, '/');
+    if (!raw) return '';
+    const name = raw.split('/').pop();
+    return name && name !== '.' && name !== '..' ? name : '';
+}
+
+/** Ширината в проценти от колоната: paramint 1..10 -> 10..100 (липсващ/странен = 100). */
+function inlineImageWidthPct(paramint) {
+    const n = Number(paramint);
+    const step = Number.isFinite(n) && n > 0 ? Math.round(n) : 10;
+    return Math.min(10, Math.max(1, step)) * 10;
+}
+
+/**
+ * Рамката, която заема мястото на маркера, докато файлът се търси и тегли.
+ * Ако записът няма име на файл, не се показва нищо (не остава и маркер в текста).
+ */
+function buildInlineImagePlaceholder(format) {
+    const name = inlineImageName(format && format.paramstring);
+    if (!name) return '';
+    const pct = inlineImageWidthPct(format && format.paramint);
+    const safeName = escapeHtml(name);
+    return `<span class="nm-inline-img is-loading" data-nm-file="${safeName}" ` +
+        `data-nm-state="loading" style="width:${pct}%" role="img" aria-label="${safeName}"></span>`;
+}
+
+/**
+ * В диапазона на type=8 маркерът (звездичката) е място за картинката, не текст: неинтервалните
+ * знаци изчезват, интервалите остават (иначе думите от двете страни се слепват), а на мястото на
+ * първия от тях застава INLINE_IMAGE_PLACEHOLDER. Така работи и ако end се окаже затворен
+ * (диапазонът ще покрие звездичката и интервала след нея).
+ */
+function maskInlineImageMarkers(segmentText) {
+    let out = '';
+    let placed = false;
+    for (const ch of segmentText) {
+        if (/\s/.test(ch)) { out += ch; continue; }
+        if (!placed) { out += INLINE_IMAGE_PLACEHOLDER; placed = true; }
+    }
+    return placed ? out : out + INLINE_IMAGE_PLACEHOLDER;
+}
+
+/** Слага готовите рамки на местата на маркерите, по ред - върху готовия HTML низ. */
+function insertInlineImageSlots(html, formats) {
+    if (!formats.length || html.indexOf(INLINE_IMAGE_PLACEHOLDER) === -1) return html;
+    const parts = html.split(INLINE_IMAGE_PLACEHOLDER);
+    let out = parts[0];
+    for (let i = 1; i < parts.length; i++) {
+        out += (i - 1 < formats.length ? buildInlineImagePlaceholder(formats[i - 1]) : '') + parts[i];
+    }
+    return out;
+}
+
+/**
+ * Заглавието на картата е суров текст - не минава през formatText, - затова маркерите на type=8
+ * (звездичките) се махат и оттам: иначе картата показва звездичка на мястото, на което в
+ * бележката вече има картинка. Позициите са спрямо целия текст, както ги е записал Android,
+ * а интервалите остават, за да не се слепват думите.
+ */
+function stripInlineImageMarkers(text, formatString) {
+    if (!text || !formatString) return text;
+    const ranges = String(formatString).split('|').map(f => {
+        try { return JSON.parse(f); } catch (e) { return null; }
+    }).filter(f => f && f.type === 8 && Number.isFinite(f.start) && Number.isFinite(f.end));
+    if (!ranges.length) return text;
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+        const inMarker = ranges.some(f => i >= f.start && i < f.end);
+        if (!inMarker || /\s/.test(text[i])) out += text[i];
+    }
+    return out;
+}
+
+// Едно търсене на папка Images за всички карти наведнъж: getFolderID() пита Drive за всички
+// папки и пълни folderIds, но кешира чак след отговора - затова заявката се помни тук.
+let inlineImageFolderPromise = null;
+function inlineImageFolderId() {
+    if (!inlineImageFolderPromise) {
+        inlineImageFolderPromise = (async () => {
+            if (folderIds[INLINE_IMAGE_FOLDER]) return folderIds[INLINE_IMAGE_FOLDER];
+            await getFolderID(); // main-овият път: folderIds['Images']
+            return folderIds[INLINE_IMAGE_FOLDER] || null;
+        })().then(
+            id => { if (!id) inlineImageFolderPromise = null; return id; },
+            () => { inlineImageFolderPromise = null; return null; }
+        );
+    }
+    return inlineImageFolderPromise;
+}
+
+/**
+ * Файловете с това име в папка Images, най-новият пръв.
+ * Редът се иска изрично (orderBy: modifiedTime desc), а не се разчита на подредбата по подразбиране
+ * на gapi, и се подсигурява отново в клиента - при две еднакви имена трябва да се вземе най-новият.
+ */
+async function inlineImageFilesByName(folderId, fileName) {
+    const safeName = String(fileName).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const resp = await gapi.client.drive.files.list({
+        q: `'${folderId}' in parents and name = '${safeName}' and trashed=false`,
+        fields: 'files(id, name, modifiedTime)',
+        orderBy: 'modifiedTime desc',
+        pageSize: 10
+    });
+    const files = (resp && resp.result && resp.result.files) || [];
+    return files.slice().sort((a, b) => {
+        const ta = Date.parse(a.modifiedTime || 0) || 0;
+        const tb = Date.parse(b.modifiedTime || 0) || 0;
+        return tb - ta;
+    });
+}
+
+/**
+ * Файлът по име от папка Images.
+ * Отговорът: { status: 'ok', fileId } | { status: 'missing' } (Drive отговори и няма такъв файл)
+ * | { status: 'unavailable' } (офлайн, без токен или без папка Images - не знаем дали го има).
+ * Търсенето се помни за името, за да не пита всяка карта на борда Drive поотделно.
+ */
+function resolveInlineImageFile(fileName) {
+    const key = String(fileName || '');
+    if (!key) return Promise.resolve({ status: 'missing' });
+    const cached = inlineImageFileCache.get(key);
+    if (cached && (cached.status === undefined || cached.status === 'ok' || Date.now() - cached.at < INLINE_IMAGE_MISSING_TTL)) {
+        return cached.promise;
+    }
+    const entry = {
+        at: Date.now(),
+        promise: (async () => {
+            if (typeof isOfflineMode !== 'undefined' && isOfflineMode) return { status: 'unavailable' };
+            const folderId = await inlineImageFolderId();
+            if (!folderId) return { status: 'unavailable' };
+            const files = await inlineImageFilesByName(folderId, fileName);
+            if (!files.length) return { status: 'missing' };
+            return { status: 'ok', fileId: files[0].id };
+        })()
+    };
+    entry.promise.then(r => { entry.status = r.status; }).catch(() => { entry.status = 'unavailable'; });
+    inlineImageFileCache.set(key, entry);
+    return entry.promise;
+}
+
+/**
+ * URL на thumbnail-а на файла, с токена - същият път като прегледа в бележката (showInNotePreview):
+ * метаданни с fields=thumbnailLink, после самият адрес, смален до =s400 за вградения размер.
+ * Един файл = една заявка за цялата сесия.
+ */
+function inlineImageThumbUrl(fileId) {
+    if (!fileId) return Promise.resolve(null);
+    if (inlineImageThumbCache.has(fileId)) return inlineImageThumbCache.get(fileId);
+    const promise = (async () => {
+        try {
+            const tokenObj = (typeof authToken !== 'undefined' && authToken)
+                ? authToken
+                : ((typeof gapi !== 'undefined' && gapi.client && typeof gapi.client.getToken === 'function') ? gapi.client.getToken() : null);
+            if (!tokenObj || !tokenObj.access_token) return null;
+            const send = (token) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=thumbnailLink`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            let resp = await send(tokenObj.access_token);
+            if (resp.status === 401) {
+                const refresh = await refreshAuthToken().catch(() => null);
+                if (!refresh || !refresh.pass || !refresh.tokenData || !refresh.tokenData.access_token) return null;
+                resp = await send(refresh.tokenData.access_token);
+            }
+            if (!resp.ok) return null;
+            const link = (await resp.json()).thumbnailLink;
+            if (!link) return null;
+            return link.replace(/=s\d+/, '=s400');
+        } catch (e) {
+            console.warn('inline image thumbnail failed:', fileId, e);
+            return null;
+        }
+    })();
+    inlineImageThumbCache.set(fileId, promise);
+    return promise;
+}
+
+/** Рамката показва името и защо я няма - бележката трябва да покаже, че там е имало снимка. */
+function markInlineImageUnavailable(box, state) {
+    if (!box || box.dataset.nmState === 'ready') return;
+    box.dataset.nmState = state;
+    box.classList.remove('is-loading', 'is-ready');
+    box.classList.add(state === 'missing' ? 'is-missing' : 'is-unavailable');
+    box.removeAttribute('role');
+    const name = document.createElement('span');
+    name.className = 'nm-inline-img-note';
+    name.textContent = box.dataset.nmFile || '';
+    const why = document.createElement('span');
+    why.className = 'nm-inline-img-why';
+    why.textContent = (state === 'missing' ? _('inlineImgMissing') : _('inlineImgUnavailable')) ||
+        (state === 'missing' ? 'няма такъв файл в Images' : 'файлът не е достъпен сега');
+    box.replaceChildren(name, why);
+}
+
+/**
+ * Превръща рамките на вградените картинки в самите картинки.
+ * Вика се веднага след всяко задаване на innerHTML от formatText/processNoteContent (борд, модал).
+ * Идемпотентна: рамка, която вече се тегли или е готова, не се пипа.
+ */
+function hydrateInlineImages(rootEl) {
+    if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return;
+    const boxes = Array.from(rootEl.querySelectorAll('.nm-inline-img[data-nm-file]'));
+    for (const box of boxes) {
+        if (box.dataset.nmState !== 'loading' || box.dataset.nmLoading === 'true') continue;
+        box.dataset.nmLoading = 'true';
+        const fileName = box.dataset.nmFile;
+        resolveInlineImageFile(fileName).then(async info => {
+            if (info.status !== 'ok') {
+                markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
+                return;
+            }
+            const src = await inlineImageThumbUrl(info.fileId);
+            if (!box.isConnected) return; // картата вече е преизградена - новата рамка ще поеме
+            if (!src) { markInlineImageUnavailable(box, 'unavailable'); return; }
+            const img = document.createElement('img');
+            img.alt = fileName;
+            img.decoding = 'async';
+            img.addEventListener('load', () => {
+                box.classList.remove('is-loading');
+                box.classList.add('is-ready');
+                box.dataset.nmState = 'ready';
+            });
+            img.addEventListener('error', () => markInlineImageUnavailable(box, 'unavailable'));
+            img.src = src;
+            box.appendChild(img);
+            // Клик отваря съществуващия преглед на бележката - същият overlay като при прикачените
+            // (addInNotePreviewListener -> showInNotePreview, легаси подписът с fileId и 'gdrive').
+            addInNotePreviewListener(box, info.fileId, 'gdrive', false);
+        }).catch(() => markInlineImageUnavailable(box, 'unavailable'));
+    }
+}
+
 /**
  * Форматира текстов низ възоснова на JSON параметри.
  * @param {string} text - Текстовият низ за форматиране.
@@ -7089,16 +7344,34 @@ function formatText(text, formatString, isForModal = false) {
     });
     const sortedPoints = Array.from(points).sort((a, b) => a - b);
     let html = '';
+    // Рамките на вградените картинки (type=8), по ред на появяване в текста.
+    const inlineImageSlots = [];
     for (let i = 0; i < sortedPoints.length - 1; i++) {
         const start = sortedPoints[i];
         const end = sortedPoints[i + 1];
         const segmentText = text.substring(start, end);
         if (segmentText.length === 0) continue;
         const activeFormats = formats.filter(f => f.start <= start && f.end >= end);
+        // Вградена картинка (type=8): границите на сегментите са точно start/end на форматите,
+        // затова един сегмент или е целият в диапазона, или е целият извън него. Знаците в
+        // диапазона са маркер за място (звездички) - махат се, а на мястото на първия влиза
+        // един знак, който след цикъла се заменя с рамката на картинката.
+        const inlineImageFormats = activeFormats.filter(f => f.type === 8);
+        const textForSegment = inlineImageFormats.length ? maskInlineImageMarkers(segmentText) : segmentText;
         // Use processNoteContent instead of renderNoteContent
-        let formattedSegment = processNoteContent(segmentText, isForModal);
-        activeFormats.sort((a, b) => b.type - a.type);
-        activeFormats.forEach(format => {
+        let formattedSegment = processNoteContent(textForSegment, isForModal);
+        // Ред на появяване - по него insertInlineImageSlots връща рамките на местата на маркерите.
+        // Започващи по едно и също място диапазони дават ЕДИН маркер, затова остава най-дългият.
+        inlineImageFormats
+            .slice()
+            .sort((a, b) => (a.start - b.start) || (b.end - a.end))
+            .filter((f, idx, arr) => idx === 0 || f.start !== arr[idx - 1].start)
+            .forEach(f => inlineImageSlots.push(f));
+        // Inline стиловете (болд/курсив/цвят/размер) се прилагат по type; type=8 не е стил -
+        // той вече е станал място за рамката на картинката по-горе.
+        const inlineFormats = activeFormats.filter(f => f.type !== 8);
+        inlineFormats.sort((a, b) => b.type - a.type);
+        inlineFormats.forEach(format => {
             const {
                 type,
                 paramint,
@@ -7147,6 +7420,9 @@ function formatText(text, formatString, isForModal = false) {
         });
         html += formattedSegment;
     }
+    // Вградените картинки (type=8) се сглобяват накрая, върху готовия низ: дотогава на мястото
+    // на картинката стои един знак и не пречи на обработката на сегмента.
+    html = insertInlineImageSlots(html, inlineImageSlots);
     return html;
 }
 
@@ -7495,20 +7771,22 @@ async function createNoteElement(noteContent) {
     // let attachments = [];
     let noteTitle = '';
     let displayContent = fileContent;
+    // Маркерите на type=8 не се показват и в заглавието на картата (то е суров текст).
+    const titleText = stripInlineImageMarkers(fileContent, textSpan);
     if (isHiddenNote) {
         const pipeIndex = fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
-        noteTitle = previewContent.split('\n')[0].trim();
+        noteTitle = stripInlineImageMarkers(previewContent, textSpan).split('\n')[0].trim();
     } else if (isType1Note) {
         const pipeIndex = fileContent.indexOf('|');
         if (pipeIndex !== -1) {
-            noteTitle = fileContent.substring(0, pipeIndex).trim();
+            noteTitle = titleText.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
         } else {
-            noteTitle = fileContent.split('\n')[0].substring(0, 50);
+            noteTitle = titleText.split('\n')[0].substring(0, 50);
         }
     } else if (!isHiddenNote) {
-        const lines = fileContent.split('\n');
+        const lines = titleText.split('\n');
         for (const line of lines) {
             const trimmedLine = line.trim();
             if (trimmedLine) {
@@ -7618,6 +7896,7 @@ async function createNoteElement(noteContent) {
         const pipeIndex = fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
         contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
+        hydrateInlineImages(contentEl);
     } else {
         const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
         if (formatSource) {
@@ -7629,6 +7908,7 @@ async function createNoteElement(noteContent) {
             // Format the full content
             let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
             contentEl.innerHTML = formattedHtml;
+            hydrateInlineImages(contentEl); // вградените картинки (type=8) влизат в рамките си
         } else {
             contentEl.innerHTML = processNoteContent(displayContent, isForModal);
         }

@@ -234,5 +234,7 @@
   "day_thursday_short": "Чет",
   "day_friday_short": "Пет",
   "day_saturday_short": "Съб",
-  "day_sunday_short": "Нед"
+  "day_sunday_short": "Нед",
+  "inlineImgMissing": "няма такъв файл в Images",
+  "inlineImgUnavailable": "файлът не е достъпен сега"
 }

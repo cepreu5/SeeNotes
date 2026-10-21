@@ -233,5 +233,7 @@
   "day_thursday_short": "Thu",
   "day_friday_short": "Fri",
   "day_saturday_short": "Sat",
-  "day_sunday_short": "Sun"
+  "day_sunday_short": "Sun",
+  "inlineImgMissing": "no such file in Images",
+  "inlineImgUnavailable": "file not available right now"
 }
