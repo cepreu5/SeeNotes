@@ -61,6 +61,8 @@
   "maxSearchesLabel": "Запазени търсения:",
   "noteFontSizeLabel": "Размер шрифт (бележка):",
   "showDatemodLabel": "Покажи дата на промяна/календар:",
+  "closeAllNotes": "Затвори всички",
+  "singleNoteLabel": "Единична бележка:",
   "dataManagementTitle": "Четене на данни",
   "advancedSettings": "Разширени настройки",
   "useLocalDbLabel": "Локална папка:",

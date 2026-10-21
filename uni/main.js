@@ -25,7 +25,7 @@ const appSettingsKeys = [
     'showOtherBoard', 'showWeeklyCalendar', 'enableNoteSorting', 'sortCriteria',
     'sortInReverse', 'sortRemindersTop', 'startBoard', 'maxSavedSearches',
     'hideAssistant', // 'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 
-    'language', 'showAdvancedSettings', 'savedSearches', 'modalWidth', 'modalHeight',
+    'language', 'showAdvancedSettings', 'savedSearches', 'modalWidth', 'modalHeight', 'singleNoteMode',
     'popupMenuBtnPosition', 'kbFabPosition', 'scrollTopBtnPosition', 'boardMenuOrder'
 ];
 
@@ -2353,9 +2353,8 @@ function initApp() {
             clearTimeout(titleTimeout);
         }
     });
-    contentModal = document.getElementById('content-modal');
-    modalBody = document.getElementById('modal-body');
-    copyBtn = document.getElementById('copy-modal-btn');
+    // Първият прозорец е самият #content-modal: той носи id-тата, докато не се отвори втори.
+    initNoteWindows();
     scrollTopBtn = document.getElementById("scrollTopBtn");
     // --- КОРЕКЦИЯ: Предотвратяваме контекстното меню в модала ---
     modalBody.addEventListener('contextmenu', e => e.preventDefault());
@@ -2731,57 +2730,7 @@ function initApp() {
         }
     });
 
-    // --- Modal Resizing Logic ---
-    const modalContentBox = contentModal.querySelector('.modal-content-box');
-    const resizeHandle = contentModal.querySelector('.modal-resize-handle');
-    let startX, startY, startWidth, startHeight;
-    function doDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
-        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
-        const newWidth = startWidth + currentX - startX;
-        const newHeight = startHeight + currentY - startY;
-        modalContentBox.style.width = Math.max(150, newWidth) + 'px'; // Minimum width
-        modalContentBox.style.height = Math.max(100, newHeight) + 'px'; // Minimum height
-        modalContentBox.style.maxWidth = 'none';
-        modalContentBox.style.maxHeight = 'none';
-    }
-
-    function stopDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        document.documentElement.removeEventListener('mousemove', doDrag, false);
-        document.documentElement.removeEventListener('mouseup', stopDrag, false);
-        document.documentElement.removeEventListener('touchmove', doDrag, false);
-        document.documentElement.removeEventListener('touchend', stopDrag, false);
-        localStorage.setItem('modalWidth', modalContentBox.style.width);
-        localStorage.setItem('modalHeight', modalContentBox.style.height);
-    }
-    function startDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        startX = e.touches ? e.touches[0].clientX : e.clientX;
-        startY = e.touches ? e.touches[0].clientY : e.clientY;
-        startWidth = parseInt(document.defaultView.getComputedStyle(modalContentBox).width, 10);
-        startHeight = parseInt(document.defaultView.getComputedStyle(modalContentBox).height, 10);
-        // Attach listeners for both mouse and touch
-        document.documentElement.addEventListener('mousemove', doDrag, false);
-        document.documentElement.addEventListener('mouseup', stopDrag, false);
-        document.documentElement.addEventListener('touchmove', doDrag, false);
-        document.documentElement.addEventListener('touchend', stopDrag, false);
-    }
-
-    // Attach start event for both mouse and touch
-    resizeHandle.addEventListener('mousedown', startDrag);
-    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
-    // Добавяме икона за преоразмеряване, за да е по-ясно за потребителя
-    resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
-            <path d="M12 2 L2 12" />
-            <path d="M12 7 L7 12" />
-            <!-- Малка стрелка, сочеща към центъра (нагоре и наляво) -->
-            <path d="M10 4 L4 4 L4 10" />
-        </svg>`;
+    // --- Плъзгането за размер е на всеки прозорец поотделно: виж wireNoteWindowResize ---
     // Load saved searches and settings from localStorage
     lastSearchTerm = localStorage.getItem('lastSearchTerm') || "";
     savedSearches = JSON.parse(localStorage.getItem('savedSearches') || '[]');
@@ -4999,8 +4948,775 @@ function makeElementDraggable(element, storageKey) {
     }, true);
 }
 
-function showModal(options, noteElement = null) {
-    // Нова бележка в модала: звукът от предишната спира тук, преди да се строи новата лента.
+// --- Няколко отворени бележки (порт от cx-notes b1.82 / b1.83) -----------------------------------
+// Всяка бележка се отваря в свой прозорец: клонинг на #content-modal-template в #note-windows-layer.
+// Останалият код продължава да говори за „модала" (contentModal, modalBody, copyBtn,
+// currentModalContent, #content-modal, #modal-body ...). Само АКТИВНИЯТ прозорец носи тези id-та и
+// глобални променливи; другите пазят своите като data-mwid + .nw-<id> и ги получават обратно, щом
+// станат активни (натиск или фокус в тях). Така един прозорец не пише в друг, а старите пътища в
+// кода не се пипат.
+//
+// Рендерът си остава на main (renderNoteWindow по-долу, бившият showModal): рендерът на cx-notes
+// вика редактор, който main няма, а вградените картинки (type=8), футърът с плочки и аудио/видеото
+// са точно в main-овия.
+//
+// Ново тук (го няма в cx-notes):
+// - мястото и размерът на прозореца се пазят в localStorage за всяка бележка поотделно - един
+//   речник „ключ на бележка -> {x, y, w, h}" плюс ред на използване, до 300 бележки, най-старата
+//   се изхвърля;
+// - „Затвори всички" в лентата на прозореца, само когато са отворени три или повече бележки;
+// - смяната на борда не пипа отворените прозорци.
+const NOTE_WINDOW_Z_BASE = 10050; // вътре в #note-windows-layer: никога не стига до останалата страница
+const NOTE_WINDOW_CASCADE = 28;
+const NOTE_WINDOW_CYCLE = 6;
+const NOTE_WINDOW_NARROW = 768; // px: под това стълбицата слиза само надолу, без отместване встрани
+const NOTE_WINDOW_MARGIN = 10; // px около прозорец, по-голям от екрана
+const NOTE_WINDOW_GEOM_KEY = 'noteWindowGeometry';
+const NOTE_WINDOW_GEOM_MAX = 300; // до 300 записа; най-старият се изхвърля
+const NOTE_WINDOW_CLOSE_ALL_FROM = 3; // „Затвори всички" се показва от три отворени бележки
+let noteWindows = []; // всички прозорци в DOM: отворените плюс най-много един празен (затворен)
+let activeNoteWindow = null;
+let noteWindowZ = NOTE_WINDOW_Z_BASE - 1;
+let noteWindowNavInPlace = false; // < / > в прозорец: съседната бележка се отваря в същия прозорец
+
+// Слоят и шаблонът се правят от самия #content-modal, за да няма две копия на една и съща
+// разметка в index-2.html. Самият #content-modal влиза в слоя и е първият прозорец: иначе, като
+// по-ранен в DOM, той всеки път оставаше под новите.
+function ensureNoteWindowLayer() {
+    const src = document.getElementById('content-modal');
+    if (!src) return null;
+    let layer = document.getElementById('note-windows-layer');
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.id = 'note-windows-layer';
+        // Слоят застава на мястото на модала, тоест ПРЕДИ менюто с бордове и настройките: те са
+        // със същия z-index и по-късните в DOM остават отгоре.
+        src.parentNode.insertBefore(layer, src.nextSibling);
+    }
+    if (!document.getElementById('content-modal-template')) {
+        decorateNoteWindowIds(src);
+        const tpl = src.cloneNode(true);
+        tpl.id = 'content-modal-template';
+        tpl.classList.remove('visible', 'note-window', 'note-window-active');
+        tpl.classList.add('note-window');
+        tpl.style.display = 'none';
+        // Вътрешните id-та стават data-mwid: самият шаблон пази своето, по него се намира.
+        [...tpl.querySelectorAll('[id]')].forEach(el => {
+            if (!el.id) return;
+            el.dataset.mwid = el.id;
+            el.classList.add('nw-' + el.id);
+            el.removeAttribute('id');
+        });
+        layer.parentNode.insertBefore(tpl, layer);
+    }
+    if (src.parentNode !== layer) layer.appendChild(src);
+    return layer;
+}
+
+// Класовете .nw-<id> остават и когато id-то бъде прибрано: CSS-ът на бележката (#modal-body ...)
+// е разширен с :is(#modal-body, .nw-modal-body), за да изглежда и неактивният прозорец както трябва.
+function decorateNoteWindowIds(root) {
+    if (!root) return;
+    [root, ...root.querySelectorAll('[id]')].forEach(el => {
+        if (!el.id) return;
+        if (el !== root) el.classList.add('nw-' + el.id);
+    });
+}
+
+function stashNoteWindowIds(win) {
+    [win.el, ...win.el.querySelectorAll('[id]')].forEach(el => {
+        if (!el.id) return;
+        el.dataset.mwid = el.id;
+        if (el !== win.el) el.classList.add('nw-' + el.id);
+        el.removeAttribute('id');
+    });
+}
+
+function restoreNoteWindowIds(win) {
+    [win.el, ...win.el.querySelectorAll('[data-mwid]')].forEach(el => {
+        if (!el.dataset.mwid) return;
+        el.id = el.dataset.mwid;
+        delete el.dataset.mwid;
+    });
+}
+
+function activateNoteWindow(win, front = true) {
+    if (!win) return;
+    if (activeNoteWindow !== win) {
+        const prev = activeNoteWindow;
+        if (prev) {
+            prev.state.currentModalContent = currentModalContent;
+            stashNoteWindowIds(prev);
+            prev.el.classList.remove('note-window-active');
+        }
+        restoreNoteWindowIds(win);
+        activeNoteWindow = win;
+        contentModal = win.el;
+        modalBody = win.body;
+        copyBtn = win.copyBtn;
+        currentModalContent = win.state.currentModalContent || '';
+        win.el.classList.add('note-window-active');
+    }
+    if (front) raiseNoteWindow(win);
+}
+
+function raiseNoteWindow(win) {
+    if (Number(win.el.style.zIndex) === noteWindowZ && noteWindowZ >= NOTE_WINDOW_Z_BASE) return;
+    if (noteWindowZ > NOTE_WINDOW_Z_BASE + 5000) {
+        // Числата да останат малки: преномерираме в текущия ред.
+        noteWindowZ = NOTE_WINDOW_Z_BASE - 1;
+        noteWindows.filter(w => w !== win)
+            .sort((a, b) => (Number(a.el.style.zIndex) || 0) - (Number(b.el.style.zIndex) || 0))
+            .forEach(w => { w.el.style.zIndex = String(++noteWindowZ); });
+    }
+    win.el.style.zIndex = String(++noteWindowZ);
+    win.el.classList.add('note-window-active');
+    updateSingleNoteOverlay();
+}
+
+function getOpenNoteWindows() {
+    return noteWindows.filter(w => w.open);
+}
+
+function getTopNoteWindow(list = getOpenNoteWindows()) {
+    return list.reduce((top, w) => (!top || (Number(w.el.style.zIndex) || 0) > (Number(top.el.style.zIndex) || 0)) ? w : top, null);
+}
+
+function findNoteWindow(id, gdid) {
+    const sid = (id === undefined || id === null) ? '' : String(id);
+    const sgdid = (gdid === undefined || gdid === null) ? '' : String(gdid);
+    if (!sid && !sgdid) return null;
+    return getOpenNoteWindows().find(w => (sgdid && w.body.dataset.gdid === sgdid) || (sid && w.body.dataset.id === sid)) || null;
+}
+
+function getNoteWindowRaw(win) {
+    return win === activeNoteWindow ? currentModalContent : (win.state.currentModalContent || '');
+}
+
+// --- Единична бележка (настройка, b1.83) ---------------------------------------------------------
+// Затъмнение точно под горния отворен прозорец, вътре в слоя: то поема всяко натискане, което е
+// било за страницата или за друг прозорец. Натиск върху него затваря бележката като хиксчето.
+// Като defaultNoteBg живее в localStorage; ключът е в appSettingsKeys, значи профилът го носи.
+function isSingleNoteMode() {
+    return localStorage.getItem('singleNoteMode') === 'true';
+}
+
+// След зареждане на профил: чекбоксът и затъмнението следват заредената стойност веднага.
+function applySingleNoteModeSetting() {
+    const checkbox = document.getElementById('single-note-mode-checkbox');
+    if (checkbox) checkbox.checked = isSingleNoteMode();
+    updateSingleNoteOverlay();
+}
+
+// „Единична бележка" значи една бележка: включването (и всяко изкарване напред, докато е включена)
+// оставя само горния прозорец - останалите се затварят, както ги затваря хиксчето. Иначе режимът
+// щеше да е само затъмнение върху няколко прозореца, а той е „една бележка".
+let singleNoteEnforcing = false;
+function enforceSingleNoteWindow() {
+    if (singleNoteEnforcing || !isSingleNoteMode()) return;
+    const open = getOpenNoteWindows();
+    if (open.length < 2) return;
+    const keep = getTopNoteWindow(open);
+    singleNoteEnforcing = true;
+    try {
+        open.filter(w => w !== keep).forEach(closeNoteWindow);
+        if (keep && keep.open && activeNoteWindow !== keep) activateNoteWindow(keep, false);
+    } finally {
+        singleNoteEnforcing = false;
+    }
+}
+
+function updateSingleNoteOverlay() {
+    enforceSingleNoteWindow();
+    updateCloseAllNotesBar();
+    const layer = document.getElementById('note-windows-layer');
+    if (!layer) return;
+    let overlay = document.getElementById('single-note-overlay');
+    const top = isSingleNoteMode() ? getTopNoteWindow() : null;
+    if (!top) {
+        overlay?.classList.remove('visible');
+        return;
+    }
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'single-note-overlay';
+        overlay.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const win = getTopNoteWindow();
+            if (!win) return;
+            activateNoteWindow(win, true);
+            closeNoteWindow(win);
+        });
+        layer.appendChild(overlay);
+    }
+    overlay.style.zIndex = top.el.style.zIndex || String(NOTE_WINDOW_Z_BASE);
+    if (overlay.parentNode !== layer || overlay.nextSibling !== top.el) layer.insertBefore(overlay, top.el);
+    overlay.classList.add('visible');
+}
+
+// --- Помнене на място и размер (ново: го няма в cx-notes) ----------------------------------------
+// Един речник в localStorage: { v: 1, order: [ключ...], boxes: { ключ: {x, y, w, h} } }. Редът е
+// от най-стария към най-скоро местения, за да знаем кого да изхвърлим на 300-ия запис.
+// Ключът е бележката (gdid, иначе id), не прозорецът: същата бележка си идва на същото място.
+function noteWindowKeyFor(id, gdid) {
+    const sid = (id === undefined || id === null) ? '' : String(id);
+    const sgdid = (gdid === undefined || gdid === null) ? '' : String(gdid);
+    if (sgdid) return 'g:' + sgdid;
+    if (sid) return 'i:' + sid;
+    return '';
+}
+
+function readNoteWindowGeometry() {
+    const empty = { v: 1, order: [], boxes: {} };
+    try {
+        const raw = JSON.parse(localStorage.getItem(NOTE_WINDOW_GEOM_KEY) || 'null');
+        if (!raw || typeof raw !== 'object' || !raw.boxes || typeof raw.boxes !== 'object') return empty;
+        const boxes = {};
+        Object.keys(raw.boxes).forEach(k => {
+            const b = raw.boxes[k];
+            if (!b || typeof b !== 'object') return;
+            const num = (x) => (typeof x === 'number' && isFinite(x)) ? Math.round(x) : null;
+            const x = num(b.x), y = num(b.y), w = num(b.w), h = num(b.h);
+            if (x === null || y === null || w === null || h === null) return;
+            boxes[k] = { x, y, w, h };
+        });
+        const order = Array.isArray(raw.order) ? raw.order.filter(k => boxes[k]) : [];
+        Object.keys(boxes).forEach(k => { if (!order.includes(k)) order.push(k); });
+        return { v: 1, order, boxes };
+    } catch (e) {
+        return empty;
+    }
+}
+
+function writeNoteWindowGeometry(store) {
+    try {
+        localStorage.setItem(NOTE_WINDOW_GEOM_KEY, JSON.stringify(store));
+    } catch (e) {
+        // Мястото не е толкова важно, колкото бележката: при пълна памет просто не се помни.
+        console.warn('noteWindowGeometry: save failed', e);
+    }
+}
+
+// Размерът се мери по computed style, не по offsetWidth: кутията има padding, а записаното се
+// слага обратно в style.width/height (същият смисъл), иначе прозорецът расте с по 20x60 всеки път,
+// щом се отвори наново.
+function rememberNoteWindowGeometry(win) {
+    if (!win || !win.key || !win.box || !win.box.offsetWidth) return;
+    const store = readNoteWindowGeometry();
+    const cs = getComputedStyle(win.box);
+    store.boxes[win.key] = {
+        x: Math.round(win.box.offsetLeft),
+        y: Math.round(win.box.offsetTop),
+        w: Math.round(parseFloat(cs.width)),
+        h: Math.round(parseFloat(cs.height))
+    };
+    store.order = store.order.filter(k => k !== win.key);
+    store.order.push(win.key);
+    while (store.order.length > NOTE_WINDOW_GEOM_MAX) {
+        const oldest = store.order.shift();
+        delete store.boxes[oldest];
+    }
+    writeNoteWindowGeometry(store);
+}
+
+function savedNoteWindowGeometry(key) {
+    if (!key) return null;
+    return readNoteWindowGeometry().boxes[key] || null;
+}
+
+// Запомненото място се ползва само ако прозорецът стои изцяло на екрана; иначе - стълбицата.
+function windowPositionFits(pos, w, h, vw, vh) {
+    const TOL = 1; // толеранс за закръгляне
+    return pos.x >= -TOL && pos.y >= -TOL && pos.x + w <= vw + TOL && pos.y + h <= vh + TOL;
+}
+
+function clampNoteWindowAxis(pos, size, room) {
+    const max = room - size;
+    if (max < 0) return Math.round(max / 2); // по-голям от екрана: центриран, както беше модалът
+    return Math.round(Math.min(Math.max(pos, 0), max));
+}
+
+// Къде сяда прозорец без запомнено място: център плюс стълбица (28px на стъпка, 6 стъпки, после
+// отначало). На тесен екран стълбицата слиза само надолу.
+function placeNoteWindowInCascade(win, w, h, vw, vh) {
+    const used = new Set(getOpenNoteWindows().filter(o => o !== win).map(o => o.slot));
+    let slot = 0;
+    while (slot < NOTE_WINDOW_CYCLE && used.has(slot)) slot++;
+    if (slot >= NOTE_WINDOW_CYCLE) slot = getOpenNoteWindows().filter(o => o !== win).length % NOTE_WINDOW_CYCLE;
+    win.slot = slot;
+    const narrow = vw < NOTE_WINDOW_NARROW;
+    const x = (vw - w) / 2 + (narrow ? 0 : slot * NOTE_WINDOW_CASCADE);
+    const y = (vh - h) / 2 + slot * NOTE_WINDOW_CASCADE;
+    win.box.style.left = clampNoteWindowAxis(x, w, vw) + 'px';
+    win.box.style.top = clampNoteWindowAxis(y, h, vh) + 'px';
+}
+
+// Размер и място на прозореца при рисуване: размерът от options (демо бележка), иначе запомненият
+// за бележката, иначе глобалният (плъзгане на дръжката без Ctrl), иначе 400x300. Място се слага
+// само когато прозорецът се отваря (fresh) - пре-рисуване не мести нищо.
+function applyNoteWindowGeometry(win, options, fresh) {
+    const box = win.box;
+    const saved = savedNoteWindowGeometry(win.key);
+    let w, h;
+    if (options && options.width && options.height) {
+        w = options.width;
+        h = options.height;
+    } else if (saved) {
+        w = saved.w;
+        h = saved.h;
+    } else {
+        const sw = localStorage.getItem('modalWidth');
+        const sh = localStorage.getItem('modalHeight');
+        w = (sw && sh) ? sw : 400;
+        h = (sw && sh) ? sh : 300;
+        const savedWidth = parseInt(sw, 10);
+        if (sw && sh && !isNaN(savedWidth) && savedWidth > window.innerWidth) w = '100%';
+    }
+    box.style.width = typeof w === 'number' ? w + 'px' : w;
+    box.style.height = typeof h === 'number' ? h + 'px' : h;
+    box.style.maxWidth = 'none';
+    box.style.maxHeight = 'none';
+    if (!fresh && win.placed) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const bw = box.offsetWidth || 400, bh = box.offsetHeight || 300;
+    if (saved && windowPositionFits(saved, bw, bh, vw, vh)) {
+        win.slot = -1;
+        box.style.left = saved.x + 'px';
+        box.style.top = saved.y + 'px';
+    } else {
+        placeNoteWindowInCascade(win, bw, bh, vw, vh);
+    }
+    win.placed = true;
+}
+
+// --- Живот на прозореца -------------------------------------------------------------------------
+function createNoteWindow() {
+    ensureNoteWindowLayer();
+    const tpl = document.getElementById('content-modal-template');
+    const layer = document.getElementById('note-windows-layer');
+    if (!tpl || !layer) return null;
+    const el = tpl.cloneNode(true);
+    el.removeAttribute('id');
+    el.classList.add('note-window');
+    el.style.display = '';
+    el.dataset.mwid = 'content-modal';
+    layer.appendChild(el);
+    const pick = (mwid) => el.querySelector(`[data-mwid="${mwid}"]`);
+    const win = {
+        el,
+        box: el.querySelector('.modal-content-box'),
+        body: pick('modal-body'),
+        copyBtn: pick('copy-modal-btn'),
+        state: {},
+        open: false,
+        placed: false,
+        slot: -1,
+        key: ''
+    };
+    noteWindows.push(win);
+    wireNoteWindow(win);
+    return win;
+}
+
+// Затворен = свален клас 'visible' (от хиксчето, Escape, „затвори всички" или стар код).
+function closeNoteWindow(win) {
+    if (!win) return;
+    rememberNoteWindowGeometry(win);
+    const wasOpen = win.open;
+    win.el.classList.remove('visible');
+    win.open = false;
+    if (wasOpen) onNoteWindowClosed(win);
+}
+
+function onNoteWindowClosed(win) {
+    stopAttachmentAudio();
+    const others = getOpenNoteWindows().filter(w => w !== win);
+    if (!others.length) {
+        // Последният остава в DOM като празен прозорец: „модалът" винаги съществува.
+        if (activeNoteWindow !== win) activateNoteWindow(win, false);
+        noteWindows.filter(w => w !== win).forEach(w => w.el.remove());
+        noteWindows = noteWindows.filter(w => w === win);
+        updateSingleNoteOverlay();
+        return;
+    }
+    if (activeNoteWindow === win) activateNoteWindow(getTopNoteWindow(others), false);
+    noteWindows = noteWindows.filter(w => w !== win);
+    updateSingleNoteOverlay();
+    setTimeout(() => { if (!win.open && activeNoteWindow !== win) win.el.remove(); }, 450);
+}
+
+// „Затвори всички" от лентата на прозореца: затваря всички наведнъж и връща фокуса на борда.
+function closeAllNoteWindows() {
+    const open = getOpenNoteWindows();
+    if (!open.length) return;
+    const top = getTopNoteWindow(open);
+    open.forEach(win => {
+        rememberNoteWindowGeometry(win);
+        win.open = false;
+        win.el.classList.remove('visible');
+    });
+    // Само един празен прозорец остава, активният: той е „модалът" оттук нататък.
+    const keep = top || open[0];
+    // Фокусът се връща на борда: нищо в затворените прозорци не остава фокусирано.
+    open.forEach(win => {
+        const focused = document.activeElement;
+        if (focused && win.el.contains(focused) && focused.blur) focused.blur();
+    });
+    noteWindows.filter(w => w !== keep).forEach(w => w.el.remove());
+    noteWindows = noteWindows.filter(w => w === keep);
+    if (activeNoteWindow !== keep) activateNoteWindow(keep, false);
+    updateSingleNoteOverlay();
+}
+
+// „Затвори всички" в лентата: показва се само при три и повече отворени бележки.
+function updateCloseAllNotesBar() {
+    const openCount = getOpenNoteWindows().length;
+    const label = _('closeAllNotes') || 'Затвори всички';
+    noteWindows.forEach(win => {
+        const btn = win.closeAllBtn;
+        if (!btn) return;
+        if (btn.textContent !== label) {
+            btn.textContent = label;
+            btn.title = label;
+        }
+        const show = win.open && openCount >= NOTE_WINDOW_CLOSE_ALL_FROM;
+        btn.hidden = !show;
+        btn.style.display = show ? 'flex' : 'none';
+    });
+}
+
+// Разрешено ли е отваряне на нова бележка при „Единична бележка": не - затъмнението поема
+// натиска, а ако все пак се стигне дотук (клавиатура, друго място в кода), отваря се в същия.
+function singleNoteWindowFor(options) {
+    const match = findNoteWindow(options && options.id, options && options.gdid);
+    if (match) return match;
+    const top = getTopNoteWindow();
+    return (top && top.open) ? top : null;
+}
+
+// Кой прозорец да нарисува showModal:
+// - бележка, която вече е отворена: рисува се в НЕЯ и тя идва отпред - втори прозорец за същата
+//   бележка не се отваря (нейното място не се пипа: fresh=false значи без местене);
+// - < / > заменят бележката в СЪЩИЯ прозорец;
+// - „Единична бележка" при отворена бележка: същият прозорец;
+// - иначе - празният прозорец, ако има такъв, или нов.
+function pickNoteWindowForShow(options) {
+    const opts = (options && typeof options === 'object') ? options : {};
+    noteWindowNavInPlace = false;
+    const match = findNoteWindow(opts.id, opts.gdid);
+    if (match) return { win: match, fresh: false };
+    if (isSingleNoteMode()) {
+        const single = singleNoteWindowFor(opts);
+        if (single) return { win: single, fresh: false };
+    }
+    if (activeNoteWindow && !activeNoteWindow.open && noteWindows.includes(activeNoteWindow)) {
+        return { win: activeNoteWindow, fresh: true };
+    }
+    const win = createNoteWindow();
+    return win ? { win, fresh: true } : null;
+}
+
+// Всички слушатели на прозореца, върху неговите собствени елементи (cloneNode не копира нито един).
+function wireNoteWindow(win) {
+    const { el, box, body } = win;
+    const pick = (mwid) => el.querySelector(`[data-mwid="${mwid}"]`);
+    // Натиск или фокус навсякъде в прозореца го прави активния - преди собствените му обработчици.
+    const activate = () => { if (noteWindows.includes(win)) activateNoteWindow(win, true); };
+    el.addEventListener('pointerdown', activate, true);
+    el.addEventListener('mousedown', activate, true);
+    el.addEventListener('touchstart', activate, { capture: true, passive: true });
+    el.addEventListener('focusin', activate, true);
+    el.addEventListener('click', (e) => {
+        if (win.suppressClick) {
+            win.suppressClick = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        activate();
+    }, true);
+    // Натисканията в прозореца не стигат до бележките отдолу.
+    el.addEventListener('click', (e) => e.stopPropagation());
+
+    // Затворен = свален 'visible'. Така хващаме и старите пътища, които свалят класа направо.
+    let wasVisible = false;
+    new MutationObserver(() => {
+        const visible = el.classList.contains('visible');
+        const closed = wasVisible && !visible;
+        wasVisible = visible;
+        if (!closed || !win.open) return;
+        win.open = false;
+        onNoteWindowClosed(win);
+    }).observe(el, { attributes: true, attributeFilter: ['class'] });
+
+    // --- Контекстното меню и минименюто на Edge, както при стария модал ---
+    body.addEventListener('contextmenu', e => e.preventDefault());
+    body.addEventListener('pointerup', e => {
+        if (window.getSelection().toString().length > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
+    // formatText и демо бележката пипат размера на шрифта: след затваряне се връща настройката.
+    el.addEventListener('transitionend', () => {
+        if (!el.classList.contains('visible')) body.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+    });
+
+    // --- Хиксче ---
+    const closeBtn = el.querySelector('.modal-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (win.copyBtn) win.copyBtn.style.display = 'flex';
+            el.classList.remove('popup-mode');
+            closeNoteWindow(win);
+        });
+    }
+
+    // --- Калкулатор: клик, Ctrl+клик и задържане ---
+    const calculateBtn = pick('calculate-modal-btn');
+    if (calculateBtn) {
+        let longPressTimer;
+        let isLongPress = false;
+        calculateBtn.addEventListener('click', (e) => {
+            if (isLongPress) {
+                isLongPress = false;
+                return;
+            }
+            handleCalculateClick(!!e.ctrlKey);
+        });
+        const startPress = () => {
+            isLongPress = false;
+            longPressTimer = setTimeout(() => {
+                isLongPress = true;
+                handleCalculateClick(true);
+            }, 500);
+        };
+        const endPress = () => clearTimeout(longPressTimer);
+        calculateBtn.addEventListener('mousedown', startPress);
+        calculateBtn.addEventListener('mouseup', endPress);
+        calculateBtn.addEventListener('mouseleave', endPress);
+        calculateBtn.addEventListener('touchstart', startPress, { passive: true });
+        calculateBtn.addEventListener('touchend', endPress);
+    }
+
+    // --- Копиране: маркираното в този прозорец, иначе цялата бележка ---
+    const copyButton = win.copyBtn;
+    if (copyButton) {
+        copyButton.innerHTML = copyIconSvg;
+        copyButton.addEventListener('click', () => {
+            if (!navigator.clipboard) return;
+            const selection = window.getSelection();
+            let textToCopy = '';
+            if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+                const range = selection.getRangeAt(0);
+                if (body.contains(range.commonAncestorContainer)) textToCopy = selection.toString();
+            }
+            if (textToCopy === '') textToCopy = (getNoteWindowRaw(win) || '').trim();
+            if (textToCopy) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    copyButton.innerHTML = '&#10003;';
+                    setTimeout(() => { copyButton.innerHTML = copyIconSvg; }, 5000);
+                }).catch(() => {
+                    showToast(_('errorCopyFailed'));
+                });
+            }
+        });
+    }
+
+    // --- „Затвори всички" в лентата (при три и повече отворени бележки) ---
+    const closeAllBtn = document.createElement('button');
+    closeAllBtn.type = 'button';
+    closeAllBtn.className = 'note-window-bar-btn';
+    closeAllBtn.hidden = true;
+    closeAllBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeAllNoteWindows();
+    });
+    box.appendChild(closeAllBtn);
+    win.closeAllBtn = closeAllBtn;
+
+    body.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
+
+    wireNoteWindowResize(win, el.querySelector('.modal-resize-handle'));
+    wireNoteWindowMove(win);
+    updateCloseAllNotesBar();
+}
+
+// Дръжката за размер: обикновеното плъзгане сменя размера, с който се отварят новите бележки
+// (modalWidth/modalHeight) - то не е промяна на бележката. Запомнен за бележката размер се пази
+// само на това устройство, в noteWindowGeometry.
+function wireNoteWindowResize(win, resizeHandle) {
+    if (!resizeHandle) return;
+    const box = win.box;
+    let startX, startY, startWidth, startHeight;
+    function doDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const currentY = e.touches ? e.touches[0].clientY : e.clientY;
+        const newWidth = Math.round(startWidth + currentX - startX);
+        const newHeight = Math.round(startHeight + currentY - startY);
+        box.style.width = Math.max(150, Math.min(newWidth, window.innerWidth)) + 'px';
+        box.style.height = Math.max(100, newHeight) + 'px';
+        box.style.maxWidth = '100vw';
+        box.style.maxHeight = 'none';
+    }
+    function stopDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        document.documentElement.removeEventListener('mousemove', doDrag, false);
+        document.documentElement.removeEventListener('mouseup', stopDrag, false);
+        document.documentElement.removeEventListener('touchmove', doDrag, false);
+        document.documentElement.removeEventListener('touchend', stopDrag, false);
+        localStorage.setItem('modalWidth', box.style.width);
+        localStorage.setItem('modalHeight', box.style.height);
+        rememberNoteWindowGeometry(win);
+    }
+    function startDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        startWidth = parseInt(document.defaultView.getComputedStyle(box).width, 10);
+        startHeight = parseInt(document.defaultView.getComputedStyle(box).height, 10);
+        document.documentElement.addEventListener('mousemove', doDrag, false);
+        document.documentElement.addEventListener('mouseup', stopDrag, false);
+        document.documentElement.addEventListener('touchmove', doDrag, false);
+        document.documentElement.addEventListener('touchend', stopDrag, false);
+    }
+    resizeHandle.addEventListener('mousedown', startDrag);
+    resizeHandle.addEventListener('touchstart', startDrag, { passive: false });
+    resizeHandle.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" style="position: absolute; right: 1px; bottom: 1px; pointer-events: none; stroke: rgba(0,0,0,0.4); stroke-width: 2; stroke-linecap: round; fill: none;">
+            <path d="M12 2 L2 12" />
+            <path d="M12 7 L7 12" />
+            <path d="M10 4 L4 4 L4 10" />
+        </svg>`;
+}
+
+// Местене на прозорец: хваща се лентата горе (празната ивица или името на борда). Бутоните си
+// запазват клика, а плъзгане, което е мръднало, не се брои за клик върху името на борда.
+function wireNoteWindowMove(win) {
+    const box = win.box;
+    let start = null;
+    const point = (e) => (e.touches && e.touches[0]) ? e.touches[0] : e;
+    const inHeaderBand = (e) => {
+        const t = e.target;
+        if (!t || !t.closest) return false;
+        if (t.closest('button, a, input, textarea, select, .modal-header-btn, .note-window-bar-btn')) return false;
+        if (t.closest('#modal-board-name, .nw-modal-board-name, .modal-board-name')) return true;
+        if (t !== box) return false;
+        const header = box.querySelector('.modal-header-toolbar');
+        const band = Math.max(header ? header.offsetHeight : 0, 40);
+        return point(e).clientY - box.getBoundingClientRect().top <= band;
+    };
+    const onMove = (e) => {
+        if (!start) return;
+        const p = point(e);
+        const dx = p.clientX - start.x, dy = p.clientY - start.y;
+        if (!start.moving) {
+            if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+            start.moving = true;
+            win.el.classList.add('note-window-moving');
+        }
+        if (e.cancelable) e.preventDefault();
+        const vw = window.innerWidth, vh = window.innerHeight;
+        // Част от лентата остава на екрана, за да може прозорецът да се върне винаги.
+        const left = Math.min(Math.max(start.left + dx, 60 - box.offsetWidth), vw - 60);
+        const top = Math.min(Math.max(start.top + dy, 0), vh - 40);
+        box.style.left = Math.round(left) + 'px';
+        box.style.top = Math.round(top) + 'px';
+    };
+    const onEnd = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onEnd);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onEnd);
+        document.removeEventListener('touchcancel', onEnd);
+        if (start && start.moving) {
+            win.el.classList.remove('note-window-moving');
+            win.suppressClick = true;
+            setTimeout(() => { win.suppressClick = false; }, 0);
+            win.slot = -1;
+            win.placed = true;
+            rememberNoteWindowGeometry(win);
+        }
+        start = null;
+    };
+    const onStart = (e) => {
+        if (e.type === 'mousedown' && e.button !== 0) return;
+        if (!inHeaderBand(e)) return;
+        const p = point(e);
+        start = {
+            x: p.clientX,
+            y: p.clientY,
+            left: parseFloat(box.style.left) || box.offsetLeft,
+            top: parseFloat(box.style.top) || box.offsetTop,
+            moving: false
+        };
+        if (e.type === 'mousedown' && e.target === box) e.preventDefault(); // без маркиране от ивицата
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
+        document.addEventListener('touchcancel', onEnd);
+    };
+    box.addEventListener('mousedown', onStart);
+    box.addEventListener('touchstart', onStart, { passive: true });
+}
+
+// Първият прозорец е самият #content-modal от index-2.html: така #content-modal, #modal-body и
+// глобалните променливи съществуват от самото начало, както при единствения модал.
+function initNoteWindows() {
+    if (noteWindows.length) return activeNoteWindow;
+    ensureNoteWindowLayer();
+    const src = document.getElementById('content-modal');
+    if (!src) return null;
+    const win = {
+        el: src,
+        box: src.querySelector('.modal-content-box'),
+        body: src.querySelector('#modal-body'),
+        copyBtn: src.querySelector('#copy-modal-btn'),
+        state: {},
+        open: false,
+        placed: false,
+        slot: -1,
+        key: ''
+    };
+    src.classList.add('note-window');
+    decorateNoteWindowIds(src);
+    if (!noteWindows.includes(win)) noteWindows.push(win);
+    wireNoteWindow(win);
+    activateNoteWindow(win, true);
+    return win;
+}
+
+// Escape затваря активния прозорец. Ако отгоре е друг модал (настройки, бордове, въпрос), той е
+// негов - както и полето за текст, в което човекът пише в момента.
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (document.querySelector('.modal-overlay.visible:not(.note-window), #folderIdPromptPopup.show')) return;
+    const focused = document.activeElement;
+    if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.isContentEditable)) return;
+    const win = (activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : getTopNoteWindow();
+    if (!win) return;
+    e.preventDefault();
+    closeNoteWindow(win);
+});
+
+// Back to the app: прозорците не се пипат. Само затъмнението и лентата се подреждат отново, ако
+// прозорецът е бил скрит/показан, докато е бил отворен.
+window.addEventListener('resize', () => {
+    if (!noteWindows.length) return;
+    updateSingleNoteOverlay();
+});
+
+// Рисува бележката в посочения прозорец. Кой прозорец - решава showModal (по-долу); тук той вече е
+// активният, тоест id-тата и глобалните променливи сочат към него.
+function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, fresh = false) {
+    // Нова бележка в прозореца: звукът от предишната спира тук, преди да се строи новата лента.
     stopAttachmentAudio();
     let rawContent, formatString, displayContent, noteColor, noteId, noteGdid;
     if (typeof options === 'string') {
@@ -5016,34 +5732,15 @@ function showModal(options, noteElement = null) {
         noteId = options.id;
         noteGdid = options.gdid;
     }
-    // --- Board Name Display in Modal ---
-    const modalContentBox = contentModal.querySelector('.modal-content-box');
-
-    // Check for explicit dimensions in options (e.g. from guide temp note)
-    if (options && options.width && options.height) {
-        modalContentBox.style.width = typeof options.width === 'number' ? options.width + 'px' : options.width;
-        modalContentBox.style.height = typeof options.height === 'number' ? options.height + 'px' : options.height;
-        modalContentBox.style.maxWidth = 'none';
-        modalContentBox.style.maxHeight = 'none';
-    } else {
-        const savedWidth = localStorage.getItem('modalWidth');
-        const savedHeight = localStorage.getItem('modalHeight');
-        if (savedWidth && savedHeight) {
-            const widthValue = parseInt(savedWidth, 10);
-            if (!isNaN(widthValue) && widthValue > window.innerWidth) {
-                modalContentBox.style.width = '100%';
-            } else {
-                modalContentBox.style.width = savedWidth;
-            }
-            modalContentBox.style.height = savedHeight;
-            modalContentBox.style.maxWidth = 'none';
-            modalContentBox.style.maxHeight = 'none';
-        } else {
-            modalContentBox.style.width = '400px';
-            modalContentBox.style.height = '300px';
-            modalContentBox.style.maxWidth = 'none';
-            modalContentBox.style.maxHeight = 'none';
-        }
+    // --- Име на борда и геометрия на прозореца ---
+    const modalContentBox = (win && win.box) || contentModal.querySelector('.modal-content-box');
+    // Ключът на бележката: по него се помнят мястото и размерът (виж noteWindowGeometry).
+    if (win) {
+        win.key = noteWindowKeyFor(noteId, noteGdid);
+        win.body.dataset.id = (noteId === undefined || noteId === null) ? '' : String(noteId);
+        win.body.dataset.gdid = (noteGdid === undefined || noteGdid === null) ? '' : String(noteGdid);
+        win.body.dataset.format = formatString || '';
+        applyNoteWindowGeometry(win, options, fresh);
     }
     // Размер на шрифта: от options (демо бележка) или от потребителските настройки
     if (options && options.fontSize) {
@@ -5084,7 +5781,8 @@ function showModal(options, noteElement = null) {
                 const newEl = modalBoardNameEl.cloneNode(true);
                 modalBoardNameEl.parentNode.replaceChild(newEl, modalBoardNameEl);
                 newEl.addEventListener('click', () => {
-                    document.getElementById('content-modal').classList.remove('visible');
+                    // Отворените прозорци остават и при смяна на борда (решение на собственика, 21.10):
+                    // натискът върху името само превключва борда, бележката остава отворена.
                     const boardBtn = document.querySelector(`.board-filter-link[data-boardid="${board.gdid}"]`);
                     if (boardBtn) {
                         boardBtn.click();
@@ -5151,8 +5849,14 @@ function showModal(options, noteElement = null) {
     }
     // Използваме requestAnimationFrame, за да гарантираме, че браузърът е приложил началните стилове (scale 0.7)
     // преди да добавим класа visible, за да се възпроизведе анимацията.
+    if (win) {
+        win.open = true;
+        win.placed = true;
+        updateSingleNoteOverlay();
+    }
     requestAnimationFrame(() => {
-        contentModal.classList.add('visible');
+        (win ? win.el : contentModal).classList.add('visible');
+        if (win) updateSingleNoteOverlay();
     });
 
     // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
@@ -5280,7 +5984,10 @@ function showModal(options, noteElement = null) {
             const newIndex = currentIndex + direction;
             if (newIndex >= 0 && newIndex < visibleNotes.length) {
                 // Симулираме клик върху съседната бележка, за да се отвори в модала
+                // Съседната бележка влиза в СЪЩИЯ прозорец, не отваря втори.
+                noteWindowNavInPlace = true;
                 visibleNotes[newIndex].click();
+                setTimeout(() => { noteWindowNavInPlace = false; }, 0);
             }
         };
 
@@ -5296,6 +6003,15 @@ function showModal(options, noteElement = null) {
         const boardNameEl = document.getElementById('modal-board-name');
         if (boardNameEl) boardNameEl.style.left = '15px';
     }
+}
+
+// Отваря бележката в прозорец: кой прозорец - решава pickNoteWindowForShow.
+function showModal(options, noteElement = null) {
+    initNoteWindows();
+    const pick = pickNoteWindowForShow(options);
+    if (!pick) return;
+    activateNoteWindow(pick.win, true);
+    renderNoteWindow(options, noteElement, pick.win, pick.fresh);
 }
 
 window.showModal = showModal;
@@ -5406,10 +6122,7 @@ document.querySelectorAll('.modal-close').forEach(btn => {
         stopAttachmentAudio();
         copyBtn.style.display = 'flex'; // Restore copy button visibility when any modal is closed
         contentModal.classList.remove('popup-mode'); // Reset popup mode on close
-        const modalBox = contentModal.querySelector('.modal-content-box');
-        modalBox.style.top = '';
-        modalBox.style.left = '';
-        modalBox.style.transform = '';
+        contentModal.querySelector('.modal-content-box').style.transform = '';
     });
 });
 
@@ -6242,6 +6955,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const scaleIncBtn = document.getElementById('scaleIncBtn');
     const scaleDecBtn = document.getElementById('scaleDecBtn');
     const showDatemodCheckbox = document.getElementById('show-datemod-checkbox');
+    const singleNoteModeCheckbox = document.getElementById('single-note-mode-checkbox');
     const oneTapLinkCheckbox = document.getElementById('one-tap-link-checkbox');
     const showBoardNoteCountCheckbox = document.getElementById('show-board-note-count-checkbox');
     const showBoardAllCheckbox = document.getElementById('all-board-checkbox');
@@ -6447,6 +7161,15 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
+        // Единична бележка (b1.83): затъмнението под горния прозорец върви с настройката.
+        if (singleNoteModeCheckbox) {
+            singleNoteModeCheckbox.addEventListener('change', () => {
+                localStorage.setItem('singleNoteMode', singleNoteModeCheckbox.checked ? 'true' : 'false');
+                applySingleNoteModeSetting();
+                showToast(_('settingSaved'), 2000);
+            });
+        }
+        applySingleNoteModeSetting();
         // One-tap links
         if (oneTapLinkCheckbox) {
             oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false

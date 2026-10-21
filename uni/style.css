@@ -508,11 +508,11 @@ main {
    Картинката застава точно на мястото на маркера (звездичката) в изречението, затова е
    inline-block, а не блок: думите преди и след нея остават на същия ред.
    Ширината идва от paramint (10..100%) и е процент от КОЛОНАТА на бележката (.note-content
-   на борда, #modal-body в модала), не от прозореца - иначе на 250px карта 100% би излязло
+   на борда, :is(#modal-body, .nw-modal-body) в модала), не от прозореца - иначе на 250px карта 100% би излязло
    извън картата.
    Докато файлът се търси в Drive, рамката пази мястото (aspect-ratio), за да не подскача картата. */
 .note-content .nm-inline-img,
-#modal-body .nm-inline-img {
+:is(#modal-body, .nw-modal-body) .nm-inline-img {
     display: inline-block;
     box-sizing: border-box;
     max-width: 100%;
@@ -524,19 +524,19 @@ main {
 }
 
 .note-content .nm-inline-img.is-loading,
-#modal-body .nm-inline-img.is-loading {
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-loading {
     aspect-ratio: 4 / 3;
     background: rgba(127, 127, 127, .16);
     border: 1px solid rgba(127, 127, 127, .28);
 }
 
 .note-content .nm-inline-img.is-ready,
-#modal-body .nm-inline-img.is-ready {
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-ready {
     aspect-ratio: auto;
 }
 
 .note-content .nm-inline-img img,
-#modal-body .nm-inline-img img {
+:is(#modal-body, .nw-modal-body) .nm-inline-img img {
     display: block;
     width: 100%;
     height: auto;
@@ -548,8 +548,8 @@ main {
    Иначе текстът изглежда счупен без причина. */
 .note-content .nm-inline-img.is-missing,
 .note-content .nm-inline-img.is-unavailable,
-#modal-body .nm-inline-img.is-missing,
-#modal-body .nm-inline-img.is-unavailable {
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-missing,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-unavailable {
     aspect-ratio: auto;
     border: 1px dashed #b4534a;
     border-radius: 7px;
@@ -562,24 +562,24 @@ main {
 }
 
 .note-content .nm-inline-img-note,
-#modal-body .nm-inline-img-note {
+:is(#modal-body, .nw-modal-body) .nm-inline-img-note {
     display: block;
     font-weight: 600;
     word-break: break-all;
 }
 
 .note-content .nm-inline-img-why,
-#modal-body .nm-inline-img-why {
+:is(#modal-body, .nw-modal-body) .nm-inline-img-why {
     display: block;
     opacity: .85;
 }
 
-/* Футър с миниатюри на прикачените файлове във viewer-а (#modal-body).
+/* Футър с миниатюри на прикачените файлове във viewer-а (:is(#modal-body, .nw-modal-body)).
    Плочка 40x40, междина 8, заобляне 6 - точно колкото е плочката в оригинала на телефон 360px
    (процент от ширината в модал на десктоп дава различен размер всеки път).
    Лентата се плъзга настрани с пръст, колелце и стрелки, а скролбарът е скрит - видим скролбар
    под футъра изглежда като чужд елемент върху бележката, както при лентата с икони в хедъра. */
-#modal-body .nm-attach-strip {
+:is(#modal-body, .nw-modal-body) .nm-attach-strip {
     display: flex;
     align-items: flex-start;
     gap: 8px;
@@ -593,11 +593,11 @@ main {
     white-space: normal;
 }
 
-#modal-body .nm-attach-strip::-webkit-scrollbar {
+:is(#modal-body, .nw-modal-body) .nm-attach-strip::-webkit-scrollbar {
     display: none;
 }
 
-#modal-body .nm-attach-slot {
+:is(#modal-body, .nw-modal-body) .nm-attach-slot {
     flex: 0 0 auto;
     scroll-snap-align: start;
 }
@@ -605,11 +605,11 @@ main {
 /* Редът, който футърът строеше досега (икона + линк към файла), остава в страницата, защото
    плочката натиска точно него - така отварянето на файла не се пренаписва, сменя се само
    изгледът. Видим е само ако строенето на плочката се счупи. */
-#modal-body .nm-attach-source {
+:is(#modal-body, .nw-modal-body) .nm-attach-source {
     display: none;
 }
 
-#modal-body .nm-attach-tile {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile {
     position: relative;
     box-sizing: border-box;
     display: grid;
@@ -629,27 +629,27 @@ main {
     scroll-snap-align: start;
 }
 
-#modal-body .nm-attach-tile:hover {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile:hover {
     background: rgba(127, 127, 127, .26);
 }
 
-#modal-body .nm-attach-tile:active {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile:active {
     background: rgba(127, 127, 127, .34);
 }
 
-#modal-body .nm-attach-tile:focus-visible {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile:focus-visible {
     outline: 2px solid #3a6ff0;
     outline-offset: 1px;
 }
 
-#modal-body .nm-attach-tile-icon {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-icon {
     display: grid;
     place-items: center;
     width: 100%;
     height: 100%;
 }
 
-#modal-body .nm-attach-tile-icon svg {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-icon svg {
     width: 22px;
     height: 22px;
     max-width: 100%;
@@ -671,11 +671,11 @@ main {
     }
 }
 
-#modal-body .nm-attach-tile.is-playing {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing {
     background: rgba(127, 127, 127, .3);
 }
 
-#modal-body .nm-attach-tile.is-playing .nm-attach-tile-icon {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing .nm-attach-tile-icon {
     animation: nm-attach-audio-pulse .9s ease-in-out infinite;
 }
 
@@ -688,11 +688,11 @@ main {
     }
 }
 
-#modal-body .nm-attach-tile.is-loading {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading {
     background: rgba(127, 127, 127, .1);
 }
 
-#modal-body .nm-attach-tile.is-loading::after {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -707,43 +707,43 @@ main {
 }
 
 /* Иконата остава под кръга, но почти изчезва - иначе двете се бият за едно и също място. */
-#modal-body .nm-attach-tile.is-loading .nm-attach-tile-icon {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading .nm-attach-tile-icon {
     opacity: .18;
 }
 
 /* Без движение: пулсът пада, но „свири" остава ясно - по-тъмна плочка и тъмна рамка отвътре,
    за да се разбира, че втори клик спира звука. Спинърът остава като видим кръг, но не се върти. */
 @media (prefers-reduced-motion: reduce) {
-    #modal-body .nm-attach-tile.is-playing .nm-attach-tile-icon {
+    :is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing .nm-attach-tile-icon {
         animation: none;
         opacity: 1;
     }
 
-    #modal-body .nm-attach-tile.is-loading::after {
+    :is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading::after {
         animation: none;
         border-top-color: rgba(34, 38, 43, .22);
         border-right-color: rgba(34, 38, 43, .85);
     }
 
-    #modal-body .nm-attach-tile.is-playing {
+    :is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing {
         background: rgba(127, 127, 127, .42);
         box-shadow: inset 0 0 0 1.5px rgba(34, 38, 43, .45);
     }
 }
 
 /* Снимката е самата снимка, без рамка и без заобляне на ъглите вътре в плочката: пълни я цялата. */
-#modal-body .nm-attach-tile-photo {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-photo {
     position: absolute;
     inset: 0;
     display: block;
     overflow: hidden;
 }
 
-#modal-body .nm-attach-tile-photo.is-loading {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-photo.is-loading {
     background: rgba(127, 127, 127, .16);
 }
 
-#modal-body .nm-attach-tile-photo img {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-photo img {
     display: block;
     width: 100%;
     height: 100%;
@@ -752,21 +752,21 @@ main {
 }
 
 /* Докато има снимка, иконата на типа не се показва - иначе би надничала под нея. */
-#modal-body .nm-attach-tile.has-photo .nm-attach-tile-icon {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.has-photo .nm-attach-tile-icon {
     display: none;
 }
 
 /* PDF: червена плочка с "PDF", както е в оригиналното приложение. */
-#modal-body .nm-attach-tile.is-pdf {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-pdf {
     background: #d5453b;
     color: #fff;
 }
 
-#modal-body .nm-attach-tile.is-pdf .nm-attach-tile-icon {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-pdf .nm-attach-tile-icon {
     display: none;
 }
 
-#modal-body .nm-attach-tile-tag {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-tag {
     font-family: inherit;
     font-weight: 700;
     font-size: 9px;
@@ -776,14 +776,14 @@ main {
 
 /* Липсващ или недостъпен файл: плочката пази мястото и показва иконата на типа с пунктир, за да
    не изглежда футърът счупен. */
-#modal-body .nm-attach-tile.is-missing,
-#modal-body .nm-attach-tile.is-unavailable {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-missing,
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-unavailable {
     border: 1px dashed #b4534a;
     background: rgba(180, 83, 74, .08);
 }
 
-#modal-body .nm-attach-tile.is-missing .nm-attach-tile-icon,
-#modal-body .nm-attach-tile.is-unavailable .nm-attach-tile-icon {
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-missing .nm-attach-tile-icon,
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-unavailable .nm-attach-tile-icon {
     opacity: .55;
 }
 
@@ -815,7 +815,7 @@ code {
 }
 
 .note-content a,
-#modal-body a {
+:is(#modal-body, .nw-modal-body) a {
     color: #007bff;
     text-decoration: none;
     display: inline-block;
@@ -1099,8 +1099,8 @@ code {
 }
 
 /* Гарантираме, че съдържанието е над псевдо-елемента */
-#modal-body,
-#modal-board-name,
+:is(#modal-body, .nw-modal-body),
+:is(#modal-board-name, .nw-modal-board-name),
 .modal-header-btn,
 .modal-resize-handle {
     position: relative;
@@ -1128,7 +1128,7 @@ code {
     /* Let content define width */
 }
 
-#modal-body {
+:is(#modal-body, .nw-modal-body) {
     padding-top: 1px;
     padding-right: 10px;
     overflow-y: auto;
@@ -1137,27 +1137,27 @@ code {
     flex-grow: 1;
 }
 
-#modal-body.no-bg-image {
+:is(#modal-body, .nw-modal-body).no-bg-image {
     padding: 0 0;
 }
 
 /* Custom scrollbar for modal content */
-#modal-body::-webkit-scrollbar {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar {
     width: 10px;
 }
 
-#modal-body::-webkit-scrollbar-track {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-track {
     background: #c8a64b;
     /* Dark yellow background for the track */
 }
 
-#modal-body::-webkit-scrollbar-thumb {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb {
     background: #555;
     /* Darker handle for contrast */
     border-radius: 5px;
 }
 
-#modal-body::-webkit-scrollbar-thumb:hover {
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb:hover {
     background: #333;
     /* Even darker on hover */
 }
@@ -1178,7 +1178,7 @@ code {
 }
 
 /* New style for board name in modal header */
-#modal-board-name {
+:is(#modal-board-name, .nw-modal-board-name) {
     position: absolute;
     top: 15px;
     /* Moved 5px up */
@@ -1205,7 +1205,7 @@ code {
     box-sizing: border-box;
 }
 
-#copy-modal-btn svg {
+:is(#copy-modal-btn, .nw-copy-modal-btn) svg {
     width: 16px;
     height: 16px;
     stroke: #333;
@@ -1220,11 +1220,11 @@ code {
 /* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
 /* Бутон за затваряне (X) е на right: 15px */
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
-#prev-note-btn {
+:is(#prev-note-btn, .nw-prev-note-btn) {
     right: 235px;
 }
 
-#next-note-btn {
+:is(#next-note-btn, .nw-next-note-btn) {
     right: 193px;
 }
 
@@ -1236,22 +1236,22 @@ code {
     }
 }
 
-#delete-modal-btn {
+:is(#delete-modal-btn, .nw-delete-modal-btn) {
     right: 57px;
     /* 57px (delete) + 32px (width) + 10px (gap) */
 }
 
-#copy-modal-btn {
+:is(#copy-modal-btn, .nw-copy-modal-btn) {
     right: 99px;
 }
 
-#calculate-modal-btn {
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) {
     right: 151px;
     /* 151px (calculate) + 32px (width) + 10px (gap) */
 }
 
 /* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
-#calculate-modal-btn svg {
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) svg {
     pointer-events: none;
     /* Иконата не "поглъща" клика */
 }
@@ -3101,7 +3101,7 @@ body.selection-locked .note.active-selection-note .note-content {
     font-size: 0.9em;
 }
 
-#modal-body {
+:is(#modal-body, .nw-modal-body) {
     flex-grow: 1;
     overflow-y: auto;
 }
@@ -3197,4 +3197,114 @@ body.selection-locked .note.active-selection-note .note-content {
     bottom: -8px !important;
     left: -15px !important;
     right: auto !important;
+}
+/* --- Няколко отворени бележки (порт от cx-notes b1.82 / b1.83) ---
+   Всеки прозорец е клонинг на #content-modal-template в #note-windows-layer. Слоят е един stacking
+   context на нивото на стария модал, значи z-index-ът на прозорците (10050 и нагоре, последно
+   натиснатият отпред) никога не стига до останалата страница. Прозорците НЕ блокират страницата:
+   списъкът и бордовете остават използваеми, за да се отвори втора бележка от същите места. */
+#note-windows-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+#note-windows-layer:empty {
+    display: none;
+}
+
+.note-window.modal-overlay,
+.note-window.modal-overlay.visible {
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    pointer-events: none;
+    display: block;
+}
+
+.note-window.modal-overlay .modal-content-box {
+    position: absolute;
+    pointer-events: none;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s ease;
+}
+
+.note-window.modal-overlay.visible .modal-content-box {
+    pointer-events: auto;
+}
+
+/* Активният прозорец е с рамка (решение от 21.10): по него се вижда кой приема клавишите. */
+.note-window.note-window-active.visible .modal-content-box {
+    outline: 2px solid rgba(58, 111, 240, 0.9);
+    outline-offset: -2px;
+}
+
+.note-window.note-window-moving .modal-content-box {
+    transition: none;
+    user-select: none;
+}
+
+/* „Затвори всички" (само при три и повече отворени бележки): надписана пигулка в лентата, вляво от
+   кръглите бутони, така че редът им (хиксче, изтриване, копиране, калкулатор, >, <) да остане същият. */
+.note-window-bar-btn {
+    position: absolute;
+    top: 10px;
+    right: 277px;
+    height: 32px;
+    padding: 0 11px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    color: #333;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid #aaa;
+    border-radius: 16px;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.note-window-bar-btn[hidden] {
+    display: none !important;
+}
+
+@media (hover: hover) {
+    .note-window-bar-btn:hover {
+        background: rgba(0, 0, 0, 0.1);
+    }
+}
+
+/* Докато бутонът е налице, името на борда не бива да се пъха под него. */
+.note-window:has(.note-window-bar-btn:not([hidden])) :is(#modal-board-name, .nw-modal-board-name) {
+    max-width: calc(100% - 400px);
+}
+
+@media (max-width: 520px) {
+    /* Тясно: бутонът остава, но с по-малко място около себе си. */
+    .note-window-bar-btn {
+        right: 244px;
+        font-size: 11px;
+        padding: 0 8px;
+    }
+}
+
+/* Единична бележка (b1.83): затъмнението под горния прозорец, както го имаше единственият модал
+   преди b1.82. Стои в #note-windows-layer точно под горния прозорец (main.js го поставя), тоест
+   поема всяко натискане, което е било за списъка, бордовете или друг прозорец; натиск върху него
+   затваря бележката като хиксчето. */
+#single-note-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+
+#single-note-overlay.visible {
+    display: block;
 }

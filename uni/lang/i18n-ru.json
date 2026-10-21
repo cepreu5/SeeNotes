@@ -60,6 +60,8 @@
   "maxSearchesLabel": "Сохраненные поиски:",
   "noteFontSizeLabel": "Размер шрифта (заметка):",
   "showDatemodLabel": "Показывать дату изменения/календарную:",
+  "closeAllNotes": "Закрыть все",
+  "singleNoteLabel": "Одна заметка:",
   "dataManagementTitle": "Загрузка данных",
   "advancedSettings": "Расширенные настройки",
   "useLocalDbLabel": "Локальная папка:",
