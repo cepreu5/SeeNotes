@@ -8,6 +8,9 @@
 //   - „Затвори всички" се показва в лентата от три отворени бележки и затваря всички;
 //   - „Единична бележка" (чекбоксът в Настройки, по подразбиране изключен) оставя една бележка,
 //     слага затъмнение под нея, а натиск върху затъмнението я затваря като хиксчето;
+//   - записът за място/размер (noteWindowGeometry) се създава само при истинска промяна след отваряне,
+//     дефолтният размер (modalWidth/modalHeight) се пипа само в режим „Единична бележка", а редът
+//     „Ресет на позиции/размери" в Настройки трие записите;
 //   - смяна на борда НЕ затваря отворените прозорци.
 // Пуска се от корена на хранилището (seeNotes-main):
 //   node .bolter/check/multinotes.mjs      (exit 1 при провалена проверка)
@@ -686,6 +689,317 @@ ok(namesShown >= 2 && nameUnder.length === 0,
   `тясна бележка: името на борда дава мястото и не слиза под бутоните (показано в ${namesShown} от ${narrow.length}, ${JSON.stringify(narrow.map(w => w.name ? [w.name.shown, Math.round(w.name.right), Math.round(w.row.left)] : null))})`,
   { nameUnder });
 await shot('narrow-header-320');
+
+// ======================= 10. Геометрия: запис само при промяна + ресет (b1.10) =======================
+// Правилото: отваряне и затваряне на бележка, която никой не е местил и не е преоразмерявал, не създава
+// запис в noteWindowGeometry. Дефолтният размер (modalWidth/modalHeight) се пипа само в режим
+// „Единична бележка". Бутончето „Ресет на позиции/размери" в Настройки трие записите.
+const geomRaw = () => page.evaluate(() => localStorage.getItem('noteWindowGeometry'));
+const geomRead = () => page.evaluate(() => {
+  const g = JSON.parse(localStorage.getItem('noteWindowGeometry') || 'null');
+  return g ? { boxes: Object.keys(g.boxes).length, order: g.order.slice(), raw: g.boxes } : null;
+});
+const activeBox = () => page.evaluate(() => {
+  const w = activeNoteWindow;
+  const cs = getComputedStyle(w.box);
+  return {
+    key: w.key,
+    left: Math.round(w.box.offsetLeft), top: Math.round(w.box.offsetTop),
+    w: Math.round(parseFloat(cs.width)), h: Math.round(parseFloat(cs.height)),
+    geom0: w.geom0 ? { x: w.geom0.x, y: w.geom0.y, w: w.geom0.w, h: w.geom0.h } : null,
+  };
+});
+const closeActive = async () => {
+  await page.evaluate(() => closeNoteWindow(activeNoteWindow));
+  await page.waitForTimeout(60);
+};
+// Преоразмеряване с истинска мишка по дръжката в долния десен ъгъл: ширината расте точно с dx.
+const resizeActive = async (dx, dy) => {
+  const at = await page.evaluate(() => {
+    const h = activeNoteWindow.box.querySelector('.modal-resize-handle');
+    const r = h.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  });
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x + Math.round(dx / 2), at.y + Math.round(dy / 2), { steps: 2 });
+  await page.mouse.move(at.x + dx, at.y + dy, { steps: 2 });
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+};
+// Местене с истинска мишка, хващайки лентата горе (същата точка като в раздел 3).
+const moveActive = async (dx, dy) => {
+  const at = await page.evaluate(() => {
+    const r = activeNoteWindow.box.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width - 40), y: Math.round(r.top + 4) };
+  });
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.move(at.x + Math.round(dx / 2), at.y + Math.round(dy / 2), { steps: 2 });
+  await page.mouse.move(at.x + dx, at.y + dy, { steps: 2 });
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+};
+const clearGeometryStorage = () => page.evaluate(() => {
+  localStorage.removeItem('noteWindowGeometry');
+  localStorage.removeItem('modalWidth');
+  localStorage.removeItem('modalHeight');
+  localStorage.removeItem('singleNoteMode');
+  applySingleNoteModeSetting();
+});
+
+await closeAllWindows();
+await clearGeometryStorage();
+
+// (1) Чиста памет: отваряне и затваряне на непреместена бележка не създава запис.
+const opened1 = await openNote({ id: 'G1', gdid: 'GG1', boardId: 'B1', raw: 'геометрия 1' }, 1);
+const box1 = await activeBox();
+ok(opened1.geom === null,
+  `геометрия 1: чиста памет - отварянето не създава запис (${JSON.stringify(opened1.geom)})`, opened1.geom);
+ok(!!box1.geom0 && box1.geom0.x === box1.left && box1.geom0.y === box1.top
+  && box1.geom0.w === box1.w && box1.geom0.h === box1.h,
+  `геометрия 1: базовата кутия при отваряне съвпада с текущата (${JSON.stringify(box1.geom0)} срещу ${box1.left},${box1.top} ${box1.w}x${box1.h})`, box1);
+await closeActive();
+const afterClose1 = await geomRead();
+ok(afterClose1 === null,
+  `геометрия 1: затварянето на непреместена бележка също не създава запис (${JSON.stringify(afterClose1)})`, afterClose1);
+
+// (1б) Същото и за бележка с размери от options (демо бележката): и тя не си създава запис.
+await openNote({ id: 'G1B', gdid: 'GG1B', boardId: 'B1', width: 640, height: 420, raw: 'геометрия 1б' }, 1);
+const box1b = await activeBox();
+await closeActive();
+const afterClose1b = await geomRead();
+ok(box1b.w === 640 && box1b.h === 420 && !!box1b.geom0 && box1b.geom0.w === 640 && box1b.geom0.h === 420,
+  `геометрия 1б: бележка с размери от options се отваря с тях и базовата кутия ги пази (${box1b.w}x${box1b.h})`, box1b);
+ok(afterClose1b === null,
+  `геометрия 1б: и тя не създава запис, щом никой не я е пипал (${JSON.stringify(afterClose1b)})`, afterClose1b);
+
+// (2) Бележка, която вече има запис: отваря се на него, а затварянето не го пипа.
+const seededGeom = await page.evaluate(() => {
+  const store = {
+    v: 1,
+    order: ['g:GKEEP', 'g:GX'],
+    boxes: { 'g:GKEEP': { x: 120, y: 90, w: 480, h: 340 }, 'g:GX': { x: 640, y: 400, w: 400, h: 300 } }
+  };
+  localStorage.setItem('noteWindowGeometry', JSON.stringify(store));
+  return JSON.stringify(store);
+});
+await openNote({ id: 'KEEP', gdid: 'GKEEP', boardId: 'B1', raw: 'със запис' }, 1);
+const keepBox = await activeBox();
+const keepBefore = await geomRaw();
+await closeActive();
+const keepAfter = await geomRaw();
+ok(keepBox.left === 120 && keepBox.top === 90 && keepBox.w === 480 && keepBox.h === 340,
+  `геометрия 2: бележка със запис се отваря точно на него (${keepBox.left},${keepBox.top} ${keepBox.w}x${keepBox.h})`, keepBox);
+ok(keepAfter === keepBefore && keepBefore === seededGeom,
+  `геометрия 2: отваряне и затваряне без местене оставят записа и order-а непроменени (${String(keepAfter).slice(0, 70)})`,
+  { keepBefore, keepAfter });
+
+// (3) Преоразмеряване в режим „Единична бележка": дефолтният размер се записва.
+await clearGeometryStorage();
+await page.evaluate(() => { localStorage.setItem('singleNoteMode', 'true'); applySingleNoteModeSetting(); });
+await openNote({ id: 'G3', gdid: 'GG3', boardId: 'B1', raw: 'геометрия 3' }, 1);
+const before3 = await activeBox();
+await resizeActive(90, 60);
+const after3 = await page.evaluate(() => ({ mw: localStorage.getItem('modalWidth'), mh: localStorage.getItem('modalHeight') }));
+const g3 = await geomRead();
+ok(after3.mw === (before3.w + 90) + 'px' && after3.mh === (before3.h + 60) + 'px',
+  `геометрия 3: в режим „Единична бележка" преоразмеряването пише дефолтния размер (${after3.mw}, ${after3.mh} срещу ${before3.w + 90}px, ${before3.h + 60}px)`,
+  { before3, after3 });
+ok(!!g3 && !!g3.raw['g:GG3'] && Math.abs(g3.raw['g:GG3'].w - (before3.w + 90)) <= 1 && Math.abs(g3.raw['g:GG3'].h - (before3.h + 60)) <= 1,
+  `геометрия 3: и записът на бележката носи новия размер (${JSON.stringify(g3 && g3.raw['g:GG3'])})`, g3);
+
+// (4) Преоразмеряване извън режима: дефолтният размер не се пипа, но се появява запис за бележката.
+await closeActive();
+await clearGeometryStorage();
+await page.evaluate(() => { localStorage.setItem('modalWidth', '444px'); localStorage.setItem('modalHeight', '333px'); });
+await openNote({ id: 'G4', gdid: 'GG4', boardId: 'B1', raw: 'геометрия 4' }, 1);
+const before4 = await activeBox();
+await resizeActive(-60, -40);
+const after4 = await page.evaluate(() => ({ mw: localStorage.getItem('modalWidth'), mh: localStorage.getItem('modalHeight') }));
+const g4 = await geomRead();
+ok(after4.mw === '444px' && after4.mh === '333px',
+  `геометрия 4: извън режима преоразмеряването не пипа дефолтния размер (${after4.mw}, ${after4.mh})`, { before4, after4 });
+ok(!!g4 && !!g4.raw['g:GG4'] && Math.abs(g4.raw['g:GG4'].w - (before4.w - 60)) <= 1 && Math.abs(g4.raw['g:GG4'].h - (before4.h - 40)) <= 1,
+  `геометрия 4: но за бележката има запис с новия размер (${JSON.stringify(g4 && g4.raw['g:GG4'])} срещу ${before4.w - 60}x${before4.h - 40})`, g4);
+
+// (5) Бележка без запис: размерът идва от дефолтния (modalWidth/modalHeight).
+await closeActive();
+await clearGeometryStorage();
+await page.evaluate(() => { localStorage.setItem('modalWidth', '520px'); localStorage.setItem('modalHeight', '360px'); });
+await openNote({ id: 'G5', gdid: 'GG5', boardId: 'B1', raw: 'геометрия 5' }, 1);
+const box5 = await activeBox();
+ok(box5.w === 520 && box5.h === 360,
+  `геометрия 5: бележка без запис се отваря с дефолтния размер (${box5.w}x${box5.h} срещу 520x360)`, box5);
+
+// (6) Местенето създава запис и го слага последен в order.
+await closeActive();
+await clearGeometryStorage();
+await openNote({ id: 'G6', gdid: 'GG6', boardId: 'B1', raw: 'геометрия 6' }, 1);
+const before6 = await activeBox();
+await moveActive(70, 50);
+const g6 = await geomRead();
+const rec6 = g6 && g6.raw['g:GG6'];
+ok(!!rec6 && Math.abs(rec6.x - (before6.left + 70)) <= 2 && Math.abs(rec6.y - (before6.top + 50)) <= 2
+  && Number.isInteger(rec6.w) && Number.isInteger(rec6.h),
+  `геометрия 6: местенето създава запис с новото място (${JSON.stringify(rec6)} срещу ${before6.left + 70},${before6.top + 50})`, g6);
+ok(!!g6 && g6.order.length === 1 && g6.order[g6.order.length - 1] === 'g:GG6',
+  `геометрия 6: записът е последен в order (${JSON.stringify(g6 && g6.order)})`, g6);
+
+// (7) „Ресет на позиции/размери": редът в Настройки и самото натискане.
+// Прозорецът се слага в ъгъла горе вляво, за да не покрива модала: Настройки се отваря от хедъра, а
+// модалът и слоят на прозорците са на една и съща височина (1000), тоест кутия на прозорец върху
+// модала би поела клика.
+await closeActive();
+await page.evaluate(() => {
+  localStorage.setItem('noteWindowGeometry', JSON.stringify({
+    v: 1, order: ['g:GR1', 'g:GR2'],
+    boxes: { 'g:GR1': { x: 20, y: 20, w: 380, h: 260 }, 'g:GR2': { x: 40, y: 40, w: 300, h: 200 } }
+  }));
+  localStorage.setItem('modalWidth', '555px');
+  localStorage.setItem('modalHeight', '355px');
+});
+await openNote({ id: 'RST1', gdid: 'GR1', boardId: 'B1', raw: 'преди ресета' }, 1);
+const preReset = await activeBox();
+// Настройките в проверката не са вдигнати: приложението ги строи след логин (startApp -> initApp +
+// createSettingsUI). Прави се същото, за да е жив истинският слушател на бутона, а не копие в теста.
+const wired = await page.evaluate(async () => {
+  try {
+    initApp();
+    await createSettingsUI([], false);
+    return { ok: true, fontOptions: document.getElementById('note-font-size-input').options.length };
+  } catch (e) {
+    return { ok: false, error: String(e.message).slice(0, 200) };
+  }
+});
+ok(wired.ok && wired.fontOptions > 0,
+  `ресет: Настройки са вдигнати както при старт (${JSON.stringify(wired)})`, wired);
+// Както човек отваря Настройки: хедърният бутон. (Натискането на самия „Ресет" долу е истинска мишка.)
+await page.evaluate(() => document.getElementById('settings_button').click());
+// Модалът се отваря с анимация (scale 0.7 -> 1): мерките се вземат, след като улегне, иначе
+// бутончето се мери смалено.
+await page.waitForFunction(() => {
+  const modal = document.getElementById('settings-modal');
+  const box = modal && modal.querySelector('.modal-content-box');
+  if (!modal || !box || !modal.classList.contains('visible') || !box.offsetWidth) return false;
+  return Math.abs(box.getBoundingClientRect().width / box.offsetWidth - 1) < 0.002;
+}, null, { timeout: 5000 }).catch(() => { });
+const row = await page.evaluate(() => {
+  const wrap = document.getElementById('reset-window-geometry');
+  const btn = document.getElementById('reset-window-geometry-btn');
+  const label = wrap ? wrap.querySelector('label') : null;
+  const modal = document.getElementById('settings-modal');
+  const box = modal.querySelector('.modal-content-box');
+  const rb = btn.getBoundingClientRect();
+  const bb = box.getBoundingClientRect();
+  const cs = getComputedStyle(btn);
+  return {
+    modalVisible: modal.classList.contains('visible'),
+    hasRow: !!wrap,
+    afterSingle: !!(wrap && wrap.previousElementSibling && wrap.previousElementSibling.id === 'single-note-mode'),
+    labelText: label ? label.textContent.trim() : null,
+    labelFor: label ? label.getAttribute('for') : null,
+    expectedLabel: _('resetWindowGeometryLabel'),
+    btnText: btn.textContent.trim(),
+    expectedBtn: _('resetWindowGeometryBtn'),
+    height: Math.round(rb.height), width: Math.round(rb.width),
+    radius: cs.borderRadius, fontSize: cs.fontSize,
+    bg: cs.backgroundColor, color: cs.color,
+    inside: rb.left >= bb.left - 0.5 && rb.right <= bb.right + 0.5 && rb.top >= bb.top - 0.5 && rb.bottom <= bb.bottom + 0.5,
+    onScreen: rb.right <= window.innerWidth && rb.bottom <= window.innerHeight && rb.left >= 0,
+  };
+});
+ok(row.modalVisible && row.hasRow && row.afterSingle,
+  `ресет: редът стои точно след „Единична бележка" в Настройки (модал ${row.modalVisible}, след чекбокса ${row.afterSingle})`, row);
+ok(row.expectedLabel && row.expectedBtn && row.labelText === row.expectedLabel && row.btnText === row.expectedBtn
+  && row.labelFor === 'reset-window-geometry-btn',
+  `ресет: надписът и бутончето идват от превода (${JSON.stringify([row.labelText, row.btnText, row.expectedLabel, row.expectedBtn])})`, row);
+ok(row.height >= 23 && row.height <= 25 && row.fontSize === '12px' && row.radius === '6px' && row.inside,
+  `ресет: бутончето е малко (${row.width}x${row.height}, ${row.fontSize}, radius ${row.radius}) и е в модала`, row);
+// Чете ли се текстът на бутончето: то си носи собствен фон, тоест не зависи от фона на модала.
+const contrastOf = async () => page.evaluate(() => {
+  const cs = getComputedStyle(document.getElementById('reset-window-geometry-btn'));
+  const lum = (c) => {
+    const [r, g, b] = (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number).map(v => {
+      v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const l1 = lum(cs.color), l2 = lum(cs.backgroundColor);
+  return { color: cs.color, bg: cs.backgroundColor, ratio: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05) };
+});
+const contrastLight = await contrastOf();
+ok(contrastLight.ratio >= 4.5,
+  `ресет: текстът на бутончето се чете (контраст ${contrastLight.ratio.toFixed(2)}:1, ${contrastLight.color} върху ${contrastLight.bg})`, contrastLight);
+
+// Снимки: редът в светла тема, същият ред върху тъмен фон (приложението няма тъмна тема, затова
+// фонът се налага с листче стилове: важното е бутончето да си остане четимо и там) и екран след ресета.
+await page.locator('#reset-window-geometry').scrollIntoViewIfNeeded().catch(() => { });
+await shot('geometry-reset-row');
+const darkSheet = await page.addStyleTag({
+  content: '#settings-modal .modal-content-box{background:linear-gradient(135deg,#2b2b2b,#171717)!important;}'
+    + '#settings-modal .modal-content-box h2,#settings-modal .modal-content-box h3,'
+    + '#settings-modal .zoom-control-wrapper label,#settings-modal .zoom-control-wrapper{color:#f2f2f2!important;}'
+});
+const contrastDark = await contrastOf();
+await shot('geometry-reset-row-dark');
+ok(contrastDark.ratio >= 4.5 && contrastDark.bg === contrastLight.bg,
+  `ресет: на тъмен фон бутончето си остава същото и четимо (контраст ${contrastDark.ratio.toFixed(2)}:1, фон ${contrastDark.bg})`, { contrastLight, contrastDark });
+await darkSheet.evaluate(el => el.remove());
+
+const beforeReset = await geomRaw();
+await page.locator('#reset-window-geometry-btn').scrollIntoViewIfNeeded();
+await page.locator('#reset-window-geometry-btn').click();
+await page.waitForFunction(() => {
+  const t = document.getElementById('toastNotification');
+  return t && t.classList.contains('show') && (t.textContent || '').trim().length > 0;
+}, null, { timeout: 3000 }).catch(() => { });
+const afterReset = await page.evaluate(() => {
+  const t = document.getElementById('toastNotification');
+  return {
+    raw: localStorage.getItem('noteWindowGeometry'),
+    mw: localStorage.getItem('modalWidth'), mh: localStorage.getItem('modalHeight'),
+    toast: { text: (t.textContent || '').trim(), shown: t.classList.contains('show') },
+    openNow: getOpenNoteWindows().length,
+  };
+});
+ok(!!beforeReset && afterReset.raw === null,
+  `ресет: натискането изтрива записите от паметта (${String(beforeReset).slice(0, 60)} -> ${afterReset.raw})`, afterReset);
+ok(afterReset.mw === '555px' && afterReset.mh === '355px',
+  `ресет: дефолтният размер не се пипа (${afterReset.mw}, ${afterReset.mh})`, afterReset);
+ok(afterReset.toast.shown && afterReset.toast.text.length > 0,
+  `ресет: показва се съобщението „${afterReset.toast.text}"`, afterReset);
+await shot('geometry-after-reset');
+// Отвореният преди ресета прозорец остава там, където е, и при затваряне не си създава запис наново.
+const postResetBox = await activeBox();
+await closeActive();
+const finalGeom = await geomRead();
+ok(postResetBox.left === preReset.left && postResetBox.top === preReset.top
+  && postResetBox.w === preReset.w && postResetBox.h === preReset.h,
+  `ресет: отвореният прозорец не мърда (${postResetBox.left},${postResetBox.top} ${postResetBox.w}x${postResetBox.h})`,
+  { preReset, postResetBox });
+ok(finalGeom === null,
+  `ресет: затварянето след ресета не създава нов запис (${JSON.stringify(finalGeom)})`, finalGeom);
+// Настройки се затварят, за да не остане отворен модал за следващите проверки.
+await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
+
+// (8) Езиковите низове: двата нови ключа ги има и в трите файла, с непразни стойности.
+const langFiles = ['lang/i18n-bg.json', 'lang/i18n-en.json', 'lang/i18n-ru.json'];
+const langState = {};
+for (const f of langFiles) {
+  try {
+    const json = JSON.parse(await readFile(path.join(root, f), 'utf8'));
+    langState[f] = { label: json.resetWindowGeometryLabel, btn: json.resetWindowGeometryBtn };
+  } catch (e) { langState[f] = { error: String(e.message).slice(0, 80) }; }
+}
+const langOk = (st) => !!st && typeof st.label === 'string' && st.label.trim().length > 0
+  && typeof st.btn === 'string' && st.btn.trim().length > 0;
+ok(langFiles.every(f => langOk(langState[f])),
+  `езици: двата нови ключа са налице в трите файла (${JSON.stringify(langState)})`, langState);
+ok(langOk(langState['lang/i18n-bg.json']) && langState['lang/i18n-bg.json'].label === 'Ресет на позиции/размери:'
+  && langOk(langState['lang/i18n-en.json']) && langState['lang/i18n-en.json'].label === 'Reset positions/sizes:'
+  && langOk(langState['lang/i18n-ru.json']) && langState['lang/i18n-ru.json'].label === 'Сброс позиций/размеров:',
+  'езици: надписите са точно поисканите (bg / en / ru)', langState);
 
 // ======================= 8. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);

@@ -63,6 +63,8 @@
   "showDatemodLabel": "Покажи дата на промяна/календар:",
   "closeAllNotes": "Затвори всички",
   "singleNoteLabel": "Единична бележка:",
+  "resetWindowGeometryLabel": "Ресет на позиции/размери:",
+  "resetWindowGeometryBtn": "Ресет",
   "dataManagementTitle": "Четене на данни",
   "advancedSettings": "Разширени настройки",
   "useLocalDbLabel": "Локална папка:",

@@ -62,6 +62,8 @@
   "showDatemodLabel": "Показывать дату изменения/календарную:",
   "closeAllNotes": "Закрыть все",
   "singleNoteLabel": "Одна заметка:",
+  "resetWindowGeometryLabel": "Сброс позиций/размеров:",
+  "resetWindowGeometryBtn": "Сброс",
   "dataManagementTitle": "Загрузка данных",
   "advancedSettings": "Расширенные настройки",
   "useLocalDbLabel": "Локальная папка:",

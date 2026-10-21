@@ -5297,16 +5297,35 @@ function writeNoteWindowGeometry(store) {
 // Размерът се мери по computed style, не по offsetWidth: кутията има padding, а записаното се
 // слага обратно в style.width/height (същият смисъл), иначе прозорецът расте с по 20x60 всеки път,
 // щом се отвори наново.
-function rememberNoteWindowGeometry(win) {
-    if (!win || !win.key || !win.box || !win.box.offsetWidth) return;
-    const store = readNoteWindowGeometry();
-    const cs = getComputedStyle(win.box);
-    store.boxes[win.key] = {
-        x: Math.round(win.box.offsetLeft),
-        y: Math.round(win.box.offsetTop),
+function measureNoteWindowBox(win) {
+    const box = win.box;
+    const cs = getComputedStyle(box);
+    return {
+        x: Math.round(box.offsetLeft),
+        y: Math.round(box.offsetTop),
         w: Math.round(parseFloat(cs.width)),
         h: Math.round(parseFloat(cs.height))
     };
+}
+
+// Запис се създава само при истинска промяна: win.geom0 е кутията, както приложението я е поставило
+// (при отваряне или при последния запис). Отваряне и затваряне на непреместена бележка не пипат
+// нито записа, нито order; разлика до 1px е закръгляне, не местене.
+const NOTE_WINDOW_GEOM_TOL = 1;
+function noteWindowGeometryUnchanged(now, base) {
+    return !!base
+        && Math.abs(now.x - base.x) <= NOTE_WINDOW_GEOM_TOL
+        && Math.abs(now.y - base.y) <= NOTE_WINDOW_GEOM_TOL
+        && Math.abs(now.w - base.w) <= NOTE_WINDOW_GEOM_TOL
+        && Math.abs(now.h - base.h) <= NOTE_WINDOW_GEOM_TOL;
+}
+
+function rememberNoteWindowGeometry(win) {
+    if (!win || !win.key || !win.box || !win.box.offsetWidth) return;
+    const now = measureNoteWindowBox(win);
+    if (noteWindowGeometryUnchanged(now, win.geom0)) return;
+    const store = readNoteWindowGeometry();
+    store.boxes[win.key] = now;
     store.order = store.order.filter(k => k !== win.key);
     store.order.push(win.key);
     while (store.order.length > NOTE_WINDOW_GEOM_MAX) {
@@ -5314,6 +5333,22 @@ function rememberNoteWindowGeometry(win) {
         delete store.boxes[oldest];
     }
     writeNoteWindowGeometry(store);
+    // Записаното е новата базова кутия: следващото затваряне без промяна няма да пише.
+    win.geom0 = now;
+}
+
+// „Ресет на позиции/размери" от Настройки: трие всичко запомнено за бележките. Отворените прозорци
+// не се местят - базовата им кутия става текущата, за да не си създадат запис при затваряне.
+// Дефолтният размер (modalWidth/modalHeight) остава: той е настройка за новите бележки, не запис.
+function resetNoteWindowGeometry() {
+    try {
+        localStorage.removeItem(NOTE_WINDOW_GEOM_KEY);
+    } catch (e) {
+        console.warn('noteWindowGeometry: reset failed', e);
+    }
+    noteWindows.forEach(win => {
+        if (win && win.box && win.box.offsetWidth) win.geom0 = measureNoteWindowBox(win);
+    });
 }
 
 function savedNoteWindowGeometry(key) {
@@ -5384,6 +5419,10 @@ function applyNoteWindowGeometry(win, options, fresh) {
         placeNoteWindowInCascade(win, bw, bh, vw, vh);
     }
     win.placed = true;
+    // Базовата кутия: поставеното от приложението. С нея се сравнява при затваряне, за да не се
+    // създава запис за бележка, която никой не е местил и не е преоразмерявал. Отнася се и за
+    // пре-рисуване (смяна на бележката в същия прозорец): то също е решение на приложението.
+    win.geom0 = measureNoteWindowBox(win);
 }
 
 // --- Живот на прозореца -------------------------------------------------------------------------
@@ -5408,6 +5447,7 @@ function createNoteWindow() {
         open: false,
         placed: false,
         slot: -1,
+        geom0: null,
         key: ''
     };
     noteWindows.push(win);
@@ -5677,8 +5717,13 @@ function wireNoteWindowResize(win, resizeHandle) {
         document.documentElement.removeEventListener('mouseup', stopDrag, false);
         document.documentElement.removeEventListener('touchmove', doDrag, false);
         document.documentElement.removeEventListener('touchend', stopDrag, false);
-        localStorage.setItem('modalWidth', box.style.width);
-        localStorage.setItem('modalHeight', box.style.height);
+        // Дефолтният размер за новите бележки (modalWidth/modalHeight) се пипа само в режим
+        // „Единична бележка". Извън него преоразмеряването не е настройка: то се помни само за
+        // самата бележка (noteWindowGeometry долу).
+        if (isSingleNoteMode()) {
+            localStorage.setItem('modalWidth', box.style.width);
+            localStorage.setItem('modalHeight', box.style.height);
+        }
         rememberNoteWindowGeometry(win);
     }
     function startDrag(e) {
@@ -5791,6 +5836,7 @@ function initNoteWindows() {
         open: false,
         placed: false,
         slot: -1,
+        geom0: null,
         key: ''
     };
     src.classList.add('note-window');
@@ -7268,6 +7314,14 @@ async function createSettingsUI(boardsData, boardParseError) {
             });
         }
         applySingleNoteModeSetting();
+        // „Ресет на позиции/размери" (b1.10): бутончето под чекбоксовете трие noteWindowGeometry.
+        const resetWindowGeometryBtn = document.getElementById('reset-window-geometry-btn');
+        if (resetWindowGeometryBtn) {
+            resetWindowGeometryBtn.addEventListener('click', () => {
+                resetNoteWindowGeometry();
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         // One-tap links
         if (oneTapLinkCheckbox) {
             oneTapLinkCheckbox.checked = localStorage.getItem('oneTapLink') === 'true'; // Default to false

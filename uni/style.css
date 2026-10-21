@@ -984,6 +984,35 @@ code {
     /* Better alignment with the label text */
 }
 
+/* Малко бутонче в реда на Настройки, където съседните редове имат чекбокс („Ресет на
+   позиции/размери"). Носи си собствен фон и рамка, за да се чете и на светъл, и на тъмен фон. */
+.settings-small-btn {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 12px;
+    line-height: 1;
+    font-family: inherit;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    background: #f4f4f4;
+    color: #222;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.settings-small-btn:hover {
+    background: #e6e6e6;
+}
+
+.settings-small-btn:active {
+    background: #dcdcdc;
+}
+
+.settings-small-btn:focus-visible {
+    outline: 2px solid rgba(58, 111, 240, 0.8);
+    outline-offset: 1px;
+}
+
 
 .view-button {
     background: none;
