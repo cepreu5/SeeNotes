@@ -5,7 +5,13 @@
 //     пазят като data-mwid + .nw-modal-body - смяната на активния ги разменя;
 //   - плъзгането мести прозореца и мястото/размерът остават в localStorage за следващото отваряне;
 //   - записът на геометрията е един речник с таван 300 записа, най-старият се изхвърля;
-//   - „Затвори всички" се показва в лентата от три отворени бележки и затваря всички;
+//   - „Затвори всички" се показва в дясната група на лентата от три отворени бележки, едно до друго
+//     с хиксчето, извън плъзгащия се ред, и затваря всички;
+//   - името на борда стои най-ляво в лентата на отворена бележка ВИНАГИ (и при съвпадащ филтър) и се
+//     реже с многоточие, когато няма място (b1.11);
+//   - стрелките < / > обхождат отворените прозорци от ДВА нагоре и зациклят в краищата (b1.11); при
+//     един прозорец ходят по бележките на борда, както досега;
+//   - потвърждението при изтриване излиза НАД отворените бележки (b1.11);
 //   - „Единична бележка" (чекбоксът в Настройки, по подразбиране изключен) оставя една бележка,
 //     слага затъмнение под нея, а натиск върху затъмнението я затваря като хиксчето;
 //   - записът за място/размер (noteWindowGeometry) се създава само при истинска промяна след отваряне,
@@ -481,46 +487,64 @@ ok(three.windows[three.activeIndex].active && three.windows[three.activeIndex].z
   `рамка: активният прозорец е най-отгоре, без рамка (z ${three.windows[three.activeIndex].z})`,
   three.windows.map(w => ({ z: w.z, a: w.active })));
 
-// (б) „Затвори всички" - кръгъл бутон в реда, вляво от хиксчето, изцяло в кутията.
+// (б) „Затвори всички" - в ДЯСНАТА клетка на лентата, едно до друго с хиксчето, извън реда с бутоните.
 const closeAllGeom = await page.evaluate(() => {
   const win = activeNoteWindow;
   const btn = win.closeAllBtn;
   if (!btn) return { exists: false };
   const cs = getComputedStyle(btn);
   const r = btn.getBoundingClientRect();
-  const xr = win.box.querySelector('.modal-close').getBoundingClientRect();
+  const xBtn = win.box.querySelector('.modal-close');
+  const xr = xBtn.getBoundingClientRect();
   const br = win.box.getBoundingClientRect();
   const row = win.box.querySelector('.note-header-buttons');
   const rr = row.getBoundingClientRect();
+  const group = win.box.querySelector('.note-header-close-group');
+  const gr = group ? group.getBoundingClientRect() : null;
   return {
     exists: true, hidden: btn.hidden, display: cs.display, radius: cs.borderRadius,
     w: Math.round(r.width), h: Math.round(r.height), icon: !!btn.querySelector('svg'),
     classes: btn.className,
     inRow: !!(btn.parentElement && btn.parentElement.classList.contains('note-header-buttons')),
+    inGroup: !!(group && btn.parentElement === group),
+    groupChildren: group ? group.children.length : 0,
+    sameParentAsX: !!(xBtn.parentElement && xBtn.parentElement === btn.parentElement),
+    gapToX: Math.round(xr.left - r.right),
+    sameLineAsX: Math.abs((r.top + r.height / 2) - (xr.top + xr.height / 2)) <= 1,
     rowHasOthers: row.querySelectorAll('button').length,
     btn: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
     x: { left: xr.left, right: xr.right, top: xr.top, bottom: xr.bottom },
     box: { left: br.left, right: br.right, top: br.top, bottom: br.bottom },
     row: { left: rr.left, right: rr.right },
+    group: gr ? { left: gr.left, right: gr.right, top: gr.top, bottom: gr.bottom } : null,
   };
 });
 ok(closeAllGeom.exists && !closeAllGeom.hidden && closeAllGeom.display === 'flex' && closeAllGeom.icon
-  && closeAllGeom.inRow && closeAllGeom.rowHasOthers === 6 && /note-window-bar-btn/.test(closeAllGeom.classes),
-  `„Затвори всички": кръглият бутон е в реда с бутоните, с икона и видим при три отворени (${closeAllGeom.display}, ред от ${closeAllGeom.rowHasOthers})`,
+  && closeAllGeom.inGroup && !closeAllGeom.inRow && closeAllGeom.groupChildren === 2
+  && closeAllGeom.sameParentAsX && /note-window-bar-btn/.test(closeAllGeom.classes),
+  `„Затвори всички": бутонът е в дясната група до хиксчето, извън реда с бутоните (група от ${closeAllGeom.groupChildren}, в реда ${closeAllGeom.inRow})`,
   closeAllGeom);
 ok(closeAllGeom.radius === '50%' && closeAllGeom.w === 32 && closeAllGeom.h === 32,
   `„Затвори всички": същият 32px кръгъл бутон като останалите в лентата (${closeAllGeom.w}x${closeAllGeom.h}, radius ${closeAllGeom.radius})`,
+  closeAllGeom);
+ok(closeAllGeom.rowHasOthers === 5,
+  `„Затвори всички": редът с бутоните остава с петте си бутона, без „Затвори всички" (${closeAllGeom.rowHasOthers})`,
   closeAllGeom);
 ok(closeAllGeom.btn.left >= closeAllGeom.box.left - 0.5 && closeAllGeom.btn.right <= closeAllGeom.box.right + 0.5
   && closeAllGeom.btn.top >= closeAllGeom.box.top - 0.5 && closeAllGeom.btn.bottom <= closeAllGeom.box.bottom + 0.5,
   `„Затвори всички": бутонът е изцяло в кутията (${Math.round(closeAllGeom.btn.left)}..${Math.round(closeAllGeom.btn.right)} в ${Math.round(closeAllGeom.box.left)}..${Math.round(closeAllGeom.box.right)})`,
   closeAllGeom);
-ok(closeAllGeom.btn.right <= closeAllGeom.x.left + 0.5,
-  `„Затвори всички": бутонът е точно вляво от хиксчето (${Math.round(closeAllGeom.btn.right)} <= ${Math.round(closeAllGeom.x.left)})`,
+ok(closeAllGeom.btn.right <= closeAllGeom.x.left + 0.5 && closeAllGeom.sameLineAsX
+  && closeAllGeom.gapToX >= 4 && closeAllGeom.gapToX <= 12,
+  `„Затвори всички": бутонът е точно вляво от хиксчето, на същата вертикала (${Math.round(closeAllGeom.btn.right)} <= ${Math.round(closeAllGeom.x.left)}, отстояние ${closeAllGeom.gapToX})`,
   closeAllGeom);
 ok(closeAllGeom.x.left >= closeAllGeom.box.left && closeAllGeom.x.right <= closeAllGeom.box.right
   && closeAllGeom.x.top >= closeAllGeom.box.top && closeAllGeom.x.bottom <= closeAllGeom.box.bottom,
   `„Затвори всички": хиксчето също е изцяло в кутията (${Math.round(closeAllGeom.x.left)}..${Math.round(closeAllGeom.x.right)})`,
+  closeAllGeom);
+ok(!!closeAllGeom.group && closeAllGeom.group.right <= closeAllGeom.box.right + 0.5
+  && closeAllGeom.group.left >= closeAllGeom.row.right - 0.5,
+  `„Затвори всички": дясната група е изцяло вдясно от реда с бутоните (група ${closeAllGeom.group && Math.round(closeAllGeom.group.left)}..${closeAllGeom.group && Math.round(closeAllGeom.group.right)}, ред до ${Math.round(closeAllGeom.row.right)})`,
   closeAllGeom);
 await shot('close-all-icon');
 
@@ -555,6 +579,17 @@ const bothArrows = await page.evaluate(() => getOpenNoteWindows().every(w => {
   return getComputedStyle(prev).display === 'flex' && getComputedStyle(next).display === 'flex';
 }));
 ok(bothArrows, 'стрелки при 4 прозоръца: двете стрелки се виждат във всеки прозорец, независимо от позицията в борда', bothArrows);
+// Четири натискания на „<" от първия прозорец: обратно през целия списък и пак в началото (b1.11).
+const backStart = await page.evaluate(() => {
+  activateNoteWindow(getOpenNoteWindows()[0], true);
+  return (activeNoteWindow.body.textContent || '').trim();
+});
+const backWalk = [];
+for (let i = 0; i < 4; i++) backWalk.push(await pressArrow(-1));
+const backPattern = backWalk.map(w => w.text);
+ok(backStart === 'прозорец 1' && backPattern.join('|') === 'прозорец 4|прозорец 3|прозорец 2|прозорец 1',
+  `стрелки при 4 прозоръца: четири натискания на „<" минават през всички и се връщат в началото (${JSON.stringify(backPattern)})`,
+  { backStart, backWalk });
 // Натиск в прозорец, който НЕ е активният: първо той става активен, чак после се минава на следващия.
 // (Ако редът тръгваше от стария активен прозорец, тук щеше да се стигне до „прозорец 2", не до 4.)
 const nonActivePress = await page.evaluate(() => {
@@ -571,7 +606,8 @@ ok(nonActivePress.display === 'flex' && nonActivePress.text === 'прозоре�
   nonActivePress);
 await shot('arrow-walk-4');
 
-// При ДВА отворени прозореца стрелките продължават да ходят по бележките на борда в същия прозорец.
+// (в-1) При ЕДИН отворен прозорец стрелките продължават да ходят по бележките на борда в СЪЩИЯ
+// прозорец и се скриват в края на списъка - това поведение не се пипа (b1.11).
 await closeAllWindows();
 const boardNotes = await page.evaluate(() => {
   notesContainer.innerHTML = '';
@@ -591,21 +627,45 @@ const board1 = await pressArrow(1);
 ok(boardNotes === 3 && oneWindow && board1.open === 1 && board1.text === 'борд бележка 2',
   `стрелки при 1 прозорец: „>" отваря съседната бележка от борда в СЪЩИЯ прозорец (${board1.text}, прозорци ${board1.open})`,
   { boardNotes, board1 });
-await openNote({ id: 'V9', gdid: 'GV9', boardId: 'B2', raw: 'друг прозорец' }, 2);
-await page.evaluate(() => { activateNoteWindow(getOpenNoteWindows().find(w => (w.body.textContent || '').trim().startsWith('борд бележка')), true); });
 const board2 = await pressArrow(1);
-ok(board2.open === 2 && board2.text === 'борд бележка 3',
-  `стрелки при 2 прозоръца: пак бележката от борда в същия прозорец, не се обхождат прозорците (${board2.text}, прозорци ${board2.open})`,
-  board2);
 const boardEnd = await page.evaluate(() => {
   const win = activeNoteWindow;
   const prev = win.el.querySelector('#prev-note-btn, [data-mwid="prev-note-btn"]');
   const next = win.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
   return { prev: getComputedStyle(prev).display, next: getComputedStyle(next).display, text: (win.body.textContent || '').trim() };
 });
-ok(boardEnd.prev === 'flex' && boardEnd.next === 'none' && boardEnd.text === 'борд бележка 3',
-  `стрелки при 2 прозоръца: на края на списъка „>" се скрива, както досега (${boardEnd.prev}/${boardEnd.next}, ${boardEnd.text})`,
+ok(board2.open === 1 && board2.text === 'борд бележка 3'
+  && boardEnd.prev === 'flex' && boardEnd.next === 'none' && boardEnd.text === 'борд бележка 3',
+  `стрелки при 1 прозорец: на края на списъка „>" се скрива, както досега (${boardEnd.prev}/${boardEnd.next}, ${boardEnd.text})`,
   boardEnd);
+
+// (в-2) ДВА отворени прозореца: стрелките вече обхождат ПРОЗОРЦИТЕ, а не бележките на борда
+// (b1.11). Четири натискания на „>" минават и през двата и се връщат в началото; същото и с „<".
+await openNote({ id: 'V9', gdid: 'GV9', boardId: 'B2', raw: 'друг прозорец' }, 2);
+await page.evaluate(() => { activateNoteWindow(getOpenNoteWindows().find(w => (w.body.textContent || '').trim().startsWith('борд бележка')), true); });
+const twoStart = await page.evaluate(() => (activeNoteWindow.body.textContent || '').trim());
+const twoWalk = [];
+for (let i = 0; i < 4; i++) twoWalk.push(await pressArrow(1));
+const twoPattern = twoWalk.map(w => w.text);
+ok(twoPattern[0] === 'друг прозорец' && twoPattern[1] === 'борд бележка 3'
+  && twoPattern[2] === 'друг прозорец' && twoPattern[3] === 'борд бележка 3' && twoWalk.every(w => w.open === 2),
+  `стрелки при 2 прозоръца: „>" редува двата прозореца и зацикля (от ${twoStart}: ${JSON.stringify(twoPattern)})`,
+  { twoStart, twoWalk });
+const twoBack = [];
+for (let i = 0; i < 4; i++) twoBack.push(await pressArrow(-1));
+const twoBackPattern = twoBack.map(w => w.text);
+ok(twoBackPattern[0] === 'друг прозорец' && twoBackPattern[1] === 'борд бележка 3'
+  && twoBackPattern[2] === 'друг прозорец' && twoBackPattern[3] === 'борд бележка 3' && twoBack.every(w => w.open === 2),
+  `стрелки при 2 прозоръца: „<" също редува двата и зацикля (${JSON.stringify(twoBackPattern)})`,
+  twoBack);
+const twoBothArrows = await page.evaluate(() => getOpenNoteWindows().every(w => {
+  const prev = w.el.querySelector('#prev-note-btn, [data-mwid="prev-note-btn"]');
+  const next = w.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
+  return getComputedStyle(prev).display === 'flex' && getComputedStyle(next).display === 'flex';
+}));
+ok(twoBothArrows,
+  'стрелки при 2 прозоръца: двете стрелки се виждат във всеки прозорец, независимо от позицията в борда',
+  twoBothArrows);
 
 // (г) Тясна бележка (320px): нищо в лентата не излиза извън кутията, хиксчето се вижда изцяло.
 // Гледат се И НЕАКТИВНИТЕ прозорци: те пазят id-тата си като data-mwid/.nw-*, тоест CSS-ът ги хваща
@@ -657,6 +717,20 @@ const narrow = await page.evaluate(async () => {
       row: { left: rr.left, right: rr.right, scrollWidth: row.scrollWidth, clientWidth: row.clientWidth },
       name: nr ? { left: nr.left, right: nr.right, width: Math.round(nr.width), shown: getComputedStyle(name).display !== 'none' } : null,
       btns,
+      // Редът с бутоните и дясната група (b1.11): „Затвори всички" и хиксчето са в групата, извън реда.
+      rowButtons: [...row.querySelectorAll('button')].filter(b => {
+        const r = b.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && !b.hidden && getComputedStyle(b).display !== 'none';
+      }).length,
+      groupButtons: [...(w.box.querySelector('.note-header-close-group') || w.box).children].map(b => {
+        const r = b.getBoundingClientRect();
+        const cs = getComputedStyle(b);
+        return {
+          cls: String(b.className),
+          visible: r.width > 0 && r.height > 0 && cs.display !== 'none' && !b.hidden,
+          left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+        };
+      }),
     };
   });
 });
@@ -664,8 +738,27 @@ const narrowActive = narrow.find(w => w.active);
 const visible = narrowActive.btns.filter(b => b.visible);
 const visibleInRow = visible.filter(b => !/\bmodal-close\b/.test(b.cls));
 ok(narrow.length === 3 && narrow.every(w => w.contentWidth === 320) && visibleInRow.length === 6 && visible.length === 7,
-  `тясна бележка: и трите прозореца са 320px, в лентата се виждат шестте бутона плюс хиксчето (${JSON.stringify(narrow.map(w => w.contentWidth))}, ред ${visibleInRow.length}, всичко ${visible.length})`,
+  `тясна бележка: и трите прозореца са 320px, в лентата се виждат шестте кръгчета плюс хиксчето (${JSON.stringify(narrow.map(w => w.contentWidth))}, ред ${visibleInRow.length}, всичко ${visible.length})`,
   narrow);
+// b1.11: в реда с бутоните остават пет, а „Затвори всички" и хиксчето са в дясната група - и двете
+// видими и изцяло в кутията дори при 320px.
+const narrowRow = narrow.filter(w => w.rowButtons !== 5);
+ok(narrowRow.length === 0,
+  `тясна бележка: редът с бутоните е с пет бутона, „Затвори всички" вече не е в него (${JSON.stringify(narrow.map(w => w.rowButtons))})`,
+  { narrowRow });
+const narrowGroup = narrow.map(w => ({
+  text: w.text,
+  ok: w.groupButtons.length === 2 && w.groupButtons.every(b => b.visible
+    && b.left >= w.box.left - 0.5 && b.right <= w.box.right + 0.5
+    && b.top >= w.box.top - 0.5 && b.bottom <= w.box.bottom + 0.5)
+    && /close-all-notes-btn/.test(w.groupButtons[0].cls) && /modal-close/.test(w.groupButtons[1].cls)
+    && w.groupButtons[0].right <= w.groupButtons[1].left + 0.5,
+  group: w.groupButtons.map(b => [Math.round(b.left), Math.round(b.right), b.visible]),
+  box: [Math.round(w.box.left), Math.round(w.box.right)],
+}));
+ok(narrowGroup.every(g => g.ok),
+  `тясна бележка: „Затвори всички" и хиксчето стоят едно до друго в дясната група, видими и изцяло в кутията (${JSON.stringify(narrowGroup.map(g => g.group))})`,
+  { narrowGroup });
 const outside = [];
 narrow.forEach(w => w.btns.filter(b => b.visible).forEach(b => {
   if (b.left < w.box.left - 0.5 || b.right > w.box.right + 0.5 || b.top < w.box.top - 0.5 || b.bottom > w.box.bottom + 0.5) {
@@ -893,6 +986,8 @@ const row = await page.evaluate(() => {
   const rb = btn.getBoundingClientRect();
   const bb = box.getBoundingClientRect();
   const cs = getComputedStyle(btn);
+  const svg = btn.querySelector('svg');
+  const sr = svg ? svg.getBoundingClientRect() : null;
   return {
     modalVisible: modal.classList.contains('visible'),
     hasRow: !!wrap,
@@ -902,20 +997,32 @@ const row = await page.evaluate(() => {
     expectedLabel: _('resetWindowGeometryLabel'),
     btnText: btn.textContent.trim(),
     expectedBtn: _('resetWindowGeometryBtn'),
+    title: btn.title,
+    ariaLabel: btn.getAttribute('aria-label'),
+    hasIcon: !!svg,
+    iconSize: sr ? [Math.round(sr.width), Math.round(sr.height)] : null,
     height: Math.round(rb.height), width: Math.round(rb.width),
     radius: cs.borderRadius, fontSize: cs.fontSize,
     bg: cs.backgroundColor, color: cs.color,
+    border: cs.borderStyle + ' ' + cs.borderWidth,
     inside: rb.left >= bb.left - 0.5 && rb.right <= bb.right + 0.5 && rb.top >= bb.top - 0.5 && rb.bottom <= bb.bottom + 0.5,
     onScreen: rb.right <= window.innerWidth && rb.bottom <= window.innerHeight && rb.left >= 0,
   };
 });
 ok(row.modalVisible && row.hasRow && row.afterSingle,
   `ресет: редът стои точно след „Единична бележка" в Настройки (модал ${row.modalVisible}, след чекбокса ${row.afterSingle})`, row);
-ok(row.expectedLabel && row.expectedBtn && row.labelText === row.expectedLabel && row.btnText === row.expectedBtn
-  && row.labelFor === 'reset-window-geometry-btn',
-  `ресет: надписът и бутончето идват от превода (${JSON.stringify([row.labelText, row.btnText, row.expectedLabel, row.expectedBtn])})`, row);
-ok(row.height >= 23 && row.height <= 25 && row.fontSize === '12px' && row.radius === '6px' && row.inside,
-  `ресет: бутончето е малко (${row.width}x${row.height}, ${row.fontSize}, radius ${row.radius}) и е в модала`, row);
+ok(row.expectedLabel && row.labelText === row.expectedLabel && row.labelFor === 'reset-window-geometry-btn',
+  `ресет: надписът на реда идва от превода и сочи бутончето (${JSON.stringify([row.labelText, row.labelFor])})`, row);
+// b1.11: бутончето губи надписа си - името от превода остава в title и aria-label, а вътре има икона.
+ok(row.expectedBtn && row.btnText === '' && row.title === row.expectedBtn && row.ariaLabel === row.expectedBtn && row.hasIcon,
+  `ресет: бутончето е без надпис, името от превода е в title и aria-label, вътре има икона (текст "${row.btnText}", title "${row.title}", aria "${row.ariaLabel}", икона ${row.hasIcon})`,
+  row);
+ok(row.width === 24 && row.height === 24 && row.radius === '4px' && row.bg === 'rgb(66, 133, 244)'
+  && row.color === 'rgb(255, 255, 255)' && row.border === 'none 0px' && row.inside,
+  `ресет: квадратно бутонче 24x24 с цвета на (+) и (−) от зума (${row.width}x${row.height}, фон ${row.bg}, радиус ${row.radius}, рамка ${row.border})`,
+  row);
+ok(!!row.iconSize && row.iconSize[0] >= 12 && row.iconSize[0] <= 16,
+  `ресет: иконата е малка (${JSON.stringify(row.iconSize)})`, row);
 // Чете ли се текстът на бутончето: то си носи собствен фон, тоест не зависи от фона на модала.
 const contrastOf = async () => page.evaluate(() => {
   const cs = getComputedStyle(document.getElementById('reset-window-geometry-btn'));
@@ -929,8 +1036,8 @@ const contrastOf = async () => page.evaluate(() => {
   return { color: cs.color, bg: cs.backgroundColor, ratio: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05) };
 });
 const contrastLight = await contrastOf();
-ok(contrastLight.ratio >= 4.5,
-  `ресет: текстът на бутончето се чете (контраст ${contrastLight.ratio.toFixed(2)}:1, ${contrastLight.color} върху ${contrastLight.bg})`, contrastLight);
+ok(contrastLight.ratio >= 3,
+  `ресет: бялата икона се чете върху синьото (контраст ${contrastLight.ratio.toFixed(2)}:1 при праг 3:1 за икона, ${contrastLight.color} върху ${contrastLight.bg})`, contrastLight);
 
 // Снимки: редът в светла тема, същият ред върху тъмен фон (приложението няма тъмна тема, затова
 // фонът се налага с листче стилове: важното е бутончето да си остане четимо и там) и екран след ресета.
@@ -943,7 +1050,7 @@ const darkSheet = await page.addStyleTag({
 });
 const contrastDark = await contrastOf();
 await shot('geometry-reset-row-dark');
-ok(contrastDark.ratio >= 4.5 && contrastDark.bg === contrastLight.bg,
+ok(contrastDark.ratio >= 3 && contrastDark.bg === contrastLight.bg,
   `ресет: на тъмен фон бутончето си остава същото и четимо (контраст ${contrastDark.ratio.toFixed(2)}:1, фон ${contrastDark.bg})`, { contrastLight, contrastDark });
 await darkSheet.evaluate(el => el.remove());
 
@@ -1000,6 +1107,200 @@ ok(langOk(langState['lang/i18n-bg.json']) && langState['lang/i18n-bg.json'].labe
   && langOk(langState['lang/i18n-en.json']) && langState['lang/i18n-en.json'].label === 'Reset positions/sizes:'
   && langOk(langState['lang/i18n-ru.json']) && langState['lang/i18n-ru.json'].label === 'Сброс позиций/размеров:',
   'езици: надписите са точно поисканите (bg / en / ru)', langState);
+
+// ======================= 11. Петте поправки от собственика (b1.11) =======================
+// (а) „Затвори всички" и хиксчето са една дясна група, едно до друго, и двете извън плъзгащия се ред;
+// (б) името на борда се вижда ВИНАГИ (и при съвпадащ филтър), най-ляво, с многоточие;
+// (в) стрелките обхождат прозорците от два нагоре със зацикляне - проверено в раздел 9;
+// (г) ресет бутончето е квадратно, без надпис, с цвета на (+) и (−);
+// (д) потвърждението при изтриване излиза НАД бележките.
+// Снимките се пишат на фиксирани имена в .bolter/check/, за да се гледат без променливи.
+const FIXED_SHOT = (name) => path.resolve('.bolter/check', name);
+// Прозорците се показват с преход (scale 0.7 -> 1): мерките се вземат, след като улегне.
+const settleWindows = () => page.evaluate(async () => {
+  const open = getOpenNoteWindows();
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    if (open.every(w => w.box.offsetWidth > 0
+      && Math.abs(w.box.getBoundingClientRect().width / w.box.offsetWidth - 1) < 0.0005)) return true;
+    await new Promise(res => requestAnimationFrame(res));
+  }
+  return false;
+});
+
+await closeAllWindows();
+await page.evaluate(() => { window.scrollTo(0, 0); filterNotesByBoard('B1'); });
+
+// --- (а) Дясната група: три отворени прозореца, 460px всеки ---
+for (const i of [1, 2, 3]) await openNote({ id: 'H' + i, gdid: 'GH' + i, boardId: 'B1', raw: 'хедър ' + i }, i);
+await page.evaluate(() => { getOpenNoteWindows().forEach(w => { w.box.style.width = '460px'; }); });
+await settleWindows();
+const hdr = await page.evaluate(() => getOpenNoteWindows().map(w => {
+  const btn = w.closeAllBtn;
+  const xBtn = w.box.querySelector('.modal-close');
+  const group = w.box.querySelector('.note-header-close-group');
+  const nameEl = w.box.querySelector('#modal-board-name, .nw-modal-board-name');
+  const br = w.box.getBoundingClientRect();
+  const r = btn.getBoundingClientRect();
+  const xr = xBtn.getBoundingClientRect();
+  const gr = group ? group.getBoundingClientRect() : null;
+  const nr = nameEl ? nameEl.getBoundingClientRect() : null;
+  const rr = w.box.querySelector('.note-header-buttons').getBoundingClientRect();
+  return {
+    text: (w.body.textContent || '').trim(),
+    closeAllShown: !btn.hidden && getComputedStyle(btn).display === 'flex',
+    inGroup: !!(group && btn.parentElement === group),
+    closeAll: { l: r.left, r: r.right, t: r.top, b: r.bottom },
+    x: { l: xr.left, r: xr.right, t: xr.top, b: xr.bottom },
+    group: gr ? { l: gr.left, r: gr.right, t: gr.top, b: gr.bottom } : null,
+    name: nr ? { l: nr.left, r: nr.right, text: nameEl.textContent.trim(), display: getComputedStyle(nameEl).display } : null,
+    row: { l: rr.left, r: rr.right },
+    box: { l: br.left, r: br.right, t: br.top, b: br.bottom },
+  };
+}));
+const inBox = (b, box) => b.l >= box.l - 0.5 && b.r <= box.r + 0.5 && b.t >= box.t - 0.5 && b.b <= box.b + 0.5;
+const hdrOk = hdr.filter(w => w.closeAllShown && w.inGroup && inBox(w.closeAll, w.box) && inBox(w.x, w.box)
+  && w.closeAll.r <= w.x.l + 0.5 && Math.abs((w.closeAll.t + w.closeAll.b) / 2 - (w.x.t + w.x.b) / 2) <= 1
+  && w.group && w.group.r <= w.box.r + 0.5 && w.group.l >= w.row.r - 0.5);
+ok(hdr.length === 3 && hdrOk.length === 3,
+  `хедър при 3 прозоръца: „Затвори всички" и хиксчето са в една дясна група, едно до друго, изцяло в кутията (${JSON.stringify(hdr.map(w => [Math.round(w.closeAll.r), Math.round(w.x.l), Math.round(w.box.r)]))})`,
+  { hdr });
+
+// Снимки на хедъра в светла и тъмна тема (приложението няма тъмна тема, затова тук фонът на прозорците
+// се налага с листче стилове - важното е лентата да се чете и на тъмно).
+const headerClip = await page.evaluate(() => {
+  const r = activeNoteWindow.box.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.round(r.left + window.scrollX - 6)),
+    y: Math.max(0, Math.round(r.top + window.scrollY - 6)),
+    width: Math.round(r.width + 12),
+    height: Math.round(Math.min(86, r.height + 6)),
+  };
+});
+await page.screenshot({ path: FIXED_SHOT('multinotes-hdr-light.png'), clip: headerClip });
+const darkHdrSheet = await page.addStyleTag({
+  content: '.note-window .modal-content-box{background:#1c1c1c!important;background-image:none!important;}'
+    + '.note-window .modal-content-box :is(#modal-board-name,.nw-modal-board-name){color:#f2f2f2!important;}'
+    + '.note-window .modal-header-btn,.note-window .note-window-bar-btn{color:#f2f2f2!important;border-color:#9a9a9a!important;}'
+    + '.note-window .note-header-buttons svg,.note-window .modal-header-btn svg{stroke:#f2f2f2!important;}'
+    + '.note-window :is(#modal-body,.nw-modal-body){color:#e6e6e6!important;}'
+});
+await page.screenshot({ path: FIXED_SHOT('multinotes-hdr-dark.png'), clip: headerClip });
+await darkHdrSheet.evaluate(el => el.remove());
+
+// --- (б) Името на борда: винаги, най-ляво, с многоточие при дълго име ---
+// Филтърът е СЪЩИЯТ борд - точно случаят, в който преди името се криеше.
+const longBoardName = 'Много дълго име на борд за проверка на многоточието';
+await page.evaluate((t) => {
+  const b = boardsData.find(b => b.gdid === 'B1');
+  if (b) b.title = t;
+  showModal({ raw: 'хедър 1', format: null, id: 'H1', gdid: 'GH1', boardId: 'B1' });
+  activeNoteWindow.box.style.width = '380px';
+}, longBoardName);
+await settleWindows();
+const nameState = await page.evaluate(() => {
+  const w = activeNoteWindow;
+  const el = w.box.querySelector('#modal-board-name, .nw-modal-board-name');
+  const cs = getComputedStyle(el);
+  const r = el.getBoundingClientRect();
+  const row = w.box.querySelector('.note-header-buttons').getBoundingClientRect();
+  const group = w.box.querySelector('.note-header-close-group').getBoundingClientRect();
+  return {
+    filter: currentBoardFilter,
+    text: el.textContent.trim(),
+    display: cs.display, cursor: cs.cursor, title: el.title,
+    goToBoard: _('goToBoard'),
+    left: r.left, right: r.right,
+    scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
+    textOverflow: cs.textOverflow, whiteSpace: cs.whiteSpace,
+    row: { l: row.left, r: row.right }, group: { l: group.left, r: group.right },
+    boxWidth: Math.round(parseFloat(getComputedStyle(w.box).width)),
+  };
+});
+ok(nameState.filter === 'B1' && nameState.display !== 'none' && nameState.text === longBoardName,
+  `име на борда: вижда се в хедъра на отворена бележка и когато филтърът е СЪЩИЯТ борд (филтър ${nameState.filter}, "${nameState.text}")`,
+  nameState);
+ok(nameState.left < nameState.row.l + 0.5 && nameState.left < nameState.group.l
+  && nameState.right <= nameState.row.l + 0.5 && nameState.right <= nameState.group.l - 8,
+  `име на борда: стои най-ляво в лентата и не застъпва бутоните (име до ${Math.round(nameState.right)}, ред от ${Math.round(nameState.row.l)}, група от ${Math.round(nameState.group.l)})`,
+  nameState);
+ok(nameState.scrollWidth > nameState.clientWidth + 1 && nameState.textOverflow === 'ellipsis'
+  && nameState.whiteSpace === 'nowrap',
+  `име на борда: при дълго име се реже с многоточие (scrollWidth ${nameState.scrollWidth} > clientWidth ${nameState.clientWidth}, ${nameState.textOverflow})`,
+  nameState);
+ok(nameState.cursor === 'pointer' && nameState.title === nameState.goToBoard,
+  `име на борда: кликът върху него продължава да превключва борда (cursor ${nameState.cursor}, title "${nameState.title}")`,
+  nameState);
+// Връщаме късото име, за да не влиза в следващите раздели.
+await page.evaluate(() => {
+  const b = boardsData.find(b => b.gdid === 'B1');
+  if (b) b.title = 'Работа';
+  activeNoteWindow.box.style.width = '420px';
+});
+
+// --- (д) Потвърждението при изтриване е НАД бележките ---
+await closeAllWindows();
+for (const i of [1, 2, 3]) await openNote({ id: 'D' + i, gdid: 'GD' + i, boardId: 'B1', raw: 'изтриване ' + i }, i);
+await page.evaluate(() => {
+  window.__confResult = null;
+  // Истинската функция, която пита при изтриване (handleNoteDelete -> showConfirmation).
+  showConfirmation('Сигурни ли сте, че искате да изтриете бележката?').then(v => { window.__confResult = v; });
+});
+await page.waitForFunction(() => document.getElementById('folderIdPromptPopup').classList.contains('show'), null, { timeout: 3000 }).catch(() => { });
+const conf = await page.evaluate(() => {
+  const popup = document.getElementById('folderIdPromptPopup');
+  const content = popup.querySelector('.popup-content');
+  const okBtn = document.getElementById('submitFolderIdBtn');
+  const cr = content.getBoundingClientRect();
+  const orr = okBtn.getBoundingClientRect();
+  const centre = { x: Math.round(orr.left + orr.width / 2), y: Math.round(orr.top + orr.height / 2) };
+  const hit = document.elementFromPoint(centre.x, centre.y);
+  const zPopup = Number(getComputedStyle(popup).zIndex) || 0;
+  const wins = getOpenNoteWindows().map(w => {
+    const r = w.box.getBoundingClientRect();
+    return { text: (w.body.textContent || '').trim(), z: Number(w.el.style.zIndex) || 0, left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  });
+  return {
+    shows: popup.classList.contains('show'),
+    zPopup, wins, centre,
+    content: { left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom },
+    hitTag: hit ? hit.tagName : null, hitId: hit ? (hit.id || '') : null,
+    hitIsOk: !!hit && (hit === okBtn || okBtn.contains(hit)),
+    // Попъпът е цял екран и на по-висок слой от прозорците: покрива ги.
+    coversWindows: wins.every(w => cr.right > w.left && cr.left < w.right && cr.bottom > w.top && cr.top < w.bottom),
+  };
+});
+ok(conf.shows && conf.wins.length === 3 && conf.zPopup > Math.max(...conf.wins.map(w => w.z)) && conf.coversWindows,
+  `потвърждение: при 3 отворени прозоръца излиза над тях (z ${conf.zPopup} срещу ${conf.wins.map(w => w.z).join('/')}, покрива и трите ${conf.coversWindows})`,
+  conf);
+ok(conf.hitIsOk,
+  `потвърждение: в центъра на OK е самият бутон, не прозорец отдолу (${conf.hitTag}#${conf.hitId})`, conf);
+await page.mouse.click(conf.centre.x, conf.centre.y);
+const confDone = await page.waitForFunction(() => window.__confResult !== null, null, { timeout: 3000 })
+  .then(() => page.evaluate(() => ({ result: window.__confResult, shown: document.getElementById('folderIdPromptPopup').classList.contains('show') })))
+  .catch(() => ({ result: 'timeout', shown: null }));
+ok(confDone.result === true && confDone.shown === false,
+  `потвърждение: OK се натиска над бележките, потвърждението се затваря (${JSON.stringify(confDone)})`, confDone);
+
+// --- (г) Ресет бутончето: снимки на реда в светла и тъмна тема ---
+await page.evaluate(() => document.getElementById('settings_button').click());
+await page.waitForFunction(() => {
+  const modal = document.getElementById('settings-modal');
+  const box = modal && modal.querySelector('.modal-content-box');
+  if (!modal || !box || !modal.classList.contains('visible') || !box.offsetWidth) return false;
+  return Math.abs(box.getBoundingClientRect().width / box.offsetWidth - 1) < 0.002;
+}, null, { timeout: 5000 }).catch(() => { });
+await page.locator('#reset-window-geometry').scrollIntoViewIfNeeded().catch(() => { });
+await page.locator('#reset-window-geometry').screenshot({ path: FIXED_SHOT('multinotes-reset-light.png') }).catch(() => { });
+const darkResetSheet = await page.addStyleTag({
+  content: '#settings-modal .modal-content-box{background:linear-gradient(135deg,#2b2b2b,#171717)!important;}'
+    + '#settings-modal .modal-content-box h2,#settings-modal .modal-content-box h3,'
+    + '#settings-modal .zoom-control-wrapper label,#settings-modal .zoom-control-wrapper{color:#f2f2f2!important;}',
+});
+await page.locator('#reset-window-geometry').screenshot({ path: FIXED_SHOT('multinotes-reset-dark.png') }).catch(() => { });
+await darkResetSheet.evaluate(el => el.remove());
+await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
+await closeAllWindows();
 
 // ======================= 8. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);

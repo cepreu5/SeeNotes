@@ -5099,13 +5099,15 @@ function getTopNoteWindow(list = getOpenNoteWindows()) {
 }
 
 // --- Стрелките < / > в лентата ----------------------------------------------------------------
-// До два отворени прозореца стрелките ходят по бележките на борда и сменят бележката в същия
-// прозорец. При повече от два те обхождат САМИТЕ ПРОЗОРЦИ, по един на натиск, и се завъртат.
-// Редът се строи веднъж за сесията и курсорът се мести с ±1 по него. Ако редът се предефинираше след
-// всяко активиране (например по z-index), вдигнатият прозорец щеше да е винаги последен и всеки
-// натиск щеше да подскача между същите два прозореца, вместо да върви напред.
+// При ЕДИН отворен прозорец стрелките ходят по бележките на борда и сменят бележката в същия
+// прозорец. От ДВА отворени нагоре те обхождат САМИТЕ ПРОЗОРЦИ, по един на натиск, и се завъртат в
+// краищата (при два се редуват двата и зациклят). Редът се строи веднъж за сесията и курсорът се
+// мести с ±1 по него, така че многократно натискане в ЕДНА бележка минава през целия списък и се
+// връща в началото. Ако редът се предефинираше след всяко активиране (например по z-index),
+// вдигнатият прозорец щеше да е винаги последен и всеки натиск щеше да подскача между същите два
+// прозореца, вместо да върви напред.
 function noteWindowWalkEnabled() {
-    return getOpenNoteWindows().length > 2;
+    return getOpenNoteWindows().length > 1;
 }
 
 function sameNoteWindowOrder(a, b) {
@@ -5668,8 +5670,8 @@ function wireNoteWindow(win) {
     }
 
     // --- „Затвори всички" в лентата (при три и повече отворени бележки) ---
-    // Кръгъл бутон с иконата от cx-notes, последен в реда с бутоните, тоест веднага вляво от хиксчето
-    // (хиксчето е в своя клетка извън реда - вж. .note-header-toolbar).
+    // Кръгъл бутон с иконата от cx-notes, в ДЯСНАТА клетка на лентата, веднага вляво от хиксчето
+    // (.note-header-close-group) - извън плъзгащия се ред с бутоните, за да се вижда винаги.
     const closeAllBtn = document.createElement('button');
     closeAllBtn.type = 'button';
     closeAllBtn.className = 'note-window-bar-btn close-all-notes-btn modal-header-btn';
@@ -5680,8 +5682,15 @@ function wireNoteWindow(win) {
         e.stopPropagation();
         closeAllNoteWindows();
     });
-    const headerButtons = box.querySelector('.note-header-buttons');
-    (headerButtons || box).appendChild(closeAllBtn);
+    const closeGroup = box.querySelector('.note-header-close-group');
+    const closeAnchor = closeGroup ? closeGroup.querySelector('.modal-close') : null;
+    if (closeAnchor && closeAnchor.parentNode) {
+        // Вляво от хиксчето, на същата вертикала.
+        closeAnchor.parentNode.insertBefore(closeAllBtn, closeAnchor);
+    } else {
+        const headerButtons = box.querySelector('.note-header-buttons');
+        (headerButtons || box).appendChild(closeAllBtn);
+    }
     win.closeAllBtn = closeAllBtn;
 
     body.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
@@ -5918,37 +5927,34 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         modalBoardNameEl.style.fontWeight = 'bold';
     } else if (options && options.boardId) {
         modalBoardNameEl.style.color = ''; // Reset color
-        // Показваме името на борда само ако текущият филтър е различен от борда на бележката
-        // или ако изрично е поискано (напр. от календара)
-        if (options.forceShowBoardName || currentBoardFilter != options.boardId) {
-            // Use loose equality (==) to handle potential string/number mismatches
-            const board = boardsData.find(b => b.gdid == options.boardId);
-            if (board) {
-                modalBoardNameEl.textContent = board.title;
-                modalBoardNameEl.style.display = 'block';
-                // --- Make Board Name Clickable ---
-                modalBoardNameEl.style.cursor = 'pointer';
-                modalBoardNameEl.style.textDecoration = 'underline';
-                modalBoardNameEl.style.fontWeight = 'bold';
-                modalBoardNameEl.title = _('goToBoard');
-                // Clean old event listeners
-                const newEl = modalBoardNameEl.cloneNode(true);
-                modalBoardNameEl.parentNode.replaceChild(newEl, modalBoardNameEl);
-                newEl.addEventListener('click', () => {
-                    // Отворените прозорци остават и при смяна на борда (решение на собственика, 21.10):
-                    // натискът върху името само превключва борда, бележката остава отворена.
-                    const boardBtn = document.querySelector(`.board-filter-link[data-boardid="${board.gdid}"]`);
-                    if (boardBtn) {
-                        boardBtn.click();
-                    } else {
-                        filterNotesByBoard(board.gdid);
-                    }
-                });
+        // Името на борда се показва ВИНАГИ, когато бележката има борд - и когато текущият филтър е
+        // същият борд (b1.11, решение на собственика: то е най-лявата клетка на лентата и се реже с
+        // многоточие, когато няма място). Без борд (промо/системни бележки) остава скрито.
+        // Use loose equality (==) to handle potential string/number mismatches
+        const board = boardsData.find(b => b.gdid == options.boardId);
+        if (board) {
+            modalBoardNameEl.textContent = board.title;
+            modalBoardNameEl.style.display = 'block';
+            // --- Make Board Name Clickable ---
+            modalBoardNameEl.style.cursor = 'pointer';
+            modalBoardNameEl.style.textDecoration = 'underline';
+            modalBoardNameEl.style.fontWeight = 'bold';
+            modalBoardNameEl.title = _('goToBoard');
+            // Clean old event listeners
+            const newEl = modalBoardNameEl.cloneNode(true);
+            modalBoardNameEl.parentNode.replaceChild(newEl, modalBoardNameEl);
+            newEl.addEventListener('click', () => {
+                // Отворените прозорци остават и при смяна на борда (решение на собственика, 21.10):
+                // натискът върху името само превключва борда, бележката остава отворена.
+                const boardBtn = document.querySelector(`.board-filter-link[data-boardid="${board.gdid}"]`);
+                if (boardBtn) {
+                    boardBtn.click();
+                } else {
+                    filterNotesByBoard(board.gdid);
+                }
+            });
 
-                // --------------------------------
-            } else {
-                modalBoardNameEl.style.display = 'none';
-            }
+            // --------------------------------
         } else {
             modalBoardNameEl.style.display = 'none';
         }
@@ -9786,6 +9792,12 @@ async function setLanguage(lang) {
     document.querySelectorAll('[data-key-title]').forEach(element => {
         const key = element.getAttribute('data-key-title');
         element.title = _(key);
+    });
+    // data-key-aria-label: името за екранен четец там, където бутонът няма текст (b1.11: „Ресет на
+    // позиции/размери").
+    document.querySelectorAll('[data-key-aria-label]').forEach(element => {
+        const key = element.getAttribute('data-key-aria-label');
+        element.setAttribute('aria-label', _(key));
     });
     // „Затвори всички" носи името си от превода в title и aria-label (текст в бутона няма): сменя се тук.
     if (typeof updateCloseAllNotesBar === 'function') updateCloseAllNotesBar();

@@ -154,10 +154,11 @@
 
     <div id="content-modal" class="modal-overlay">
         <div class="modal-content-box">
-            <!-- Лентата на прозореца (b1.09): три клетки - име на борда, ред с бутоните и хиксче.
-                 Редът с бутоните се свива и се плъзга настрани, когато прозорецът е тесен, а
-                 хиксчето стои извън него, за да се вижда и улучва винаги. „Затвори всички" идва
-                 в този ред от main.js, точно вляво от хиксчето. -->
+            <!-- Лентата на прозореца (b1.11): три клетки - име на борда, ред с бутоните и дясна група.
+                 Редът с бутоните се свива и се плъзга настрани, когато прозорецът е тесен. Хиксчето и
+                 „Затвори всички" стоят заедно в дясната група ИЗВЪН плъзгащия се ред, за да се виждат и
+                 улучват при всякаква ширина; „Затвори всички" идва от main.js и застава вляво от
+                 хиксчето, на същата вертикала. -->
             <div class="note-header-toolbar">
                 <div id="modal-board-name"></div>
                 <div class="note-header-buttons">
@@ -193,7 +194,9 @@
                         </svg>
                     </button>
                 </div>
-                <button class="modal-close modal-header-btn">&times;</button>
+                <div class="note-header-close-group">
+                    <button class="modal-close modal-header-btn">&times;</button>
+                </div>
             </div>
             <div id="modal-body"></div>
             <div class="modal-resize-handle"></div>
@@ -311,8 +314,16 @@
                     <label for="reset-window-geometry-btn"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
                         data-key="resetWindowGeometryLabel">Reset positions/sizes:</label>
-                    <button type="button" id="reset-window-geometry-btn" class="settings-small-btn"
-                        data-key="resetWindowGeometryBtn">Reset</button>
+                    <button type="button" id="reset-window-geometry-btn"
+                        class="settings-small-btn reset-geometry-btn"
+                        data-key-title="resetWindowGeometryBtn" data-key-aria-label="resetWindowGeometryBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"
+                            stroke-linejoin="round" aria-hidden="true" focusable="false">
+                            <polyline points="1 4 1 10 7 10" />
+                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                        </svg>
+                    </button>
                 </div>
 
                 <div class="zoom-control-wrapper" id="one-tap-link" style="margin-top: 10px;">

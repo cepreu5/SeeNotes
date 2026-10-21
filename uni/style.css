@@ -1013,6 +1013,39 @@ code {
     outline-offset: 1px;
 }
 
+/* „Ресет на позиции/размери" (b1.11): без надпис - квадратно бутонче с цвета на (+) и (−) от зума.
+   Името от превода живее в title и aria-label (data-key-title / data-key-aria-label), а вътре има
+   малка кръгла стрелка, за да не е празен квадрат. */
+.reset-geometry-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #4285F4;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.reset-geometry-btn:hover {
+    background: #357ae8;
+}
+
+.reset-geometry-btn:active {
+    background: #357ae8;
+}
+
+.reset-geometry-btn svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+    pointer-events: none;
+}
+
 
 .view-button {
     background: none;
@@ -2018,7 +2051,9 @@ code {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000;
+    /* b1.11: потвърждението (изтриване и др.) трябва да е НАД отворените бележки. Слоят на прозорците
+       е 1000, а самите прозорци вътре в него - 10050+, тоест със 1000 потвърждението излизаше под тях. */
+    z-index: 20000;
     visibility: hidden;
     /* Hidden by default */
     opacity: 0;
@@ -3339,18 +3374,33 @@ body.selection-locked .note.active-selection-note .note-content {
     box-sizing: border-box;
 }
 
-/* Хиксчето: собствена клетка, плътно вдясно, без да участва в плъзгането на реда. */
-.note-window .note-header-toolbar > .modal-close {
+/* Дясната клетка (b1.11): хиксчето и „Затвори всички" заедно, едно до друго, извън плъзгащия се ред.
+   Собствена клетка с ширина по съдържанието: двете кръгчета (2 x 32px) плюс отстоянието между тях, тоест
+   при тясна бележка те първи си взимат мястото, а редът с бутоните се свива и се плъзга. */
+.note-window .note-header-toolbar > .note-header-close-group {
     position: static;
-    top: auto;
-    right: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
     justify-self: end;
     flex: none;
 }
 
-/* „Затвори всички" (от три и повече отворени бележки): кръгъл бутон като останалите в реда, веднага
-   вляво от хиксчето. Иконата е същата като в cx-notes; името ѝ идва от превода (closeAllNotes) като
-   title и aria-label, защото текст вече няма. */
+/* Двете кръгчета в групата: без абсолютното позициониране на .modal-header-btn (то важи извън
+   прозореца на бележка) и точно 32x32, за да не расте клетката от рамката. */
+.note-window .note-header-toolbar > .note-header-close-group > * {
+    position: static;
+    top: auto;
+    right: auto;
+    flex: none;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+/* „Затвори всички" (от три и повече отворени бележки): кръгъл бутон като останалите в реда, в дясната
+   клетка на лентата, веднага вляво от хиксчето. Иконата е същата като в cx-notes; името ѝ идва от
+   превода (closeAllNotes) като title и aria-label, защото текст вече няма. */
 .note-window-bar-btn {
     width: 32px;
     height: 32px;
