@@ -112,3 +112,9 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+
+// 1. Изтрийте съществуващия sw.js
+// 2. Създайте изцяло нов файл sw.js (като този от прикачената команда) в папката uni
+// 3. Стартирайте build.bat, за да генерирате нов mainn.js с версия "Beta 1.23"
+// 4. Проверете в инструмента developer tools дали в Applications > Storage > Cache Storage присъства "multinotes-b1.23"
