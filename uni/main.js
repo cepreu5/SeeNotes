@@ -5140,6 +5140,8 @@ function resetNoteWindowWalk() {
     }
 }
 
+const NOTE_ARROW_SELECTOR = '#prev-note-btn, #next-note-btn, [data-mwid="prev-note-btn"], [data-mwid="next-note-btn"]';
+
 function stepNoteWindowWalk(direction, pressed) {
     const open = getOpenNoteWindows();
     if (open.length < 2) return;
@@ -5794,12 +5796,16 @@ function wireNoteWindow(win) {
     // Натиск или фокус навсякъде в прозореца го прави активния - преди собствените му обработчици.
     const activate = () => { if (noteWindows.includes(win)) activateNoteWindow(win, true); };
     // Първо се запомня кой е бил активен, после натиснатият става активен (важен е редът).
-    el.addEventListener('pointerdown', (e) => {
+    // Запомня се веднъж на натискане: иначе по-късните фази (mousedown, click) ще запишат вече
+    // активирания прозорец. click без pointerdown идва от клавиатура или програмно натискане.
+    const rememberPress = (e) => {
+        if (noteWindowPressFrom) return;
         noteWindowPressFrom = activeNoteWindow;
-        noteWindowPressOnArrow = !!(e.target && e.target.closest
-            && e.target.closest('#prev-note-btn, #next-note-btn, [data-mwid="prev-note-btn"], [data-mwid="next-note-btn"]'));
-    }, true);
-    el.addEventListener('touchstart', () => { noteWindowPressFrom = activeNoteWindow; }, { capture: true, passive: true });
+        noteWindowPressOnArrow = !!(e.target && e.target.closest && e.target.closest(NOTE_ARROW_SELECTOR));
+    };
+    el.addEventListener('pointerdown', rememberPress, true);
+    el.addEventListener('touchstart', rememberPress, { capture: true, passive: true });
+    el.addEventListener('click', rememberPress, true);
     el.addEventListener('pointerdown', activate, true);
     el.addEventListener('mousedown', activate, true);
     el.addEventListener('touchstart', activate, { capture: true, passive: true });

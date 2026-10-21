@@ -116,6 +116,25 @@ for (let i = 1; i < fast.length; i++) {
   ok(fast[i] === (fast[i - 1] + 1) % 4, `бърз натиск ${i + 1}: w${fast[i - 1]} → w${(fast[i - 1] + 1) % 4}`, 'получено w' + fast[i]);
 }
 
+// --- натискане без мишка: клавиатура (Enter върху фокусирана стрелка) и програмно натискане
+// пращат click без pointerdown. Тогава "предишният" прозорец се запомня в click фазата и
+// обхождането пак трябва да върви напред, вместо да заседне на втория прозорец.
+console.log('\nнатискания без pointerdown (програмно), пауза 1400 мс:');
+const synthetic = [];
+for (let i = 0; i < 5; i++) {
+  synthetic.push(await page.evaluate(() => {
+    const w = getOpenNoteWindows()[0];
+    w.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]').click();
+    return getOpenNoteWindows().indexOf(activeNoteWindow);
+  }));
+  await page.waitForTimeout(1400);
+}
+for (let i = 1; i < synthetic.length; i++) {
+  ok(synthetic[i] === (synthetic[i - 1] + 1) % 4,
+    `натиск ${i + 1} без pointerdown: w${synthetic[i - 1]} → w${(synthetic[i - 1] + 1) % 4}`,
+    'получено w' + synthetic[i]);
+}
+
 // --- натиск върху стрелката на ДРУГ (неактивен) прозорец тръгва от него.
 // Прозорците са fullscreen overlay-и, тоест с мишка може да се натисне само стрелката на предния
 // прозорец; пътят за неактивен прозорец се проверява програмно, както го прави и multinotes.mjs.
