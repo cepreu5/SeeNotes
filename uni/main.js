@@ -4548,6 +4548,8 @@ async function processDirectoryContent(minModificationDate) {
  * @param {boolean} isVideo - True, ако файлът е видео.
  */
 function showImageVideoOverlay(src, isVideo = false) {
+    // Видеото има свой звук: пуснатото от плочката аудио се спира, преди видеото да тръгне.
+    if (isVideo) stopAttachmentAudio();
     const overlay = document.createElement('div');
     overlay.className = 'fullscreen-preview-overlay';
     overlay.addEventListener('click', (e) => {
@@ -4599,6 +4601,9 @@ async function showLocalPreview(folderName, fileName, mode) {
  */
 async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
     if (!noteElement) return;
+    // Всяко отваряне на преглед спира звука от плочката: ако е видео, то носи свой звук и двете не
+    // бива да се чуват заедно; ако е звук, прегледът е вторият глас за същия файл.
+    stopAttachmentAudio();
     // Support legacy calls with single string fileId instead of attachments array
     if (typeof attachments === 'string') {
         const fileId = attachments;
@@ -7870,6 +7875,9 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
     const openSource = () => { if (sourceLink) sourceLink.click(); };
     // Звукът не отваря нищо: нито черното поле в бележката, нито нов раздел - свири от плочката.
     const isAudioTile = attachment.type === 2;
+    // Видеото има собствен звук, затова кликът му спира пуснатото от плочката аудио - иначе двете
+    // се чуват едно върху друго.
+    const isVideoTile = attachment.type === 4;
 
     // Плочката е <button>, значи Enter и Space идват като click - клавиатурата работи като мишката.
     tile.addEventListener('click', (e) => {
@@ -7877,6 +7885,7 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
         e.stopPropagation();
         if (e.ctrlKey || e.metaKey) { showAttachmentJson(); return; }
         if (isAudioTile) { toggleAttachmentAudio(tile, attachment); return; }
+        if (isVideoTile) stopAttachmentAudio();
         openSource();
     });
     // На macOS Ctrl+клик идва като contextmenu, не като click - иначе там би се отворил файлът.

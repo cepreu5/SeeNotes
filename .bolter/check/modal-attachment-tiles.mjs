@@ -69,7 +69,7 @@ const THUMBS = [];
 // Тегленията на самите файлове (alt=media) - по тях се вижда дали звукът наистина е поискан.
 const MEDIA = [];
 // Само тези идемета имат съдържание: WAV с тишина, достатъчен <audio> да тръгне.
-const AUDIO_IDS = ['AUD', 'AU1', 'AU2'];
+const AUDIO_IDS = ['AUD', 'AU1', 'AU2', 'AUSLOW'];
 const WAV = (() => {
   const rate = 8000, samples = rate / 2;
   const buf = Buffer.alloc(44 + samples * 2);
@@ -80,13 +80,15 @@ const WAV = (() => {
   buf.write('data', 36); buf.writeUInt32LE(samples * 2, 40);
   return buf;
 })();
-await ctx.route(/^https?:\/\/(?!localhost)/, route => {
+await ctx.route(/^https?:\/\/(?!localhost)/, async route => {
   const url = route.request().url();
   const media = url.match(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^?]+)\?alt=media/);
   if (media) {
     const fileId = decodeURIComponent(media[1]);
     MEDIA.push(fileId);
     if (!AUDIO_IDS.includes(fileId)) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+    // Големият файл: отговорът се бави нарочно, за да се види състоянието „зарежда се" на плочката.
+    if (fileId === 'AUSLOW') await new Promise(r => setTimeout(r, 900));
     return route.fulfill({ status: 200, contentType: 'audio/wav', body: WAV });
   }
   const meta = url.match(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^?]+)\?fields=thumbnailLink/);
@@ -629,6 +631,142 @@ ok(!ctrlAudio.missing && /"pathGD"\s*:\s*"AU1"/.test(String(ctrlAudio.text)),
   `Ctrl+клик на аудио плочка: показва JSON записа (${String(ctrlAudio.text).slice(0, 90)})`, ctrlAudio);
 ok(ctrlAudio.audios === 0 && ctrlAudio.opened.length === 0 && ctrlAudio.overlays === 0,
   `Ctrl+клик на аудио плочка: не пуска звук, не отваря нищо (аудио=${ctrlAudio.audios})`, ctrlAudio);
+
+// --- 10ж. Докато файлът се тегли, иконата показва спинър (голям файл = дълго чакане) ---
+// Собственикът (21.10): „има забавяне след клик, докато се зареди файла - веднага след клик пусни
+// спинър в иконата, а като започне да свири - пулсацията".
+await page.evaluate(() => {
+  mediaData.push({ noteid: 'S1', path: 'slow.mp3', pathGD: 'AUSLOW', type: 2 });
+});
+await setMode('drive');
+await openModal({ gdid: 'S1' });
+const slowLoad = await page.evaluate(async () => {
+  const tile = [...document.querySelectorAll('#modal-body .nm-attach-tile')].find(t => t.dataset.type === '2');
+  if (!tile) return { missing: true };
+  const icon = tile.querySelector('.nm-attach-tile-icon');
+  const read = () => {
+    const after = getComputedStyle(tile, '::after');
+    const ics = icon ? getComputedStyle(icon) : null;
+    return {
+      loading: tile.classList.contains('is-loading'),
+      playing: tile.classList.contains('is-playing'),
+      state: tile.dataset.state,
+      spinnerContent: after.content,
+      spinnerAnimation: after.animationName,
+      spinnerBorder: after.borderTopColor,
+      iconOpacity: ics ? ics.opacity : null,
+      iconAnimation: ics ? ics.animationName : null,
+      bg: getComputedStyle(tile).backgroundColor,
+    };
+  };
+  tile.click();
+  // Веднага след клика: файлът още се тегли, така че трябва да се вижда спинър, не пулс.
+  await new Promise(r => setTimeout(r, 120));
+  const during = read();
+  // После: звукът тръгва и мястото на спинъра заема пулсът.
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const audio = document.querySelector('audio[data-nm-attach-audio="1"]');
+    if (tile.classList.contains('is-playing') && audio && !audio.paused) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  return { missing: false, during, after: read() };
+});
+ok(!slowLoad.missing && slowLoad.during.loading === true && slowLoad.during.playing === false,
+  `зареждане: веднага след клик плочката е в „зарежда се", не в „свири" (is-loading=${slowLoad.during && slowLoad.during.loading}, state=${slowLoad.during && slowLoad.during.state})`, slowLoad.during);
+ok(slowLoad.during.spinnerContent !== 'none' && slowLoad.during.spinnerAnimation === 'nm-attach-tile-spin',
+  `зареждане: върху иконата се върти спинър веднага (content=${slowLoad.during && slowLoad.during.spinnerContent}, animation=${slowLoad.during && slowLoad.during.spinnerAnimation})`, slowLoad.during);
+ok(slowLoad.during.iconAnimation === 'none' && parseFloat(slowLoad.during.iconOpacity) < 0.3,
+  `зареждане: иконата не пулсира, а притъмнява под спинъра (animation=${slowLoad.during && slowLoad.during.iconAnimation}, opacity=${slowLoad.during && slowLoad.during.iconOpacity})`, slowLoad.during);
+ok(slowLoad.after.playing === true && slowLoad.after.loading === false && slowLoad.after.iconAnimation === 'nm-attach-audio-pulse',
+  `след зареждане: спинърът изчезва и иконата минава в пулсация (loading=${slowLoad.after && slowLoad.after.loading}, animation=${slowLoad.after && slowLoad.after.iconAnimation})`, slowLoad.after);
+await page.evaluate(() => { stopAttachmentAudio(); });
+
+// --- 10з. Видеото спира звука от плочката: иначе двете се чуват заедно ---
+// Собственикът (21.10): „пускане на видео също трябва да го спира, за да не се наслагва върху звука
+// на видеото". Проверяват се и двата пътя до видеото: клик на видеото плочка и Ctrl+... не - клик на
+// самата картинка в бележката, който минава през showInNotePreview.
+await page.evaluate(() => {
+  mediaData.push(
+    { noteid: 'V1', path: 'one.mp3', pathGD: 'AU1', type: 2 },
+    { noteid: 'V1', path: 'clip.mp4', pathGD: 'VID', type: 4 },
+  );
+});
+await openModal({ gdid: 'V1' });
+const videoStopsAudio = await page.evaluate(async () => {
+  const tiles = [...document.querySelectorAll('#modal-body .nm-attach-tile')];
+  const audioTile = tiles.find(t => t.dataset.type === '2');
+  const videoTile = tiles.find(t => t.dataset.type === '4');
+  if (!audioTile || !videoTile) return { missing: true, count: tiles.length };
+  const waitPlaying = async (tile) => {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const a = document.querySelector('audio[data-nm-attach-audio="1"]');
+      if (tile.classList.contains('is-playing') && a && !a.paused) return a;
+      await new Promise(r => setTimeout(r, 40));
+    }
+    return null;
+  };
+  audioTile.click();
+  const aud = await waitPlaying(audioTile);
+  const before = {
+    audioLeft: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    paused: aud ? aud.paused : null,
+    playing: audioTile.classList.contains('is-playing'),
+  };
+  videoTile.click();
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && document.querySelector('audio[data-nm-attach-audio="1"]')) await new Promise(r => setTimeout(r, 40));
+  return {
+    missing: false,
+    before,
+    after: {
+      audioLeft: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+      paused: aud ? aud.paused : null,
+      connected: aud ? aud.isConnected : null,
+      playingTiles: document.querySelectorAll('#modal-body .nm-attach-tile.is-playing').length,
+      audioTileState: audioTile.dataset.state,
+      pressed: audioTile.getAttribute('aria-pressed'),
+    },
+  };
+});
+ok(!videoStopsAudio.missing && videoStopsAudio.before.audioLeft === 1 && videoStopsAudio.before.paused === false,
+  `видео: преди клика звукът от плочката свири (брой=${videoStopsAudio.before && videoStopsAudio.before.audioLeft}, paused=${videoStopsAudio.before && videoStopsAudio.before.paused})`, videoStopsAudio);
+ok(videoStopsAudio.after.audioLeft === 0 && videoStopsAudio.after.paused === true && videoStopsAudio.after.connected === false,
+  `видео: клик на видеото спира звука от плочката (остават ${videoStopsAudio.after && videoStopsAudio.after.audioLeft}, paused=${videoStopsAudio.after && videoStopsAudio.after.paused})`, videoStopsAudio);
+ok(videoStopsAudio.after.playingTiles === 0 && videoStopsAudio.after.audioTileState === 'plain' && videoStopsAudio.after.pressed === null,
+  `видео: аудио плочката се връща в неутрално състояние (свирещи=${videoStopsAudio.after && videoStopsAudio.after.playingTiles}, state=${videoStopsAudio.after && videoStopsAudio.after.audioTileState})`, videoStopsAudio);
+
+// --- 10и. Същото и когато видеото се отваря от картинката в бележката (showInNotePreview) ---
+const previewStopsAudio = await page.evaluate(async () => {
+  const audioTile = [...document.querySelectorAll('#modal-body .nm-attach-tile')].find(t => t.dataset.type === '2');
+  if (!audioTile) return { missing: true };
+  audioTile.click();
+  const deadline = Date.now() + 8000;
+  let aud = null;
+  while (Date.now() < deadline) {
+    aud = document.querySelector('audio[data-nm-attach-audio="1"]');
+    if (audioTile.classList.contains('is-playing') && aud && !aud.paused) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  const before = { audioLeft: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length, paused: aud ? aud.paused : null };
+  // Пътят на самата картинка/видео в бележката - същата функция, която отваря overlay-а.
+  const target = document.getElementById('modal-body');
+  showInNotePreview(target, [{ path: 'clip.mp4', pathGD: 'VID', type: 4 }], 0, 'drive', true);
+  await new Promise(r => setTimeout(r, 300));
+  const after = {
+    audioLeft: document.querySelectorAll('audio[data-nm-attach-audio="1"]').length,
+    paused: aud ? aud.paused : null,
+    connected: aud ? aud.isConnected : null,
+  };
+  // Overlay-ът от тази проверка не бива да остава за следващите.
+  document.querySelectorAll('.image-preview-overlay').forEach(o => o.remove());
+  return { missing: false, before, after };
+});
+ok(!previewStopsAudio.missing && previewStopsAudio.before.audioLeft === 1 && previewStopsAudio.before.paused === false,
+  `преглед: звукът свири преди отваряне на видеото в бележката (брой=${previewStopsAudio.before && previewStopsAudio.before.audioLeft})`, previewStopsAudio);
+ok(previewStopsAudio.after.audioLeft === 0 && previewStopsAudio.after.paused === true,
+  `преглед: отваряне на видео в бележката също спира звука от плочката (остават ${previewStopsAudio.after && previewStopsAudio.after.audioLeft}, paused=${previewStopsAudio.after && previewStopsAudio.after.paused})`, previewStopsAudio);
 
 // ======================= 11. Бордът не се пипа =======================
 const board = await page.evaluate(async () => {

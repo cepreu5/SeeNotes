@@ -679,18 +679,50 @@ main {
     animation: nm-attach-audio-pulse .9s ease-in-out infinite;
 }
 
-/* Докато файлът се тегли: плочката притъмнява, но не се върти - тя си остава същата плочка. */
+/* Докато файлът се тегли, трябва да се вижда, че НЕЩО СЕ СЛУЧВА: голям файл се тегли секунди и без
+   индикатор плочката изглежда сякаш кликът не е хванат. Затова върху нея се върти тънък кръг, а
+   иконата на типа притъмнява под него. Кръгът е ::after, за да не се пипа строежът на плочката. */
+@keyframes nm-attach-tile-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 #modal-body .nm-attach-tile.is-loading {
-    background: rgba(127, 127, 127, .07);
-    color: rgba(34, 38, 43, .5);
+    background: rgba(127, 127, 127, .1);
+}
+
+#modal-body .nm-attach-tile.is-loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 15px;
+    height: 15px;
+    box-sizing: border-box;
+    border: 2px solid rgba(34, 38, 43, .22);
+    border-top-color: rgba(34, 38, 43, .85);
+    border-radius: 50%;
+    animation: nm-attach-tile-spin .7s linear infinite;
+}
+
+/* Иконата остава под кръга, но почти изчезва - иначе двете се бият за едно и също място. */
+#modal-body .nm-attach-tile.is-loading .nm-attach-tile-icon {
+    opacity: .18;
 }
 
 /* Без движение: пулсът пада, но „свири" остава ясно - по-тъмна плочка и тъмна рамка отвътре,
-   за да се разбира, че втори клик спира звука. */
+   за да се разбира, че втори клик спира звука. Спинърът остава като видим кръг, но не се върти. */
 @media (prefers-reduced-motion: reduce) {
     #modal-body .nm-attach-tile.is-playing .nm-attach-tile-icon {
         animation: none;
         opacity: 1;
+    }
+
+    #modal-body .nm-attach-tile.is-loading::after {
+        animation: none;
+        border-top-color: rgba(34, 38, 43, .22);
+        border-right-color: rgba(34, 38, 43, .85);
     }
 
     #modal-body .nm-attach-tile.is-playing {
