@@ -692,11 +692,6 @@
 
     <!-- Section 1: Hero -->
     <section class="hero" id="hero" style="padding-top: 18vh;">
-        <div id="beta-notice"
-            style="grid-column: 1 / -1; text-align: center; padding: 12px 24px; font-size: 14px; background: rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.06); border-radius: 100px; width: fit-content; margin: 0 auto 40px; color: var(--text-secondary); line-height: 1.4; display: block;"
-            data-key="logo_text2">
-            This is a Beta version of the app. If you wish to gain access, please write to multinotes.web@gmail.com
-        </div>
         <div class="hero-content">
             <h1 class="hero-title" data-key="hero_title">Your notes,<br>everywhere.</h1>
             <p class="hero-subtitle" data-key="hero_subtitle">Open, edit, and organize your MultiNotes on any device — no install required.</p>
@@ -931,6 +926,16 @@
             });
         }
 
+        // Текстът на попъпа е на английски — така се показва и при отваряне на страницата
+        function popupMarkup() {
+            return `
+                <h4 data-key="popup_info_title">Information</h4>
+                <p data-key="popup_info_msg">You can improve the translation with a convenient interactive tool by starting the application at:</p>
+                <a href="https://multinotes.app/gdviewer/ui" target="_blank" class="app-link">multinotes.app/gdviewer/ui</a>
+                <button class="close-btn" data-key="popup_info_btn">Got it</button>
+            `;
+        }
+
         function showI18nPopup() {
             let overlay = document.querySelector('.i18n-overlay');
             let popup = document.querySelector('.i18n-popup');
@@ -939,15 +944,12 @@
                 overlay = document.createElement('div');
                 overlay.className = 'i18n-overlay';
                 document.body.appendChild(overlay);
+            }
 
+            if (!popup) {
                 popup = document.createElement('div');
                 popup.className = 'i18n-popup';
-                popup.innerHTML = `
-                    <h4 data-key="popup_info_title">${translations['popup_info_title'] || 'Information'}</h4>
-                    <p data-key="popup_info_msg">${translations['popup_info_msg'] || 'You can improve the translation with a convenient interactive tool by starting the application at:'}</p>
-                    <a href="https://multinotes.app/gdviewer/ui" target="_blank" class="app-link">multinotes.app/gdviewer/ui</a>
-                    <button class="close-btn" data-key="popup_info_btn">${translations['popup_info_btn'] || 'Got it'}</button>
-                `;
+                popup.innerHTML = popupMarkup();
                 document.body.appendChild(popup);
 
                 const close = () => {
@@ -964,9 +966,11 @@
         }
 
         // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             renderLanguageSwitchers(currentLang);
-            loadTranslations(currentLang);
+            await loadTranslations(currentLang);
+            // Попъпът за превод на интерфейса се показва още при отваряне на страницата
+            showI18nPopup();
         });
     </script>
 </body>
