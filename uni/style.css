@@ -3233,38 +3233,114 @@ body.selection-locked .note.active-selection-note .note-content {
     pointer-events: auto;
 }
 
-/* Активният прозорец е с рамка (решение от 21.10): по него се вижда кой приема клавишите. */
-.note-window.note-window-active.visible .modal-content-box {
-    outline: 2px solid rgba(58, 111, 240, 0.9);
-    outline-offset: -2px;
-}
+/* Активният прозорец НЯМА рамка: той и без това е най-отгоре (решение на собственика, 21.10). */
 
 .note-window.note-window-moving .modal-content-box {
     transition: none;
     user-select: none;
 }
 
-/* „Затвори всички" (само при три и повече отворени бележки): надписана пигулка в лентата, вляво от
-   кръглите бутони, така че редът им (хиксче, изтриване, копиране, калкулатор, >, <) да остане същият. */
-.note-window-bar-btn {
+/* --- Лентата на прозореца (b1.09) ---
+   Три клетки: име на борда, ред с бутоните и хиксче. Редът с бутоните е едно гъвкаво парче: при тясна
+   бележка се свива, а каквото не се събира, се плъзга настрани в него, вместо да излезе извън
+   прозореца. Хиксчето е извън реда, значи се вижда и се улучва при всякаква ширина. Всичко това важи
+   само за прозореца на бележка (.note-window): настройките, бордовете и зуумът продължават да слагат
+   бутоните си абсолютно, както досега. */
+.note-window .note-header-toolbar {
     position: absolute;
-    top: 10px;
-    right: 277px;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: grid;
+    /* minmax(0, ...) и на двете свиващи се клетки: обикновено max-content не слиза под ширината на
+       бутоните и цялата решетка излиза извън кутията. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, max-content) max-content;
+    column-gap: 8px;
+    align-items: flex-start;
+    /* 10px отгоре остават празни: това е ивицата, за която се хваща прозорецът, за да се мести. */
+    padding: 10px 10px 0 10px;
+    box-sizing: border-box;
+    height: 50px;
+    z-index: 3;
+}
+
+/* Името на борда дава мястото първо: свива се, реже се с многоточие и никога не минава под бутоните.
+   :is(...) тук е нарочно: основното правило горе също е :is(#id, .nw-...), тоест носи специфичността
+   на #id и по-слаб селектор не би го надвил за неактивните прозорци (там id-то е прибрано). */
+.note-window .note-header-toolbar > :is(#modal-board-name, .nw-modal-board-name) {
+    position: static;
+    top: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 5px 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* Редът с бутоните: без ширина max-content, за да се свива с кутията; каквото не се събира, се плъзга
+   настрани. Скролбарът е скрит — яде 4-8px от височината на реда, а нищо тук не е за него. */
+.note-window .note-header-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    min-width: 0;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.note-window .note-header-buttons::-webkit-scrollbar {
+    display: none;
+}
+
+/* Бутоните в реда не са абсолютно позиционирани (абсолютното важи извън прозореца на бележка) и са
+   точно 32x32: без border-box рамката би добавила 2px и редът би излязъл от кутията при тясна бележка. */
+.note-window .note-header-buttons > * {
+    position: static;
+    top: auto;
+    right: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+/* Хиксчето: собствена клетка, плътно вдясно, без да участва в плъзгането на реда. */
+.note-window .note-header-toolbar > .modal-close {
+    position: static;
+    top: auto;
+    right: auto;
+    justify-self: end;
+    flex: none;
+}
+
+/* „Затвори всички" (от три и повече отворени бележки): кръгъл бутон като останалите в реда, веднага
+   вляво от хиксчето. Иконата е същата като в cx-notes; името ѝ идва от превода (closeAllNotes) като
+   title и aria-label, защото текст вече няма. */
+.note-window-bar-btn {
+    width: 32px;
     height: 32px;
-    padding: 0 11px;
+    padding: 0;
     display: none;
     align-items: center;
     justify-content: center;
     font: inherit;
-    font-size: 12px;
-    line-height: 1;
-    white-space: nowrap;
     color: #333;
-    background: rgba(255, 255, 255, 0.75);
+    background: none;
     border: 1px solid #aaa;
-    border-radius: 16px;
+    border-radius: 50%;
     cursor: pointer;
-    z-index: 2;
+}
+
+.note-window-bar-btn svg {
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
 }
 
 .note-window-bar-btn[hidden] {
@@ -3273,21 +3349,7 @@ body.selection-locked .note.active-selection-note .note-content {
 
 @media (hover: hover) {
     .note-window-bar-btn:hover {
-        background: rgba(0, 0, 0, 0.1);
-    }
-}
-
-/* Докато бутонът е налице, името на борда не бива да се пъха под него. */
-.note-window:has(.note-window-bar-btn:not([hidden])) :is(#modal-board-name, .nw-modal-board-name) {
-    max-width: calc(100% - 400px);
-}
-
-@media (max-width: 520px) {
-    /* Тясно: бутонът остава, но с по-малко място около себе си. */
-    .note-window-bar-btn {
-        right: 244px;
-        font-size: 11px;
-        padding: 0 8px;
+        background-color: rgba(0, 0, 0, 0.1);
     }
 }
 

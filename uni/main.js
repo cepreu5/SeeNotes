@@ -126,6 +126,13 @@ const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2
 const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><circle cx="12" cy="16" r="1.5" /></svg>`;
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
 const weeklyViewIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`;
+// „Затвори всички" в лентата на прозореца: същата икона като в cx-notes (два листа, горният с хиксче).
+// Плътният преден лист е в сиво-синьото на cx-notes, за да се чете и върху хартията на бележката.
+const closeAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <rect x="1.6" y="7.6" width="14.8" height="14.8" rx="2.6" fill="none" stroke="currentColor" stroke-width="2.2" />
+    <rect class="close-all-icon-front" x="7.6" y="1.6" width="14.8" height="14.8" rx="2.6" fill="#546E7A" stroke="currentColor" stroke-width="2.2" />
+    <path d="M11.4 5.4l7.2 7.2M18.6 5.4l-7.2 7.2" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" />
+</svg>`;
 const boardIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="black" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="4" width="16" height="16" rx="2" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="4" x2="12" y2="20" /></svg>`;
 const arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V3M5 10l7-7 7 7"/></svg>`;
 const pencilIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(2, 2) scale(0.85)"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></g></svg>`;
@@ -4974,10 +4981,19 @@ const NOTE_WINDOW_MARGIN = 10; // px около прозорец, по-голя�
 const NOTE_WINDOW_GEOM_KEY = 'noteWindowGeometry';
 const NOTE_WINDOW_GEOM_MAX = 300; // до 300 записа; най-старият се изхвърля
 const NOTE_WINDOW_CLOSE_ALL_FROM = 3; // „Затвори всички" се показва от три отворени бележки
+const NOTE_WINDOW_WALK_IDLE = 1200; // мс без натиск на стрелка: обхождането на прозорците се строи наново
+const NOTE_WINDOW_NAV_IN_PLACE_MS = 1500; // мс: < / > сменя бележката в СЪЩИЯ прозорец (бележките на борда)
 let noteWindows = []; // всички прозорци в DOM: отворените плюс най-много един празен (затворен)
 let activeNoteWindow = null;
 let noteWindowZ = NOTE_WINDOW_Z_BASE - 1;
-let noteWindowNavInPlace = false; // < / > в прозорец: съседната бележка се отваря в същия прозорец
+// Кога (мс) е бил натиснат < / > за бележка от борда: следващата показана бележка влиза в СЪЩИЯ
+// прозорец, вместо да отвори нов. Пази се като време, за да не зависи от това дали кликът стига до
+// showModal в същия такт.
+let noteWindowNavInPlace = 0;
+// Обхождане на отворените прозорци със стрелките (при повече от два): { order: [прозорец...], index }.
+// Редът се строи ВЕДНЪЖ за сесията - вж. stepNoteWindowWalk.
+let noteWindowWalk = null;
+let noteWindowWalkTimer = 0;
 
 // Слоят и шаблонът се правят от самия #content-modal, за да няма две копия на една и съща
 // разметка в index-2.html. Самият #content-modal влиза в слоя и е първият прозорец: иначе, като
@@ -5082,6 +5098,84 @@ function getTopNoteWindow(list = getOpenNoteWindows()) {
     return list.reduce((top, w) => (!top || (Number(w.el.style.zIndex) || 0) > (Number(top.el.style.zIndex) || 0)) ? w : top, null);
 }
 
+// --- Стрелките < / > в лентата ----------------------------------------------------------------
+// До два отворени прозореца стрелките ходят по бележките на борда и сменят бележката в същия
+// прозорец. При повече от два те обхождат САМИТЕ ПРОЗОРЦИ, по един на натиск, и се завъртат.
+// Редът се строи веднъж за сесията и курсорът се мести с ±1 по него. Ако редът се предефинираше след
+// всяко активиране (например по z-index), вдигнатият прозорец щеше да е винаги последен и всеки
+// натиск щеше да подскача между същите два прозореца, вместо да върви напред.
+function noteWindowWalkEnabled() {
+    return getOpenNoteWindows().length > 2;
+}
+
+function sameNoteWindowOrder(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((w, i) => w === b[i]);
+}
+
+function resetNoteWindowWalk() {
+    noteWindowWalk = null;
+    if (noteWindowWalkTimer) {
+        clearTimeout(noteWindowWalkTimer);
+        noteWindowWalkTimer = 0;
+    }
+}
+
+function stepNoteWindowWalk(direction) {
+    const open = getOpenNoteWindows();
+    if (open.length < 2) return;
+    const active = (activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : null;
+    let walk = noteWindowWalk;
+    if (!walk || !sameNoteWindowOrder(walk.order, open)) {
+        walk = noteWindowWalk = { order: open.slice(), index: Math.max(0, open.indexOf(active)) };
+    }
+    // Натиск в прозорец, който не е бил активният: слушателят на прозореца вече го е направил активен
+    // (преди този клик), значи броенето тръгва от него, а не от стария курсор.
+    const activePos = active ? walk.order.indexOf(active) : -1;
+    if (activePos >= 0) walk.index = activePos;
+    walk.index = (walk.index + (direction < 0 ? -1 : 1) + walk.order.length) % walk.order.length;
+    const target = walk.order[walk.index];
+    if (target && target.open) activateNoteWindow(target, true);
+    if (noteWindowWalkTimer) clearTimeout(noteWindowWalkTimer);
+    noteWindowWalkTimer = setTimeout(resetNoteWindowWalk, NOTE_WINDOW_WALK_IDLE);
+}
+
+// Съседната бележка от борда влиза в СЪЩИЯ прозорец (noteWindowNavInPlace), не отваря втори.
+function navigateBoardNote(win, direction) {
+    const notes = win && win.navNotes;
+    if (!notes || !notes.length) return;
+    const newIndex = (win.navIndex || 0) + direction;
+    if (newIndex < 0 || newIndex >= notes.length) return;
+    noteWindowNavInPlace = Date.now();
+    notes[newIndex].click();
+}
+
+// Стрелките на един прозорец: при повече от два отворени прозореца и двете се виждат и обхождат
+// прозорците (всеки натиск - следващият, със завъртане). Иначе са това, което са били: водят до
+// съседната бележка от борда и се скриват в края на списъка.
+function updateNoteWindowNav(win) {
+    if (!win || !win.el) return;
+    const prevBtn = win.el.querySelector('#prev-note-btn, [data-mwid="prev-note-btn"]');
+    const nextBtn = win.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
+    if (!prevBtn || !nextBtn) return;
+    prevBtn.onclick = () => {
+        if (noteWindowWalkEnabled()) stepNoteWindowWalk(-1);
+        else navigateBoardNote(win, -1);
+    };
+    nextBtn.onclick = () => {
+        if (noteWindowWalkEnabled()) stepNoteWindowWalk(1);
+        else navigateBoardNote(win, 1);
+    };
+    if (noteWindowWalkEnabled()) {
+        prevBtn.style.display = 'flex';
+        nextBtn.style.display = 'flex';
+        return;
+    }
+    const notes = win.navNotes, idx = (typeof win.navIndex === 'number') ? win.navIndex : -1;
+    prevBtn.style.display = (notes && idx > 0) ? 'flex' : 'none';
+    nextBtn.style.display = (notes && idx >= 0 && idx < notes.length - 1) ? 'flex' : 'none';
+}
+
 function findNoteWindow(id, gdid) {
     const sid = (id === undefined || id === null) ? '' : String(id);
     const sgdid = (gdid === undefined || gdid === null) ? '' : String(gdid);
@@ -5129,6 +5223,8 @@ function enforceSingleNoteWindow() {
 function updateSingleNoteOverlay() {
     enforceSingleNoteWindow();
     updateCloseAllNotesBar();
+    // Броят на отворените прозорци може да се е сменил: стрелките се преизчисляват във всеки от тях.
+    noteWindows.forEach(w => { if (w.open) updateNoteWindowNav(w); });
     const layer = document.getElementById('note-windows-layer');
     if (!layer) return;
     let overlay = document.getElementById('single-note-overlay');
@@ -5330,6 +5426,8 @@ function closeNoteWindow(win) {
 }
 
 function onNoteWindowClosed(win) {
+    // Списъкът на отворените се сменя: обхождането на стрелките се строи наново.
+    resetNoteWindowWalk();
     stopAttachmentAudio();
     const others = getOpenNoteWindows().filter(w => w !== win);
     if (!others.length) {
@@ -5350,6 +5448,7 @@ function onNoteWindowClosed(win) {
 function closeAllNoteWindows() {
     const open = getOpenNoteWindows();
     if (!open.length) return;
+    resetNoteWindowWalk();
     const top = getTopNoteWindow(open);
     open.forEach(win => {
         rememberNoteWindowGeometry(win);
@@ -5369,17 +5468,16 @@ function closeAllNoteWindows() {
     updateSingleNoteOverlay();
 }
 
-// „Затвори всички" в лентата: показва се само при три и повече отворени бележки.
+// „Затвори всички" в лентата: показва се само при три и повече отворени бележки. Бутонът е кръгъл,
+// с икона - името му (от превода) живее в title и aria-label, защото текст няма.
 function updateCloseAllNotesBar() {
     const openCount = getOpenNoteWindows().length;
     const label = _('closeAllNotes') || 'Затвори всички';
     noteWindows.forEach(win => {
         const btn = win.closeAllBtn;
         if (!btn) return;
-        if (btn.textContent !== label) {
-            btn.textContent = label;
-            btn.title = label;
-        }
+        if (btn.title !== label) btn.title = label;
+        if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
         const show = win.open && openCount >= NOTE_WINDOW_CLOSE_ALL_FROM;
         btn.hidden = !show;
         btn.style.display = show ? 'flex' : 'none';
@@ -5403,9 +5501,13 @@ function singleNoteWindowFor(options) {
 // - иначе - празният прозорец, ако има такъв, или нов.
 function pickNoteWindowForShow(options) {
     const opts = (options && typeof options === 'object') ? options : {};
-    noteWindowNavInPlace = false;
+    // Натискът на < / > важи само за бележката, която идва веднага след него (виж noteWindowNavInPlace).
+    const navInPlace = !!noteWindowNavInPlace && (Date.now() - noteWindowNavInPlace) < NOTE_WINDOW_NAV_IN_PLACE_MS;
+    noteWindowNavInPlace = 0;
     const match = findNoteWindow(opts.id, opts.gdid);
     if (match) return { win: match, fresh: false };
+    // < / > : съседната бележка от борда влиза в СЪЩИЯ прозорец, не отваря нов.
+    if (navInPlace && activeNoteWindow && activeNoteWindow.open) return { win: activeNoteWindow, fresh: false };
     if (isSingleNoteMode()) {
         const single = singleNoteWindowFor(opts);
         if (single) return { win: single, fresh: false };
@@ -5526,16 +5628,20 @@ function wireNoteWindow(win) {
     }
 
     // --- „Затвори всички" в лентата (при три и повече отворени бележки) ---
+    // Кръгъл бутон с иконата от cx-notes, последен в реда с бутоните, тоест веднага вляво от хиксчето
+    // (хиксчето е в своя клетка извън реда - вж. .note-header-toolbar).
     const closeAllBtn = document.createElement('button');
     closeAllBtn.type = 'button';
-    closeAllBtn.className = 'note-window-bar-btn';
+    closeAllBtn.className = 'note-window-bar-btn close-all-notes-btn modal-header-btn';
+    closeAllBtn.innerHTML = closeAllNotesIconSvg;
     closeAllBtn.hidden = true;
     closeAllBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         closeAllNoteWindows();
     });
-    box.appendChild(closeAllBtn);
+    const headerButtons = box.querySelector('.note-header-buttons');
+    (headerButtons || box).appendChild(closeAllBtn);
     win.closeAllBtn = closeAllBtn;
 
     body.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
@@ -5605,10 +5711,12 @@ function wireNoteWindowMove(win) {
     const inHeaderBand = (e) => {
         const t = e.target;
         if (!t || !t.closest) return false;
-        if (t.closest('button, a, input, textarea, select, .modal-header-btn, .note-window-bar-btn')) return false;
+        // Бутоните, лентата с бутоните и лентата на редактора не местят прозореца: там натискът е клик.
+        if (t.closest('button, a, input, textarea, select, .modal-header-btn, .modal-nav-btn, .note-window-bar-btn, .note-header-buttons, .modal-edit-toolbar')) return false;
         if (t.closest('#modal-board-name, .nw-modal-board-name, .modal-board-name')) return true;
-        if (t !== box) return false;
-        const header = box.querySelector('.modal-header-toolbar');
+        // Ивицата за местене е лентата на прозореца (и празното около нея горе в кутията).
+        if (t !== box && !t.closest('.note-header-toolbar, .modal-header-toolbar')) return false;
+        const header = box.querySelector('.note-header-toolbar, .modal-header-toolbar');
         const band = Math.max(header ? header.offsetHeight : 0, 40);
         return point(e).clientY - box.getBoundingClientRect().top <= band;
     };
@@ -5850,6 +5958,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     // Използваме requestAnimationFrame, за да гарантираме, че браузърът е приложил началните стилове (scale 0.7)
     // преди да добавим класа visible, за да се възпроизведе анимацията.
     if (win) {
+        // Отворен/пре-рисуван прозорец: обхождането със стрелките се строи наново.
+        resetNoteWindowWalk();
         win.open = true;
         win.placed = true;
         updateSingleNoteOverlay();
@@ -5946,9 +6056,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     }
 
     copyBtn.innerHTML = copyIconSvg;
-    // --- Логика за навигация между бележките ---
-    const prevBtn = document.getElementById('prev-note-btn');
-    const nextBtn = document.getElementById('next-note-btn');
+    // --- Логика за навигация между бележките (стрелките: виж updateNoteWindowNav) ---
     const deleteBtn = document.getElementById('delete-modal-btn');
     // Показваме/скриваме бутона за изтриване
     if (useIndexedDb && (noteElement || noteGdid) && !isPromo) {
@@ -5979,27 +6087,17 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     }
     if (noteElement) {
         const visibleNotes = Array.from(notesContainer.querySelectorAll('.note-item[style*="display: flex"]'));
-        const currentIndex = visibleNotes.indexOf(noteElement);
-        const navigate = (direction) => {
-            const newIndex = currentIndex + direction;
-            if (newIndex >= 0 && newIndex < visibleNotes.length) {
-                // Симулираме клик върху съседната бележка, за да се отвори в модала
-                // Съседната бележка влиза в СЪЩИЯ прозорец, не отваря втори.
-                noteWindowNavInPlace = true;
-                visibleNotes[newIndex].click();
-                setTimeout(() => { noteWindowNavInPlace = false; }, 0);
-            }
-        };
-
-        prevBtn.onclick = () => navigate(-1);
-        nextBtn.onclick = () => navigate(1);
-        // Показваме/скриваме бутоните в зависимост от позицията
-        prevBtn.style.display = (currentIndex > 0) ? 'flex' : 'none';
-        nextBtn.style.display = (currentIndex < visibleNotes.length - 1) ? 'flex' : 'none';
+        // Позицията се пази на прозореца: бутоните се преизчисляват и когато броят на отворените
+        // прозорци се промени (виж updateNoteWindowNav).
+        if (win) {
+            win.navNotes = visibleNotes;
+            win.navIndex = visibleNotes.indexOf(noteElement);
+        }
+        updateNoteWindowNav(win);
     } else {
-        // Ако не е подаден елемент на бележка (напр. за системна информация), скриваме бутоните
-        prevBtn.style.display = 'none';
-        nextBtn.style.display = 'none';
+        // Системна информация без бележка: стрелките водят само обхождането на прозорците.
+        if (win) { win.navNotes = null; win.navIndex = -1; }
+        updateNoteWindowNav(win);
         const boardNameEl = document.getElementById('modal-board-name');
         if (boardNameEl) boardNameEl.style.left = '15px';
     }
@@ -9635,6 +9733,8 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key-title');
         element.title = _(key);
     });
+    // „Затвори всички" носи името си от превода в title и aria-label (текст в бутона няма): сменя се тук.
+    if (typeof updateCloseAllNotesBar === 'function') updateCloseAllNotesBar();
     // Update all language switchers in the UI
     renderLanguageSwitchers();
     // Check if updateSignoutTooltip exists before calling it

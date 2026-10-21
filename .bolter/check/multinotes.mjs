@@ -107,8 +107,12 @@ const READ = `(() => {
     contentHeight: Math.round(parseFloat(getComputedStyle(win.box).height)),
     z: Number(win.el.style.zIndex) || 0,
     closeAllShown: !!(win.closeAllBtn && !win.closeAllBtn.hidden),
-    closeAllLabel: win.closeAllBtn ? win.closeAllBtn.textContent : null,
+    closeAllTitle: win.closeAllBtn ? win.closeAllBtn.title : null,
+    closeAllAria: win.closeAllBtn ? win.closeAllBtn.getAttribute('aria-label') : null,
+    closeAllText: win.closeAllBtn ? win.closeAllBtn.textContent.trim() : null,
+    closeAllIcon: !!(win.closeAllBtn && win.closeAllBtn.querySelector('svg')),
     closeAllDisplay: win.closeAllBtn ? getComputedStyle(win.closeAllBtn).display : null,
+    outline: (() => { const cs = getComputedStyle(win.box); return cs.outlineStyle + ' ' + cs.outlineWidth; })(),
   }));
   const overlay = document.getElementById('single-note-overlay');
   const layer = document.getElementById('note-windows-layer');
@@ -299,8 +303,10 @@ ok(atThree.windows.every(w => w.closeAllShown && w.closeAllDisplay === 'flex'),
   `„Затвори всички": при три отворени се вижда във всеки отворен прозорец (${atThree.windows.map(w => w.closeAllDisplay)})`,
   atThree.windows.map(w => ({ shown: w.closeAllShown, d: w.closeAllDisplay })));
 const closeAllLabel = await page.evaluate(() => ({ i18n: _('closeAllNotes'), lang: currentLang, keyPresent: _('closeAllNotes') !== 'closeAllNotes' }));
-ok(atThree.windows.every(w => w.closeAllLabel === closeAllLabel.i18n) && closeAllLabel.keyPresent,
-  `„Затвори всички": надписът е от превода за езика (${JSON.stringify(atThree.windows.map(w => w.closeAllLabel))}, език ${closeAllLabel.lang})`, closeAllLabel);
+ok(atThree.windows.every(w => w.closeAllTitle === closeAllLabel.i18n && w.closeAllAria === closeAllLabel.i18n)
+  && atThree.windows.every(w => w.closeAllIcon && w.closeAllText === '') && closeAllLabel.keyPresent,
+  `„Затвори всички": кръгъл бутон с икона, името идва от превода в title и aria-label, не като текст (${JSON.stringify(atThree.windows.map(w => w.closeAllTitle))}, език ${closeAllLabel.lang})`,
+  { ...closeAllLabel, windows: atThree.windows.map(w => ({ t: w.closeAllTitle, a: w.closeAllAria, icon: w.closeAllIcon, text: w.closeAllText })) });
 await shot('close-all');
 
 const closeAllRect = await page.evaluate(() => {
@@ -430,6 +436,256 @@ const afterMenuSwitch = await page.evaluate(async () => {
 });
 ok(afterMenuSwitch.filter === 'B2' && afterMenuSwitch.open === beforeBoard.open,
   `смяна на борда от менюто: прозорците пак остават (борд ${afterMenuSwitch.filter}, отворени ${afterMenuSwitch.open})`, afterMenuSwitch);
+
+// ======================= 9. Поправките след сливането (b1.09) =======================
+// (а) активният прозорец няма рамка; (б) „Затвори всички" е кръгъл бутон с икона вляво от хиксчето;
+// (в) при повече от два прозореца стрелките обхождат прозорците, при два - бележките на борда;
+// (г) при тясна бележка нищо в лентата не излиза извън кутията и хиксчето се вижда изцяло.
+const closeAllWindows = async () => {
+  await page.evaluate(() => { getOpenNoteWindows().forEach(closeNoteWindow); });
+  await page.waitForTimeout(500); // затворените се махат от DOM с малко закъснение
+};
+// Стрелката на АКТИВНИЯ прозорец: истински клик с мишка, точно както го прави човек.
+const pressArrow = async (dir) => {
+  const where = await page.evaluate((dir) => {
+    const win = activeNoteWindow;
+    const btn = win.el.querySelector(dir > 0 ? '#next-note-btn, [data-mwid="next-note-btn"]' : '#prev-note-btn, [data-mwid="prev-note-btn"]');
+    if (!btn) return null;
+    const r = btn.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), display: getComputedStyle(btn).display };
+  }, dir);
+  if (!where || where.display === 'none') return { missing: true, dir };
+  await page.mouse.click(where.x, where.y);
+  await page.waitForTimeout(30);
+  return page.evaluate(() => {
+    const top = getTopNoteWindow();
+    return {
+      text: top ? (top.body.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 20) : null,
+      open: getOpenNoteWindows().length,
+      active: noteWindows.indexOf(activeNoteWindow),
+    };
+  });
+};
+
+await closeAllWindows();
+await openNote({ id: 'R1', gdid: 'GR1', boardId: 'B1', raw: 'прозорец 1' }, 1);
+await openNote({ id: 'R2', gdid: 'GR2', boardId: 'B1', raw: 'прозорец 2' }, 2);
+const three = await openNote({ id: 'R3', gdid: 'GR3', boardId: 'B1', raw: 'прозорец 3' }, 3);
+ok(three.windows.every(w => w.outline === 'none 0px' || /^none /.test(w.outline)),
+  `рамка: нито един прозорец не е обграден, и активният не е (${JSON.stringify(three.windows.map(w => w.outline))})`,
+  three.windows.map(w => ({ outline: w.outline, active: w.active })));
+ok(three.windows[three.activeIndex].active && three.windows[three.activeIndex].z === Math.max(...three.windows.map(w => w.z)),
+  `рамка: активният прозорец е най-отгоре, без рамка (z ${three.windows[three.activeIndex].z})`,
+  three.windows.map(w => ({ z: w.z, a: w.active })));
+
+// (б) „Затвори всички" - кръгъл бутон в реда, вляво от хиксчето, изцяло в кутията.
+const closeAllGeom = await page.evaluate(() => {
+  const win = activeNoteWindow;
+  const btn = win.closeAllBtn;
+  if (!btn) return { exists: false };
+  const cs = getComputedStyle(btn);
+  const r = btn.getBoundingClientRect();
+  const xr = win.box.querySelector('.modal-close').getBoundingClientRect();
+  const br = win.box.getBoundingClientRect();
+  const row = win.box.querySelector('.note-header-buttons');
+  const rr = row.getBoundingClientRect();
+  return {
+    exists: true, hidden: btn.hidden, display: cs.display, radius: cs.borderRadius,
+    w: Math.round(r.width), h: Math.round(r.height), icon: !!btn.querySelector('svg'),
+    classes: btn.className,
+    inRow: !!(btn.parentElement && btn.parentElement.classList.contains('note-header-buttons')),
+    rowHasOthers: row.querySelectorAll('button').length,
+    btn: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+    x: { left: xr.left, right: xr.right, top: xr.top, bottom: xr.bottom },
+    box: { left: br.left, right: br.right, top: br.top, bottom: br.bottom },
+    row: { left: rr.left, right: rr.right },
+  };
+});
+ok(closeAllGeom.exists && !closeAllGeom.hidden && closeAllGeom.display === 'flex' && closeAllGeom.icon
+  && closeAllGeom.inRow && closeAllGeom.rowHasOthers === 6 && /note-window-bar-btn/.test(closeAllGeom.classes),
+  `„Затвори всички": кръглият бутон е в реда с бутоните, с икона и видим при три отворени (${closeAllGeom.display}, ред от ${closeAllGeom.rowHasOthers})`,
+  closeAllGeom);
+ok(closeAllGeom.radius === '50%' && closeAllGeom.w === 32 && closeAllGeom.h === 32,
+  `„Затвори всички": същият 32px кръгъл бутон като останалите в лентата (${closeAllGeom.w}x${closeAllGeom.h}, radius ${closeAllGeom.radius})`,
+  closeAllGeom);
+ok(closeAllGeom.btn.left >= closeAllGeom.box.left - 0.5 && closeAllGeom.btn.right <= closeAllGeom.box.right + 0.5
+  && closeAllGeom.btn.top >= closeAllGeom.box.top - 0.5 && closeAllGeom.btn.bottom <= closeAllGeom.box.bottom + 0.5,
+  `„Затвори всички": бутонът е изцяло в кутията (${Math.round(closeAllGeom.btn.left)}..${Math.round(closeAllGeom.btn.right)} в ${Math.round(closeAllGeom.box.left)}..${Math.round(closeAllGeom.box.right)})`,
+  closeAllGeom);
+ok(closeAllGeom.btn.right <= closeAllGeom.x.left + 0.5,
+  `„Затвори всички": бутонът е точно вляво от хиксчето (${Math.round(closeAllGeom.btn.right)} <= ${Math.round(closeAllGeom.x.left)})`,
+  closeAllGeom);
+ok(closeAllGeom.x.left >= closeAllGeom.box.left && closeAllGeom.x.right <= closeAllGeom.box.right
+  && closeAllGeom.x.top >= closeAllGeom.box.top && closeAllGeom.x.bottom <= closeAllGeom.box.bottom,
+  `„Затвори всички": хиксчето също е изцяло в кутията (${Math.round(closeAllGeom.x.left)}..${Math.round(closeAllGeom.x.right)})`,
+  closeAllGeom);
+await shot('close-all-icon');
+
+// (в) Стрелките при ЧЕТИРИ отворени прозоръци: всеки натиск - следващият прозорец, после се завърта.
+await closeAllWindows();
+for (const i of [1, 2, 3, 4]) {
+  await openNote({ id: 'W' + i, gdid: 'GW' + i, boardId: 'B1', raw: 'прозорец ' + i }, i);
+}
+await page.evaluate(() => { activateNoteWindow(getOpenNoteWindows()[0], true); });
+const walkStart = await page.evaluate(() => ({
+  order: getOpenNoteWindows().map(w => (w.body.textContent || '').trim()),
+  active: (activeNoteWindow.body.textContent || '').trim(),
+}));
+const walk = [];
+for (let i = 0; i < 4; i++) walk.push(await pressArrow(1));
+ok(walkStart.order.length === 4 && walkStart.active === 'прозорец 1' && walk.every(w => w.open === 4),
+  `стрелки при 4 прозоръца: начало от първия, четирите остават отворени (${JSON.stringify(walkStart.order)}, ${JSON.stringify(walk.map(w => w.open))})`,
+  { walkStart, walk });
+ok(walk[0].text === 'прозорец 2' && walk[1].text === 'прозорец 3' && walk[2].text === 'прозорец 4',
+  `стрелки при 4 прозоръца: три натиска на „>" минават на следващия прозорец един по един, не на два (${JSON.stringify(walk.slice(0, 3).map(w => w.text))})`,
+  walk);
+ok(new Set(walk.slice(0, 3).map(w => w.active)).size === 3,
+  `стрелки при 4 прозоръца: всеки натиск активира ДРУГ прозорец (${JSON.stringify(walk.slice(0, 3).map(w => w.active))})`, walk);
+ok(walk[3].text === 'прозорец 1' && walk[3].active === walkStart.order.indexOf('прозорец 1'),
+  `стрелки при 4 прозоръца: четвъртият натиск се завърта на първия (${walk[3].text})`, walk);
+const back = await pressArrow(-1);
+ok(back.text === 'прозорец 4',
+  `стрелки при 4 прозоръца: „<" връща назад по същия ред (${back.text})`, back);
+const bothArrows = await page.evaluate(() => getOpenNoteWindows().every(w => {
+  const prev = w.el.querySelector('#prev-note-btn, [data-mwid="prev-note-btn"]');
+  const next = w.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
+  return getComputedStyle(prev).display === 'flex' && getComputedStyle(next).display === 'flex';
+}));
+ok(bothArrows, 'стрелки при 4 прозоръца: двете стрелки се виждат във всеки прозорец, независимо от позицията в борда', bothArrows);
+// Натиск в прозорец, който НЕ е активният: първо той става активен, чак после се минава на следващия.
+// (Ако редът тръгваше от стария активен прозорец, тук щеше да се стигне до „прозорец 2", не до 4.)
+const nonActivePress = await page.evaluate(() => {
+  const open = getOpenNoteWindows();
+  activateNoteWindow(open[0], true);
+  const btn = open[2].el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
+  const display = btn ? getComputedStyle(btn).display : 'missing';
+  const clicked = (open[2].body.textContent || '').trim();
+  if (btn) btn.click();
+  return { display, clicked, text: (getTopNoteWindow().body.textContent || '').trim(), open: getOpenNoteWindows().length };
+});
+ok(nonActivePress.display === 'flex' && nonActivePress.text === 'прозорец 4' && nonActivePress.open === 4,
+  `стрелки при 4 прозоръца: натиск в неактивен прозорец (${nonActivePress.clicked}) първо го прави активен, после минава на следващия (${nonActivePress.text})`,
+  nonActivePress);
+await shot('arrow-walk-4');
+
+// При ДВА отворени прозореца стрелките продължават да ходят по бележките на борда в същия прозорец.
+await closeAllWindows();
+const boardNotes = await page.evaluate(() => {
+  notesContainer.innerHTML = '';
+  for (let i = 1; i <= 3; i++) {
+    const el = document.createElement('div');
+    el.className = 'note-item';
+    el.style.display = 'flex';
+    el.addEventListener('click', () => showModal({ raw: 'борд бележка ' + i, format: null, id: 'BN' + i, gdid: 'GBN' + i, boardId: 'B1' }, el));
+    notesContainer.appendChild(el);
+  }
+  const first = notesContainer.querySelector('.note-item');
+  showModal({ raw: 'борд бележка 1', format: null, id: 'BN1', gdid: 'GBN1', boardId: 'B1' }, first);
+  return notesContainer.querySelectorAll('.note-item').length;
+});
+const oneWindow = await waitOpen(1);
+const board1 = await pressArrow(1);
+ok(boardNotes === 3 && oneWindow && board1.open === 1 && board1.text === 'борд бележка 2',
+  `стрелки при 1 прозорец: „>" отваря съседната бележка от борда в СЪЩИЯ прозорец (${board1.text}, прозорци ${board1.open})`,
+  { boardNotes, board1 });
+await openNote({ id: 'V9', gdid: 'GV9', boardId: 'B2', raw: 'друг прозорец' }, 2);
+await page.evaluate(() => { activateNoteWindow(getOpenNoteWindows().find(w => (w.body.textContent || '').trim().startsWith('борд бележка')), true); });
+const board2 = await pressArrow(1);
+ok(board2.open === 2 && board2.text === 'борд бележка 3',
+  `стрелки при 2 прозоръца: пак бележката от борда в същия прозорец, не се обхождат прозорците (${board2.text}, прозорци ${board2.open})`,
+  board2);
+const boardEnd = await page.evaluate(() => {
+  const win = activeNoteWindow;
+  const prev = win.el.querySelector('#prev-note-btn, [data-mwid="prev-note-btn"]');
+  const next = win.el.querySelector('#next-note-btn, [data-mwid="next-note-btn"]');
+  return { prev: getComputedStyle(prev).display, next: getComputedStyle(next).display, text: (win.body.textContent || '').trim() };
+});
+ok(boardEnd.prev === 'flex' && boardEnd.next === 'none' && boardEnd.text === 'борд бележка 3',
+  `стрелки при 2 прозоръца: на края на списъка „>" се скрива, както досега (${boardEnd.prev}/${boardEnd.next}, ${boardEnd.text})`,
+  boardEnd);
+
+// (г) Тясна бележка (320px): нищо в лентата не излиза извън кутията, хиксчето се вижда изцяло.
+// Гледат се И НЕАКТИВНИТЕ прозорци: те пазят id-тата си като data-mwid/.nw-*, тоест CSS-ът ги хваща
+// по клас, и точно там по-слаб селектор пропуска абсолютното позициониране на името на борда.
+await closeAllWindows();
+for (const i of [1, 2, 3]) {
+  await openNote({ id: 'T' + i, gdid: 'GT' + i, boardId: 'B1', raw: 'тясна ' + i }, i);
+}
+const narrow = await page.evaluate(async () => {
+  const open = getOpenNoteWindows();
+  open.forEach(w => {
+    w.box.style.width = '320px';
+    w.box.style.height = '230px';
+    // Хиксчето, изтриването, копирането и калкулаторът са налице и в истинското приложение (IndexedDB);
+    // в проверката изтриването се показва на ръка, за да е лентата точно онази от снимката на собственика.
+    const del = w.box.querySelector('#delete-modal-btn, [data-mwid="delete-modal-btn"]');
+    if (del) del.style.display = 'flex';
+  });
+  // Преходът на прозорците (scale 0.7 -> 1) трябва да е свършил, иначе rect-овете са смалени.
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const settled = open.every(w => w.box.offsetWidth > 0
+      && Math.abs(w.box.getBoundingClientRect().width / w.box.offsetWidth - 1) < 0.0005);
+    if (settled) break;
+    await new Promise(res => requestAnimationFrame(res));
+  }
+  return open.map(w => {
+    const br = w.box.getBoundingClientRect();
+    const row = w.box.querySelector('.note-header-buttons');
+    const rr = row.getBoundingClientRect();
+    const name = w.box.querySelector('#modal-board-name, .nw-modal-board-name');
+    const nr = name ? name.getBoundingClientRect() : null;
+    const xr = w.box.querySelector('.modal-close').getBoundingClientRect();
+    const btns = [...w.box.querySelectorAll('.note-header-toolbar button')].map(b => {
+      const r = b.getBoundingClientRect();
+      const cs = getComputedStyle(b);
+      return {
+        cls: String(b.className), display: cs.display,
+        visible: r.width > 0 && r.height > 0 && cs.display !== 'none' && !b.hidden,
+        left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width,
+      };
+    });
+    return {
+      text: (w.body.textContent || '').trim(),
+      active: w === activeNoteWindow,
+      contentWidth: Math.round(parseFloat(getComputedStyle(w.box).width)),
+      box: { left: br.left, right: br.right, top: br.top, bottom: br.bottom, width: Math.round(br.width) },
+      x: { left: xr.left, right: xr.right, top: xr.top, bottom: xr.bottom },
+      row: { left: rr.left, right: rr.right, scrollWidth: row.scrollWidth, clientWidth: row.clientWidth },
+      name: nr ? { left: nr.left, right: nr.right, width: Math.round(nr.width), shown: getComputedStyle(name).display !== 'none' } : null,
+      btns,
+    };
+  });
+});
+const narrowActive = narrow.find(w => w.active);
+const visible = narrowActive.btns.filter(b => b.visible);
+const visibleInRow = visible.filter(b => !/\bmodal-close\b/.test(b.cls));
+ok(narrow.length === 3 && narrow.every(w => w.contentWidth === 320) && visibleInRow.length === 6 && visible.length === 7,
+  `тясна бележка: и трите прозореца са 320px, в лентата се виждат шестте бутона плюс хиксчето (${JSON.stringify(narrow.map(w => w.contentWidth))}, ред ${visibleInRow.length}, всичко ${visible.length})`,
+  narrow);
+const outside = [];
+narrow.forEach(w => w.btns.filter(b => b.visible).forEach(b => {
+  if (b.left < w.box.left - 0.5 || b.right > w.box.right + 0.5 || b.top < w.box.top - 0.5 || b.bottom > w.box.bottom + 0.5) {
+    outside.push({ text: w.text, cls: b.cls, left: Math.round(b.left), right: Math.round(b.right), box: [Math.round(w.box.left), Math.round(w.box.right)] });
+  }
+}));
+ok(outside.length === 0,
+  `тясна бележка: нито един бутон в трите прозореца не излиза извън кутията (${JSON.stringify(outside)})`,
+  { outside });
+const xOut = narrow.filter(w => !(w.x.left >= w.box.left && w.x.right <= w.box.right && w.x.top >= w.box.top && w.x.bottom <= w.box.bottom));
+ok(xOut.length === 0,
+  `тясна бележка: хиксчето е изцяло в кутията във всеки прозорец (${JSON.stringify(narrow.map(w => [Math.round(w.x.left), Math.round(w.x.right)]))})`,
+  { xOut });
+const rowScroll = narrow.filter(w => w.row.scrollWidth > w.row.clientWidth + 1);
+ok(rowScroll.length === 0,
+  `тясна бележка: редът с бутоните се събира без плъзгане във всеки прозорец (${JSON.stringify(narrow.map(w => [w.row.scrollWidth, w.row.clientWidth]))})`,
+  { rowScroll });
+const nameUnder = narrow.filter(w => w.name && w.name.shown && w.name.right > w.row.left + 0.5);
+const namesShown = narrow.filter(w => w.name && w.name.shown).length;
+ok(namesShown >= 2 && nameUnder.length === 0,
+  `тясна бележка: името на борда дава мястото и не слиза под бутоните (показано в ${namesShown} от ${narrow.length}, ${JSON.stringify(narrow.map(w => w.name ? [w.name.shown, Math.round(w.name.right), Math.round(w.row.left)] : null))})`,
+  { nameUnder });
+await shot('narrow-header-320');
 
 // ======================= 8. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
