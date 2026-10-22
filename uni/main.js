@@ -7813,14 +7813,40 @@ async function createBoardsUI(boardsData, boardParseError) {
         makeElementDraggable(allBoardsMenuBtn, 'popupMenuBtnPosition');
 
         let clickTimer;
+        let longPressTimer = null;
+        let longPressTriggered = false;
         allBoardsMenuBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // Ctrl+клик превключва пълноекранния режим, без да отваря менюто (както в cx-notes).
+            if (e.ctrlKey) {
+                toggleHeaderFullscreen();
+                return;
+            }
             clearTimeout(clickTimer);
             clickTimer = setTimeout(() => {
                 showAllBoardsModal();
             }, 200);
         });
+        // Задържане с пръст (мобилно) също превключва пълноекранния режим.
+        allBoardsMenuBtn.addEventListener('touchstart', () => {
+            longPressTriggered = false;
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                toggleHeaderFullscreen();
+            }, 500);
+        }, { passive: true });
+        allBoardsMenuBtn.addEventListener('touchend', (e) => {
+            clearTimeout(longPressTimer);
+            // Задържането не се брои за клик: менюто не се отваря след него.
+            if (longPressTriggered) {
+                e.preventDefault();
+                longPressTriggered = false;
+            }
+        });
+        allBoardsMenuBtn.addEventListener('touchmove', () => {
+            clearTimeout(longPressTimer);
+        }, { passive: true });
 
         boardsMenuContainer.innerHTML = '';
         boardsMenuContainer.appendChild(allBoardsMenuBtn);
