@@ -62,6 +62,67 @@ header h1 {
     font-size: 2.2rem;
 }
 
+/* --- Пълноекранен режим на приложението (порт от cx-notes) ---
+   Хедърът се скрива, остават само полето за търсене и етикетът с името на борда вляво. Режимът се
+   помни в localStorage['extendedMode'] и се възстановява от initHeaderFullscreen(). */
+header.header-fullscreen {
+    padding: 2px 5px;
+    border-bottom: none;
+    box-shadow: none;
+    background-image: none;
+    background-color: transparent;
+    justify-content: center;
+}
+
+header.header-fullscreen>*:not(#search-wrapper) {
+    display: none !important;
+}
+
+/* Плаващият бутон за бордове остава достъпен и в пълноекранен режим. В cx-notes той живее в body и
+   затова не се скрива; в main е в хедъра, а без него от режима няма видим изход - менюто с бордове
+   (и квадратът „Цял екран" в него) не може да се отвори. Затова тук се показва само той: всички
+   останали бутони на хедъра си остават скрити. */
+body header.header-fullscreen>#header-buttons {
+    display: block !important;
+}
+
+header.header-fullscreen>#header-buttons>*:not(#boards-menu-container) {
+    display: none !important;
+}
+
+body header.header-fullscreen #boards-menu-container {
+    display: block !important;
+}
+
+header.header-fullscreen #search-wrapper {
+    max-width: 600px;
+}
+
+/* Етикетът с името на борда: вижда се само в пълноекранен режим, вляво от полето за търсене. */
+#fullscreen-board-label {
+    display: none;
+}
+
+header.header-fullscreen #fullscreen-board-label {
+    display: block;
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: bold;
+    color: #555;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+
 #search-container {
     position: relative;
     /* Needed for positioning the save button and popup */
@@ -3451,6 +3512,11 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .note-window-bar-btn[hidden] {
     display: none !important;
+}
+
+/* Разпъната бележка: дръжката за размер не се показва (режимът се излиза, за да се пипне размерът). */
+.note-window.note-window-expanded .modal-resize-handle {
+    display: none;
 }
 
 @media (hover: hover) {

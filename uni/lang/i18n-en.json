@@ -261,5 +261,50 @@
   "weeklyCalendar": "Weekly calendar",
   "previousWeek": "Previous week",
   "nextWeek": "Next week",
+  "modalExpandTooltip": "Expand note",
+  "modalCollapseTooltip": "Restore normal size",
+  "toggleFullscreenTooltip": "Full Screen (Hide/Show Header)",
+  "restoreHeaderTooltip": "Show Header",
+  "searchCommandsTitle": "Commands:",
+  "searchCommandsList": [
+    {
+      "cmd": "/1",
+      "text": "/1  or  /set — Settings"
+    },
+    {
+      "cmd": "/2",
+      "text": "/2  or  /info — System information"
+    },
+    {
+      "cmd": "/3",
+      "text": "/3  or  /cal — Calendar"
+    },
+    {
+      "cmd": "/4",
+      "text": "/4  or  /rel — Reload"
+    },
+    {
+      "cmd": "/5",
+      "text": "/5  or  /out — Sign out"
+    },
+    {
+      "cmd": "/6",
+      "text": "/6  or  /norm — Exit full screen"
+    },
+    {
+      "cmd": "/7",
+      "text": "/7  or  /ex — Full screen"
+    },
+    {
+      "cmd": "/%",
+      "text": "/%number — Zoom (e.g. /%50)"
+    },
+    {
+      "cmd": "/0",
+      "text": "/0  or  /wipe — Erase data and close tab"
+    }
+  ],
+  "wipeConfirmationPrompt": "Enter confirmation code {code} to wipe all data:",
+  "wipeWrongCode": "Incorrect confirmation code. Operation cancelled.",
   "today": "Today"
 }

@@ -2400,6 +2400,327 @@ async function handleCalculateClick(checkList) {
     }
 }
 
+// --- Пълноекранен режим на приложението (порт от cx-notes) --------------------------------------
+// Хедърът се скрива: остават само полето за търсене и името на борда вляво. Режимът се помни в
+// localStorage['extendedMode'] и се възстановява при следващо отваряне. Видимият път към него е
+// квадратът „Цял екран" в менюто с бордове (вж. createBoardsUI) - същият квадрат се появява и в
+// плаващото меню, защото то клонира хедърните бутони. Ctrl+клик и задържане върху плаващия бутон
+// остават като бърз път, а /7 и /ex пускат режима, /6 и /norm излизат от него.
+const fullscreenExpandIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`;
+const fullscreenCompressIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4m0 6l7-7M3 21l7-7"></path></svg>`;
+
+function isHeaderFullscreen() {
+    const header = document.querySelector('header');
+    return !!(header && header.classList.contains('header-fullscreen'));
+}
+
+function toggleHeaderFullscreen() {
+    const header = document.querySelector('header');
+    if (!header) return;
+    if (header.classList.contains('header-fullscreen')) {
+        header.classList.remove('header-fullscreen');
+        localStorage.setItem('extendedMode', 'false');
+    } else {
+        header.classList.add('header-fullscreen');
+        localStorage.setItem('extendedMode', 'true');
+    }
+    const boardsModal = document.getElementById('boards-menu-modal');
+    if (boardsModal) boardsModal.classList.remove('visible');
+    updateHeaderFullscreenUI();
+    adjustFullscreenSearchLayout();
+}
+
+// Иконата на всеки квадрат „Цял екран" (хедърния и клонирания в плаващото меню) следва режима:
+// стрелки навън, докато хедърът се вижда, стрелки навътре, докато е скрит.
+function updateHeaderFullscreenUI() {
+    const isHidden = isHeaderFullscreen();
+    document.querySelectorAll('.fullscreen-toggle-btn').forEach(btn => {
+        btn.innerHTML = isHidden ? fullscreenCompressIconSvg : fullscreenExpandIconSvg;
+        btn.title = isHidden ? (_('restoreHeaderTooltip') || 'Show header') : (_('toggleFullscreenTooltip') || 'Full screen (Hide/Show header)');
+        btn.setAttribute('aria-label', btn.title);
+        btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+    });
+}
+
+// Името на борда за пълноекранния хедър: истинският борд по име, специалните изгледи по превод.
+const FULLSCREEN_LABEL_KEYS = {
+    'all': 'allBoards',
+    'search-results': 'searchResultTitle',
+    'reminder': 'reminder',
+    'new-updates': 'newUpdates',
+    'trash': 'trashBoardTitle',
+    'with-photos': 'photosBoardTitle',
+    'with-videos': 'videosBoardTitle',
+    'with-sounds': 'soundsBoardTitle',
+    'with-other': 'otherBoardTitle'
+};
+
+function fullscreenBoardLabel(boardId) {
+    const bId = (boardId === undefined || boardId === null) ? '' : String(boardId);
+    if (!bId) return '';
+    const board = (typeof boardsData !== 'undefined' && Array.isArray(boardsData))
+        ? boardsData.find(b => b.gdid == bId || b.id == bId) : null;
+    if (board && board.title) return board.title;
+    const key = FULLSCREEN_LABEL_KEYS[bId];
+    if (key) {
+        const translated = _('' + key);
+        if (translated && translated !== key) return translated;
+    }
+    // Календарът има собствен изглед, който сам крие хедъра: там етикет не трябва.
+    if (bId === 'calendar' || bId === 'calendar_monthly' || bId === 'calendar_weekly') return '';
+    return bId;
+}
+
+// При смяна на борд етикетът се обновява на място (полето за търсене се подрежда наново).
+function updateFullscreenBoardLabel() {
+    const fsBoardLabel = document.getElementById('fullscreen-board-label');
+    if (!fsBoardLabel) return;
+    fsBoardLabel.textContent = fullscreenBoardLabel(currentBoardFilter);
+    adjustFullscreenSearchLayout();
+}
+
+// Етикетът стои вляво в пълноекранния хедър и не се бърка на полето за търсене: иконата и
+// отстъпът на полето се смятат от ширината му.
+function adjustFullscreenSearchLayout() {
+    const isFullscreen = isHeaderFullscreen();
+    const searchBox = document.getElementById('search-box');
+    const searchIcon = document.querySelector('.search-icon-static');
+    const fsBoardLabel = document.getElementById('fullscreen-board-label');
+    if (!searchBox || !searchIcon) return;
+    if (isFullscreen && fsBoardLabel) {
+        if (!fsBoardLabel.textContent) fsBoardLabel.textContent = fullscreenBoardLabel(currentBoardFilter);
+        if (fsBoardLabel.textContent) {
+            let labelWidth = fsBoardLabel.offsetWidth;
+            if (labelWidth === 0) {
+                // Скрит етикет не се мери: мерим го навън, със същите стилове.
+                const tempSpan = document.createElement('span');
+                tempSpan.style.cssText = 'position:absolute;visibility:hidden;font-size:12px;font-weight:bold;padding:2px 8px;white-space:nowrap;';
+                tempSpan.textContent = fsBoardLabel.textContent;
+                document.body.appendChild(tempSpan);
+                labelWidth = Math.min(tempSpan.offsetWidth, 120);
+                tempSpan.remove();
+            }
+            const offset = labelWidth + 5;
+            searchIcon.style.left = (offset + 5) + 'px';
+            searchBox.style.paddingLeft = (offset + 34) + 'px';
+            return;
+        }
+    }
+    searchIcon.style.left = '';
+    searchBox.style.paddingLeft = '';
+}
+
+// Началното състояние идва от localStorage['extendedMode']. Слуша се и за смяна на класа/стиловете
+// на хедъра, за да е подредено полето за търсене винаги.
+function initHeaderFullscreen() {
+    const isExtended = localStorage.getItem('extendedMode') === 'true';
+    const header = document.querySelector('header');
+    if (header) header.classList.toggle('header-fullscreen', isExtended);
+    updateHeaderFullscreenUI();
+    adjustFullscreenSearchLayout();
+    if (header && !header._hasSearchLayoutObserver) {
+        header._hasSearchLayoutObserver = true;
+        new MutationObserver(() => { adjustFullscreenSearchLayout(); })
+            .observe(header, { attributes: true, attributeFilter: ['style', 'class'] });
+        window.addEventListener('resize', adjustFullscreenSearchLayout);
+    }
+}
+
+// --- Командите в полето за търсене (порт от cx-notes) -------------------------------------------
+// Списъкът се показва при /? (или /help) и при фокус, ако командата е в полето. Клик по ред
+// изпълнява командата. /9 (лексикално търсене) НЕ се пренася: в main няма такъв режим, затова и
+// редът му липсва в списъка.
+function renderCommandsHelpPopup() {
+    const popup = document.getElementById('saved-searches-popup');
+    if (!popup) return;
+    popup.style.display = 'block';
+    popup.innerHTML = '';
+    const closeBtn = document.createElement('div');
+    closeBtn.className = 'saved-search-close-btn';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.title = _('closeButton') || 'Close';
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        popup.style.display = 'none';
+    });
+    popup.appendChild(closeBtn);
+    const contentContainer = document.createElement('div');
+    contentContainer.className = 'saved-searches-content';
+    popup.appendChild(contentContainer);
+    const headerRow = document.createElement('div');
+    headerRow.className = 'saved-search-item';
+    headerRow.style.fontWeight = 'bold';
+    headerRow.style.fontStyle = 'normal';
+    headerRow.style.cursor = 'default';
+    headerRow.style.color = '#1f3b52';
+    headerRow.textContent = _('searchCommandsTitle') || 'Commands:';
+    headerRow.addEventListener('click', (e) => e.stopPropagation());
+    contentContainer.appendChild(headerRow);
+    const defaultList = [
+        { cmd: '/1', text: '/1  or  /set — Settings' },
+        { cmd: '/2', text: '/2  or  /info — System information' },
+        { cmd: '/3', text: '/3  or  /cal — Calendar' },
+        { cmd: '/4', text: '/4  or  /rel — Reload' },
+        { cmd: '/5', text: '/5  or  /out — Sign out' },
+        { cmd: '/6', text: '/6  or  /norm — Exit full screen' },
+        { cmd: '/7', text: '/7  or  /ex — Full screen' },
+        { cmd: '/%', text: '/%number — Zoom (e.g. /%50)' },
+        { cmd: '/0', text: '/0  or  /wipe — Erase data and close tab' }
+    ];
+    const rawList = _('searchCommandsList');
+    const commandsList = (Array.isArray(rawList) && rawList.length > 0) ? rawList : defaultList;
+    commandsList.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'saved-search-item';
+        row.style.fontStyle = 'normal';
+        const text = typeof item === 'string' ? item : item.text;
+        let cmd = item.cmd || (typeof item === 'string' ? item.split(/\s+/)[0] : (item.text ? item.text.split(/\s+/)[0] : ''));
+        if (cmd.startsWith('/%')) cmd = '/%';
+        row.textContent = text;
+        row.addEventListener('click', () => {
+            popup.style.display = 'none';
+            const sBox = document.getElementById('search-box');
+            if (cmd === '/%') {
+                if (sBox) { sBox.value = '/%'; sBox.focus(); }
+            } else {
+                if (sBox) sBox.value = '';
+                handleSearchCommand(cmd);
+            }
+        });
+        contentContainer.appendChild(row);
+    });
+}
+
+async function handleSearchCommand(commandText) {
+    if (!commandText || typeof commandText !== 'string') return false;
+    const trimmed = commandText.trim();
+    if (!trimmed.startsWith('/')) return false;
+    const cmd = trimmed.toLowerCase();
+    if (cmd === '/?' || cmd === '/help') {
+        renderCommandsHelpPopup();
+        return true;
+    }
+    if (cmd === '/set' || cmd === '/settings' || cmd === '/1') {
+        const btn = document.getElementById('settings_button');
+        if (btn) btn.click();
+        return true;
+    }
+    if (cmd === '/norm' || cmd === '/normal' || cmd === '/6') {
+        if (isHeaderFullscreen()) toggleHeaderFullscreen();
+        return true;
+    }
+    if (cmd === '/ex' || cmd === '/expand' || cmd === '/7') {
+        if (!isHeaderFullscreen()) toggleHeaderFullscreen();
+        return true;
+    }
+    if (cmd === '/rel' || cmd === '/reload' || cmd === '/4') {
+        const btn = document.getElementById('reload_button');
+        if (btn) btn.click();
+        return true;
+    }
+    if (cmd === '/cal' || cmd === '/calendar' || cmd === '/3') {
+        const btn = document.getElementById('calendar_button');
+        if (btn) btn.click();
+        else if (typeof filterNotesByBoard === 'function') filterNotesByBoard('calendar');
+        return true;
+    }
+    if (cmd === '/out' || cmd === '/5' || cmd === '/logout') {
+        const btn = document.getElementById('signout_button');
+        if (btn) btn.click();
+        else if (typeof handleSignoutClick === 'function') handleSignoutClick();
+        return true;
+    }
+    if (cmd === '/info' || cmd === '/2') {
+        const counter = document.getElementById('note-counter');
+        if (counter) counter.click();
+        return true;
+    }
+    const zoomMatch = cmd.match(/^\/%\s*(\d+)%?$/);
+    if (zoomMatch) {
+        const scaleInput = document.getElementById('scaleInput');
+        const applyBtn = document.getElementById('applyZoomBtn');
+        if (scaleInput) scaleInput.value = zoomMatch[1];
+        if (applyBtn) applyBtn.click();
+        return true;
+    }
+    if (cmd === '/wipe' || cmd === '/0') {
+        // Изтриването иска код за потвърждение, който се въвежда на ръка - както в cx-notes.
+        const code = Math.floor(100 + Math.random() * 900);
+        const template = _('wipeConfirmationPrompt') || 'Enter confirmation code {code} to wipe all data:';
+        const inputVal = await showPrompt(template.replace('{code}', code));
+        if (inputVal === null) return true;
+        if (inputVal.trim() !== String(code)) {
+            alert(_('wipeWrongCode') || 'Incorrect confirmation code. Operation cancelled.');
+            return true;
+        }
+        try {
+            if (typeof NOTES_DB_NAME !== 'undefined') indexedDB.deleteDatabase(NOTES_DB_NAME);
+            if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
+                const dbs = await indexedDB.databases();
+                for (const d of dbs) { if (d.name) indexedDB.deleteDatabase(d.name); }
+            }
+            if (typeof caches !== 'undefined') {
+                const keys = await caches.keys();
+                for (const k of keys) { if (k !== 'app-cache') await caches.delete(k); }
+            }
+        } catch (e) { }
+        try {
+            localStorage.clear();
+            sessionStorage.clear();
+        } catch (e) { }
+        document.body.innerHTML = '';
+        window.close();
+        window.location.href = 'about:blank';
+        return true;
+    }
+    return false;
+}
+
+// Въпрос с поле за въвеждане (порт от cx-notes): ползва същия popup, който пита за ID на папка.
+function showPrompt(message, defaultValue = '') {
+    return new Promise(resolve => {
+        const popup = document.getElementById('folderIdPromptPopup');
+        if (!popup) { resolve(null); return; }
+        const messagePara = popup.querySelector('p');
+        const okButton = document.getElementById('submitFolderIdBtn');
+        const input = document.getElementById('folderIdInput');
+        let noButton = document.getElementById('prompt-no-btn');
+        if (!noButton) {
+            noButton = document.createElement('button');
+            noButton.id = 'prompt-no-btn';
+            noButton.className = 'zoom-btn settings-close-btn';
+            noButton.style.marginLeft = '10px';
+            okButton.parentNode.appendChild(noButton);
+        }
+        messagePara.textContent = message;
+        input.style.display = 'block';
+        input.value = defaultValue;
+        okButton.textContent = _('submitButton') || 'OK';
+        noButton.textContent = _('cancelButton') || 'Cancel';
+        noButton.style.display = 'inline-block';
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okButton.removeEventListener('click', onOk);
+            noButton.removeEventListener('click', onCancel);
+            input.removeEventListener('keydown', onKeyDown);
+            noButton.style.display = 'none';
+            okButton.addEventListener('click', handleSubmitFolderId);
+        };
+        const onOk = () => { const val = input.value; cleanup(); resolve(val); };
+        const onCancel = () => { cleanup(); resolve(null); };
+        const onKeyDown = (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+            else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        };
+        okButton.removeEventListener('click', handleSubmitFolderId);
+        okButton.addEventListener('click', onOk);
+        noButton.addEventListener('click', onCancel);
+        input.addEventListener('keydown', onKeyDown);
+        popup.classList.add('show');
+        input.focus();
+    });
+}
+
 function initApp() {
     // Inject custom styles dynamically to fix UI issues
     const style = document.createElement('style');
@@ -2580,6 +2901,10 @@ function initApp() {
     searchWrapper.appendChild(clearSearchBtn); // Add Clear Button
     searchWrapper.appendChild(saveSearchBtn);
     searchWrapper.appendChild(savedSearchesPopup);
+    // Етикетът с името на борда: вижда се само в пълноекранен режим (вж. adjustFullscreenSearchLayout).
+    const fsBoardLabel = document.createElement('span');
+    fsBoardLabel.id = 'fullscreen-board-label';
+    searchWrapper.appendChild(fsBoardLabel);
     // This function will be the single point for applying search and UI updates
     window.triggerSearch = (isUserTyping = false) => {
         let hasText = searchBox.value.trim().length > 0;
@@ -2634,6 +2959,22 @@ function initApp() {
         clearSearchBtn.style.display = hasText ? 'flex' : 'none';
         // Save button might wait for debounce, but usually safer to show immediately too
         saveSearchBtn.style.display = searchBox.value.trim().length > 0 ? 'flex' : 'none';
+        const typed = searchBox.value.trim();
+        // „/?" (или „/help") показва списъка с команди, вместо да търси.
+        if (typed === '/?' || typed === '/help') {
+            saveSearchBtn.style.display = 'none';
+            renderCommandsHelpPopup();
+            clearTimeout(searchDebounceTimeout);
+            return;
+        }
+        // Команда се изпълнява с Enter: докато се пише, не се търси и стрелката за запис се скрива.
+        if (typed.startsWith('/')) {
+            saveSearchBtn.style.display = 'none';
+            const cmdPopup = document.getElementById('saved-searches-popup');
+            if (cmdPopup) cmdPopup.style.display = 'none';
+            clearTimeout(searchDebounceTimeout);
+            return;
+        }
         if (!event.isTrusted) return;
         clearTimeout(searchDebounceTimeout);
         searchDebounceTimeout = setTimeout(() => {
@@ -2642,10 +2983,25 @@ function initApp() {
     });
 
     // Handle Enter key
-    searchBox.addEventListener('keydown', (event) => {
+    searchBox.addEventListener('keydown', async (event) => {
         if (event.key === 'Enter') {
             event.preventDefault(); // Prevent form submission if any
             searchBox.blur(); // Hide keyboard on mobile
+            const typed = searchBox.value.trim();
+            // Команда („/7", „/norm", „/%50"): изпълнява се вместо търсене.
+            if (typed.startsWith('/')) {
+                const handled = await handleSearchCommand(typed);
+                if (handled) {
+                    if (typed !== '/?' && typed !== '/help') {
+                        searchBox.value = '';
+                        clearSearchBtn.style.display = 'none';
+                        saveSearchBtn.style.display = 'none';
+                        const popup = document.getElementById('saved-searches-popup');
+                        if (popup) popup.style.display = 'none';
+                    }
+                    return;
+                }
+            }
             triggerSearch(true); // Ensure search is applied
             document.getElementById('saved-searches-popup').style.display = 'none'; // Close popup
         }
@@ -2660,7 +3016,10 @@ function initApp() {
     });
 
     searchBox.addEventListener('focus', () => {
-        renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
+        const typed = searchBox.value.trim();
+        // В полето стои команда: показва се списъкът с командите, иначе запазените търсения.
+        if (typed === '/?' || typed === '/help') renderCommandsHelpPopup();
+        else renderSavedSearchesPopup(); // Модалът ще се показва винаги при фокус
     });
     saveSearchBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2674,6 +3033,9 @@ function initApp() {
             document.getElementById('saved-searches-popup').style.display = 'block';
         }
     });
+
+    // Пълноекранният режим се възстановява сега: полето за търсене и етикетът вече съществуват.
+    initHeaderFullscreen();
 
     // --- Calculator Button ---
     const calculateBtn = document.getElementById('calculate-modal-btn');
@@ -5423,7 +5785,9 @@ function readNoteWindowGeometry() {
             const num = (x) => (typeof x === 'number' && isFinite(x)) ? Math.round(x) : null;
             const x = num(b.x), y = num(b.y), w = num(b.w), h = num(b.h);
             if (x === null || y === null || w === null || h === null) return;
-            boxes[k] = { x, y, w, h };
+            // Петото поле e значи „тази бележка се отваря разпъната"; тогава x/y/w/h са кутията, към
+            // която се връща при свиване, а не разпънатият (цял екран) размер.
+            boxes[k] = (b.e === true) ? { x, y, w, h, e: true } : { x, y, w, h };
         });
         const order = Array.isArray(raw.order) ? raw.order.filter(k => boxes[k]) : [];
         Object.keys(boxes).forEach(k => { if (!order.includes(k)) order.push(k); });
@@ -5440,6 +5804,21 @@ function writeNoteWindowGeometry(store) {
         // Мястото не е толкова важно, колкото бележката: при пълна памет просто не се помни.
         console.warn('noteWindowGeometry: save failed', e);
     }
+}
+
+// Един запис за една бележка, с поддръжка на реда (най-старият се изхвърля на 300-ия). Кутията е
+// {x, y, w, h} или {x, y, w, h, e: true} за разпъната (вж. readNoteWindowGeometry).
+function writeNoteGeometryEntry(key, box) {
+    if (!key || !box) return;
+    const store = readNoteWindowGeometry();
+    store.boxes[key] = box;
+    store.order = store.order.filter(k => k !== key);
+    store.order.push(key);
+    while (store.order.length > NOTE_WINDOW_GEOM_MAX) {
+        const oldest = store.order.shift();
+        delete store.boxes[oldest];
+    }
+    writeNoteWindowGeometry(store);
 }
 
 // Размерът се мери по computed style, не по offsetWidth: кутията има padding, а записаното се
@@ -5470,17 +5849,19 @@ function noteWindowGeometryUnchanged(now, base) {
 
 function rememberNoteWindowGeometry(win) {
     if (!win || !win.key || !win.box || !win.box.offsetWidth) return;
+    // Разпъната бележка: записа се прави от кутията за връщане (разпънатата не се мести и не се
+    // преоразмерява, значи измерената сега кутия е целият екран - тя не е за записа).
+    if (win.expanded) {
+        const back = win.restoreBox;
+        if (!back) return;
+        const existing = savedNoteWindowGeometry(win.key);
+        if (existing && existing.e === true && noteWindowGeometryUnchanged(back, existing)) return;
+        writeNoteGeometryEntry(win.key, { x: back.x, y: back.y, w: back.w, h: back.h, e: true });
+        return;
+    }
     const now = measureNoteWindowBox(win);
     if (noteWindowGeometryUnchanged(now, win.geom0)) return;
-    const store = readNoteWindowGeometry();
-    store.boxes[win.key] = now;
-    store.order = store.order.filter(k => k !== win.key);
-    store.order.push(win.key);
-    while (store.order.length > NOTE_WINDOW_GEOM_MAX) {
-        const oldest = store.order.shift();
-        delete store.boxes[oldest];
-    }
-    writeNoteWindowGeometry(store);
+    writeNoteGeometryEntry(win.key, now);
     // Записаното е новата базова кутия: следващото затваряне без промяна няма да пише.
     win.geom0 = now;
 }
@@ -5489,6 +5870,9 @@ function rememberNoteWindowGeometry(win) {
 // не се местят - базовата им кутия става текущата, за да не си създадат запис при затваряне.
 // Дефолтният размер (modalWidth/modalHeight) остава: той е настройка за новите бележки, не запис.
 function resetNoteWindowGeometry() {
+    // „Ресет" трие целия запис, а режимът на разпъване живее в него: затова разпънатите бележки се
+    // свиват, преди записът да бъде изтрит (иначе при затваряне пак щяха да си създадат запис с e:true).
+    noteWindows.forEach(win => { if (win && win.expanded) setNoteWindowExpanded(win, false); });
     try {
         localStorage.removeItem(NOTE_WINDOW_GEOM_KEY);
     } catch (e) {
@@ -5556,7 +5940,11 @@ function applyNoteWindowGeometry(win, options, fresh) {
     box.style.height = typeof h === 'number' ? h + 'px' : h;
     box.style.maxWidth = 'none';
     box.style.maxHeight = 'none';
-    if (!fresh && win.placed) return;
+    // Пре-рисуване на вече поставен прозорец: разпънатият остава разпънат (стиловете са му цял екран).
+    if (!fresh && win.placed) {
+        if (win.expanded) setNoteWindowExpanded(win, true);
+        return;
+    }
     const vw = window.innerWidth, vh = window.innerHeight;
     const bw = box.offsetWidth || 400, bh = box.offsetHeight || 300;
     if (saved && windowPositionFits(saved, bw, bh, vw, vh)) {
@@ -5571,6 +5959,109 @@ function applyNoteWindowGeometry(win, options, fresh) {
     // създава запис за бележка, която никой не е местил и не е преоразмерявал. Отнася се и за
     // пре-рисуване (смяна на бележката в същия прозорец): то също е решение на приложението.
     win.geom0 = measureNoteWindowBox(win);
+    // Бележка, записана като разпъната, се отваря направо разпъната. Кутията, която току-що се приложи
+    // (от записа), е и тази, към която се връща при свиване.
+    if (saved && saved.e === true) setNoteWindowExpanded(win, true);
+    else if (win.expanded) setNoteWindowExpanded(win, false);
+}
+
+// --- Разпъване на бележката (порт от cx-notes b1.91) --------------------------------------------
+// Разпънатата бележка заема екрана без рамка и без отстъп. Режимът ѝ е на това устройство, като
+// мястото и размерът: живее в noteWindowGeometry като пето поле на кутията ({x, y, w, h, e}), а
+// ключът си остава бележката. Само една бележка е разпъната в даден момент.
+function applyExpandedModalSize(box, isExpanded) {
+    if (!box) return;
+    if (isExpanded) {
+        // 100% от овърлея, който е fixed inset 0, значи точно екранът: 100vh не се ползва, защото
+        // включва лентите на телефона и долният ръб на бележката остава под тях.
+        box.style.width = '100%';
+        box.style.height = '100%';
+        box.style.maxWidth = '100%';
+        box.style.maxHeight = '100%';
+        return;
+    }
+    box.style.maxWidth = '100vw';
+    box.style.maxHeight = 'none';
+}
+
+// Стрелката: ▲ при нормален размер (натискане разпъва), ▼ при разпъната (натискане свива).
+function updateModalExpandButton(win) {
+    const btn = win && win.expandBtn;
+    if (!btn) return;
+    const expanded = !!win.expanded;
+    btn.innerHTML = expanded ? '&#9660;' : '&#9650;';
+    btn.title = expanded
+        ? (_('modalCollapseTooltip') || 'Restore normal size')
+        : (_('modalExpandTooltip') || 'Expand note');
+    btn.setAttribute('aria-label', btn.title);
+    btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
+// Класът на body казва на CSS-а, че има разпъната бележка (вж. style.css).
+function syncAnyNoteExpanded() {
+    const anyExpanded = getOpenNoteWindows().some(w => w && w.expanded);
+    document.body.classList.toggle('modal-note-expanded', anyExpanded);
+}
+
+// Само една разпъната в даден момент: разпъването на друга свива предишната, която си връща мястото.
+function collapseOtherExpandedNotes(keep) {
+    getOpenNoteWindows().forEach(w => {
+        if (w && w !== keep && w.expanded) setNoteWindowExpanded(w, false);
+    });
+}
+
+// Разпъва / свива един прозорец и записва режима в noteWindowGeometry. Докато е разпъната, бележката
+// не се мести и не се преоразмерява (вж. wireNoteWindowMove / wireNoteWindowResize): само излизането
+// от режима връща старата кутия.
+function setNoteWindowExpanded(win, expanded) {
+    if (!win || !win.box) return;
+    const box = win.box;
+    const want = !!expanded;
+    if (want === !!win.expanded) {
+        // Същото състояние: само подсигуряваме стиловете (при пре-рисуване кутията е презаписана).
+        if (want) applyExpandedModalSize(box, true);
+        updateModalExpandButton(win);
+        syncAnyNoteExpanded();
+        return;
+    }
+    if (want) {
+        collapseOtherExpandedNotes(win);
+        // Старата кутия се пази, за да има какво да се върне при свиване.
+        win.restoreBox = measureNoteWindowBox(win);
+        win.expanded = true;
+        applyExpandedModalSize(box, true);
+        box.style.left = '0px';
+        box.style.top = '0px';
+    } else {
+        const back = win.restoreBox;
+        win.expanded = false;
+        applyExpandedModalSize(box, false);
+        if (back) {
+            box.style.width = back.w + 'px';
+            box.style.height = back.h + 'px';
+            box.style.left = back.x + 'px';
+            box.style.top = back.y + 'px';
+        } else {
+            placeNoteWindowInCascade(win, box.offsetWidth || 400, box.offsetHeight || 300, window.innerWidth, window.innerHeight);
+        }
+        win.restoreBox = null;
+        win.geom0 = measureNoteWindowBox(win);
+    }
+    win.el.classList.toggle('note-window-expanded', !!win.expanded);
+    // Записът: разпъната - кутията за връщане с флаг; свита - обикновената кутия, без флаг.
+    if (win.key) {
+        const back = win.restoreBox;
+        if (win.expanded && back) writeNoteGeometryEntry(win.key, { x: back.x, y: back.y, w: back.w, h: back.h, e: true });
+        else writeNoteGeometryEntry(win.key, measureNoteWindowBox(win));
+    }
+    updateModalExpandButton(win);
+    syncAnyNoteExpanded();
+}
+
+function toggleNoteWindowExpanded(win) {
+    if (!win) return;
+    activateNoteWindow(win, true);
+    setNoteWindowExpanded(win, !win.expanded);
 }
 
 // --- Живот на прозореца -------------------------------------------------------------------------
@@ -5596,7 +6087,12 @@ function createNoteWindow() {
         placed: false,
         slot: -1,
         geom0: null,
-        key: ''
+        key: '',
+        // Разпъване: флагът е на бележката (в noteWindowGeometry), а това е състоянието на екрана.
+        expanded: false,
+        restoreBox: null,
+        expandBtn: null,
+        closeAllBtn: null
     };
     noteWindows.push(win);
     wireNoteWindow(win);
@@ -5826,6 +6322,19 @@ function wireNoteWindow(win) {
         });
     }
 
+    // --- Разпъване на бележката: ▲ в нормален размер, ▼ в разпънат ---
+    // (id-то носи само активният прозорец, затова се търси и по класа от decorateNoteWindowIds.)
+    const expandBtn = el.querySelector('[data-mwid="modal-expand-btn"], #modal-expand-btn');
+    if (expandBtn) {
+        win.expandBtn = expandBtn;
+        expandBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleNoteWindowExpanded(win);
+        });
+        updateModalExpandButton(win);
+    }
+
     // --- „Затвори всички" в лентата (при три и повече отворени бележки) ---
     // Кръгъл бутон с иконата от cx-notes, в ДЯСНАТА клетка на лентата, веднага вляво от хиксчето
     // (.note-header-close-group) - извън плъзгащия се ред с бутоните, за да се вижда винаги.
@@ -5893,6 +6402,8 @@ function wireNoteWindowResize(win, resizeHandle) {
         rememberNoteWindowGeometry(win);
     }
     function startDrag(e) {
+        // Разпънатата бележка не се преоразмерява: излиза се от режима, за да се пипне размерът.
+        if (win.expanded) return;
         e.preventDefault();
         e.stopPropagation();
         startX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -5966,6 +6477,8 @@ function wireNoteWindowMove(win) {
     };
     const onStart = (e) => {
         if (e.type === 'mousedown' && e.button !== 0) return;
+        // Разпънатата бележка заема екрана и не се мести (както в cx-notes): мястото ѝ се пази.
+        if (win.expanded) return;
         if (!inHeaderBand(e)) return;
         const p = point(e);
         start = {
@@ -6003,7 +6516,12 @@ function initNoteWindows() {
         placed: false,
         slot: -1,
         geom0: null,
-        key: ''
+        key: '',
+        // Разпъване: флагът е на бележката (в noteWindowGeometry), а това е състоянието на екрана.
+        expanded: false,
+        restoreBox: null,
+        expandBtn: null,
+        closeAllBtn: null
     };
     src.classList.add('note-window');
     decorateNoteWindowIds(src);
@@ -6334,10 +6852,19 @@ function showAllBoardsModal() {
     const headerMenuContainer = document.querySelector('header .board-menu-container');
     if (!headerMenuContainer) return; // Предпазна мярка
     const headerButtons = headerMenuContainer.querySelectorAll('.board-filter-link');
+    // Квадратите, които не са бордове („Нареди", „Цял екран"), застават по два на ред: половината
+    // ширина на борд-бутон - както е в cx-notes.
+    const modalUtilWidth = Math.max(30, Math.floor((maxWidthForButtons - 10) / 2));
     headerButtons.forEach(button => {
         const clone = button.cloneNode(true);
         // --- КОРЕКЦИЯ: Прилагаме същата ширина като на бутоните в хедъра ---
-        clone.style.width = `${maxWidthForButtons}px`;
+        if (isBoardMenuUtilId(button.dataset.boardid)) {
+            clone.style.width = `${modalUtilWidth}px`;
+            clone.style.minWidth = '30px';
+            clone.style.padding = '0';
+        } else {
+            clone.style.width = `${maxWidthForButtons}px`;
+        }
         modalContent.appendChild(clone);
     });
     // Делегиран слушател за събития върху контейнера на модала
@@ -6346,6 +6873,13 @@ function showAllBoardsModal() {
         if (targetButton) {
             e.preventDefault();
             const boardId = targetButton.dataset.boardid;
+            // „Цял екран": клонингът няма свои слушатели (cloneNode не ги копира), затова режимът се
+            // превключва тук, а менюто се затваря.
+            if (boardId === 'fullscreen') {
+                boardsModal.classList.remove('visible');
+                toggleHeaderFullscreen();
+                return;
+            }
             // Намираме съответния бутон в хедъра
             const headerButton = headerMenuContainer.querySelector(`.board-filter-link[data-boardid="${boardId}"]`);
             if (headerButton) {
@@ -6574,6 +7108,8 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         link.classList.toggle('active', isSelected);
         link.style.height = isSelected ? '39px' : '35px';
     });
+    // Пълноекранният хедър носи името на избрания борд вляво.
+    updateFullscreenBoardLabel();
     // Placeholder-ът вече не включва името на борда, тъй като търсенето е във всички бележки
     // updateSearchPlaceholder() ще зададе общ placeholder
     if (boardId === 'all') {
@@ -6911,6 +7447,11 @@ function initializeLoad() {
     }
 }
 
+// Квадратите в менюто с бордове, които не са бордове: те не участват в мярката на борд-бутоните и
+// получават своя, по-тясна - „Нареди" и „Цял екран".
+const BOARD_MENU_UTIL_IDS = ['reorder-boards', 'fullscreen'];
+function isBoardMenuUtilId(id) { return BOARD_MENU_UTIL_IDS.includes(String(id === undefined ? '' : id)); }
+
 async function createBoardsUI(boardsData, boardParseError) {
     const boardsNote = document.createElement('div');
     boardsNote.className = 'boards-note';
@@ -7205,6 +7746,30 @@ async function createBoardsUI(boardsData, boardParseError) {
         showBoardReorderPopup();
     });
     allButtonLinks.push(reorderLink);
+
+    // --- БУТОН „ЦЯЛ ЕКРАН" (след „Нареди") ---
+    // Пълноекранният режим на приложението, както е в cx-notes: квадрат в менюто с бордове. Същият
+    // квадрат се появява и в плаващото меню, защото то клонира хедърните бутони, а иконата му
+    // следва режима (updateHeaderFullscreenUI).
+    const fullscreenLink = document.createElement('span');
+    fullscreenLink.classList.add('board-filter-link', 'fullscreen-toggle-btn');
+    fullscreenLink.dataset.boardid = 'fullscreen';
+    fullscreenLink.style.backgroundColor = '#455A64';
+    fullscreenLink.style.color = '#fff';
+    fullscreenLink.style.cursor = 'pointer';
+    fullscreenLink.style.display = 'flex';
+    fullscreenLink.style.alignItems = 'center';
+    fullscreenLink.style.justifyContent = 'center';
+    fullscreenLink.innerHTML = fullscreenExpandIconSvg;
+    fullscreenLink.title = _('toggleFullscreenTooltip') || 'Full screen (Hide/Show header)';
+    fullscreenLink.setAttribute('aria-label', fullscreenLink.title);
+    fullscreenLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleHeaderFullscreen();
+    });
+    allButtonLinks.push(fullscreenLink);
+
     maxWidthForButtons = 0;
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
@@ -7212,7 +7777,7 @@ async function createBoardsUI(boardsData, boardParseError) {
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
         tempContainer.appendChild(link);
-        if (link.dataset.boardid !== 'reorder-boards') {
+        if (!isBoardMenuUtilId(link.dataset.boardid)) {
             maxWidthForButtons = Math.max(maxWidthForButtons, link.scrollWidth);
         }
     });
@@ -7220,14 +7785,18 @@ async function createBoardsUI(boardsData, boardParseError) {
     document.body.removeChild(tempContainer);
     maxWidthForButtons += 10;
     allButtonLinks.forEach(link => {
-        if (link.dataset.boardid === 'reorder-boards') {
+        if (isBoardMenuUtilId(link.dataset.boardid)) {
+            // Квадрат, не борд: същата мярка, каквато „Нареди" имаше и досега.
             link.style.width = '44px';
             link.style.minWidth = '44px';
+            link.style.padding = '0';
         } else {
             link.style.width = `${maxWidthForButtons}px`;
         }
         contentEl.appendChild(link);
     });
+    // Иконата на новия квадрат следва текущия режим (може да е включен от предния път).
+    updateHeaderFullscreenUI();
 
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
@@ -7244,14 +7813,40 @@ async function createBoardsUI(boardsData, boardParseError) {
         makeElementDraggable(allBoardsMenuBtn, 'popupMenuBtnPosition');
 
         let clickTimer;
+        let longPressTimer = null;
+        let longPressTriggered = false;
         allBoardsMenuBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // Ctrl+клик превключва пълноекранния режим, без да отваря менюто (както в cx-notes).
+            if (e.ctrlKey) {
+                toggleHeaderFullscreen();
+                return;
+            }
             clearTimeout(clickTimer);
             clickTimer = setTimeout(() => {
                 showAllBoardsModal();
             }, 200);
         });
+        // Задържане с пръст (мобилно) също превключва пълноекранния режим.
+        allBoardsMenuBtn.addEventListener('touchstart', () => {
+            longPressTriggered = false;
+            longPressTimer = setTimeout(() => {
+                longPressTriggered = true;
+                toggleHeaderFullscreen();
+            }, 500);
+        }, { passive: true });
+        allBoardsMenuBtn.addEventListener('touchend', (e) => {
+            clearTimeout(longPressTimer);
+            // Задържането не се брои за клик: менюто не се отваря след него.
+            if (longPressTriggered) {
+                e.preventDefault();
+                longPressTriggered = false;
+            }
+        });
+        allBoardsMenuBtn.addEventListener('touchmove', () => {
+            clearTimeout(longPressTimer);
+        }, { passive: true });
 
         boardsMenuContainer.innerHTML = '';
         boardsMenuContainer.appendChild(allBoardsMenuBtn);
