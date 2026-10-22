@@ -174,9 +174,6 @@ const SEL = (id) => `#notes-container .note[data-i="${id}"]`;
     `изключена настройка: часовникът и пинът са един до друг при напомняне (${gapTimer}px)`, hTimer);
 
   // Иконата на календара стои ВЪТРЕ в .note-header-date, който носи клик-слушателя.
-  // В cx-notes `debug` е винаги true, затова кликът на датата показва суровите данни
-  // вместо мини календара (предсъществуващо, не е част от тази поправка) - затова тук
-  // се проверява, че иконата е в кликаемия елемент, а не какво отваря кликът.
   const hClick = await page.evaluate((sel) => {
     const note = document.querySelector(sel);
     const calIcon = note ? note.querySelector('.note-header-calendar-icon') : null;
@@ -189,11 +186,41 @@ const SEL = (id) => `#notes-container .note[data-i="${id}"]`;
   ok(hClick.inside, 'изключена настройка: иконата на календара е в кликаемия елемент на датата', hClick);
   ok(hClick.pointerEvents === 'auto', `изключена настройка: датата приема кликове (${hClick.pointerEvents})`, hClick);
 
+  // Обикновеният клик върху датата отваря седмичния мини календар (в debug режим
+  // JSON-ът е зад Ctrl+клик, иначе календарът е недостъпен в cx-notes).
+  await page.click(`${SEL(201)} .note-header-date`).catch(() => { });
+  await page.waitForSelector(`${SEL(201)} .note-week-calendar`, { timeout: 3000 }).catch(() => { });
+  const plainClick = await page.evaluate((sel) => {
+    const note = document.querySelector(sel);
+    return {
+      calendar: !!(note && note.querySelector('.note-week-calendar')),
+      json: document.body.textContent.includes('"notetxt"'),
+    };
+  }, SEL(201));
+  ok(plainClick.calendar, 'обикновен клик: отваря .note-week-calendar в бележката', plainClick);
+  ok(!plainClick.json, 'обикновен клик: не показва JSON-записа', plainClick);
+
+  // Затваряме календара с неговия затварящ ред, за да не покрива следващите кликове.
+  await page.click(`${SEL(201)} .note-week-calendar .note-week-close-hint`).catch(() => { });
+  await page.waitForFunction((sel) => { const n = document.querySelector(sel); return !n || !n.querySelector('.note-week-calendar'); }, SEL(201), { timeout: 3000 }).catch(() => { });
+
   // Клик на иконата на часовника показва аналоговия часовник.
   await page.click(`${SEL(201)} .note-header-clock-icon`).catch(() => { });
   await page.waitForSelector(`${SEL(201)} .clock`, { timeout: 3000 }).catch(() => { });
   ok(await page.evaluate((sel) => !!document.querySelector(sel + ' .clock'), SEL(201)),
     'изключена настройка: клик на иконата на часовника показва аналоговия часовник', null);
+
+  // Ctrl+клик върху датата в debug режим показва суровия запис, а не календара.
+  await page.click(`${SEL(202)} .note-header-date`, { modifiers: ['Control'] }).catch(() => { });
+  const ctrlClick = await page.evaluate((sel) => {
+    const note = document.querySelector(sel);
+    return {
+      json: document.body.textContent.includes('"notetxt"'),
+      calendar: !!(note && note.querySelector('.note-week-calendar')),
+    };
+  }, SEL(202));
+  ok(ctrlClick.json, 'Ctrl+клик в debug режим: показва JSON-записа на бележката', ctrlClick);
+  ok(!ctrlClick.calendar, 'Ctrl+клик: не отваря мини календара', ctrlClick);
 
   ok(errs.length === 0, `изключена настройка: няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`, errs);
   await ctx.close();

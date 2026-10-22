@@ -20119,10 +20119,13 @@ async function createNoteElement(noteContent) {
     headerDate.appendChild(dateTextEl);
     headerTime.appendChild(clockIconEl);
     headerTime.appendChild(timeTextEl);
-    // In debug mode the date shows raw data; otherwise it opens the compact week calendar.
+    // Обикновеният клик отваря седмичния мини календар. В debug режим Ctrl+клик
+    // показва суровите данни - същият жест, с който debug показва JSON и другаде.
+    // (`debug` в cx-notes е винаги true, така че условие само по него би оставило
+    // мини календара недостъпен.)
     headerDate.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (debug) {
+        if (debug && e.ctrlKey) {
             let debugText = JSON.stringify(fullNoteContent, null, 2);
             if (fullNoteContent.gdid && localFileMap.has(fullNoteContent.gdid)) {
                 debugText = `File: ${localFileMap.get(fullNoteContent.gdid)}\n\n` + debugText;
