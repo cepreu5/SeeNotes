@@ -1618,33 +1618,85 @@ async function createColoredNoteBackground(color, src, width, height) {
 
 // ------------------------ Database ----------------------------
 /**
- * Отваря IndexedDB базата данни.
+ * Четимо описание на грешка от IndexedDB (errorCode е отдавна отпаднал и е undefined).
+ * @param {any} error
+ * @returns {string}
+ */
+function describeDbError(error) {
+    if (!error) return 'unknown error';
+    if (error.name && error.message) return `${error.name}: ${error.message}`;
+    if (error.message) return String(error.message);
+    return String(error);
+}
+
+/**
+ * Създава липсващите object store-и върху база, която се отваря/вдига.
+ * @param {IDBDatabase} db
+ */
+function createMissingNotesStores(db) {
+    if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
+        db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
+    }
+    if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+        db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
+    }
+    if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
+        db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+    }
+    if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
+        db.createObjectStore(CONFIG_STORE_NAME);
+    }
+}
+
+/**
+ * Отваря NotesDB на точно определена версия (или на текущата, ако version е null).
+ * @param {number|null} version
  * @returns {Promise<IDBDatabase>}
  */
-function openNotesDB() {
+function openNotesDBAtVersion(version) {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(NOTES_DB_NAME, NOTES_DB_VERSION);
+        const request = version ? indexedDB.open(NOTES_DB_NAME, version) : indexedDB.open(NOTES_DB_NAME);
         request.onupgradeneeded = (event) => {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
-                db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
-                db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
-                db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
-            }
-            if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
-                db.createObjectStore(CONFIG_STORE_NAME);
-            }
+            createMissingNotesStores(event.target.result);
             console.log("NotesDB structure is up to date.");
         };
         request.onsuccess = (event) => {
             resolve(event.target.result);
         };
-        request.onerror = (event) => reject("Error opening NotesDB: " + event.target.errorCode);
+        request.onerror = (event) => {
+            // Истинската грешка е в error (VersionError, QuotaExceededError...),
+            // а не в остарелия errorCode, който винаги е undefined.
+            reject(event.target.error || new Error('IndexedDB open failed without an error object'));
+        };
+        request.onblocked = () => {
+            console.warn('NotesDB: another tab keeps the database open; waiting for it to close.');
+        };
     });
+}
+
+/**
+ * Отваря IndexedDB базата данни.
+ * Ако базата на диска е по-нова от тази версия на приложението (VersionError),
+ * отваря я такава, каквато е, вместо да остане без бележки.
+ * @returns {Promise<IDBDatabase>}
+ */
+async function openNotesDB() {
+    let db;
+    try {
+        db = await openNotesDBAtVersion(NOTES_DB_VERSION);
+    } catch (error) {
+        console.warn(`NotesDB: open at version ${NOTES_DB_VERSION} failed (${describeDbError(error)}). Opening the existing database as it is.`);
+        db = await openNotesDBAtVersion(null);
+    }
+    const requiredStores = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME, CONFIG_STORE_NAME];
+    const missingStores = requiredStores.filter(name => !db.objectStoreNames.contains(name));
+    if (missingStores.length > 0) {
+        const nextVersion = db.version + 1;
+        console.warn(`NotesDB: missing stores (${missingStores.join(', ')}), upgrading to version ${nextVersion}.`);
+        db.close();
+        db = await openNotesDBAtVersion(nextVersion);
+    }
+    return db;
 }
 
 /**
