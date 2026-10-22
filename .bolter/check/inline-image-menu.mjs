@@ -472,10 +472,10 @@ ok(inserted.newImage && inserted.newImage.paramstring === 'Wallet.jpg',
   `записът носи името на файла, не целия път (${inserted.newImage && inserted.newImage.paramstring})`);
 ok(inserted.images.length === inserted.beforeImages + 1, `местата на снимки стават ${inserted.images.length} (${inserted.images.map(i => i.paramint)})`);
 ok(inserted.caret[0] === inserted.pos + 1, `каретата остава след новата снимка (${inserted.caret})`);
-// Базата: min(естествената ширина на снимката, ширината на бележката при поставяне). Снимката е
-// широка 4000px, значи базата е колоната на бележката - и се пази при размерите на бележката.
-ok(inserted.storedBase === inserted.column && inserted.column < 4000,
-  `базата на ширината се пази: min(4000px, колоната ${inserted.column}px) = ${inserted.storedBase}`, { inserted });
+// Базата: естествената ширина на снимката (постоянна величина), не ширината на бележката. Снимката е
+// широка 4000px, значи базата е 4000 дори при колона 350px - и се пази при размерите на бележката.
+ok(inserted.storedBase === 4000 && inserted.column < 4000,
+  `базата на ширината се пази: 4000px, не колоната ${inserted.column}px (${inserted.storedBase})`, { inserted });
 
 // Новото място има маркер и той показва същата снимка.
 const markers = await page.evaluate(async ({ pos }) => {
@@ -710,9 +710,10 @@ ok(refused.after.value === 'а {{код}} б' && refused.after.count === refused
 ok(refused.restored, 'бележката е върната както беше за следващите проверки');
 
 // ======================= 10. Ширината в бележката идва от записана база, на борда - от колоната =====
-// Решение на собственика (22.10): базата е min(естествената ширина на снимката, ширината на бележката
-// в момента на поставяне) и се ЗАПИСВА в бележката (parambase). Ширината в пиксели е (paramint/10) ×
-// базата и не се мени с прозореца на бележката; само по-тясна бележка я свива (max-width: 100%).
+// Решение на собственика (22.10, уточнено): базата е САМО естествената ширина на снимката - постоянна
+// величина - и се ЗАПИСВА в бележката (uiState.imgbase). Ширината на бележката НЕ влиза в базата: тя
+// се мени с прозореца, а един и същ paramint трябва да дава един и същ резултат. Ширината в пиксели е
+// (paramint/10) × базата; само по-тясна бележка я свива (max-width: 100%).
 // Стара бележка без записана база пада на естествената ширина. На борда остава процент от колоната.
 const inserts = await page.evaluate(async () => {
   const body = document.getElementById('modal-body');
@@ -739,7 +740,7 @@ const inserts = await page.evaluate(async () => {
   };
   // Малката снимка (300px) влиза в широка бележка - базата е самата снимка.
   const small = await insertAt('file_0000.png', 0);
-  // Голямата (4000px) влиза в края на бележката - базата е ширината на бележката.
+  // Голямата (4000px) влиза в края на бележката - базата пак е самата снимка (4000), не колоната.
   const bigPos = field.value.length;
   const big = await insertAt('Wallet.jpg', bigPos);
   return { column, small, big, text: field.value, format: body.dataset.format || '' };
@@ -763,9 +764,9 @@ const stored = await page.evaluate(() => {
   };
 });
 ok(stored.small === 300, `малката снимка (300px) в бележка с колона ${inserts.column}px: базата е 300, не колоната (${stored.small})`, stored);
-ok(stored.big === inserts.column && inserts.column < 4000,
-  `голямата снимка (4000px): базата е ширината на бележката, ${stored.big}px, не 4000`, { stored, column: inserts.column });
-ok(stored.imgbase && stored.imgbase['file_0000.png'] === 300 && stored.imgbase['Wallet.jpg'] === inserts.column,
+ok(stored.big === 4000 && inserts.column < 4000,
+  `голямата снимка (4000px): базата е 4000, не ширината на бележката ${inserts.column}px (${stored.big})`, { stored, column: inserts.column });
+ok(stored.imgbase && stored.imgbase['file_0000.png'] === 300 && stored.imgbase['Wallet.jpg'] === 4000,
   `базата стои при размерите на бележката, до името на файла (${JSON.stringify(stored.imgbase)})`, stored);
 ok(stored.textSpanHasBase === false, 'в text_span няма поле за база (само paramint)', stored);
 
@@ -789,10 +790,10 @@ const persisted = await page.evaluate(() => {
     big: nmInlineBaseWidth(body, 'Wallet.jpg'),
   };
 });
-ok(persisted.imgbase && persisted.imgbase['file_0000.png'] === 300 && persisted.imgbase['Wallet.jpg'] === inserts.column,
+ok(persisted.imgbase && persisted.imgbase['file_0000.png'] === 300 && persisted.imgbase['Wallet.jpg'] === 4000,
   `базата оцелява записа и JSON-а на бележката (${JSON.stringify(persisted.imgbase)})`, persisted);
 ok(persisted.textSpanHasBase === false, 'след записа в text_span пак няма поле за база', persisted);
-ok(persisted.small === 300 && persisted.big === inserts.column,
+ok(persisted.small === 300 && persisted.big === 4000,
   `след като сесията е изчистена, ширината идва от JSON-а на бележката (${persisted.small}, ${persisted.big})`, persisted);
 
 // Режим преглед на същата бележка - през бутона „Преглед" (окото) в редактора.
@@ -812,9 +813,9 @@ ok(frames.every(f => Math.abs(f.px - expectPx(f)) <= 2),
 const smallFrame = frames.find(f => f.file === 'file_0000.png' && Number(f.base) === 300);
 ok(!!smallFrame && smallFrame.px === 90,
   `малката снимка (записана база 300): 30% от 300 = 90px (${smallFrame && smallFrame.px}px)`, frames);
-const bigFrame = frames.find(f => f.file === 'Wallet.jpg' && f.pct === '30' && Number(f.base) === Number(inserts.column));
-ok(!!bigFrame && bigFrame.px === Math.round(Number(inserts.column) * 0.3),
-  `голямата снимка (записана база ${inserts.column} = ширината на бележката тогава): 30% = ${bigFrame && bigFrame.px}px`, { bigFrame, frames });
+const bigFrame = frames.find(f => f.file === 'Wallet.jpg' && f.pct === '30' && Number(f.base) === 4000);
+ok(!!bigFrame && bigFrame.px === Math.min(Math.round(4000 * 0.3), Number(bigFrame.column)),
+  `голямата снимка (записана база 4000 = ширината на снимката): 30% = 1200px, свити до колоната ${bigFrame && bigFrame.column}px (${bigFrame && bigFrame.px}px)`, { bigFrame, frames });
 // Стара бележка без записана база: пада на естествената ширина на снимката.
 const oldNote = await page.evaluate(async ({ raw, format }) => {
   // Друга бележка (друг gdid), без база в размерите ѝ: рисува се в свой прозорец.

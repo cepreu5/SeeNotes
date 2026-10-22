@@ -23394,18 +23394,18 @@ async function insertNmInlineImage(state) {
         if (typeof showToast === 'function') showToast(_('nmInlineRefusedCode') || 'Тук снимка не може да се сложи', 3000);
         return false;
     }
-    // Базата на ширината: min(естествената ширина на снимката, ширината на бележката в момента на
-    // поставяне). Пази се при размерите и мястото на бележката (uiState.imgbase), не в text_span:
-    // иначе ширината в проценти би зависела от прозореца, а снимката не бива да мърда с него.
-    const column = nmInlineNoteColumnWidth(field);
+    // Базата на ширината е САМО естествената ширина на снимката - постоянна величина. Ширината на
+    // бележката не влиза в базата: тя се мени с прозореца, а тогава един и същ paramint би давал
+    // различен резултат при всяка бележка. Ако снимката не може да се измери, база не се записва и
+    // рендерът пада на естествената ширина (същото правило), а накрая - на колоната.
     let natural = state.natural || null;
     if (!natural) {
         natural = await nmInlineNaturalSize(state.fileName);
         if (natural) state.natural = natural;
     }
     const naturalWidth = natural && Number(natural.w) > 0 ? Number(natural.w) : 0;
-    const base = Math.max(1, Math.round(Math.min(naturalWidth > 0 ? naturalWidth : column, column) || column || 1));
-    rememberNmInlineBaseWidth(modalBody, state.fileName, base);
+    const base = naturalWidth > 0 ? Math.max(1, Math.round(naturalWidth)) : 0;
+    if (base > 0) rememberNmInlineBaseWidth(modalBody, state.fileName, base);
     noteEditReplace(field, pos, pos, '*', pos + 1);
     const formats = readNoteEditFormats(modalBody, 'format');
     formats.push({ start: pos, end: pos + 1, type: 8, paramint: 3, paramstring: state.fileName });
@@ -23417,8 +23417,8 @@ async function insertNmInlineImage(state) {
     return true;
 }
 
-// Базата на ширината на вградена снимка (min от естествената ширина на снимката и ширината на
-// бележката при поставянето) се пази при размерите и мястото на бележката - в uiState.imgbase (късо:
+// Базата на ширината на вградена снимка (естествената ширина на снимката - постоянна величина) се
+// пази при размерите и мястото на бележката - в uiState.imgbase (късо:
 // { "Wallet.jpg": 1102 }), както се пази uiState.size / uiState.pos. В text_span остава само
 // paramint; затова и стара бележка без записана база пада на естествената ширина на снимката.
 // За бележка, която още не е в allNotesData (нова, още недокосната), базата се помни в паметта за
@@ -23486,14 +23486,6 @@ function nmInlineBaseWidthForBox(box) {
     if (!box) return 0;
     const body = box.closest ? box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]') : null;
     return body ? nmInlineBaseWidth(body, box.dataset.nmFile || '') : 0;
-}
-
-/** Ширината на текстовата колона на бележката в редактора - базата се мери спрямо нея. */
-function nmInlineNoteColumnWidth(field) {
-    if (!field || !field.isConnected) return 0;
-    const cs = getComputedStyle(field);
-    const width = field.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
-    return Math.max(0, Math.round(width));
 }
 
 /** Каретата стои вътре в {{ }} или в ограден код: там маркер не се слага. */
