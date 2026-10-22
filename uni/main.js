@@ -19446,13 +19446,11 @@ function buildInlineImagePlaceholder(format, isForModal) {
     //  - на борда ширината остава процент от ШИРИНАТА НА КОЛОНАТА, както беше.
     // И в двата случая CSS-ът слага max-width:100%, значи по-тясна бележка свива снимката, за да
     // се побере - и само тогава.
-    // Базата: min(естествената ширина на снимката, ширината на бележката при поставянето), записана
-    // в бележката. Старите бележки я нямат - тогава се пада на естествената ширина (виж putImage).
-    const base = Math.round(Number(format && format.parambase) || 0);
+    // Базата на ширината НЕ влиза в записа: в text_span остава само paramint. Тя живее при размерите
+    // и мястото на бележката (uiState.imgbase) и се слага на рамката при рисуването - виж putImage.
     const view = isForModal ? ' data-nm-view="note"' : '';
-    const baseAttr = (isForModal && base > 0) ? ` data-nm-base="${base}"` : '';
     return `<span class="nm-inline-img is-loading" data-nm-file="${escapeAttr(name)}" ` +
-        `data-nm-state="loading"${view} data-nm-pct="${pct}"${baseAttr} style="width:${pct}%" role="img" ` +
+        `data-nm-state="loading"${view} data-nm-pct="${pct}" style="width:${pct}%" role="img" ` +
         `aria-label="${escapeAttr(name)}"></span>`;
 }
 
@@ -19957,9 +19955,10 @@ function hydrateInlineImages(rootEl) {
             // рамката минава на пиксели и спира да зависи от прозореца. По-тясна бележка пак свива
             // снимката - това го прави max-width: 100% в style.css.
             if (box.dataset.nmView === 'note' && img.naturalWidth) {
-                // Базата е записана при поставянето (min(снимката, бележката тогава)); стара бележка
-                // без нея ползва естествената ширина на снимката.
-                const recorded = Number(box.dataset.nmBase) || 0;
+                // Базата е записана при поставянето в размерите на бележката (min(снимката, бележката
+                // тогава)); стара бележка без нея ползва естествената ширина на снимката.
+                const recorded = nmInlineBaseWidthForBox(box);
+                if (recorded > 0) box.dataset.nmBase = String(recorded);
                 const base = recorded > 0 ? recorded : img.naturalWidth;
                 const px = Math.max(1, Math.round(base * (Number(box.dataset.nmPct) || 100) / 100));
                 box.style.width = px + 'px';
@@ -23396,8 +23395,8 @@ async function insertNmInlineImage(state) {
         return false;
     }
     // Базата на ширината: min(естествената ширина на снимката, ширината на бележката в момента на
-    // поставяне). Записва се в самата бележка (parambase), защото иначе ширината в проценти би
-    // зависела от прозореца, а снимката не бива да мърда, когато той се промени.
+    // поставяне). Пази се при размерите и мястото на бележката (uiState.imgbase), не в text_span:
+    // иначе ширината в проценти би зависела от прозореца, а снимката не бива да мърда с него.
     const column = nmInlineNoteColumnWidth(field);
     let natural = state.natural || null;
     if (!natural) {
@@ -23406,15 +23405,87 @@ async function insertNmInlineImage(state) {
     }
     const naturalWidth = natural && Number(natural.w) > 0 ? Number(natural.w) : 0;
     const base = Math.max(1, Math.round(Math.min(naturalWidth > 0 ? naturalWidth : column, column) || column || 1));
+    rememberNmInlineBaseWidth(modalBody, state.fileName, base);
     noteEditReplace(field, pos, pos, '*', pos + 1);
     const formats = readNoteEditFormats(modalBody, 'format');
-    formats.push({ start: pos, end: pos + 1, type: 8, paramint: 3, paramstring: state.fileName, parambase: base });
+    formats.push({ start: pos, end: pos + 1, type: 8, paramint: 3, paramstring: state.fileName });
     writeNoteEditFormats(modalBody, 'format', formats);
     refreshNoteEditBackdrops(ctx);
     commitNoteEditUndo(modalBody);
     field.focus();
     field.setSelectionRange(pos + 1, pos + 1);
     return true;
+}
+
+// Базата на ширината на вградена снимка (min от естествената ширина на снимката и ширината на
+// бележката при поставянето) се пази при размерите и мястото на бележката - в uiState.imgbase (късо:
+// { "Wallet.jpg": 1102 }), както се пази uiState.size / uiState.pos. В text_span остава само
+// paramint; затова и стара бележка без записана база пада на естествената ширина на снимката.
+// За бележка, която още не е в allNotesData (нова, още недокосната), базата се помни в паметта за
+// сесията - иначе ново място би загубило размера си веднага.
+const nmInlineBaseFallback = new Map();
+
+/** Ключът на бележката, по който се помнят размерите - като при uiState. */
+function nmInlineNoteKey(modalBodyElem) {
+    if (!modalBodyElem || !modalBodyElem.dataset) return '';
+    const gdid = modalBodyElem.dataset.gdid || '';
+    const id = modalBodyElem.dataset.id || '';
+    return String(gdid || id || '');
+}
+
+/** Обектът на бележката зад едно тяло на прозорец (или null). */
+function nmInlineNoteObject(modalBodyElem) {
+    if (!modalBodyElem || !modalBodyElem.dataset) return null;
+    const gdid = modalBodyElem.dataset.gdid || '';
+    const id = modalBodyElem.dataset.id || '';
+    if (!gdid && !id) return null;
+    return allNotesData.find(n => (n.gdid && String(n.gdid) === String(gdid)) || (n.id && String(n.id) === String(id))) || null;
+}
+
+/**
+ * Записаната база на ширината за файл в тази бележка (0, ако няма).
+ * @param {HTMLElement} modalBodyElem - Тялото на прозореца на бележката.
+ * @param {string} fileName - Името на файла (както е в лентата).
+ */
+function nmInlineBaseWidth(modalBodyElem, fileName) {
+    const name = inlineImageName(fileName) || String(fileName || '');
+    if (!name) return 0;
+    const note = nmInlineNoteObject(modalBodyElem);
+    const map = note && note.uiState && !Array.isArray(note.uiState) ? note.uiState.imgbase : null;
+    const stored = map && typeof map === 'object' ? Number(map[name]) : 0;
+    if (Number.isFinite(stored) && stored > 0) return Math.round(stored);
+    const fallback = nmInlineBaseFallback.get(nmInlineNoteKey(modalBodyElem));
+    const value = fallback ? Number(fallback[name]) : 0;
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
+
+/** Помни базата на ширината за файл в тази бележка - при размерите и мястото ѝ. */
+function rememberNmInlineBaseWidth(modalBodyElem, fileName, base) {
+    const name = inlineImageName(fileName) || String(fileName || '');
+    const width = Math.round(Number(base));
+    if (!name || !Number.isFinite(width) || width <= 0) return 0;
+    const note = nmInlineNoteObject(modalBodyElem);
+    if (note) {
+        const map = (note.uiState && !Array.isArray(note.uiState) && note.uiState.imgbase && typeof note.uiState.imgbase === 'object')
+            ? { ...note.uiState.imgbase } : {};
+        map[name] = width;
+        note.uiState = { ...normalizeNoteUiState(note.uiState), imgbase: map };
+        return width;
+    }
+    const key = nmInlineNoteKey(modalBodyElem);
+    if (key) {
+        const map = { ...(nmInlineBaseFallback.get(key) || {}) };
+        map[name] = width;
+        nmInlineBaseFallback.set(key, map);
+    }
+    return width;
+}
+
+/** Базата за рамка в тялото на бележка: записаната, иначе 0 (пада се на естествената ширина). */
+function nmInlineBaseWidthForBox(box) {
+    if (!box) return 0;
+    const body = box.closest ? box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]') : null;
+    return body ? nmInlineBaseWidth(body, box.dataset.nmFile || '') : 0;
 }
 
 /** Ширината на текстовата колона на бележката в редактора - базата се мери спрямо нея. */
@@ -23448,7 +23519,8 @@ function openNmInlineMenu(opts) {
         start: Number.isFinite(Number(options.start)) ? Number(options.start) : null,
         end: Number.isFinite(Number(options.end)) ? Number(options.end) : null,
         missing: !!options.missing,
-        base: Math.round(Number(options.base) || 0),
+        // Базата се гледа от размерите на бележката (uiState.imgbase), а не от записа.
+        base: nmInlineBaseWidth(modalBody, String(options.fileName || '')),
         tileEl: options.tileEl || null,
         anchorRect: (anchorEl && anchorEl.getBoundingClientRect) ? anchorEl.getBoundingClientRect() : modalBody.getBoundingClientRect(),
         value: Math.max(10, Math.min(100, Math.round(Number(options.value) || 30))),
@@ -23625,7 +23697,6 @@ function toggleNmInlineMenuForMark(fmt, markEl, modalBody, field) {
         start: fmt.start,
         end: fmt.end,
         anchorEl: markEl,
-        base: fmt.parambase,
         value: inlineImageWidthPct(fmt.paramint),
         missing: !name || !!(markEl && markEl.classList.contains('is-missing'))
     });
@@ -23653,7 +23724,6 @@ function toggleNmInlineMenuForTile(tile, fileName) {
         fileName,
         tileEl: tile,
         anchorEl: tile,
-        base: places.length ? places[0].parambase : 0,
         value: places.length ? inlineImageWidthPct(places[0].paramint) : 30
     });
     return true;
