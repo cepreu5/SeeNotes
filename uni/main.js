@@ -4993,6 +4993,72 @@ async function showLocalPreview(folderName, fileName, mode) {
     showImageVideoOverlay(URL.createObjectURL(file), file.type.startsWith('video'));
 }
 /**
+ * Зарежда ли се адресът наистина. Проверката е с истинско <img>, не с fetch: така се хваща и
+ * изтекъл подпис, и още неготов thumbnail, и бавна мрежа - а картинката остава в кеша на
+ * браузъра, значи overlay-ът я показва веднага след това.
+ */
+function previewImageLoads(url, timeoutMs) {
+    return new Promise(resolve => {
+        const probe = new Image();
+        let settled = false;
+        const finish = (ok) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            probe.onload = null;
+            probe.onerror = null;
+            resolve(ok);
+        };
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        probe.onload = () => finish(true);
+        probe.onerror = () => finish(false);
+        probe.src = url;
+    });
+}
+
+// Колко чака един вариант за голямата картинка и колко пъти се пробва: 6 с е достатъчно за
+// =s1600 на мобилна мрежа, а двата опита покриват едно прекъсване.
+const PREVIEW_IMAGE_TIMEOUT_MS = 6000;
+const PREVIEW_IMAGE_TRIES = 2;
+
+/**
+ * Адресът за overlay-а на снимка, който наистина се зарежда.
+ * Редът: thumbnail в голям размер → thumbnail както го дава Drive → самият файл (?alt=media).
+ * Досега се взимаше първият адрес и се слагаше в <img> без проверка - затова при изтекъл подпис
+ * или още неготов thumbnail се виждаше черно поле с липсваща картинка.
+ * @param {string} fileId - Id на файла в Drive.
+ * @param {Function} fetchFromDrive - Заявка към Drive с токена и едно опресняване при 401.
+ * @param {Function} sessionExpired - Грешката за изтекла сесия (същата, която показва прегледът).
+ * @returns {Promise<{url: string, temporary: boolean}>} temporary значи blob URL, който overlay-ът
+ *          трябва да отмени при затваряне.
+ */
+async function resolvePreviewImageUrl(fileId, fetchFromDrive, sessionExpired) {
+    const metaResp = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=thumbnailLink`);
+    if (metaResp.status === 401) throw sessionExpired();
+    const candidates = [];
+    // Неуспешните метаданни не спират прегледа: минава се направо към самия файл, вместо да се
+    // покаже съобщение за снимка, която може и да е достъпна.
+    if (metaResp.ok) {
+        const link = (await metaResp.json()).thumbnailLink;
+        if (link) {
+            const big = link.replace(/=s\d+/, '=s1600');
+            candidates.push(big);
+            if (big !== link) candidates.push(link);
+        }
+    }
+    for (const url of candidates) {
+        for (let i = 0; i < PREVIEW_IMAGE_TRIES; i++) {
+            if (await previewImageLoads(url, PREVIEW_IMAGE_TIMEOUT_MS)) return { url, temporary: false };
+        }
+    }
+    // Последен вариант: самият файл. Цялата снимка върви винаги, значи overlay-ът не остава празен.
+    const mediaResp = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
+    if (mediaResp.status === 401) throw sessionExpired();
+    if (!mediaResp.ok) throw new Error(_('noImgPreview') || 'Image preview is not available right now.');
+    return { url: URL.createObjectURL(await mediaResp.blob()), temporary: true };
+}
+
+/**
  * Показва преглед на изображение/видео в рамките на самата бележка.
  * @param {HTMLElement} noteElement - DOM елементът на бележката.
  * @param {Array} attachments - Масив с прикачени файлове.
@@ -5185,14 +5251,11 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                         throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
                     }
                 } else {
-                    // Image high-res thumbnail
-                    const response = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`);
-                    if (response.status === 401) throw sessionExpired();
-                    if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
-                    const fileMetadata = await response.json();
-                    const thumbnailUrl = fileMetadata.thumbnailLink;
-                    if (!thumbnailUrl) throw new Error(_('noImgPreview'));
-                    mediaUrl = thumbnailUrl.replace(/=s\d+/, '=s1600');
+                    // Снимка: адресът, който наистина се зарежда (виж resolvePreviewImageUrl) - иначе
+                    // overlay-ът показва черно поле с липсваща картинка.
+                    const picked = await resolvePreviewImageUrl(fileIdOrPath, fetchFromDrive, sessionExpired);
+                    mediaUrl = picked.url;
+                    if (picked.temporary) overlay.mediaUrlToRevoke = mediaUrl;
                 }
             } else { // 'local' or 'archive'
                 const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
@@ -5246,6 +5309,17 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 mediaElement.autoplay = true;
             } else {
                 mediaElement = document.createElement('img');
+                // Всеки вариант е проверен преди това; ако въпреки това не тръгне (мрежата е паднала
+                // между проверката и показването), се казва с думи, а не с липсваща картинка.
+                mediaElement.addEventListener('error', () => {
+                    if (!mediaElement.isConnected) return;
+                    const failed = document.createElement('div');
+                    failed.style.color = 'white';
+                    failed.style.textAlign = 'center';
+                    failed.style.padding = '20px';
+                    failed.textContent = _('noImgPreview') || 'Image preview is not available right now.';
+                    mediaContainer.replaceChildren(failed);
+                });
             }
             mediaElement.src = mediaUrl;
             if (mediaElement.load) mediaElement.load(); // Explicitly load for better media handling
@@ -8755,10 +8829,50 @@ const INLINE_IMAGE_FOLDER = 'Images';
 // Точното име, не с малки букви: Drive различава главни от малки и иначе два различни файла
 // биха споделили един кеширан отговор.
 const inlineImageFileCache = new Map();
-// Един thumbnail на файл: fileId -> promise на URL (или null). Една снимка в пет бележки = една заявка.
+// Един thumbnail на файл: fileId -> { at, promise } на URL (или null). Една снимка в пет бележки = една заявка.
+// at е кога е получен адресът: подписаният линк на Drive изтича и не бива да се ползва до края на сесията.
 const inlineImageThumbCache = new Map();
+// Колко дълго се помни thumbnail адресът и колко пъти се пита Drive, преди да се каже „няма адрес".
+const INLINE_IMAGE_THUMB_TTL = 20 * 60 * 1000;
+const INLINE_IMAGE_THUMB_TRIES = 3;
 // Липсващ файл се помни кратко: може да се появи при следващата синхронизация.
 const INLINE_IMAGE_MISSING_TTL = 60 * 1000;
+
+/** Пауза между два опита: 300 мс, после 1.2 с - бавна мрежа не е липсващ файл. */
+function inlineRetryDelay(attempt) {
+    return new Promise(resolve => setTimeout(resolve, attempt <= 1 ? 300 : 1200));
+}
+
+/**
+ * Токенът за заявките към самите файлове в Drive: authToken, а при липсващ - от gapi клиента
+ * (същият ред като в inlineImageThumbUrl). Null, ако няма никакъв токен.
+ */
+function inlineDriveToken() {
+    const tokenObj = (typeof authToken !== 'undefined' && authToken)
+        ? authToken
+        : ((typeof gapi !== 'undefined' && gapi.client && typeof gapi.client.getToken === 'function') ? gapi.client.getToken() : null);
+    return tokenObj && tokenObj.access_token ? tokenObj.access_token : null;
+}
+
+/**
+ * Опреснява токена веднъж и връща новия access_token (или null). След успех authToken се
+ * обновява, за да не тръгне следващата заявка със стария токен.
+ */
+async function inlineRefreshToken() {
+    const refresh = await refreshAuthToken().catch(() => null);
+    if (!refresh || !refresh.pass || !refresh.tokenData || !refresh.tokenData.access_token) return null;
+    if (typeof authToken !== 'undefined') authToken = refresh.tokenData;
+    return refresh.tokenData.access_token;
+}
+
+/** 401 от Drive: изтекъл токен, не липсващ файл - разпознава се еднакво в gapi и във fetch. */
+function isUnauthorizedDriveError(err) {
+    if (!err) return false;
+    if (err.status === 401) return true;
+    const result = err.result || err.response;
+    if (result && result.error && (result.error.code === 401 || result.error.status === 'UNAUTHENTICATED')) return true;
+    return /401|UNAUTHENTICATED/i.test(String(err.message || ''));
+}
 
 /** Името на файла от paramstring (път от Android: "/storage/.../Images/Wallet.jpg" -> "Wallet.jpg"). */
 function inlineImageName(paramstring) {
@@ -8856,6 +8970,8 @@ function inlineImageFolderId() {
  * Файловете с това име в папка Images, най-новият пръв.
  * Редът се иска изрично (orderBy: modifiedTime desc), а не се разчита на подредбата по подразбиране
  * на gapi, и се подсигурява отново в клиента - при две еднакви имена трябва да се вземе най-новият.
+ * Хвърля при грешка (мрежа, 5xx, изтекла сесия) - разликата между „няма такъв файл" и „не знам" се
+ * прави от inlineImageFilesByNameDetailed.
  */
 async function inlineImageFilesByName(folderId, fileName) {
     const safeName = String(fileName).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -8874,17 +8990,51 @@ async function inlineImageFilesByName(folderId, fileName) {
 }
 
 /**
+ * Същото търсене, но с разграничение между „няма такъв файл" и „не знам".
+ * Един неуспешен отговор (мрежа, 5xx, изтекла сесия) не е „файлът го няма": при грешка се прави
+ * втори опит след пауза, а при 401 - едно опресняване на токена и повторение. Чак когато и двата
+ * опита се провалят, отговорът е unavailable, който НЕ се помни в кеша.
+ * Отговорът: { status: 'ok', files } (списъкът може да е празен = сигурно „няма") | { status: 'unavailable' }.
+ */
+async function inlineImageFilesByNameDetailed(folderId, fileName) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        let files = null;
+        try {
+            files = await inlineImageFilesByName(folderId, fileName);
+        } catch (e) {
+            if (isUnauthorizedDriveError(e)) {
+                const token = await inlineRefreshToken();
+                if (token) {
+                    try { files = await inlineImageFilesByName(folderId, fileName); } catch (e2) { files = null; }
+                }
+            } else {
+                files = null;
+            }
+        }
+        if (files) return { status: 'ok', files };
+        if (attempt < 2) await inlineRetryDelay(attempt);
+    }
+    return { status: 'unavailable' };
+}
+
+/**
  * Файлът по име от папка Images.
  * Отговорът: { status: 'ok', fileId } | { status: 'missing' } (Drive отговори и няма такъв файл)
- * | { status: 'unavailable' } (офлайн, без токен или без папка Images - не знаем дали го има).
+ * | { status: 'unavailable' } (офлайн, без токен, без папка Images или неуспешен отговор - не знаем
+ * дали го има).
  * Търсенето се помни за името, за да не пита всяка карта на борда Drive поотделно.
  */
 function resolveInlineImageFile(fileName) {
     const key = String(fileName || '');
     if (!key) return Promise.resolve({ status: 'missing' });
     const cached = inlineImageFileCache.get(key);
-    if (cached && (cached.status === undefined || cached.status === 'ok' || Date.now() - cached.at < INLINE_IMAGE_MISSING_TTL)) {
-        return cached.promise;
+    if (cached) {
+        // „ok" и „в процес на търсене" се помнят винаги; „missing" - кратко. „unavailable" (не
+        // знаем) НЕ се помни: иначе едно прекъсване оставя картинката празна до края на минутата.
+        const reusable = cached.status === undefined || cached.status === 'ok' ||
+            (cached.status === 'missing' && Date.now() - cached.at < INLINE_IMAGE_MISSING_TTL);
+        if (reusable) return cached.promise;
+        inlineImageFileCache.delete(key);
     }
     const entry = {
         at: Date.now(),
@@ -8892,9 +9042,10 @@ function resolveInlineImageFile(fileName) {
             if (typeof isOfflineMode !== 'undefined' && isOfflineMode) return { status: 'unavailable' };
             const folderId = await inlineImageFolderId();
             if (!folderId) return { status: 'unavailable' };
-            const files = await inlineImageFilesByName(folderId, fileName);
-            if (!files.length) return { status: 'missing' };
-            return { status: 'ok', fileId: files[0].id };
+            const found = await inlineImageFilesByNameDetailed(folderId, fileName);
+            if (found.status !== 'ok') return { status: 'unavailable' };
+            if (!found.files.length) return { status: 'missing' };
+            return { status: 'ok', fileId: found.files[0].id };
         })()
     };
     entry.promise.then(r => { entry.status = r.status; }).catch(() => { entry.status = 'unavailable'; });
@@ -8905,42 +9056,106 @@ function resolveInlineImageFile(fileName) {
 /**
  * URL на thumbnail-а на файла, с токена - същият път като прегледа в бележката (showInNotePreview):
  * метаданни с fields=thumbnailLink, после самият адрес, смален до =s400 за вградения размер.
- * Успешен файл = една заявка за цялата сесия; провал не се помни (виж края на функцията).
+ * Адресът се помни INLINE_IMAGE_THUMB_TTL (подписаният линк изтича); провал не се помни.
  */
 function inlineImageThumbUrl(fileId) {
-    if (!fileId) return Promise.resolve(null);
-    if (inlineImageThumbCache.has(fileId)) return inlineImageThumbCache.get(fileId);
+    const key = String(fileId || '');
+    if (!key) return Promise.resolve(null);
+    const cached = inlineImageThumbCache.get(key);
+    if (cached) {
+        // Стар адрес се хвърля: подписаният линк на Drive изтича и тогава <img> остава празен.
+        if (cached.at && Date.now() - cached.at < INLINE_IMAGE_THUMB_TTL) return cached.promise;
+        inlineImageThumbCache.delete(key);
+    }
     const promise = (async () => {
         try {
-            const tokenObj = (typeof authToken !== 'undefined' && authToken)
-                ? authToken
-                : ((typeof gapi !== 'undefined' && gapi.client && typeof gapi.client.getToken === 'function') ? gapi.client.getToken() : null);
-            if (!tokenObj || !tokenObj.access_token) return null;
-            const send = (token) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=thumbnailLink`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            let token = inlineDriveToken();
+            if (!token) return null;
+            const send = (accessToken) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(key)}?fields=thumbnailLink`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
             });
-            let resp = await send(tokenObj.access_token);
-            if (resp.status === 401) {
-                const refresh = await refreshAuthToken().catch(() => null);
-                if (!refresh || !refresh.pass || !refresh.tokenData || !refresh.tokenData.access_token) return null;
-                resp = await send(refresh.tokenData.access_token);
+            // До три опита: точно след качване thumbnail-ът още се генерира, а бавната мрежа дава
+            // същата картина като липсващ файл. 403/404 са отговор на Drive - там се спира веднага.
+            for (let attempt = 1; attempt <= INLINE_IMAGE_THUMB_TRIES; attempt++) {
+                let resp = null;
+                try {
+                    resp = await send(token);
+                } catch (e) {
+                    resp = null; // мрежата падна - това не е „няма такъв файл"
+                }
+                if (resp && resp.status === 401) {
+                    const refreshed = await inlineRefreshToken();
+                    if (!refreshed) return null;
+                    token = refreshed;
+                    try { resp = await send(token); } catch (e) { resp = null; }
+                }
+                if (resp && resp.ok) {
+                    const link = (await resp.json()).thumbnailLink;
+                    if (link) return link.replace(/=s\d+/, '=s400');
+                    // Файлът е намерен, но thumbnail още не е готов - след пауза пак.
+                } else if (resp && (resp.status === 403 || resp.status === 404)) {
+                    return null;
+                }
+                if (attempt < INLINE_IMAGE_THUMB_TRIES) await inlineRetryDelay(attempt);
             }
-            if (!resp.ok) return null;
-            const link = (await resp.json()).thumbnailLink;
-            if (!link) return null;
-            return link.replace(/=s\d+/, '=s400');
+            return null;
         } catch (e) {
-            console.warn('inline image thumbnail failed:', fileId, e);
+            console.warn('inline image thumbnail failed:', key, e);
             return null;
         }
     })();
-    inlineImageThumbCache.set(fileId, promise);
+    inlineImageThumbCache.set(key, { at: Date.now(), promise });
     // Провалът НЕ се помни: иначе една изтекла сесия оставя картинката без адрес до края на
     // сесията, дори след като токенът вече е опреснен - същото правило като в
     // resolveInlineImageBlobUrl. Следващият рендер пак ще опита.
-    promise.then(src => { if (!src) inlineImageThumbCache.delete(fileId); })
-        .catch(() => inlineImageThumbCache.delete(fileId));
+    promise.then(src => { if (!src) inlineImageThumbCache.delete(key); })
+        .catch(() => inlineImageThumbCache.delete(key));
     return promise;
+}
+
+/** Забравя thumbnail адреса на файл - вика се, когато <img> с него не се е заредил. */
+function invalidateInlineImageThumb(fileId) {
+    const key = String(fileId || '');
+    if (key) inlineImageThumbCache.delete(key);
+}
+
+// Самият файл, когато thumbnail не помогне: той върви винаги, значи вградената картинка не остава
+// празна, ако thumbnail адресът е изтекъл или Drive още не го е направил. Помни се за сесията.
+const inlineImageFullBlobCache = new Map();
+
+/**
+ * Blob URL на самия файл (?alt=media), или null при провал. Провалът не се помни.
+ */
+function inlineImageFileBlobUrl(fileId) {
+    const key = String(fileId || '');
+    if (!key) return Promise.resolve(null);
+    const cached = inlineImageFullBlobCache.get(key);
+    if (cached) return cached;
+    const entry = (async () => {
+        try {
+            let token = inlineDriveToken();
+            if (!token) return null;
+            const send = (accessToken) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(key)}?alt=media`, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            let resp = await send(token);
+            if (resp.status === 401) {
+                const refreshed = await inlineRefreshToken();
+                if (!refreshed) return null;
+                token = refreshed;
+                resp = await send(token);
+            }
+            if (!resp.ok) return null;
+            return URL.createObjectURL(await resp.blob());
+        } catch (e) {
+            console.warn('inline image file read failed:', key, e);
+            return null;
+        }
+    })();
+    inlineImageFullBlobCache.set(key, entry);
+    entry.then(url => { if (!url) inlineImageFullBlobCache.delete(key); })
+        .catch(() => inlineImageFullBlobCache.delete(key));
+    return entry;
 }
 
 /** Рамката показва името и защо я няма - бележката трябва да покаже, че там е имало снимка. */
@@ -9065,15 +9280,35 @@ async function resolveInlineImageBlobUrl(fileName, mode) {
  * миниатюрите в лентата на прикачените файлове. Двата пътя са същите, по които се чете и днес:
  * Drive - файлът по име в папка Images, после thumbnail със токена; локална папка/архив - файлът
  * направо от диска (resolveInlineImageBlobUrl). Втори начин за четене на същия файл няма.
+ * @param {string} fileName - Името на файла.
+ * @param {string} mode - 'gdrive' | 'local' | 'archive'.
+ * @param {string} [fileId] - Id в Drive, ако записът го носи (прикачен файл с pathGD). Запис с id НЕ
+ *        се търси по име: търсенето по име в Drive изостава след качване.
+ * @param {{fullFallback?: boolean, skipThumb?: boolean}} [opts] - skipThumb пропуска thumbnail-а;
+ *        fullFallback чете самия файл, когато thumbnail няма.
  * Отговорът: { status: 'ok', src, fileId } | { status: 'missing' } | { status: 'unavailable' }.
  */
-async function resolveNoteImageSrc(fileName, mode) {
+async function resolveNoteImageSrc(fileName, mode, fileId, opts) {
+    const fullFallback = !!(opts && opts.fullFallback);
+    const skipThumb = !!(opts && opts.skipThumb);
     if (mode === 'gdrive') {
-        const info = await resolveInlineImageFile(fileName);
-        if (info.status !== 'ok') return { status: info.status === 'missing' ? 'missing' : 'unavailable' };
-        const src = await inlineImageThumbUrl(info.fileId);
-        if (!src) return { status: 'unavailable', fileId: info.fileId };
-        return { status: 'ok', src, fileId: info.fileId };
+        let resolvedId = String(fileId || '');
+        if (!resolvedId) {
+            const info = await resolveInlineImageFile(fileName);
+            if (info.status !== 'ok') return { status: info.status === 'missing' ? 'missing' : 'unavailable' };
+            resolvedId = info.fileId;
+        }
+        const src = skipThumb ? null : await inlineImageThumbUrl(resolvedId);
+        if (!src) {
+            // Резервен вариант: самият файл. Ползва се само там, където картинката се вижда в
+            // реален размер (вградената в текста), не за миниатюра в плочка.
+            if (fullFallback) {
+                const blobUrl = await inlineImageFileBlobUrl(resolvedId);
+                if (blobUrl) return { status: 'ok', src: blobUrl, fileId: resolvedId };
+            }
+            return { status: 'unavailable', fileId: resolvedId };
+        }
+        return { status: 'ok', src, fileId: resolvedId };
     }
     // Локална папка или архив: файлът се чете от диска. Drive не се пита - тук офлайн не е
     // грешка, файловете са при потребителя.
@@ -9096,7 +9331,7 @@ function hydrateInlineImages(rootEl) {
     const modePromise = inlineImageSourceMode();
     // Едно и също поставяне на картинката в рамката за всички режими, за да не се разминават
     // състоянията (is-loading / is-ready / data-nmState) между Drive и файла от диска.
-    const putImage = (box, fileName, src) => {
+    const putImage = (box, fileName, src, fileId, onRetry) => {
         if (!box.isConnected) return false; // картата вече е преизградена - новата рамка ще поеме
         if (!src) { markInlineImageUnavailable(box, 'unavailable'); return false; }
         const img = document.createElement('img');
@@ -9107,7 +9342,19 @@ function hydrateInlineImages(rootEl) {
             box.classList.add('is-ready');
             box.dataset.nmState = 'ready';
         });
-        img.addEventListener('error', () => markInlineImageUnavailable(box, 'unavailable'));
+        img.addEventListener('error', () => {
+            // Изтекъл подпис или още неготов thumbnail: нов опит с нов адрес, преди рамката да
+            // каже „недостъпен". Същото важи и за бавна мрежа.
+            if (onRetry && box.dataset.nmRetried !== 'true') {
+                box.dataset.nmRetried = 'true';
+                invalidateInlineImageThumb(fileId);
+                img.remove();
+                box.classList.add('is-loading');
+                onRetry();
+                return;
+            }
+            markInlineImageUnavailable(box, 'unavailable');
+        });
         img.src = src;
         box.appendChild(img);
         return true;
@@ -9116,23 +9363,40 @@ function hydrateInlineImages(rootEl) {
         if (box.dataset.nmState !== 'loading' || box.dataset.nmLoading === 'true') continue;
         box.dataset.nmLoading = 'true';
         const fileName = box.dataset.nmFile;
-        modePromise.then(async mode => {
-            const info = await resolveNoteImageSrc(fileName, mode);
-            if (info.status !== 'ok') {
-                markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
-                return;
-            }
-            if (!putImage(box, fileName, info.src)) return;
-            if (mode === 'gdrive') {
-                // Клик отваря съществуващия преглед на бележката - същият overlay като при прикачените
-                // (addInNotePreviewListener -> showInNotePreview, легаси подписът с fileId и 'gdrive').
-                addInNotePreviewListener(box, info.fileId, 'gdrive', false);
-                return;
-            }
-            // Клик: същият overlay, но с пътя до файла - showInNotePreview сам го прочита в пълен
-            // размер по същите три клона като прикачените (тук - 'local' / 'archive').
-            addInNotePreviewListener(box, [{ path: fileName, type: 1 }], 0, mode, false);
-        }).catch(() => markInlineImageUnavailable(box, 'unavailable'));
+        // Опитът е функция, за да се повтори веднъж - и когато адресът не се зареди, и когато
+        // Drive отговори „не знам" (офлайн, бавна мрежа). Един провал не е липсващ файл.
+        const attempt = (isRetry, skipThumb) => {
+            modePromise.then(async mode => {
+                // Тук НЯМА проверка за isConnected: картата се строи, преди да влезе в страницата,
+                // и ранно връщане оставяше рамката във "loading" завинаги. Проверката е в putImage,
+                // който не рисува в откачена карта.
+                const info = await resolveNoteImageSrc(fileName, mode, box.dataset.nmFileId || '',
+                    { fullFallback: !!isRetry, skipThumb: !!skipThumb });
+                if (info.status !== 'ok') {
+                    if (!isRetry && info.status === 'unavailable') {
+                        setTimeout(() => attempt(true, false), 1200);
+                        return;
+                    }
+                    markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
+                    return;
+                }
+                if (info.fileId) box.dataset.nmFileId = info.fileId;
+                if (!putImage(box, fileName, info.src, info.fileId, skipThumb ? null : () => attempt(true, true))) return;
+                // Кликът се закача веднъж: повтореният опит не бива да слага втори слушател.
+                if (box.dataset.nmClickBound === 'true') return;
+                box.dataset.nmClickBound = 'true';
+                if (mode === 'gdrive') {
+                    // Клик отваря съществуващия преглед на бележката - същият overlay като при прикачените
+                    // (addInNotePreviewListener -> showInNotePreview, легаси подписът с fileId и 'gdrive').
+                    addInNotePreviewListener(box, box.dataset.nmFileId || info.fileId, 'gdrive', false);
+                    return;
+                }
+                // Клик: същият overlay, но с пътя до файла - showInNotePreview сам го прочита в пълен
+                // размер по същите три клона като прикачените (тук - 'local' / 'archive').
+                addInNotePreviewListener(box, [{ path: fileName, type: 1 }], 0, mode, false);
+            }).catch(() => markInlineImageUnavailable(box, 'unavailable'));
+        };
+        attempt(false);
     }
 }
 
@@ -9254,13 +9518,25 @@ function formatText(text, formatString, isForModal = false) {
  * Докато файлът се търси, плочката пази мястото с празна подложка; при липсващ файл остава
  * иконата на типа и пунктир, вместо празна дупка.
  */
-async function fillAttachmentThumb(photoEl, tile, fileName) {
+async function fillAttachmentThumb(photoEl, tile, fileName, attachment) {
     if (!photoEl || !fileName) return;
+    // Запис с id в Drive (pathGD) не се търси по име: търсенето по име изостава след качване, а
+    // файлът вече си има id - точно оттам идваха празните плочки.
+    const fileId = attachment && attachment.pathGD ? String(attachment.pathGD) : '';
     try {
         const mode = await inlineImageSourceMode();
-        const info = await resolveNoteImageSrc(fileName, mode);
+        const info = await resolveNoteImageSrc(fileName, mode, fileId);
         if (!photoEl.isConnected) return; // плочката вече не е на екрана
-        if (info.status !== 'ok') { dropAttachmentThumb(photoEl, tile, info.status); return; }
+        if (info.status !== 'ok') {
+            // „Недостъпен сега" не е „липсва": един повторен опит, преди плочката да остане празна.
+            if (info.status === 'unavailable' && photoEl.dataset.retried !== 'true') {
+                photoEl.dataset.retried = 'true';
+                setTimeout(() => fillAttachmentThumb(photoEl, tile, fileName, attachment), 1200);
+                return;
+            }
+            dropAttachmentThumb(photoEl, tile, info.status);
+            return;
+        }
         const img = document.createElement('img');
         img.alt = ''; // името е в title/aria-label на плочката, тук би се повторило
         img.decoding = 'async';
@@ -9269,7 +9545,17 @@ async function fillAttachmentThumb(photoEl, tile, fileName) {
             photoEl.classList.add('is-ready');
             tile.dataset.state = 'ready';
         });
-        img.addEventListener('error', () => dropAttachmentThumb(photoEl, tile, 'unavailable'));
+        img.addEventListener('error', () => {
+            // Адресът може да е изтекъл или thumbnail-ът още да не е готов: нов опит с нов адрес.
+            if (photoEl.dataset.retried !== 'true') {
+                photoEl.dataset.retried = 'true';
+                invalidateInlineImageThumb(info.fileId);
+                img.remove();
+                setTimeout(() => fillAttachmentThumb(photoEl, tile, fileName, attachment), 700);
+                return;
+            }
+            dropAttachmentThumb(photoEl, tile, 'unavailable');
+        });
         img.src = info.src;
         photoEl.appendChild(img);
     } catch (e) {
@@ -9694,7 +9980,7 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
         photo.className = 'nm-attach-tile-photo is-loading';
         tile.classList.add('has-photo');
         tile.insertBefore(photo, icon);
-        fillAttachmentThumb(photo, tile, fileName);
+        fillAttachmentThumb(photo, tile, fileName, attachment);
     } else if (!path) {
         tile.classList.add('is-missing');
     }
