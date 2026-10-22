@@ -9731,64 +9731,39 @@ async function showGdrivePreview(fileId, isVideo = false) {
 }
 
 /**
- * Зарежда ли се адресът наистина. Проверката е с истинско <img>, не с fetch: така се хваща и
- * изтекъл подпис, и още неготов thumbnail, и бавна мрежа - а картинката остава в кеша на
- * браузъра, значи overlay-ът я показва веднага след това.
- */
-function previewImageLoads(url, timeoutMs) {
-    return new Promise(resolve => {
-        const probe = new Image();
-        let settled = false;
-        const finish = (ok) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            probe.onload = null;
-            probe.onerror = null;
-            resolve(ok);
-        };
-        const timer = setTimeout(() => finish(false), timeoutMs);
-        probe.onload = () => finish(true);
-        probe.onerror = () => finish(false);
-        probe.src = url;
-    });
-}
-
-// Колко чака един вариант за голямата картинка и колко пъти се пробва: 6 с е достатъчно за
-// =s1600 на мобилна мрежа, а двата опита покриват едно прекъсване.
-const PREVIEW_IMAGE_TIMEOUT_MS = 6000;
-const PREVIEW_IMAGE_TRIES = 2;
-
-/**
- * Адресът за overlay-а на снимка, който наистина се зарежда.
- * Редът: снимка, качена от този екран (от паметта) → thumbnail в голям размер → thumbnail както
- * го дава Drive → самият файл (?alt=media). Досега се взимаше първият адрес и се слагаше в <img>
- * без проверка - затова при изтекъл подпис или още неготов thumbnail се виждаше черно поле с
- * липсваща картинка.
+ * Адресът за overlay-а на снимка: първо снимка, качена от този екран (от паметта), после
+ * thumbnail-ът на Drive в размер за преглед (=s1600). Самият файл (?alt=media) е резерва и се
+ * чете само когато thumbnail не дойде или адресът му не се зареди (виж обработчика на error в
+ * showInNotePreview): снимка от телефон е няколко мегабайта, thumbnail-ът - стотина килобайта,
+ * а на екрана разликата не се вижда.
+ * @param {string} fileId - Id на файла в Drive.
+ * @param {Function} fetchFromDrive - Заявка към Drive с токена и едно опресняване при 401.
+ * @param {{skipThumb?: boolean}} [opts] - skipThumb пропуска thumbnail-а и чете направо файла;
+ *        така прегледът се връща към файла, когато thumbnail адресът не се зареди.
  * @returns {Promise<{url: string, temporary: boolean}>} temporary значи blob URL, който overlay-ът
- *          трябва да отмени при затваряне.
+ *          трябва да отмени при затваряне. Адресът от thumbnailLink не е blob - той се помни от
+ *          Drive и не бива да се отменя.
  */
-async function resolvePreviewImageUrl(fileId, fetchFromDrive) {
+async function resolvePreviewImageUrl(fileId, fetchFromDrive, opts) {
     const fresh = freshAttachmentBlobUrl(fileId);
     if (fresh) return { url: fresh, temporary: false };
+    // Съобщението е преведеното „сесията е изтекла", не „401": то стига до overlay-а такова,
+    // каквото е, а кодът за HTTP статус не значи нищо на човека, който гледа снимката.
     const sessionExpired = () => {
-        const err = new Error('401');
+        const err = new Error(_('errorSessionExpired'));
         err.sessionExpired = true;
         return err;
     };
-    const metaResp = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`);
-    if (metaResp.status === 401) throw sessionExpired();
-    if (!metaResp.ok) throw new Error(`Thumbnail fetch failed: ${metaResp.status}`);
-    const link = (await metaResp.json()).thumbnailLink;
-    const candidates = [];
-    if (link) {
-        const big = link.replace(/=s\d+/, '=s1600');
-        candidates.push(big);
-        if (big !== link) candidates.push(link);
-    }
-    for (const url of candidates) {
-        for (let i = 0; i < PREVIEW_IMAGE_TRIES; i++) {
-            if (await previewImageLoads(url, PREVIEW_IMAGE_TIMEOUT_MS)) return { url, temporary: false };
+    const skipThumb = !!(opts && opts.skipThumb);
+    if (!skipThumb) {
+        const metaResp = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`);
+        if (metaResp.status === 401) throw sessionExpired();
+        // Неуспешните метаданни не спират прегледа: минава се направо към самия файл, вместо да се
+        // покаже съобщение за снимка, която може и да е достъпна.
+        if (metaResp.ok) {
+            let link = null;
+            try { link = (await metaResp.json()).thumbnailLink || null; } catch (e) { link = null; }
+            if (link) return { url: link.replace(/=s\d+/, `=s${INLINE_IMAGE_PREVIEW_SIZE}`), temporary: false };
         }
     }
     // Последен вариант: самият файл. Цялата снимка върви винаги, значи overlay-ът не остава празен.
@@ -9932,6 +9907,13 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
         const folderName = isActuallyVideo ? 'Video' : (isActuallySound ? 'Sound' : 'Images');
         const fileIdOrPath = sourceMode === 'gdrive' ? attachment.pathGD : attachment.path;
         let mediaUrl;
+        // Откъде дойде снимката: от thumbnail адрес или от самия файл, и дали вече е имало връщане
+        // към файла. Ако thumbnail адресът не се зареди, прегледът чете самият файл веднъж, вместо
+        // да покаже съобщение за снимка, която е достъпна.
+        let photoFromThumbnail = false;
+        let photoRetriedFull = false;
+        // Четенето на самия файл се дефинира в клона за Drive - там живеят токенът и заявката.
+        let readFullPhotoPreview = null;
         try {
             if (sourceMode === 'gdrive') {
                 if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
@@ -10006,11 +9988,19 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                         throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
                     }
                 } else {
-                    // Снимка: адресът, който наистина се зарежда (виж resolvePreviewImageUrl) - иначе
-                    // overlay-ът показва черно поле с липсваща картинка.
+                    // Снимка: първо thumbnail в размер за преглед (виж resolvePreviewImageUrl), а
+                    // самият файл се чете само ако thumbnail не дойде - или ако адресът му не се
+                    // зареди (виж обработчика на error по-долу).
                     const picked = await resolvePreviewImageUrl(fileIdOrPath, fetchFromDrive);
                     mediaUrl = picked.url;
-                    if (picked.temporary) overlay.mediaUrlToRevoke = mediaUrl;
+                    if (picked.temporary) {
+                        overlay.mediaUrlToRevoke = mediaUrl;
+                    } else if (!freshAttachmentBlobUrl(fileIdOrPath)) {
+                        // Само когато адресът е thumbnail: снимка от паметта (току-що качена) няма
+                        // какво да спечели от четене на файла - тя не може да "изтече".
+                        photoFromThumbnail = true;
+                        readFullPhotoPreview = () => resolvePreviewImageUrl(fileIdOrPath, fetchFromDrive, { skipThumb: true });
+                    }
                 }
             } else { // 'local' or 'archive'
                 const isDbOnlyMode = useIndexedDb && !useGoogleDb && !useLocalFolder && !useArhDb;
@@ -10064,16 +10054,40 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 mediaElement.autoplay = true;
             } else {
                 mediaElement = document.createElement('img');
-                // Всеки вариант е проверен преди това; ако въпреки това не тръгне (мрежата е паднала
-                // между проверката и показването), се казва с думи, а не с липсваща картинка.
-                mediaElement.addEventListener('error', () => {
+                // Съобщението се показва само когато и резервата не помогне.
+                const showNoPreview = (message) => {
                     if (!mediaElement.isConnected) return;
                     const failed = document.createElement('div');
                     failed.style.color = 'white';
                     failed.style.textAlign = 'center';
                     failed.style.padding = '20px';
-                    failed.textContent = _('noImgPreview') || 'Image preview is not available right now.';
+                    failed.textContent = message || _('noImgPreview');
                     mediaContainer.replaceChildren(failed);
+                };
+                mediaElement.addEventListener('error', () => {
+                    if (!mediaElement.isConnected) return;
+                    // thumbnail адресът не се зареди (изтекъл подпис, още неготов thumbnail, счупен
+                    // размер) - това не значи, че снимката я няма: чете се самият файл, веднъж.
+                    if (photoFromThumbnail && !photoRetriedFull && readFullPhotoPreview) {
+                        photoRetriedFull = true;
+                        readFullPhotoPreview().then(full => {
+                            if (!mediaElement.isConnected) {
+                                // Прегледът е затворен, докато файлът се теглеше - blob-ът се пуска.
+                                if (full && full.temporary) URL.revokeObjectURL(full.url);
+                                return;
+                            }
+                            if (!full || !full.url) { showNoPreview(); return; }
+                            if (full.temporary) overlay.mediaUrlToRevoke = full.url;
+                            mediaElement.src = full.url;
+                        }).catch(err => {
+                            // Изтекла сесия се казва с думите за изтекла сесия, не като липсваща снимка.
+                            showNoPreview(err && err.sessionExpired ? err.message : null);
+                        });
+                        return;
+                    }
+                    // Адресът е файлът, прочетен преди това; ако въпреки това не тръгне (мрежата е
+                    // паднала между четенето и показването), се казва с думи, а не с липсваща картинка.
+                    showNoPreview();
                 });
             }
             mediaElement.src = mediaUrl;
@@ -19412,6 +19426,14 @@ const inlineImageThumbCache = new Map();
 // Колко дълго се помни thumbnail адресът и колко пъти се пита Drive, преди да се каже "няма адрес".
 const INLINE_IMAGE_THUMB_TTL = 20 * 60 * 1000;
 const INLINE_IMAGE_THUMB_TRIES = 3;
+// Трите места, които показват снимка, искат различен размер - затова размерът е параметър, не
+// константа на едно място:
+//   400  плочката на прикачения файл - малка икона, никога самият файл;
+//   800  картинката в текста на бележката - вижда се в реален размер, затова 400 изглежда размито;
+//   1600 големият преглед при клик - точно колкото е екранът, повече не се вижда.
+const INLINE_IMAGE_TILE_SIZE = 400;
+const INLINE_IMAGE_INLINE_SIZE = 800;
+const INLINE_IMAGE_PREVIEW_SIZE = 1600;
 // Снимка, качена от този екран: File обектът е още в паметта, значи плочката и прегледът могат да я
 // покажат веднага, без да питат Drive за thumbnail, който в първите секунди след качването още не е
 // готов (или файлът още не се намира по име). Живее колкото сесията, като другите кешове тук.
@@ -19647,13 +19669,20 @@ function resolveInlineImageFile(fileName) {
 }
 
 /**
- * URL на thumbnail-а на файла, с токена - същият път като прегледа в бележката (loadMedia):
- * метаданни с fields=thumbnailLink, после самият адрес, смален до =s400 за вградената картинка.
- * Успешен файл = една заявка за цялата сесия; провал не се помни (виж края на функцията).
+ * URL на thumbnail-а на файла, с токена: метаданни с fields=thumbnailLink, после самият адрес,
+ * смален до искания размер. Размерът е параметър, защото три места показват снимката в три
+ * различни размера (плочка 400, картинка в текста 800, преглед 1600) - виж INLINE_IMAGE_TILE_SIZE.
+ * Адресът се помни INLINE_IMAGE_THUMB_TTL за КОНКРЕТНИЯ размер (подписаният линк изтича); провал
+ * не се помни (виж края на функцията). Кешът е по fileId + размер, иначе плочката и картинката в
+ * текста си връщат взаимно грешния адрес.
+ * @param {string} fileId - Id на файла в Drive.
+ * @param {number} [size] - Желаната ширина в пиксела (подразбирано 400 - плочката).
  */
-function inlineImageThumbUrl(fileId) {
-    const key = String(fileId || '');
-    if (!key) return Promise.resolve(null);
+function inlineImageThumbUrl(fileId, size) {
+    const fileKey = String(fileId || '');
+    if (!fileKey) return Promise.resolve(null);
+    const px = Number(size) > 0 ? Math.round(Number(size)) : INLINE_IMAGE_TILE_SIZE;
+    const key = `${fileKey}=s${px}`;
     const cached = inlineImageThumbCache.get(key);
     if (cached) {
         // Стар адрес се хвърля: подписаният линк на Drive изтича и тогава <img> остава празен.
@@ -19666,7 +19695,7 @@ function inlineImageThumbUrl(fileId) {
             if (!stored) return null;
             let token = JSON.parse(stored).access_token;
             if (!token) return null;
-            const send = () => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(key)}?fields=thumbnailLink`, {
+            const send = () => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileKey)}?fields=thumbnailLink`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             // До три опита: точно след качване thumbnail-ът още се генерира, а бавната мрежа дава
@@ -19686,7 +19715,7 @@ function inlineImageThumbUrl(fileId) {
                 }
                 if (resp && resp.ok) {
                     const link = (await resp.json()).thumbnailLink;
-                    if (link) return link.replace(/=s\d+/, '=s400');
+                    if (link) return link.replace(/=s\d+/, `=s${px}`);
                     // Файлът е намерен, но thumbnail още не е готов - след пауза пак.
                 } else if (resp && (resp.status === 403 || resp.status === 404)) {
                     return null;
@@ -19695,7 +19724,7 @@ function inlineImageThumbUrl(fileId) {
             }
             return null;
         } catch (e) {
-            console.warn('inline image thumbnail failed:', key, e);
+            console.warn('inline image thumbnail failed:', fileKey, e);
             return null;
         }
     })();
@@ -19708,15 +19737,35 @@ function inlineImageThumbUrl(fileId) {
     return promise;
 }
 
-/** Забравя thumbnail адреса на файл - вика се, когато <img> с него не се е заредил. */
-function invalidateInlineImageThumb(fileId) {
+/**
+ * Забравя thumbnail адреса на файл - вика се, когато <img> с него не се е заредил.
+ * Без размер чисти всички размери за файла: изтеклият подпис не е само за един размер, а и
+ * плочката, и картинката в текста питат един и същ файл.
+ * @param {string} fileId - Id на файла.
+ * @param {number} [size] - Само този размер; без него - всички размери за файла.
+ */
+function invalidateInlineImageThumb(fileId, size) {
     const key = String(fileId || '');
-    if (key) inlineImageThumbCache.delete(key);
+    if (!key) return;
+    if (Number(size) > 0) {
+        inlineImageThumbCache.delete(`${key}=s${Math.round(Number(size))}`);
+        return;
+    }
+    for (const k of Array.from(inlineImageThumbCache.keys())) {
+        if (k === key || k.startsWith(`${key}=s`)) inlineImageThumbCache.delete(k);
+    }
 }
 
-// Самият файл, когато thumbnail не помогне: той върви винаги, значи вградената картинка не остава
-// празна, ако thumbnail адресът е изтекъл или Drive още не го е направил. Помни се за сесията.
+// Самият файл в реален размер: чете се, когато thumbnail-ът не помогне (няма го, или адресът му
+// не се зарежда) - картинката в текста пада на него, вместо да остане празна. Помни се за
+// сесията, за да не се тегли един и същ файл втори път при повторно отваряне.
 const inlineImageFullBlobCache = new Map();
+
+/** Забравя blob адреса на самия файл - вика се, когато <img> с него не се е заредил. */
+function invalidateInlineImageFull(fileId) {
+    const key = String(fileId || '');
+    if (key) inlineImageFullBlobCache.delete(key);
+}
 
 /**
  * Blob URL на самия файл (?alt=media), или null при провал. Провалът не се помни.
@@ -19878,10 +19927,16 @@ async function resolveInlineImageBlobUrl(fileName, mode) {
  * миниатюрите в лентата на прикачените файлове. Двата пътя са същите, по които се чете и днес:
  * Drive - файлът по име в папка Images, после thumbnail със токена; локална папка/архив - файлът
  * направо от диска (resolveInlineImageBlobUrl). Втори начин за четене на същия файл няма.
- * Отговорът: { status: 'ok', src, fileId } | { status: 'missing' } | { status: 'unavailable' }.
+ * @param {{size?: number, fallbackFull?: boolean, skipThumb?: boolean}} [opts] - size е колко
+ *        пиксела да е thumbnail-ът (подразбирано 400 - плочката). fallbackFull значи, че при
+ *        провал на thumbnail-а се чете самият файл (картинката в текста). skipThumb пропуска
+ *        thumbnail-а съвсем и чете самият файл - за повторния опит, когато вече се знае, че
+ *        адресът на thumbnail-а не се зарежда.
+ * Отговорът: { status: 'ok', src, fileId, full? } | { status: 'missing' } | { status: 'unavailable' }.
  */
 async function resolveNoteImageSrc(fileName, mode, fileId, opts) {
-    const fullFallback = !!(opts && opts.fullFallback);
+    const size = opts && Number(opts.size) > 0 ? Math.round(Number(opts.size)) : INLINE_IMAGE_TILE_SIZE;
+    const fallbackFull = !!(opts && opts.fallbackFull);
     const skipThumb = !!(opts && opts.skipThumb);
     if (mode === 'gdrive') {
         // Снимка, качена от този екран, е още в паметта: показва се веднага, без да се пита Drive.
@@ -19896,13 +19951,16 @@ async function resolveNoteImageSrc(fileName, mode, fileId, opts) {
             if (info.status !== 'ok') return { status: info.status === 'missing' ? 'missing' : 'unavailable' };
             resolvedId = info.fileId;
         }
-        const src = skipThumb ? null : await inlineImageThumbUrl(resolvedId);
+        // Редът е thumbnail → самият файл, а не обратното: thumbnail-ът е готов, подписан адрес и
+        // се тегли бързо, а файлът е единственият начин картинката да е точна в реален размер.
+        // Затова размерът идва от викащия, а самият файл се чете само като резерва.
+        const src = skipThumb ? null : await inlineImageThumbUrl(resolvedId, size);
         if (!src) {
             // Резервен вариант: самият файл. Ползва се само там, където картинката се вижда в
             // реален размер (вградената в текста), не за миниатюра в плочка.
-            if (fullFallback) {
+            if (fallbackFull || skipThumb) {
                 const blobUrl = await inlineImageFileBlobUrl(resolvedId);
-                if (blobUrl) return { status: 'ok', src: blobUrl, fileId: resolvedId };
+                if (blobUrl) return { status: 'ok', src: blobUrl, fileId: resolvedId, full: true };
             }
             return { status: 'unavailable', fileId: resolvedId };
         }
@@ -19941,11 +19999,13 @@ function hydrateInlineImages(rootEl) {
             box.dataset.nmState = 'ready';
         });
         img.addEventListener('error', () => {
-            // Изтекъл подпис или още неготов thumbnail: нов опит с нов адрес, преди рамката да
-            // каже "недостъпен". Същото важи и за бавна мрежа.
+            // Адресът не се зареди: мъртъв blob, изтекъл подпис или още неготов thumbnail. Нов опит
+            // с нов адрес, преди рамката да каже "недостъпен". Чистят се и двата кеша за файла -
+            // иначе повторният опит връща същия мъртъв адрес и вторият <img> пак пада.
             if (onRetry && box.dataset.nmRetried !== 'true') {
                 box.dataset.nmRetried = 'true';
                 invalidateInlineImageThumb(fileId);
+                invalidateInlineImageFull(fileId);
                 img.remove();
                 box.classList.add('is-loading');
                 onRetry();
@@ -19963,23 +20023,28 @@ function hydrateInlineImages(rootEl) {
         const fileName = box.dataset.nmFile;
         // Опитът е функция, за да се повтори веднъж - и когато адресът не се зареди, и когато
         // Drive отговори "не знам" (офлайн, бавна мрежа). Един провал не е липсващ файл.
-        const attempt = (isRetry, skipThumb) => {
+        // Първият опит: thumbnail =s800 (картинката в текста се вижда в реален размер, 400 там
+        // изглежда размито), а самият файл се чете само ако thumbnail не дойде.
+        // Повторният опит вече знае, че thumbnail адресът не се зарежда, и чете самия файл -
+        // иначе вторият <img> получава същия мъртъв адрес и пада по същия начин.
+        const attempt = (isRetry) => {
             modePromise.then(async mode => {
                 // Тук НЯМА проверка за isConnected: картата се строи, преди да влезе в страницата,
                 // и ранно връщане оставяше рамката във "loading" завинаги. Проверката е в putImage,
                 // който не рисува в откачена карта.
                 const info = await resolveNoteImageSrc(fileName, mode, box.dataset.nmFileId || '',
-                    { fullFallback: !!isRetry, skipThumb: !!skipThumb });
+                    isRetry ? { size: INLINE_IMAGE_INLINE_SIZE, skipThumb: true }
+                            : { size: INLINE_IMAGE_INLINE_SIZE, fallbackFull: true });
                 if (info.status !== 'ok') {
                     if (!isRetry && info.status === 'unavailable') {
-                        setTimeout(() => attempt(true, false), 1200);
+                        setTimeout(() => attempt(true), 1200);
                         return;
                     }
                     markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
                     return;
                 }
                 if (info.fileId) box.dataset.nmFileId = info.fileId;
-                if (!putImage(box, fileName, info.src, info.fileId, skipThumb ? null : () => attempt(true, true))) return;
+                if (!putImage(box, fileName, info.src, info.fileId, () => attempt(true))) return;
                 // Кликът се закача веднъж: повтореният опит не бива да слага втори слушател.
                 if (box.dataset.nmClickBound === 'true') return;
                 box.dataset.nmClickBound = 'true';
@@ -20001,6 +20066,9 @@ function hydrateInlineImages(rootEl) {
 /**
  * Миниатюрата в плочката: същият път като вградените картинки (resolveNoteImageSrc), режимът се
  * пита по същия начин (inlineImageSourceMode), за да работят Drive, локална папка и архив.
+ * Плочката е малката картинка, която не се разпъва: вика се БЕЗ опции, значи твърдо thumbnail
+ * =s400 и никога самият файл (без fallbackFull - при провал остава иконата на типа, а не 5 MB
+ * снимка за 60px квадрат).
  * Докато файлът се търси, плочката пази мястото с празна подложка; при липсващ файл остава
  * иконата на типа и пунктир, вместо празна дупка.
  */
