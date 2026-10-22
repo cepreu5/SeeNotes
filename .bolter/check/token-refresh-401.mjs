@@ -269,7 +269,9 @@ const r3 = await page.evaluate(async () => {
   window.__auth.mode = 'error';                       // първият опит: 401 и провален refresh
   authToken = { access_token: 'OLD_TOKEN', issued_at: Date.now(), expires_in: 3599 };
   const first = await inlineImageThumbUrl('CACHEFILE');
-  const cachedAfterFail = inlineImageThumbCache.has('CACHEFILE');
+  // Ключът на кеша е fileId + размер (виж inlineImageThumbUrl), затова се гледа точно този ключ -
+  // иначе проверката минава, без да е проверила нищо.
+  const cachedAfterFail = inlineImageThumbCache.has('CACHEFILE=s400');
   window.__auth.mode = 'ok';                          // токенът вече се опреснява
   const second = await inlineImageThumbUrl('CACHEFILE');
   return { first, cachedAfterFail, second };
