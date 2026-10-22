@@ -9664,6 +9664,8 @@ async function processDirectoryContent(minModificationDate) {
  * @param {boolean} isVideo - True, ако файлът е видео.
  */
 function showImageVideoOverlay(src, isVideo = false) {
+    // Видеото има свой звук: пуснатото от плочката аудио се спира, преди видеото да тръгне.
+    if (isVideo) stopAttachmentAudio();
     const overlay = document.createElement('div');
     overlay.className = 'fullscreen-preview-overlay';
     overlay.addEventListener('click', (e) => {
@@ -9737,6 +9739,9 @@ async function showGdrivePreview(fileId, isVideo = false) {
  */
 async function showInNotePreview(noteElement, attachments, startIndex, sourceMode, isVideo) {
     if (!noteElement) return;
+    // Всяко отваряне на преглед спира звука от плочката: ако е видео, то носи свой звук и двете не
+    // бива да се чуват заедно; ако е звук, прегледът е вторият глас за същия файл.
+    stopAttachmentAudio();
     // Support legacy calls with single string fileId instead of attachments array
     if (typeof attachments === 'string') {
         const fileId = attachments;
@@ -9875,8 +9880,12 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 if (!authToken || isTokenExpired) {
                     console.log("Token expired or missing in preview, refreshing...");
                     const newToken = await checkAuth(); // checkAuth handles the actual refresh logic
-                    if (newToken) {
-                        authToken = newToken;
+                    // checkAuth връща обвивка { pass, tokenData }, не самия tokenData. В authToken
+                    // стои САМО tokenData - иначе хедърът излиза 'Bearer undefined' и Drive
+                    // отговаря с 401 точно когато токенът тъкмо е бил обновен.
+                    const newTokenData = newToken && (newToken.tokenData || (newToken.access_token ? newToken : null));
+                    if (newTokenData) {
+                        authToken = newTokenData;
                         // Update gapi client if needed
                         if (typeof gapi !== 'undefined' && gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
                     }
@@ -9884,27 +9893,53 @@ async function showInNotePreview(noteElement, attachments, startIndex, sourceMod
                 const tokenObj = (typeof authToken !== 'undefined' && authToken) ? authToken :
                     ((typeof gapi !== 'undefined' && gapi.auth) ? gapi.auth.getToken() : null);
                 if (!tokenObj) throw new Error(_('errorTokenMissing'));
+                // При 401 токенът се обновява веднъж и заявката се повтаря веднъж - същата схема
+                // като inlineImageThumbUrl. 401 значи изтекъл токен, не липсващ файл.
+                const refreshPreviewToken = async () => {
+                    const refresh = await refreshAuthToken().catch(() => null);
+                    if (!refresh || !refresh.pass || !refresh.tokenData || !refresh.tokenData.access_token) return null;
+                    authToken = refresh.tokenData;
+                    if (typeof gapi !== 'undefined' && gapi.client) {
+                        gapi.client.setToken({ access_token: authToken.access_token });
+                    }
+                    return authToken.access_token;
+                };
+                const fetchFromDrive = async (url, extraHeaders = {}) => {
+                    const send = (token) => fetch(url, { headers: { ...extraHeaders, 'Authorization': `Bearer ${token}` } });
+                    let response = await send(tokenObj.access_token);
+                    if (response.status === 401) {
+                        const refreshedToken = await refreshPreviewToken();
+                        if (refreshedToken) response = await send(refreshedToken);
+                    }
+                    return response;
+                };
+                // И след опресняването 401 значи изтекла сесия. Показва се точно това, а не
+                // английското „Thumbnail fetch failed: 401".
+                const sessionExpired = () => {
+                    const err = new Error(_('errorSessionExpired'));
+                    err.sessionExpired = true;
+                    return err;
+                };
                 if (isActuallyVideo || isActuallySound) {
                     try {
-                        const mediaResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
-                            headers: {
-                                'Authorization': `Bearer ${tokenObj.access_token}`,
-                                'Range': 'bytes=0-10000000'
-                            }
+                        const mediaResponse = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?alt=media`, {
+                            'Range': 'bytes=0-10000000'
                         });
+                        if (mediaResponse.status === 401) throw sessionExpired();
                         if (!mediaResponse.ok) throw new Error(`Media fetch failed: ${mediaResponse.status}`);
                         const mediaBlob = await mediaResponse.blob();
                         mediaUrl = URL.createObjectURL(mediaBlob);
                         overlay.mediaUrlToRevoke = mediaUrl;
                     } catch (err) {
                         console.log("Failed to load GDrive media blob:", err);
+                        // Изтеклата сесия не е „няма преглед на този файл" - казва се, че е изтекла.
+                        if (err && err.sessionExpired) throw err;
                         throw new Error(_(isActuallyVideo ? 'noVideoPreview' : 'noSoundPreview') || 'Preview error');
                     }
                 } else {
                     // Image high-res thumbnail
-                    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`, {
-                        headers: { 'Authorization': `Bearer ${tokenObj.access_token}` }
-                    });
+                    const response = await fetchFromDrive(`https://www.googleapis.com/drive/v3/files/${fileIdOrPath}?fields=thumbnailLink`);
+                    if (response.status === 401) throw sessionExpired();
                     if (!response.ok) throw new Error(`Thumbnail fetch failed: ${response.status}`);
                     const fileMetadata = await response.json();
                     const thumbnailUrl = fileMetadata.thumbnailLink;
@@ -10706,6 +10741,9 @@ function restoreNoteWindowIds(win) {
 
 function activateNoteWindow(win, front = true) {
     if (!win) return;
+    // Звукът от плочка в друга бележка не остава да свири, когато тази стане активна. Клик върху
+    // самата плочка не спира нищо - тя е в същия прозорец (виж stopAttachmentAudioOutside).
+    stopAttachmentAudioOutside(win.el);
     if (activeNoteWindow !== win) {
         const prev = activeNoteWindow;
         if (prev) {
@@ -11010,6 +11048,8 @@ function createNoteWindow() {
 }
 
 function onNoteWindowClosed(win) {
+    // Затворен viewer не трябва да оставя звук: плочката, която е свирила, вече я няма.
+    stopAttachmentAudio();
     win.el.querySelector('.note-window-sync-banner')?.remove();
     const others = getOpenNoteWindows().filter(w => w !== win);
     if (!others.length) {
@@ -11567,6 +11607,8 @@ window.addEventListener('focus', () => checkOpenNoteWindowsOnDrive());
 
 // Draws a note into its window (showModal picks the window; it is the active one meanwhile).
 function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, fresh = false) {
+    // Нова бележка в модала: звукът от предишната спира тук, преди да се строи новата лента.
+    stopAttachmentAudio();
     let rawContent, formatString, titleFormatString, displayContent, noteColor, noteId, noteGdid;
     const updateGDrive = useGoogleDb && !isOffline;
     if (typeof options === 'string') {
@@ -11706,7 +11748,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     // Add click-to-edit functionality
     modalBody._clickListener = (e) => {
         // Do not trigger if a link was clicked, copy button was clicked, if already editing, or if setting is disabled
-        if (e.target.closest('a') || e.target.closest('.code-block-copy') || modalBody.querySelector('textarea')) {
+        // Лентата с плочки на прикачените файлове е изключена като линк: плочката прави това, което
+        // правеше кликът на името (отваря файла, пуска звука), а не отваря редактора. Слушателят е
+        // в capture фаза, значи стига до тук преди stopPropagation на самата плочка.
+        if (e.target.closest('a') || e.target.closest('.code-block-copy') || e.target.closest('.nm-attach-strip') || modalBody.querySelector('textarea')) {
             return;
         }
 
@@ -12217,22 +12262,43 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
             separator.style.marginTop = '10px';
             separator.style.marginBottom = '10px';
             modalBody.appendChild(separator);
-            attachments.forEach(async attachment => {
+            // Футърът е лента от плочки като в оригиналното приложение: снимките се виждат самите те,
+            // другите файлове носят иконата на типа си, лентата се плъзга настрана, когато не се
+            // събират. Имената не стоят под плочките (излизат при задържане), както в оригинала.
+            const stripEl = document.createElement('div');
+            stripEl.className = 'nm-attach-strip';
+            modalBody.appendChild(stripEl);
+            // Мястото на плочката се заема веднага и в реда на файловете, а съдържанието идва, когато
+            // файлът бъде намерен - иначе редът зависи от това кой файл се чете по-бързо.
+            attachments.forEach(attachment => {
                 const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
                 if (!iconData) return;
+                const slot = document.createElement('div');
+                slot.className = 'nm-attach-slot';
+                stripEl.appendChild(slot);
                 const attachmentWrapper = document.createElement('div');
                 attachmentWrapper.style.display = 'flex';
                 attachmentWrapper.style.alignItems = 'center';
                 attachmentWrapper.style.gap = '5px';
                 attachmentWrapper.style.marginTop = '5px';
-                if (useArhDb) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
-                } else if (useLocalFolder) {
-                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
-                } else {
-                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
-                }
-                modalBody.appendChild(attachmentWrapper);
+                (async () => {
+                    try {
+                        if (useArhDb) {
+                            await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
+                        } else if (useLocalFolder) {
+                            await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
+                        } else {
+                            await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
+                        }
+                    } catch (err) {
+                        // Ако строенето на плочката се счупи, по-добре обикновеният ред с име, отколкото
+                        // изчезнал файл.
+                        console.warn('attachment tile: falling back to the plain row', err);
+                        slot.appendChild(attachmentWrapper);
+                        return;
+                    }
+                    buildAttachmentTile(attachment, attachmentWrapper, iconData, slot);
+                })();
             });
 
         }
@@ -19328,7 +19394,8 @@ function resolveInlineImageFile(fileName) {
 
 /**
  * URL на thumbnail-а на файла, с токена - същият път като прегледа в бележката (loadMedia):
- * метаданни с fields=thumbnailLink, после самият адрес. Един файл = една заявка за цялата сесия.
+ * метаданни с fields=thumbnailLink, после самият адрес, смален до =s400 за вградената картинка.
+ * Успешен файл = една заявка за цялата сесия; провал не се помни (виж края на функцията).
  */
 function inlineImageThumbUrl(fileId) {
     if (!fileId) return Promise.resolve(null);
@@ -19359,6 +19426,11 @@ function inlineImageThumbUrl(fileId) {
         }
     })();
     inlineImageThumbCache.set(fileId, promise);
+    // Провалът НЕ се помни: иначе една изтекла сесия оставя картинката без адрес до края на
+    // сесията, дори след като токенът вече е опреснен - същото правило като в
+    // resolveInlineImageBlobUrl. Следващият рендер пак ще опита.
+    promise.then(src => { if (!src) inlineImageThumbCache.delete(fileId); })
+        .catch(() => inlineImageThumbCache.delete(fileId));
     return promise;
 }
 
@@ -19379,6 +19451,129 @@ function markInlineImageUnavailable(box, state) {
     box.replaceChildren(name, why);
 }
 
+
+/**
+ * Откъде се взимат вградените картинки: 'gdrive' | 'local' | 'archive'.
+ * Същата логика като при прикачените файлове (футър иконите в createNoteElement): и двата пътя
+ * водят до един и същ файл, различно е само мястото, от което се чете. Без това вграденият
+ * placeholder пита Drive и в архив/локална папка чака отговор, който никога не идва.
+ */
+async function inlineImageSourceMode() {
+    if (typeof useArhDb !== 'undefined' && useArhDb) return 'archive';
+    if (typeof useLocalFolder !== 'undefined' && useLocalFolder) return 'local';
+    if (typeof useIndexedDb !== 'undefined' && useIndexedDb &&
+        !(typeof useGoogleDb !== 'undefined' && useGoogleDb) &&
+        !(typeof useLocalFolder !== 'undefined' && useLocalFolder) &&
+        !(typeof useArhDb !== 'undefined' && useArhDb)) {
+        // Режимът е само в базата: dbSourceGlobal се пълни при старт, но при рендер преди това
+        // (или след презареждане) се чете от конфига - както прави loadMedia.
+        let source = dbSourceGlobal;
+        if (source === null || source === undefined) {
+            try { source = await getConfig('dbSource'); } catch (e) { source = null; }
+        }
+        if (Number(source) === 3) return 'archive';
+        if (Number(source) === 2) return 'local';
+    }
+    return 'gdrive';
+}
+
+/**
+ * Handle на избраната от потребителя папка (или null, ако няма такъв).
+ * При старт от база глобалният dirHandle е null, а handle-ът стои в IndexedDB - затова се
+ * възстановява точно както в loadMedia, за да работят вградените картинки и без ново избиране.
+ */
+async function ensureInlineDirHandle(sourceMode) {
+    if (dirHandle) return dirHandle;
+    if (sourceMode !== 'local' && sourceMode !== 'archive') return null;
+    try {
+        const dbSource = await getConfig('dbSource');
+        let handleKey = null;
+        if (Number(dbSource) === 2) handleKey = 'directoryHandle';
+        else if (Number(dbSource) === 3) handleKey = 'arhHandle';
+        if (!handleKey) return null;
+        const handle = await getConfig(handleKey);
+        const verifiedHandle = handle ? await verifyPermission(handle) : null;
+        if (verifiedHandle) {
+            dirHandle = verifiedHandle;
+            return verifiedHandle;
+        }
+    } catch (e) {
+        console.warn('inline image: no directory handle', e);
+    }
+    return null;
+}
+
+// Един файл се чете от диска веднъж за сесията: същата снимка стои на борда, в модала и в още
+// няколко карти, а читането на файл от папка не е безплатно. Ключът носи и режима, защото един и
+// същ файл се търси на различни места в локален режим и в архива.
+const inlineImageBlobCache = new Map();
+
+/**
+ * Файлът по име от локалната папка или от архива, като blob URL.
+ * Отговорът: { status: 'ok', url } | { status: 'missing' } (папката отговори и няма такъв файл)
+ * | { status: 'unavailable' } (няма handle или файлът не може да се прочете).
+ * Blob URL, а не Drive thumbnail: в тези режими няма нито токен, нито папка в Drive - файлът е
+ * на диска и се чете директно. URL-ите НЕ се отменят - живеят колкото сесията, като
+ * inlineImageThumbCache, иначе карта, преизградена след минута, остава празна.
+ */
+async function resolveInlineImageBlobUrl(fileName, mode) {
+    const name = String(fileName || '');
+    if (!name || (mode !== 'local' && mode !== 'archive')) return { status: 'missing' };
+    const key = `${mode}\u0000${name}`;
+    const cached = inlineImageBlobCache.get(key);
+    if (cached) return cached; // и "в процес на четене" се помни - две карти не четат един файл два пъти
+    const entry = (async () => {
+        const handle = await ensureInlineDirHandle(mode);
+        if (!handle) return { status: 'unavailable' };
+        try {
+            let fileHandle;
+            if (mode === 'local') {
+                // Локалната папка пази файловете в подпапки по тип - същото като при прикачените.
+                const folderHandle = await handle.getDirectoryHandle(INLINE_IMAGE_FOLDER, { create: false });
+                fileHandle = await folderHandle.getFileHandle(name);
+            } else {
+                // Архивът е ПЛОСЪК: всички файлове са в една папка, без Images/Video/Sound.
+                fileHandle = await handle.getFileHandle(name);
+            }
+            const file = await fileHandle.getFile();
+            return { status: 'ok', url: URL.createObjectURL(file) };
+        } catch (e) {
+            // Липсващ файл се различава от недостъпен: първото е сигурно, второто - не знаем.
+            const errName = e && e.name;
+            if (errName === 'NotFoundError' || errName === 'TypeMismatchError') return { status: 'missing' };
+            return { status: 'unavailable' };
+        }
+    })();
+    inlineImageBlobCache.set(key, entry);
+    // Провалът не се помни: архивът се обновява и файлът може да се появи - следващият рендер
+    // пак ще опита, вместо да показва "няма такъв файл" до края на сесията.
+    entry.then(r => { if (!r || r.status !== 'ok') inlineImageBlobCache.delete(key); })
+        .catch(() => inlineImageBlobCache.delete(key));
+    return entry;
+}
+
+/**
+ * Един адрес за картинка по име, независимо от режима - за вградените картинки (type=8) и за
+ * миниатюрите в лентата на прикачените файлове. Двата пътя са същите, по които се чете и днес:
+ * Drive - файлът по име в папка Images, после thumbnail със токена; локална папка/архив - файлът
+ * направо от диска (resolveInlineImageBlobUrl). Втори начин за четене на същия файл няма.
+ * Отговорът: { status: 'ok', src, fileId } | { status: 'missing' } | { status: 'unavailable' }.
+ */
+async function resolveNoteImageSrc(fileName, mode) {
+    if (mode === 'gdrive') {
+        const info = await resolveInlineImageFile(fileName);
+        if (info.status !== 'ok') return { status: info.status === 'missing' ? 'missing' : 'unavailable' };
+        const src = await inlineImageThumbUrl(info.fileId);
+        if (!src) return { status: 'unavailable', fileId: info.fileId };
+        return { status: 'ok', src, fileId: info.fileId };
+    }
+    // Локална папка или архив: файлът се чете от диска. Drive не се пита - тук офлайн не е
+    // грешка, файловете са при потребителя.
+    const info = await resolveInlineImageBlobUrl(fileName, mode);
+    if (info.status !== 'ok' || !info.url) return { status: info.status === 'missing' ? 'missing' : 'unavailable' };
+    return { status: 'ok', src: info.url, fileId: null };
+}
+
 /**
  * Превръща рамките на вградените картинки в самите картинки.
  * Вика се веднага след всяко задаване на innerHTML от getFormattedNoteHtml (борд, модал).
@@ -19387,34 +19582,553 @@ function markInlineImageUnavailable(box, state) {
 function hydrateInlineImages(rootEl) {
     if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return;
     const boxes = Array.from(rootEl.querySelectorAll('.nm-inline-img[data-nm-file]'));
+    if (!boxes.length) return;
+    // Режимът се пита ВЕДНЪЖ за целия рендер, не за всяка рамка: в режим „само база" това е
+    // четене от IndexedDB, а една бележка може да има няколко вградени картинки.
+    const modePromise = inlineImageSourceMode();
+    // Едно и също поставяне на картинката в рамката за всички режими, за да не се разминават
+    // състоянията (is-loading / is-ready / data-nmState) между Drive и файла от диска.
+    const putImage = (box, fileName, src) => {
+        if (!box.isConnected) return false; // картата вече е преизградена - новата рамка ще поеме
+        if (!src) { markInlineImageUnavailable(box, 'unavailable'); return false; }
+        const img = document.createElement('img');
+        img.alt = fileName;
+        img.decoding = 'async';
+        img.addEventListener('load', () => {
+            box.classList.remove('is-loading');
+            box.classList.add('is-ready');
+            box.dataset.nmState = 'ready';
+        });
+        img.addEventListener('error', () => markInlineImageUnavailable(box, 'unavailable'));
+        img.src = src;
+        box.appendChild(img);
+        return true;
+    };
     for (const box of boxes) {
         if (box.dataset.nmState !== 'loading' || box.dataset.nmLoading === 'true') continue;
         box.dataset.nmLoading = 'true';
         const fileName = box.dataset.nmFile;
-        resolveInlineImageFile(fileName).then(async info => {
+        modePromise.then(async mode => {
+            const info = await resolveNoteImageSrc(fileName, mode);
             if (info.status !== 'ok') {
                 markInlineImageUnavailable(box, info.status === 'missing' ? 'missing' : 'unavailable');
                 return;
             }
-            const src = await inlineImageThumbUrl(info.fileId);
-            if (!box.isConnected) return; // картата вече е преизградена - новата рамка ще поеме
-            if (!src) { markInlineImageUnavailable(box, 'unavailable'); return; }
-            const img = document.createElement('img');
-            img.alt = fileName;
-            img.decoding = 'async';
-            img.addEventListener('load', () => {
-                box.classList.remove('is-loading');
-                box.classList.add('is-ready');
-                box.dataset.nmState = 'ready';
-            });
-            img.addEventListener('error', () => markInlineImageUnavailable(box, 'unavailable'));
-            img.src = src;
-            box.appendChild(img);
-            // Клик отваря съществуващия преглед на бележката (същият overlay като при прикачените).
-            addInNotePreviewListener(box, [{ path: info.fileId, pathGD: info.fileId, type: 1 }], 0, 'gdrive', false);
+            if (!putImage(box, fileName, info.src)) return;
+            if (mode === 'gdrive') {
+                // Клик отваря съществуващия преглед на бележката - същият overlay като при прикачените
+                // (тук с fileId-то, което току-що намерихме в папка Images).
+                addInNotePreviewListener(box, [{ path: info.fileId, pathGD: info.fileId, type: 1 }], 0, 'gdrive', false);
+                return;
+            }
+            // Клик: същият overlay, но с пътя до файла - showInNotePreview сам го прочита в пълен
+            // размер по същите три клона като прикачените (тук - 'local' / 'archive').
+            addInNotePreviewListener(box, [{ path: fileName, type: 1 }], 0, mode, false);
         }).catch(() => markInlineImageUnavailable(box, 'unavailable'));
     }
 }
+
+/**
+ * Миниатюрата в плочката: същият път като вградените картинки (resolveNoteImageSrc), режимът се
+ * пита по същия начин (inlineImageSourceMode), за да работят Drive, локална папка и архив.
+ * Докато файлът се търси, плочката пази мястото с празна подложка; при липсващ файл остава
+ * иконата на типа и пунктир, вместо празна дупка.
+ */
+async function fillAttachmentThumb(photoEl, tile, fileName) {
+    if (!photoEl || !fileName) return;
+    try {
+        const mode = await inlineImageSourceMode();
+        const info = await resolveNoteImageSrc(fileName, mode);
+        if (!photoEl.isConnected) return; // плочката вече не е на екрана
+        if (info.status !== 'ok') { dropAttachmentThumb(photoEl, tile, info.status); return; }
+        const img = document.createElement('img');
+        img.alt = ''; // името е в title/aria-label на плочката, тук би се повторило
+        img.decoding = 'async';
+        img.addEventListener('load', () => {
+            photoEl.classList.remove('is-loading');
+            photoEl.classList.add('is-ready');
+            tile.dataset.state = 'ready';
+        });
+        img.addEventListener('error', () => dropAttachmentThumb(photoEl, tile, 'unavailable'));
+        img.src = info.src;
+        photoEl.appendChild(img);
+    } catch (e) {
+        if (photoEl.isConnected) dropAttachmentThumb(photoEl, tile, 'unavailable');
+    }
+}
+
+/** Миниатюра няма: плочката се връща към иконата на типа и казва защо с пунктир. */
+function dropAttachmentThumb(photoEl, tile, state) {
+    if (photoEl) photoEl.remove();
+    if (!tile) return;
+    tile.classList.remove('has-photo');
+    tile.classList.add(state === 'missing' ? 'is-missing' : 'is-unavailable');
+    tile.dataset.state = state;
+}
+
+// --- Втори ред на подсказката: дата, час и размер на файла -----------------------------------
+// Собственикът (22.10): при задържане върху плочката да се вижда и от кога е файлът, и колко е
+// голям. Това е втори ред в същия title: '\n' се показва като нов ред от Chrome и Firefox, значи
+// не е нужен собствен tooltip елемент, нито CSS.
+//
+// Подпапката в локалната папка по тип на прикачения файл - същите имена ползва и отварянето.
+const ATTACHMENT_TYPE_FOLDERS = { 1: 'Images', 2: 'Sound', 3: 'Other', 4: 'Video' };
+// Спомнено за сесията: повторно отваряне на модала не пита отново нито Drive, нито диска.
+const attachmentMetaCache = new Map();
+
+/**
+ * Ключ за спомненото: режим + id в Drive или име на файл (при локалната папка и типа, защото
+ * един и същ файл може да е в Images и в Other).
+ */
+function attachmentMetaKey(attachment, fileName, mode) {
+    if (mode === 'gdrive') {
+        const direct = String(attachment.pathGD || '');
+        if (direct) return `gdrive:${direct}`;
+        // Снимка без id се търси по име - ключът е по името, за да не се повтаря търсенето.
+        return fileName ? `gdrive-name:${fileName}` : '';
+    }
+    if (!fileName) return '';
+    return mode === 'local' ? `local:${attachment.type}:${fileName}` : `archive:${fileName}`;
+}
+
+/**
+ * Id-то на файла в Drive - същото, което ползва и отварянето: pathGD, а при снимка без id -
+ * файлът по име от папка Images (resolveInlineImageFile).
+ * @returns {Promise<string>} Id или празен низ.
+ */
+async function attachmentDriveFileId(attachment, fileName) {
+    const direct = String(attachment.pathGD || '');
+    if (direct) return direct;
+    if (Number(attachment.type) !== 1 || !fileName) return '';
+    const info = await resolveInlineImageFile(fileName);
+    return info && info.status === 'ok' && info.fileId ? String(info.fileId) : '';
+}
+
+/**
+ * Метаданните от Drive: size и modifiedTime с една заявка, с токена за самите файлове.
+ * Изтекъл токен се опреснява еднократно - същото правило като при миниатюрите
+ * (inlineImageThumbUrl), иначе една изтекла сесия оставя подсказката без втори ред.
+ * @returns {Promise<{modified: number|null, size: number|null}|null>}
+ */
+async function attachmentDriveMeta(attachment, fileName) {
+    const fileId = await attachmentDriveFileId(attachment, fileName);
+    if (!fileId) return null;
+    const token = await driveMediaToken();
+    if (!token) return null;
+    const send = (accessToken) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=size,modifiedTime`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    let resp = await send(token);
+    if (resp.status === 401) {
+        const refresh = await refreshAuthToken().catch(() => null);
+        if (!refresh || !refresh.pass || !refresh.tokenData || !refresh.tokenData.access_token) return null;
+        resp = await send(refresh.tokenData.access_token);
+    }
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    // Размерът идва като НИЗ в байтове и липсва при документите на Google - тогава остава само
+    // датата, вместо "0 B".
+    const size = data && data.size !== undefined && data.size !== null && data.size !== ''
+        ? Number(data.size) : NaN;
+    const modified = data && data.modifiedTime ? Date.parse(data.modifiedTime) : NaN;
+    return {
+        modified: Number.isFinite(modified) ? modified : null,
+        size: Number.isFinite(size) ? size : null
+    };
+}
+
+/**
+ * Метаданните от диска: локалната папка по подпапка на типа (Images/Sound/Other/Video), архивът
+ * плоско по име - точно както се отваря и самият файл.
+ * @returns {Promise<{modified: number|null, size: number|null}|null>}
+ */
+async function attachmentHandleMeta(attachment, fileName, mode) {
+    if (!fileName) return null;
+    const handle = await ensureInlineDirHandle(mode);
+    if (!handle) return null;
+    let fileHandle;
+    if (mode === 'local') {
+        const folder = ATTACHMENT_TYPE_FOLDERS[Number(attachment.type)];
+        if (!folder) return null;
+        fileHandle = await (await handle.getDirectoryHandle(folder, { create: false })).getFileHandle(fileName);
+    } else {
+        fileHandle = await handle.getFileHandle(fileName);
+    }
+    const file = await fileHandle.getFile();
+    return {
+        modified: Number.isFinite(file.lastModified) && file.lastModified > 0 ? file.lastModified : null,
+        size: Number.isFinite(file.size) ? file.size : null
+    };
+}
+
+/** Размерът с езика на приложението: 512 KB, 2,4 MB, 1 GB - без излишното ",0". */
+function attachmentFileSizeLabel(size) {
+    if (!Number.isFinite(size) || size <= 0) return '';
+    const decimal = (value) => value.toLocaleString(currentLang, { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+    if (size >= 1024 * 1024 * 1024) return `${decimal(size / (1024 * 1024 * 1024))} GB`;
+    if (size >= 1024 * 1024) return `${decimal(size / (1024 * 1024))} MB`;
+    if (size >= 1024) return `${decimal(size / 1024)} KB`;
+    // Под един килобайт се показват байтовете: иначе малък файл би изглеждал като 0 KB.
+    return `${decimal(size)} B`;
+}
+
+/**
+ * Вторият ред на подсказката: "<дата, час> · <размер>", с езика, избран в приложението.
+ * Липсва ли едно от двете, редът носи само другото; няма ли нищо - празен низ.
+ */
+function attachmentMetaLine(meta) {
+    if (!meta) return '';
+    const parts = [];
+    if (meta.modified) {
+        try {
+            parts.push(new Intl.DateTimeFormat(currentLang, {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            }).format(new Date(meta.modified)));
+        } catch (e) {
+            // Език без данни за Intl: редът остава само с размера, вместо да падне.
+        }
+    }
+    const size = attachmentFileSizeLabel(meta.size);
+    if (size) parts.push(size);
+    return parts.join(' · ');
+}
+
+/**
+ * Дописва втория ред в подсказката, когато метаданните пристигнат - плочката не чака нищо.
+ * aria-label НЕ се пипа: нов ред в него се чете странно от екранните четци, а името там е същото.
+ * Провалът е тих: подсказката си остава един ред, както преди.
+ * @param {HTMLElement} tile - Плочката.
+ * @param {object} attachment - Обектът на прикачения файл.
+ * @param {string} fileName - Името на файла.
+ * @param {string} oneLineHint - Днешният едноредов текст на подсказката.
+ */
+async function fillAttachmentTileMeta(tile, attachment, fileName, oneLineHint) {
+    if (!tile || !oneLineHint) return; // няма име - няма и подсказка, в която да се допише ред
+    try {
+        const mode = await inlineImageSourceMode();
+        const meta = await attachmentFileMeta(attachment, fileName, mode);
+        if (!meta || !tile.isConnected) return; // плочката вече не е на екрана
+        const line = attachmentMetaLine(meta);
+        if (!line) return;
+        tile.title = `${oneLineHint}\n${line}`;
+    } catch (e) {
+        // Файлът може да е преместен или да няма права - това не е повод за съобщение.
+        console.warn('attachment tile meta failed:', fileName, e);
+    }
+}
+
+/**
+ * Метаданните на файла по трите пътя, по които се чете и самият той (inlineImageSourceMode).
+ * Успешното се помни за сесията; провалът НЕ се помни - след опреснен токен или върнала се
+ * папка следващият рендер пак ще опита (същото правило като при миниатюрите).
+ * @returns {Promise<{modified: number|null, size: number|null}|null>} null, ако не се знае.
+ */
+async function attachmentFileMeta(attachment, fileName, mode) {
+    const key = attachmentMetaKey(attachment, fileName, mode);
+    if (!key) return null;
+    if (attachmentMetaCache.has(key)) return attachmentMetaCache.get(key);
+    let meta = null;
+    try {
+        meta = mode === 'gdrive'
+            ? await attachmentDriveMeta(attachment, fileName)
+            : await attachmentHandleMeta(attachment, fileName, mode);
+    } catch (e) {
+        meta = null;
+    }
+    if (!meta || (meta.modified === null && meta.size === null)) return null;
+    attachmentMetaCache.set(key, meta);
+    return meta;
+}
+
+// --- Звукът остава в плочката ---------------------------------------------------------------
+// Собственикът (21.10): кликът на аудио файл отваряше черно поле в бележката и звукът тръгваше
+// там. Иска се обратното - звукът да излезе от самата плочка, иконата да пулсира, докато свири, и
+// втори клик да го спре. Затова има един скрит <audio> за цялото приложение: два гласа един върху
+// друг не се получават, а вторият клик винаги спира това, което се чува.
+
+// Как се казва подпапката със звука в локалната папка - същото име ползва и прегледът. Архивът
+// е плосък, там файлът е в корена.
+const ATTACHMENT_AUDIO_FOLDER = 'Sound';
+
+// Пуснатото аудио: { tile, audio, url, prevState }. Едно за цялото приложение.
+let attachmentAudio = null;
+// Искането, което още се тегли: { tile, cancelled }. Втори клик го отменя, вместо да пусне второ.
+let attachmentAudioPending = null;
+
+/**
+ * Токен за теглене на самия файл от Drive (не thumbnail).
+ * Същата проверка като в прегледа (loadMedia): липсващ или изтекъл токен се обновява през
+ * checkAuth. Изнесена е отделно, за да не се пипа прегледът, който работи.
+ * @returns {Promise<string|null>} Токенът или null, ако го няма.
+ */
+async function driveMediaToken() {
+    if (typeof gapi === 'undefined' || typeof gapi.client === 'undefined') {
+        await loadGoogleApis();
+    }
+    let isTokenExpired = true;
+    if (authToken && authToken.issued_at) {
+        const elapsedSeconds = (Date.now() - authToken.issued_at) / 1000;
+        if (elapsedSeconds < ((authToken.expires_in || 3599) - 300)) isTokenExpired = false;
+    }
+    if (!authToken || isTokenExpired) {
+        const newToken = await checkAuth();
+        // checkAuth връща обвивка { pass, tokenData }: в authToken стои само tokenData, иначе
+        // заявката тръгва с 'Bearer undefined' и Drive отговаря с 401.
+        const newTokenData = newToken && (newToken.tokenData || (newToken.access_token ? newToken : null));
+        if (newTokenData) {
+            authToken = newTokenData;
+            if (typeof gapi !== 'undefined' && gapi.client) gapi.client.setToken({ access_token: authToken.access_token });
+        }
+    }
+    const tokenObj = (typeof authToken !== 'undefined' && authToken)
+        ? authToken
+        : ((typeof gapi !== 'undefined' && gapi.auth && typeof gapi.auth.getToken === 'function') ? gapi.auth.getToken() : null);
+    return tokenObj && tokenObj.access_token ? tokenObj.access_token : null;
+}
+
+/**
+ * Blob URL на звуковия файл - по същите три пътя, по които го чете и прегледът: Drive по
+ * attachment.pathGD, локалната папка през Sound/, архивът плоско по име. Нищо не се строи на
+ * екрана, затова и не се преизползва кешът на миниатюрите: ключът там е по име на файл, а тук
+ * файлът може да е по id.
+ * @returns {Promise<string|null>} Blob URL или null, ако файлът липсва или не е достъпен.
+ */
+async function attachmentAudioBlobUrl(attachment, fileName, mode) {
+    if (mode === 'gdrive') {
+        const fileId = String(attachment.pathGD || attachment.path || '');
+        if (!fileId) return null;
+        const token = await driveMediaToken();
+        if (!token) return null;
+        // Без Range, за разлика от прегледа: там 'bytes=0-10000000' реже дългия файл и звукът
+        // спира по средата, без нищо да каже. Тук файлът се тегли цял - това е единственият
+        // начин записът да се чуе до края.
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return null;
+        return URL.createObjectURL(await response.blob());
+    }
+    if (!fileName) return null;
+    const handle = await ensureInlineDirHandle(mode);
+    if (!handle) return null;
+    const fileHandle = mode === 'local'
+        ? await (await handle.getDirectoryHandle(ATTACHMENT_AUDIO_FOLDER, { create: false })).getFileHandle(fileName)
+        : await handle.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    return URL.createObjectURL(file);
+}
+
+/**
+ * Спира звука от плочката и връща плочката в неутрално състояние.
+ * Безопасна е по всяко време: няма пуснато аудио - не прави нищо. Вика се и при затваряне на
+ * модала, и при смяна на бележката, иначе звукът продължава да свири след затворен viewer.
+ */
+function stopAttachmentAudio() {
+    // Теглене, което още не е стигнало до звук, се отменя: иначе файлът пристига след затворен
+    // модал и тръгва сам.
+    if (attachmentAudioPending) {
+        const loadingTile = attachmentAudioPending.tile;
+        attachmentAudioPending.cancelled = true;
+        attachmentAudioPending = null;
+        if (loadingTile) {
+            loadingTile.classList.remove('is-loading');
+            if (loadingTile.dataset.state === 'loading') loadingTile.dataset.state = 'plain';
+        }
+    }
+    const state = attachmentAudio;
+    attachmentAudio = null;
+    if (!state) return;
+    const { tile, audio, url, prevState } = state;
+    try { audio.pause(); } catch (e) { /* вече е спряно - няма какво да се прави */ }
+    audio.removeAttribute('src');
+    if (audio.parentNode) audio.parentNode.removeChild(audio);
+    if (url) URL.revokeObjectURL(url);
+    if (tile) {
+        tile.classList.remove('is-playing', 'is-loading');
+        tile.removeAttribute('aria-pressed');
+        // Липсващият файл си остава пунктиран - състоянието се връща каквото е било.
+        tile.dataset.state = prevState || 'plain';
+    }
+}
+
+/**
+ * Спира звука, ако плочката, която свири (или се тегли), не е в подадения корен - тоест при
+ * смяна на бележката звукът от предишната не остава да свири. Клик ВЪТРЕ в същата бележка не
+ * спира нищо: затова тук се проверява кой е коренът, вместо да се вика stopAttachmentAudio().
+ * @param {HTMLElement} rootEl - Прозорецът/бележката, която става активна.
+ */
+function stopAttachmentAudioOutside(rootEl) {
+    if (!rootEl) return;
+    const playingHere = attachmentAudio && attachmentAudio.tile && rootEl.contains(attachmentAudio.tile);
+    const pendingHere = attachmentAudioPending && attachmentAudioPending.tile && rootEl.contains(attachmentAudioPending.tile);
+    if (playingHere || pendingHere) return;
+    stopAttachmentAudio();
+}
+
+/**
+ * Клик на аудио плочка: пуска я на място, ако още не свири, и я спира, ако свири тя.
+ * Друга плочка, която свири или се тегли, се спира преди тази - чува се само едно.
+ * @param {HTMLElement} tile - Плочката, по която е кликнато.
+ * @param {object} attachment - Прикаченият файл (type=2).
+ */
+async function toggleAttachmentAudio(tile, attachment) {
+    if (!tile) return;
+    // Втори клик по същата плочка е "стоп": или спира звука, или отказва чакането.
+    if (attachmentAudio && attachmentAudio.tile === tile) { stopAttachmentAudio(); return; }
+    if (attachmentAudioPending && attachmentAudioPending.tile === tile) { stopAttachmentAudio(); return; }
+    // Клик по друга плочка сменя звука, не добавя втори.
+    stopAttachmentAudio();
+
+    const path = String(attachment.path || '');
+    const fileName = path ? path.split('/').pop() : '';
+    // Липсващ файл (няма нито име, нито id в Drive) не пуска нищо.
+    if (!fileName && !attachment.pathGD) return;
+
+    const pending = { tile, cancelled: false };
+    attachmentAudioPending = pending;
+    const prevState = tile.dataset.state;
+    tile.classList.add('is-loading');
+    tile.dataset.state = 'loading';
+    let url = null;
+    try {
+        const mode = await inlineImageSourceMode();
+        url = await attachmentAudioBlobUrl(attachment, fileName, mode);
+        if (!url) throw new Error('звукът не е достъпен');
+        // Докато файлът се тегли, бележката може да е сменена или модалът затворен.
+        if (pending.cancelled || !tile.isConnected) { URL.revokeObjectURL(url); return; }
+        const audio = document.createElement('audio');
+        audio.controls = false;
+        audio.hidden = true;
+        // Скрит нарочно: звукът излиза от плочката, а не от плеър в бележката.
+        audio.style.display = 'none';
+        audio.preload = 'auto';
+        // Атрибутът е за проверката - по него се намира пуснатият звук в страницата.
+        audio.dataset.nmAttachAudio = '1';
+        audio.src = url;
+        // Свърши ли файлът, плочката не остава завинаги в "свири".
+        audio.addEventListener('ended', () => {
+            if (attachmentAudio && attachmentAudio.audio === audio) stopAttachmentAudio();
+        });
+        document.body.appendChild(audio);
+        attachmentAudio = { tile, audio, url, prevState };
+        tile.classList.remove('is-loading');
+        tile.classList.add('is-playing');
+        tile.dataset.state = 'playing';
+        tile.setAttribute('aria-pressed', 'true');
+        audio.play().catch(err => {
+            // AbortError значи, че потребителят вече е спрял - това не е провал.
+            if (err && err.name === 'AbortError') return;
+            if (attachmentAudio && attachmentAudio.audio === audio) stopAttachmentAudio();
+            showToast(_('noSoundPreview'));
+        });
+    } catch (e) {
+        if (url) URL.revokeObjectURL(url);
+        tile.classList.remove('is-loading');
+        if (tile.dataset.state === 'loading') tile.dataset.state = prevState || 'plain';
+        showToast(_('noSoundPreview'));
+    } finally {
+        if (attachmentAudioPending === pending) attachmentAudioPending = null;
+    }
+}
+
+/**
+ * Плочка в лентата с прикачени файлове във viewer-а (модала).
+ * Плочката НЕ отваря файла сама: тя натиска съществуващия линк от футъра, който
+ * handleAttachment / handleGoogleDriveAttachment вече е построил, за да остане отварянето точно
+ * такова, каквото беше при клик върху името (преглед при Drive за снимка/видео/звук, файл в нов
+ * раздел при локална папка и архив, картата при type=5).
+ * Ctrl+клик показва JSON записа на прикачения файл - същото, което правеше иконата в debug режим,
+ * но винаги, защото в лентата отделна икона вече няма.
+ * @param {object} attachment - Обектът на прикачения файл.
+ * @param {HTMLElement} attachmentWrapper - Готовият ред на футъра (икона + линк) - остава скрит.
+ * @param {object} iconData - SVG иконата за типа на файла.
+ * @param {HTMLElement} slot - Мястото в лентата, в което влиза плочката (по ред на файловете).
+ */
+function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
+    const path = String(attachment.path || '');
+    const fileName = path ? path.split('/').pop() : '';
+    // type=5 (място) не е файл: "lat|lng|label", името за подсказката е етикетът.
+    const label = attachment.type === 5 ? (path.split('|')[2] || '') : fileName;
+    const hint = attachment.description ? `${label} — ${attachment.description}` : label;
+
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'nm-attach-tile';
+    tile.dataset.type = String(attachment.type);
+    tile.dataset.state = path ? 'plain' : 'missing';
+    if (hint) {
+        // Името не стои под плочката (както в оригинала), но остава достъпно: при задържане и за
+        // екранните четци.
+        tile.title = hint;
+        tile.setAttribute('aria-label', hint);
+    }
+    // Вторият ред (дата, час, размер) се дописва, когато метаданните пристигнат - плочката не чака.
+    // type=5 е място, не файл: там подсказката си остава един ред.
+    if (hint && attachment.type !== 5) fillAttachmentTileMeta(tile, attachment, fileName, hint);
+
+    const icon = document.createElement('span');
+    icon.className = 'nm-attach-tile-icon';
+    icon.innerHTML = iconData.svg;
+    tile.appendChild(icon);
+
+    // PDF-ът е червена плочка с "PDF", както в оригиналното приложение.
+    if (/\.pdf$/i.test(fileName)) {
+        tile.classList.add('is-pdf');
+        const tag = document.createElement('span');
+        tag.className = 'nm-attach-tile-tag';
+        tag.textContent = 'PDF';
+        tile.appendChild(tag);
+    }
+
+    // Снимката показва себе си, всичко останало - иконата на типа. Файл, който липсва (няма
+    // път), си остава плочка с иконата и пунктир.
+    if (attachment.type === 1 && fileName) {
+        const photo = document.createElement('span');
+        photo.className = 'nm-attach-tile-photo is-loading';
+        tile.classList.add('has-photo');
+        tile.insertBefore(photo, icon);
+        fillAttachmentThumb(photo, tile, fileName);
+    } else if (!path) {
+        tile.classList.add('is-missing');
+    }
+
+    // Кликът: съществуващият линк върши истинската работа, плочката само го натиска.
+    // Във viewer-а линкът винаги е <a> (isForModal), затова го търсим директно.
+    const sourceLink = attachmentWrapper.querySelector('a');
+    const showAttachmentJson = () => showModal(JSON.stringify(attachment, null, 2));
+    const openSource = () => { if (sourceLink) sourceLink.click(); };
+    // Звукът не отваря нищо: нито черното поле в бележката, нито нов раздел - свири от плочката.
+    const isAudioTile = attachment.type === 2;
+    // Видеото има собствен звук, затова кликът му спира пуснатото от плочката аудио - иначе двете
+    // се чуват едно върху друго.
+    const isVideoTile = attachment.type === 4;
+
+    // Плочката е <button>, значи Enter и Space идват като click - клавиатурата работи като мишката.
+    tile.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.ctrlKey || e.metaKey) { showAttachmentJson(); return; }
+        if (isAudioTile) { toggleAttachmentAudio(tile, attachment); return; }
+        if (isVideoTile) stopAttachmentAudio();
+        openSource();
+    });
+    // На macOS Ctrl+клик идва като contextmenu, не като click - иначе там би се отворил файлът.
+    tile.addEventListener('contextmenu', (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        showAttachmentJson();
+    });
+
+    attachmentWrapper.classList.add('nm-attach-source');
+    // Редът има inline display от строежа си (за борда е нужно), затова тук се скрива със inline
+    // style - иначе остава видим и имената пак излизат под плочките.
+    attachmentWrapper.style.display = 'none';
+    if (slot) slot.append(tile, attachmentWrapper);
+    return tile;
+}
+
 
 /**
  * Форматира текстов низ възоснова на JSON параметри.
@@ -19691,17 +20405,21 @@ async function handleAttachment(attachment, attachmentWrapper, iconData, mode = 
                     return;
                 }
             }
-            if (!filename) return;
-            console.log(`Opening file: ${folderName}/${filename}   DirHandle:`, dirHandle);
+            // Името е nameOnly (по-горе), не filename: тук стоеше несъществуваща променлива и
+            // кликът на прикачен файл от локална папка/архив хвърляше ReferenceError, тоест не
+            // отваряше нищо. Плочката в прегледа натиска точно този линк, значи пътят трябва да
+            // работи - същото име, което редът показва.
+            if (!nameOnly) return;
+            console.log(`Opening file: ${folderName}/${nameOnly}   DirHandle:`, dirHandle);
             try {
                 const fileHandle = mode === 'local'
-                    ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(filename)
-                    : await dirHandle.getFileHandle(filename); // Винаги използваме filename
+                    ? await (await dirHandle.getDirectoryHandle(folderName)).getFileHandle(nameOnly)
+                    : await dirHandle.getFileHandle(nameOnly); // Винаги използваме името на файла
                 const file = await fileHandle.getFile();
                 window.open(URL.createObjectURL(file), '_blank');
             } catch (err) {
-                console.log(`Could not open local file ${folderName}/${filename}`, err);
-                showToast(_('errorOpenFile').replace('{filename}', filename));
+                console.log(`Could not open local file ${folderName}/${nameOnly}`, err);
+                showToast(_('errorOpenFile').replace('{filename}', nameOnly));
             }
         };
         link.textContent = textPrefix + displayLinkText;
@@ -24505,7 +25223,10 @@ document.addEventListener('click', (e) => {
     if (!modalBodyElem || !modalBodyElem.contains(e.target)) return;
 
     // Explicitly ignore clicks on footer or copy button or any other elements appended to modalBody
-    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer') || e.target.closest('.code-block-copy')) return;
+    // Лентата с плочки на прикачените файлове също има собствена работа при Ctrl+клик (показва
+    // JSON записа на файла), затова Ctrl+клик върху плочка не отваря редактора - същото
+    // изключение, което вече важи за футъра и за копирането на кодов блок.
+    if (e.target.closest('.note-footer') || e.target.closest('.modal-note-footer') || e.target.closest('.code-block-copy') || e.target.closest('.nm-attach-strip')) return;
 
     // Check if Database mode is active OR if GDrive update is enabled
     const updateGDriveNow = useGoogleDb && !isOffline;
