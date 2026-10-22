@@ -8596,6 +8596,181 @@ function dropAttachmentThumb(photoEl, tile, state) {
     tile.dataset.state = state;
 }
 
+// --- Втори ред на подсказката: дата, час и размер на файла -----------------------------------
+// Собственикът (22.10): при задържане върху плочката да се вижда и от кога е файлът, и колко е
+// голям. Това е втори ред в същия title: '\n' се показва като нов ред от Chrome и Firefox, значи
+// не е нужен собствен tooltip елемент, нито CSS.
+//
+// Подпапката в локалната папка по тип на прикачения файл - същите имена ползва и отварянето.
+const ATTACHMENT_TYPE_FOLDERS = { 1: 'Images', 2: 'Sound', 3: 'Other', 4: 'Video' };
+// Спомнено за сесията: повторно отваряне на модала не пита отново нито Drive, нито диска.
+const attachmentMetaCache = new Map();
+
+/**
+ * Ключ за спомненото: режим + id в Drive или име на файл (при локалната папка и типа, защото
+ * един и същ файл може да е в Images и в Other).
+ */
+function attachmentMetaKey(attachment, fileName, mode) {
+    if (mode === 'gdrive') {
+        const direct = String(attachment.pathGD || '');
+        if (direct) return `gdrive:${direct}`;
+        // Снимка без id се търси по име - ключът е по името, за да не се повтаря търсенето.
+        return fileName ? `gdrive-name:${fileName}` : '';
+    }
+    if (!fileName) return '';
+    return mode === 'local' ? `local:${attachment.type}:${fileName}` : `archive:${fileName}`;
+}
+
+/**
+ * Id-то на файла в Drive - същото, което ползва и отварянето: pathGD, а при снимка без id -
+ * файлът по име от папка Images (resolveInlineImageFile).
+ * @returns {Promise<string>} Id или празен низ.
+ */
+async function attachmentDriveFileId(attachment, fileName) {
+    const direct = String(attachment.pathGD || '');
+    if (direct) return direct;
+    if (Number(attachment.type) !== 1 || !fileName) return '';
+    const info = await resolveInlineImageFile(fileName);
+    return info && info.status === 'ok' && info.fileId ? String(info.fileId) : '';
+}
+
+/**
+ * Метаданните от Drive: size и modifiedTime с една заявка, с токена за самите файлове.
+ * Изтекъл токен се опреснява еднократно - същото правило като при миниатюрите
+ * (inlineImageThumbUrl), иначе една изтекла сесия оставя подсказката без втори ред.
+ * @returns {Promise<{modified: number|null, size: number|null}|null>}
+ */
+async function attachmentDriveMeta(attachment, fileName) {
+    const fileId = await attachmentDriveFileId(attachment, fileName);
+    if (!fileId) return null;
+    const token = await driveMediaToken();
+    if (!token) return null;
+    const send = (accessToken) => fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=size,modifiedTime`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    let resp = await send(token);
+    if (resp.status === 401) {
+        const refresh = await refreshAuthToken().catch(() => null);
+        if (!refresh || !refresh.pass || !refresh.tokenData || !refresh.tokenData.access_token) return null;
+        resp = await send(refresh.tokenData.access_token);
+    }
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    // Размерът идва като НИЗ в байтове и липсва при документите на Google - тогава остава само
+    // датата, вместо "0 B".
+    const size = data && data.size !== undefined && data.size !== null && data.size !== ''
+        ? Number(data.size) : NaN;
+    const modified = data && data.modifiedTime ? Date.parse(data.modifiedTime) : NaN;
+    return {
+        modified: Number.isFinite(modified) ? modified : null,
+        size: Number.isFinite(size) ? size : null
+    };
+}
+
+/**
+ * Метаданните от диска: локалната папка по подпапка на типа (Images/Sound/Other/Video), архивът
+ * плоско по име - точно както се отваря и самият файл.
+ * @returns {Promise<{modified: number|null, size: number|null}|null>}
+ */
+async function attachmentHandleMeta(attachment, fileName, mode) {
+    if (!fileName) return null;
+    const handle = await ensureInlineDirHandle(mode);
+    if (!handle) return null;
+    let fileHandle;
+    if (mode === 'local') {
+        const folder = ATTACHMENT_TYPE_FOLDERS[Number(attachment.type)];
+        if (!folder) return null;
+        fileHandle = await (await handle.getDirectoryHandle(folder, { create: false })).getFileHandle(fileName);
+    } else {
+        fileHandle = await handle.getFileHandle(fileName);
+    }
+    const file = await fileHandle.getFile();
+    return {
+        modified: Number.isFinite(file.lastModified) && file.lastModified > 0 ? file.lastModified : null,
+        size: Number.isFinite(file.size) ? file.size : null
+    };
+}
+
+/** Размерът с езика на приложението: 512 KB, 2,4 MB, 1 GB - без излишното ",0". */
+function attachmentFileSizeLabel(size) {
+    if (!Number.isFinite(size) || size <= 0) return '';
+    const decimal = (value) => value.toLocaleString(currentLang, { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+    if (size >= 1024 * 1024 * 1024) return `${decimal(size / (1024 * 1024 * 1024))} GB`;
+    if (size >= 1024 * 1024) return `${decimal(size / (1024 * 1024))} MB`;
+    if (size >= 1024) return `${decimal(size / 1024)} KB`;
+    // Под един килобайт се показват байтовете: иначе малък файл би изглеждал като 0 KB.
+    return `${decimal(size)} B`;
+}
+
+/**
+ * Вторият ред на подсказката: "<дата, час> · <размер>", с езика, избран в приложението.
+ * Липсва ли едно от двете, редът носи само другото; няма ли нищо - празен низ.
+ */
+function attachmentMetaLine(meta) {
+    if (!meta) return '';
+    const parts = [];
+    if (meta.modified) {
+        try {
+            parts.push(new Intl.DateTimeFormat(currentLang, {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            }).format(new Date(meta.modified)));
+        } catch (e) {
+            // Език без данни за Intl: редът остава само с размера, вместо да падне.
+        }
+    }
+    const size = attachmentFileSizeLabel(meta.size);
+    if (size) parts.push(size);
+    return parts.join(' · ');
+}
+
+/**
+ * Дописва втория ред в подсказката, когато метаданните пристигнат - плочката не чака нищо.
+ * aria-label НЕ се пипа: нов ред в него се чете странно от екранните четци, а името там е същото.
+ * Провалът е тих: подсказката си остава един ред, както преди.
+ * @param {HTMLElement} tile - Плочката.
+ * @param {object} attachment - Обектът на прикачения файл.
+ * @param {string} fileName - Името на файла.
+ * @param {string} oneLineHint - Днешният едноредов текст на подсказката.
+ */
+async function fillAttachmentTileMeta(tile, attachment, fileName, oneLineHint) {
+    if (!tile || !oneLineHint) return; // няма име - няма и подсказка, в която да се допише ред
+    try {
+        const mode = await inlineImageSourceMode();
+        const meta = await attachmentFileMeta(attachment, fileName, mode);
+        if (!meta || !tile.isConnected) return; // плочката вече не е на екрана
+        const line = attachmentMetaLine(meta);
+        if (!line) return;
+        tile.title = `${oneLineHint}\n${line}`;
+    } catch (e) {
+        // Файлът може да е преместен или да няма права - това не е повод за съобщение.
+        console.warn('attachment tile meta failed:', fileName, e);
+    }
+}
+
+/**
+ * Метаданните на файла по трите пътя, по които се чете и самият той (inlineImageSourceMode).
+ * Успешното се помни за сесията; провалът НЕ се помни - след опреснен токен или върнала се
+ * папка следващият рендер пак ще опита (същото правило като при миниатюрите).
+ * @returns {Promise<{modified: number|null, size: number|null}|null>} null, ако не се знае.
+ */
+async function attachmentFileMeta(attachment, fileName, mode) {
+    const key = attachmentMetaKey(attachment, fileName, mode);
+    if (!key) return null;
+    if (attachmentMetaCache.has(key)) return attachmentMetaCache.get(key);
+    let meta = null;
+    try {
+        meta = mode === 'gdrive'
+            ? await attachmentDriveMeta(attachment, fileName)
+            : await attachmentHandleMeta(attachment, fileName, mode);
+    } catch (e) {
+        meta = null;
+    }
+    if (!meta || (meta.modified === null && meta.size === null)) return null;
+    attachmentMetaCache.set(key, meta);
+    return meta;
+}
+
 // --- Звукът остава в плочката ---------------------------------------------------------------
 // Собственикът (21.10): кликът на аудио файл отваряше черно поле в бележката и звукът тръгваше
 // там. Иска се обратното - звукът да излезе от самата плочка, иконата да пулсира, докато свири, и
@@ -8804,6 +8979,9 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
         tile.title = hint;
         tile.setAttribute('aria-label', hint);
     }
+    // Вторият ред (дата, час, размер) се дописва, когато метаданните пристигнат - плочката не чака.
+    // type=5 е място, не файл: там подсказката си остава един ред.
+    if (hint && attachment.type !== 5) fillAttachmentTileMeta(tile, attachment, fileName, hint);
 
     const icon = document.createElement('span');
     icon.className = 'nm-attach-tile-icon';
