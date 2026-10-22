@@ -659,6 +659,7 @@ main {
 /* Звукът свири от плочката: иконата пулсира, защото самата тя е и бутонът за спиране. Състоянието
    трябва да се вижда и без анимация, затова плочката е и по-тъмна. */
 @keyframes nm-attach-audio-pulse {
+
     0%,
     100% {
         opacity: 1;
@@ -3262,6 +3263,7 @@ body.selection-locked .note.active-selection-note .note-content {
     left: -15px !important;
     right: auto !important;
 }
+
 /* --- Няколко отворени бележки (порт от cx-notes b1.82 / b1.83) ---
    Всеки прозорец е клонинг на #content-modal-template в #note-windows-layer. Слоят е един stacking
    context на нивото на стария модал, значи z-index-ът на прозорците (10050 и нагоре, последно
@@ -3331,7 +3333,7 @@ body.selection-locked .note.active-selection-note .note-content {
 /* Името на борда дава мястото първо: свива се, реже се с многоточие и никога не минава под бутоните.
    :is(...) тук е нарочно: основното правило горе също е :is(#id, .nw-...), тоест носи специфичността
    на #id и по-слаб селектор не би го надвил за неактивните прозорци (там id-то е прибрано). */
-.note-window .note-header-toolbar > :is(#modal-board-name, .nw-modal-board-name) {
+.note-window .note-header-toolbar> :is(#modal-board-name, .nw-modal-board-name) {
     position: static;
     top: auto;
     min-width: 0;
@@ -3365,7 +3367,7 @@ body.selection-locked .note.active-selection-note .note-content {
 
 /* Бутоните в реда не са абсолютно позиционирани (абсолютното важи извън прозореца на бележка) и са
    точно 32x32: без border-box рамката би добавила 2px и редът би излязъл от кутията при тясна бележка. */
-.note-window .note-header-buttons > * {
+.note-window .note-header-buttons>* {
     position: static;
     top: auto;
     right: auto;
@@ -3377,7 +3379,7 @@ body.selection-locked .note.active-selection-note .note-content {
 /* Дясната клетка (b1.11): хиксчето и „Затвори всички" заедно, едно до друго, извън плъзгащия се ред.
    Собствена клетка с ширина по съдържанието: двете кръгчета (2 x 32px) плюс отстоянието между тях, тоест
    при тясна бележка те първи си взимат мястото, а редът с бутоните се свива и се плъзга. */
-.note-window .note-header-toolbar > .note-header-close-group {
+.note-window .note-header-toolbar>.note-header-close-group {
     position: static;
     display: flex;
     align-items: center;
@@ -3389,7 +3391,7 @@ body.selection-locked .note.active-selection-note .note-content {
 
 /* Двете кръгчета в групата: без абсолютното позициониране на .modal-header-btn (то важи извън
    прозореца на бележка) и точно 32x32, за да не расте клетката от рамката. */
-.note-window .note-header-toolbar > .note-header-close-group > * {
+.note-window .note-header-toolbar>.note-header-close-group>* {
     position: static;
     top: auto;
     right: auto;
@@ -3527,10 +3529,29 @@ body.selection-locked .note.active-selection-note .note-content {
     justify-content: center;
 }
 
-.note .clock .n12 { top: 4px; left: 50%; transform: translateX(-50%); }
-.note .clock .n3 { right: 4px; top: 50%; transform: translateY(-50%); }
-.note .clock .n6 { bottom: 4px; left: 50%; transform: translateX(-50%); }
-.note .clock .n9 { left: 4px; top: 50%; transform: translateY(-50%); }
+.note .clock .n12 {
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.note .clock .n3 {
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.note .clock .n6 {
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.note .clock .n9 {
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+}
 
 /* Седмичен мини календар: ляга върху бележката, плътно до ръбовете ѝ. */
 .note-week-calendar {
