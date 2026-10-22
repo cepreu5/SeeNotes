@@ -555,5 +555,13 @@
     "demoWelcomeBoard": "Добре дошли",
     "demoWelcomeNote": "welcome",
     "inlineImgMissing": "няма такъв файл в Images",
-    "inlineImgUnavailable": "файлът не е достъпен сега"
+    "inlineImgUnavailable": "файлът не е достъпен сега",
+    "nmInlineMenuLabel": "Снимка в текста",
+    "nmInlinePreview": "Преглед",
+    "nmInlineWidth": "Ширина",
+    "nmInlineWidthAria": "Ширина на снимката, проценти",
+    "nmInlineInsert": "Сложи в текста",
+    "nmInlineRemove": "Махни",
+    "nmAddPhoto": "Добави снимка",
+    "nmInlineRefusedCode": "Тук снимка не може да се сложи"
 }

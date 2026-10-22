@@ -555,5 +555,13 @@
     "demoWelcomeBoard": "Welcome",
     "demoWelcomeNote": "welcome",
     "inlineImgMissing": "no such file in Images",
-    "inlineImgUnavailable": "file not available right now"
+    "inlineImgUnavailable": "file not available right now",
+    "nmInlineMenuLabel": "Image in the text",
+    "nmInlinePreview": "Preview",
+    "nmInlineWidth": "Width",
+    "nmInlineWidthAria": "Image width, percent",
+    "nmInlineInsert": "Put in the text",
+    "nmInlineRemove": "Remove",
+    "nmAddPhoto": "Add a photo",
+    "nmInlineRefusedCode": "An image cannot go here"
 }

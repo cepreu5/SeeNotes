@@ -12332,69 +12332,9 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         if (!win || win.open) shownModal.classList.add('visible');
     });
 
-    // --- ДОБАВЕНА ЛОГИКА ЗА ПРИКАЧЕНИ ФАЙЛОВЕ ---
-    // Проверяваме дали имаме ID-та, за да търсим прикачени файлове
-    if (noteId || noteGdid) {
-        // --- Логика за показване на бутона за изтриване ---
-        let attachments = [];
-        if (useIndexedDb) {
-            const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid';
-            if (dbNoteIdType === 'id') {
-                attachments = mediaData.filter(media => +media.noteid === +noteId);
-            } else { // 'gdid'
-                attachments = mediaData.filter(media => media.noteid === noteGdid);
-            }
-        } else {
-            if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
-            else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
-        if (attachments.length > 0) {
-            const separator = document.createElement('hr');
-            separator.style.marginTop = '10px';
-            separator.style.marginBottom = '10px';
-            modalBody.appendChild(separator);
-            // Футърът е лента от плочки като в оригиналното приложение: снимките се виждат самите те,
-            // другите файлове носят иконата на типа си, лентата се плъзга настрана, когато не се
-            // събират. Имената не стоят под плочките (излизат при задържане), както в оригинала.
-            const stripEl = document.createElement('div');
-            stripEl.className = 'nm-attach-strip';
-            modalBody.appendChild(stripEl);
-            // Мястото на плочката се заема веднага и в реда на файловете, а съдържанието идва, когато
-            // файлът бъде намерен - иначе редът зависи от това кой файл се чете по-бързо.
-            attachments.forEach(attachment => {
-                const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
-                if (!iconData) return;
-                const slot = document.createElement('div');
-                slot.className = 'nm-attach-slot';
-                stripEl.appendChild(slot);
-                const attachmentWrapper = document.createElement('div');
-                attachmentWrapper.style.display = 'flex';
-                attachmentWrapper.style.alignItems = 'center';
-                attachmentWrapper.style.gap = '5px';
-                attachmentWrapper.style.marginTop = '5px';
-                (async () => {
-                    try {
-                        if (useArhDb) {
-                            await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
-                        } else if (useLocalFolder) {
-                            await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
-                        } else {
-                            await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
-                        }
-                    } catch (err) {
-                        // Ако строенето на плочката се счупи, по-добре обикновеният ред с име, отколкото
-                        // изчезнал файл.
-                        console.warn('attachment tile: falling back to the plain row', err);
-                        slot.appendChild(attachmentWrapper);
-                        return;
-                    }
-                    buildAttachmentTile(attachment, attachmentWrapper, iconData, slot);
-                })();
-            });
-
-        }
-    }
-    // --- КРАЙ НА ДОБАВЕНАТА ЛОГИКА ---
+    // --- ПРИКАЧЕНИ ФАЙЛОВЕ: лентата с плочки ---
+    // Същият строеж се вика и от enableNoteEditing, за да остане лентата видима и в редакция.
+    buildNoteAttachmentStrip(modalBody, noteId, noteGdid);
     // --- FOOTER GENERATION LOGIC ---
     // Remove old search bar and footer if they exist
     const oldFooter = modalContentBox.querySelector('.modal-note-footer');
@@ -20527,6 +20467,10 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
     // type=5 е място, не файл: там подсказката си остава един ред.
     if (hint && attachment.type !== 5) fillAttachmentTileMeta(tile, attachment, fileName, hint);
 
+    // Името е и на самата плочка: по него менюто на снимката намира кои места в текста са на
+    // този файл, а „Преглед" - истинския <a> в обвивката.
+    tile.dataset.nmFileName = fileName;
+
     const icon = document.createElement('span');
     icon.className = 'nm-attach-tile-icon';
     icon.innerHTML = iconData.svg;
@@ -20571,6 +20515,12 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
         if (e.ctrlKey || e.metaKey) { showAttachmentJson(); return; }
         if (isAudioTile) { toggleAttachmentAudio(tile, attachment); return; }
         if (isVideoTile) stopAttachmentAudio();
+        // В режим Редактиране кликът върху снимка отваря менюто (Преглед, Ширина, „Сложи в текста"),
+        // за да влезе същата снимка и в текста; извън редакция отваря файла, както досега.
+        if (attachment.type === 1 && fileName && tile.closest('.nm-edit-with-strip') &&
+            toggleNmInlineMenuForTile(tile, fileName)) {
+            return;
+        }
         openSource();
     });
     // На macOS Ctrl+клик идва като contextmenu, не като click - иначе там би се отворил файлът.
@@ -23100,8 +23050,781 @@ function scrollCaretIntoView(textarea) {
     document.body.removeChild(mirror);
 }
 
+// ================== Снимка в текста: маркер от един знак и меню с плъзгач (план 10) ==================
+// В редактора звездичката на type=8 не се вижда като знак: на нейно място стои миниатюра.
+// Маркерът пази ТОЧНО ширината на знака, който замества (миниатюрата е фон на ::after, не <img>),
+// защото подложката (renderNoteEditBackdrop) рисува същия текст под прозрачната текстова кутия:
+// всяка промяна на ширината би отместила каретата и би пренасяла редовете другояче.
+// Клик на маркера слага каретата там и отваря меню: Преглед, Ширина (10..100, стъпка 10, за да
+// съвпада с paramint 1..10 на Android) и „Махни". Същото меню излиза и от плочка в лентата с
+// прикачените файлове (в редакция), но там последният ред е „Сложи в текста" - маркерът влиза на
+// каретата с ширина 30% (paramint 3), както прави Android.
+const NM_INLINE_MARK_THUMB_SIZE = 100;
+// Адресите на миниатюрите за маркерите, за сесията: подложката се пре-рисува при всяко натискане
+// на клавиш и без този кеш всяко пре-рисуване би оставяло маркерите празни за миг.
+const nmInlineMarkThumbCache = new Map();
+let nmInlineMenuState = null;
+
+/** Адресът на миниатюрата за маркера, ако вече е намерен в тази сесия. */
+function nmInlineMarkThumb(fileName) {
+    const key = String(fileName || '');
+    return key ? (nmInlineMarkThumbCache.get(key) || '') : '';
+}
+
+/** Inline style за маркера: миниатюрата се рисува от ::after (виж style.css). */
+function nmInlineMarkStyle(fileName) {
+    const src = nmInlineMarkThumb(fileName);
+    return src ? ` style="--nm-mark-img:url(&quot;${escapeAttr(src)}&quot;)"` : '';
+}
+
+/** Първият неинтервален знак в диапазона - там застава маркерът (същото правило като при четене). */
+function nmInlineFirstNonSpace(text, start, end) {
+    const value = String(text || '');
+    const from = Math.max(0, Math.floor(Number(start) || 0));
+    const to = Math.min(value.length, Math.floor(Number(end) || 0));
+    for (let p = from; p < to; p++) if (!/\s/.test(value[p])) return p;
+    return -1;
+}
+
+/** Последният неинтервален знак в диапазона, +1 (за „Махни"). */
+function nmInlineLastNonSpaceEnd(text, start, end) {
+    const value = String(text || '');
+    const from = Math.max(0, Math.floor(Number(start) || 0));
+    const to = Math.min(value.length, Math.floor(Number(end) || 0));
+    for (let p = to - 1; p >= from; p--) if (!/\s/.test(value[p])) return p + 1;
+    return -1;
+}
+
+/**
+ * Миниатюрите на маркерите в една подложка (редакторът).
+ * Пътят до файла е един и същ с вградените картинки при четене (resolveNoteImageSrc): Drive,
+ * локална папка или архив - според режима. Липсващ файл прави маркера пунктир с „?", а не го трие.
+ */
+function hydrateInlineImageMarks(rootEl) {
+    if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return;
+    const marks = Array.from(rootEl.querySelectorAll('.nm-inline-mark[data-nm-file]'));
+    if (!marks.length) return;
+    const modePromise = inlineImageSourceMode();
+    marks.forEach(mark => {
+        const name = mark.dataset.nmFile;
+        if (!name) return;
+        const state = mark.dataset.nmMarkState;
+        if (state === 'loading' || state === 'ready') return;
+        const known = nmInlineMarkThumb(name);
+        if (known) {
+            // Намерена в тази сесия: маркерът се рисува веднага, без да пита Drive пак.
+            mark.dataset.nmMarkState = 'ready';
+            mark.classList.remove('is-missing');
+            mark.style.setProperty('--nm-mark-img', `url("${known}")`);
+            return;
+        }
+        mark.dataset.nmMarkState = 'loading';
+        modePromise.then(mode => resolveNoteImageSrc(name, mode, '', { size: NM_INLINE_MARK_THUMB_SIZE }))
+            .then(info => {
+                if (!mark.isConnected) return;
+                if (!info || info.status !== 'ok' || !info.src) {
+                    mark.dataset.nmMarkState = (info && info.status === 'missing') ? 'missing' : 'unavailable';
+                    mark.classList.add('is-missing');
+                    return;
+                }
+                if (info.fileId) mark.dataset.nmFileId = info.fileId;
+                nmInlineMarkThumbCache.set(name, info.src);
+                mark.dataset.nmMarkState = 'ready';
+                mark.classList.remove('is-missing');
+                mark.style.setProperty('--nm-mark-img', `url("${info.src}")`);
+            })
+            .catch(() => {
+                if (!mark.isConnected) return;
+                mark.dataset.nmMarkState = 'unavailable';
+                mark.classList.add('is-missing');
+            });
+    });
+}
+
+/** Записът (type=8) зад маркер в подложката - по началото и края от data-атрибутите му. */
+function nmInlineFormatFromMark(modalBody, mark) {
+    if (!modalBody || !mark) return null;
+    const start = Number(mark.dataset.nmStart);
+    const end = Number(mark.dataset.nmEnd);
+    if (!Number.isFinite(start)) return null;
+    return readNoteEditFormats(modalBody, 'format')
+        .find(f => f.type === 8 && f.start === start && (!Number.isFinite(end) || f.end === end)) || null;
+}
+
+/** Записът (type=8), в който стои каретата (щрак върху звездичката с клавиатура/тъч). */
+function nmInlineFormatAtCaret(field, modalBody) {
+    if (!field || !field.isConnected || !modalBody) return null;
+    const pos = field.selectionStart;
+    if (pos === null || pos === undefined) return null;
+    return readNoteEditFormats(modalBody, 'format')
+        .find(f => f.type === 8 && pos >= f.start && pos < f.end) || null;
+}
+
+/** Маркерът под точката на щракване (подложката е с pointer-events: none - търсим на ръка). */
+function nmInlineMarkAtPoint(backdrop, x, y) {
+    if (!backdrop || !backdrop.querySelectorAll) return null;
+    const marks = backdrop.querySelectorAll('.nm-inline-mark');
+    for (const mark of marks) {
+        const rect = mark.getBoundingClientRect();
+        if (!rect.width && !rect.height) continue;
+        const fontSize = parseFloat(getComputedStyle(mark).fontSize) || 16;
+        // Миниатюрата е ~0.95em широка и виси симетрично над знака, затова и полето за клик е такова.
+        const half = Math.max(rect.width, fontSize * 0.95) / 2 + 4;
+        const cx = rect.left + rect.width / 2;
+        if (x >= cx - half && x <= cx + half && y >= rect.top - 3 && y <= rect.bottom + 3) return mark;
+    }
+    return null;
+}
+
+// ------------------------------- Менюто -------------------------------
+
+/** Затваря менюто (ако е отворено) и маха временния кадър. */
+function closeNmInlineMenu() {
+    const state = nmInlineMenuState;
+    if (!state) return;
+    nmInlineMenuState = null;
+    if (state.ghost) { state.ghost.remove(); state.ghost = null; }
+    if (state.el) state.el.remove();
+    if (state.onOutside) document.removeEventListener('mousedown', state.onOutside, true);
+    if (state.onKey) document.removeEventListener('keydown', state.onKey, true);
+    if (state.onResize) window.removeEventListener('resize', state.onResize);
+    if (state.field && state.onScroll) state.field.removeEventListener('scroll', state.onScroll);
+    if (state.field && state.onFieldInput) state.field.removeEventListener('input', state.onFieldInput);
+}
+
+/** Менюто е колкото бележката, но не повече от 300px, и се мести, ако не се побира. */
+function positionNmInlineMenu(state) {
+    const el = state && state.el;
+    if (!el || !el.isConnected || !state.modalBody) return;
+    const column = state.modalBody.getBoundingClientRect();
+    const width = Math.max(120, Math.min(300, Math.round(column.width)));
+    el.style.width = width + 'px';
+    const menuHeight = el.offsetHeight || 150;
+    const anchor = state.anchorRect || column;
+    const minLeft = Math.max(6, Math.round(column.left));
+    const maxLeft = Math.max(minLeft, Math.min(window.innerWidth - width - 6, Math.round(column.right) - width));
+    const left = Math.max(minLeft, Math.min(Math.round(anchor.left), maxLeft));
+    el.style.left = left + 'px';
+    const gap = 6;
+    const below = Math.round(anchor.bottom) + gap;
+    const above = Math.round(anchor.top) - menuHeight - gap;
+    let top;
+    if (below + menuHeight <= window.innerHeight - 8) top = below;
+    else if (above >= 8) top = above;
+    else top = Math.max(8, window.innerHeight - menuHeight - 8);
+    el.style.top = top + 'px';
+    el.classList.toggle('is-above', top < Math.round(anchor.top));
+}
+
+/** Временният кадър, който показва избраната ширина, докато плъзгачът се мести. */
+function showNmInlineGhost(state, pct) {
+    if (!state) return;
+    if (pct === null || pct === undefined) {
+        if (state.ghost) { state.ghost.remove(); state.ghost = null; }
+        return;
+    }
+    const column = state.modalBody.getBoundingClientRect();
+    const width = Math.max(28, Math.round(column.width * Number(pct) / 100));
+    const height = Math.max(34, Math.min(96, Math.round(width * 0.5)));
+    const el = document.createElement('div');
+    el.className = 'nm-inline-ghost';
+    const label = document.createElement('span');
+    label.textContent = Math.round(Number(pct)) + '%';
+    el.appendChild(label);
+    const src = nmInlineMarkThumb(state.fileName);
+    if (src) el.style.setProperty('--nm-mark-img', `url("${src}")`);
+    el.style.width = width + 'px';
+    el.style.height = height + 'px';
+    const anchor = state.anchorRect || column;
+    const left = Math.max(6, Math.min(Math.round(column.left) + 2, window.innerWidth - width - 6));
+    let top = Math.round(anchor.top) - height - 8;
+    if (top < 8) top = Math.min(window.innerHeight - height - 8, Math.round(anchor.bottom) + 8);
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    if (state.ghost) state.ghost.replaceWith(el);
+    else document.body.appendChild(el);
+    state.ghost = el;
+}
+
+/**
+ * Записва ширината в paramint (10..100 -> 1..10).
+ * От маркер се пипа само това място; от плочка - всички места на този файл в бележката (от плочката
+ * адресираш файла, от маркера - мястото).
+ */
+function applyNmInlineWidth(state, pct, commit) {
+    const modalBody = state && state.modalBody;
+    if (!modalBody) return false;
+    const step = Math.max(1, Math.min(10, Math.round(Number(pct) / 10)));
+    const formats = readNoteEditFormats(modalBody, 'format');
+    let changed = false;
+    formats.forEach(f => {
+        if (!f || f.type !== 8) return;
+        if (state.kind === 'marker') {
+            if (f.start !== state.start) return;
+        } else if (inlineImageName(f.paramstring) !== state.fileName) {
+            return;
+        }
+        if (Number(f.paramint) !== step) { f.paramint = step; changed = true; }
+    });
+    if (!changed) return false;
+    writeNoteEditFormats(modalBody, 'format', formats);
+    const field = document.getElementById('note-edit-textarea');
+    refreshNoteEditBackdrops(getNoteEditContext(field));
+    // Всяка смяна на ширината е едно стъпало за отмяна - при пускането на плъзгача.
+    if (commit) commitNoteEditUndo(modalBody);
+    return true;
+}
+
+/**
+ * „Преглед": същият ход, който днешният клик върху плочка прави - натиска се истинският <a>, който
+ * handleAttachment / handleGoogleDriveAttachment е построил в обвивката на файла.
+ */
+function previewNmInlineFile(state) {
+    if (!state) return false;
+    const strip = state.strip || (state.modalBody && state.modalBody.querySelector('.nm-attach-strip'));
+    const fileName = state.fileName;
+    if (!strip || !fileName) return false;
+    const slots = strip.querySelectorAll('.nm-attach-slot');
+    for (const slot of slots) {
+        const tile = slot.querySelector('.nm-attach-tile');
+        if (!tile || tile.dataset.nmFileName !== fileName) continue;
+        const link = slot.querySelector('.nm-attach-source a');
+        if (!link) continue;
+        link.click();
+        return true;
+    }
+    return false;
+}
+
+/** „Махни": маха само това място от текста и записа; файлът остава в лентата. */
+function removeNmInlineMarker(state) {
+    const modalBody = state && state.modalBody;
+    const field = document.getElementById('note-edit-textarea');
+    if (!modalBody || !field || !field.isConnected) return false;
+    const target = readNoteEditFormats(modalBody, 'format')
+        .find(f => f.type === 8 && f.start === state.start);
+    if (!target) return false;
+    const lo = nmInlineFirstNonSpace(field.value, target.start, target.end);
+    const hi = nmInlineLastNonSpaceEnd(field.value, target.start, target.end);
+    if (lo >= 0 && hi > lo) noteEditReplace(field, lo, hi, '', lo);
+    // Диапазонът пада от записа - иначе при запис снимката ляга върху съседен текст.
+    const rest = readNoteEditFormats(modalBody, 'format').filter(f => !(f.type === 8 && f.start === target.start));
+    writeNoteEditFormats(modalBody, 'format', rest);
+    refreshNoteEditBackdrops(getNoteEditContext(field));
+    commitNoteEditUndo(modalBody);
+    return true;
+}
+
+/** „Сложи в текста": маркер (звездичка) на каретата + type=8 с името на файла, ширина 30%. */
+function insertNmInlineImage(state) {
+    const modalBody = state && state.modalBody;
+    if (!modalBody || !state.fileName) return false;
+    const field = document.getElementById('note-edit-textarea');
+    if (!field || !field.isConnected) return false;
+    const ctx = getNoteEditContext(field);
+    // Заглавието и полетата на таблицата не приемат маркер - там няма място за снимка.
+    if (!ctx || ctx.key !== 'format' || ctx.split) return false;
+    const pos = Math.max(0, Math.min(field.value.length, field.selectionStart || 0));
+    // Вътре в {{ }} (или в ограден код) вмъкването е отказано: маркерът там не се рисува като
+    // снимка, а разваля кода.
+    if (nmInlineInsideCode(field.value, pos)) {
+        if (typeof showToast === 'function') showToast(_('nmInlineRefusedCode') || 'Тук снимка не може да се сложи', 3000);
+        return false;
+    }
+    noteEditReplace(field, pos, pos, '*', pos + 1);
+    const formats = readNoteEditFormats(modalBody, 'format');
+    formats.push({ start: pos, end: pos + 1, type: 8, paramint: 3, paramstring: state.fileName });
+    writeNoteEditFormats(modalBody, 'format', formats);
+    refreshNoteEditBackdrops(ctx);
+    commitNoteEditUndo(modalBody);
+    field.focus();
+    field.setSelectionRange(pos + 1, pos + 1);
+    return true;
+}
+
+/** Каретата стои вътре в {{ }} или в ограден код: там маркер не се слага. */
+function nmInlineInsideCode(text, pos) {
+    const value = String(text || '');
+    const ranges = [...value.matchAll(/\{\{[\s\S]*?\}\}|```[\s\S]*?```/g)];
+    return ranges.some(m => pos >= m.index && pos <= m.index + m[0].length);
+}
+
+/** Менюто за един запис type=8 (от маркер в текста или от плочка в лентата). */
+function openNmInlineMenu(opts) {
+    closeNmInlineMenu();
+    const options = opts || {};
+    const modalBody = options.modalBody || document.getElementById('modal-body');
+    if (!modalBody) return null;
+    const anchorEl = options.anchorEl || null;
+    const state = {
+        kind: options.kind === 'tile' ? 'tile' : 'marker',
+        modalBody,
+        strip: options.strip || modalBody.querySelector('.nm-attach-strip'),
+        field: options.field || document.getElementById('note-edit-textarea'),
+        fileName: String(options.fileName || ''),
+        start: Number.isFinite(Number(options.start)) ? Number(options.start) : null,
+        end: Number.isFinite(Number(options.end)) ? Number(options.end) : null,
+        missing: !!options.missing,
+        tileEl: options.tileEl || null,
+        anchorRect: (anchorEl && anchorEl.getBoundingClientRect) ? anchorEl.getBoundingClientRect() : modalBody.getBoundingClientRect(),
+        value: Math.max(10, Math.min(100, Math.round(Number(options.value) || 30))),
+        el: null, ghost: null
+    };
+    const el = document.createElement('div');
+    el.className = 'nm-inline-menu';
+    el.dataset.nmMenu = state.kind;
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', _('nmInlineMenuLabel') || 'Снимка в текста');
+    state.el = el;
+
+    // 1. Преглед - първият ред, за да не се губи днешният ход.
+    const preview = document.createElement('button');
+    preview.type = 'button';
+    preview.className = 'nm-inline-menu-row is-preview';
+    preview.dataset.nmMenuAction = 'preview';
+    const chip = document.createElement('span');
+    chip.className = 'nm-inline-menu-chip';
+    preview.append(chip, document.createTextNode(_('nmInlinePreview') || 'Преглед'));
+    if (state.missing || !state.fileName) {
+        preview.disabled = true;
+        preview.classList.add('is-disabled');
+        preview.title = _('inlineImgMissing') || 'няма такъв файл';
+    } else {
+        preview.addEventListener('click', () => {
+            if (previewNmInlineFile(state)) closeNmInlineMenu();
+        });
+    }
+    el.appendChild(preview);
+    if (state.missing || !state.fileName) {
+        const why = document.createElement('p');
+        why.className = 'nm-inline-menu-note';
+        why.textContent = _('inlineImgMissing') || 'няма такъв файл';
+        el.appendChild(why);
+    }
+
+    // 2. Ширина: стъпки по 10, защото Android пише paramint 1..10 (45 във файла не съществува).
+    const widthBox = document.createElement('div');
+    widthBox.className = 'nm-inline-menu-width';
+    const label = document.createElement('p');
+    label.className = 'nm-inline-menu-wlabel';
+    const labelText = document.createElement('span');
+    labelText.textContent = _('nmInlineWidth') || 'Ширина';
+    const labelValue = document.createElement('b');
+    labelValue.dataset.nmMenuValue = '1';
+    labelValue.textContent = state.value + '%';
+    label.append(labelText, labelValue);
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = '10';
+    range.max = '100';
+    range.step = '10';
+    range.value = String(state.value);
+    range.className = 'nm-inline-menu-range';
+    range.dataset.nmMenuRange = '1';
+    range.setAttribute('aria-label', _('nmInlineWidthAria') || 'Ширина на снимката, проценти');
+    const scale = document.createElement('div');
+    scale.className = 'nm-inline-menu-scale';
+    const scaleMin = document.createElement('span');
+    scaleMin.textContent = '10';
+    const scaleValue = document.createElement('b');
+    scaleValue.dataset.nmMenuValue = '2';
+    scaleValue.textContent = state.value + '%';
+    const scaleMax = document.createElement('span');
+    scaleMax.textContent = '100';
+    scale.append(scaleMin, scaleValue, scaleMax);
+    const showValue = (pct) => {
+        labelValue.textContent = pct + '%';
+        scaleValue.textContent = pct + '%';
+    };
+    range.addEventListener('input', () => {
+        const pct = Math.max(10, Math.min(100, Math.round(Number(range.value) / 10) * 10));
+        state.value = pct;
+        showValue(pct);
+        showNmInlineGhost(state, pct);
+        applyNmInlineWidth(state, pct, false);
+    });
+    range.addEventListener('change', () => {
+        showNmInlineGhost(state, null);
+        // Едно стъпало за отмяна на всяка смяна на ширината - и при пускане на плъзгача, и при
+        // стъпка с клавиш (двете идват като change). Отмяната се вдига и ако стойността вече е
+        // приложена по време на плъзгането.
+        applyNmInlineWidth(state, state.value, false);
+        commitNoteEditUndo(modalBody);
+    });
+    widthBox.append(label, range, scale);
+    el.appendChild(widthBox);
+
+    // 3. Последният ред зависи откъде е отворено менюто: от маркера - „Махни" (маха това място),
+    //    от плочка - „Сложи в текста" (маркерът влиза на каретата).
+    if (state.kind === 'marker') {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'nm-inline-menu-row is-remove';
+        remove.dataset.nmMenuAction = 'remove';
+        remove.textContent = _('nmInlineRemove') || 'Махни';
+        remove.addEventListener('click', () => {
+            if (removeNmInlineMarker(state)) closeNmInlineMenu();
+        });
+        el.appendChild(remove);
+    } else {
+        const insert = document.createElement('button');
+        insert.type = 'button';
+        insert.className = 'nm-inline-menu-row is-insert';
+        insert.dataset.nmMenuAction = 'insert';
+        insert.textContent = _('nmInlineInsert') || 'Сложи в текста';
+        insert.addEventListener('click', () => {
+            if (insertNmInlineImage(state)) closeNmInlineMenu();
+        });
+        el.appendChild(insert);
+    }
+
+    document.body.appendChild(el);
+    nmInlineMenuState = state;
+    positionNmInlineMenu(state);
+
+    // Затваряне: щрак извън менюто, Escape, плъзгане на текста, промяна на прозореца.
+    state.onOutside = (event) => {
+        if (nmInlineMenuState !== state) return;
+        const target = event.target;
+        if (el.contains(target)) return;
+        // Клик в самата текстова кутия се решава от нейния слушател (втори щрак затваря).
+        if (state.field && target === state.field) return;
+        closeNmInlineMenu();
+    };
+    state.onKey = (event) => {
+        if (event.key !== 'Escape') return;
+        event.stopPropagation();
+        closeNmInlineMenu();
+    };
+    state.onResize = () => positionNmInlineMenu(state);
+    state.onScroll = () => closeNmInlineMenu();
+    // Писането мести маркера и менюто вече не сочи него.
+    state.onFieldInput = () => closeNmInlineMenu();
+    document.addEventListener('mousedown', state.onOutside, true);
+    document.addEventListener('keydown', state.onKey, true);
+    window.addEventListener('resize', state.onResize);
+    if (state.field) {
+        state.field.addEventListener('scroll', state.onScroll, { passive: true });
+        state.field.addEventListener('input', state.onFieldInput);
+    }
+    return state;
+}
+
+/** Менюто за маркер в текста; втори щрак на същия маркер го затваря. */
+function toggleNmInlineMenuForMark(fmt, markEl, modalBody, field) {
+    if (!fmt || !modalBody) return false;
+    const open = nmInlineMenuState;
+    if (open && open.kind === 'marker' && open.start === fmt.start) {
+        closeNmInlineMenu();
+        return true;
+    }
+    if (field && field.isConnected) {
+        field.focus();
+        const pos = Math.max(0, Math.min(field.value.length, fmt.start));
+        field.setSelectionRange(pos, pos);
+    }
+    const name = inlineImageName(fmt.paramstring);
+    openNmInlineMenu({
+        kind: 'marker',
+        modalBody,
+        field,
+        fileName: name,
+        start: fmt.start,
+        end: fmt.end,
+        anchorEl: markEl,
+        value: inlineImageWidthPct(fmt.paramint),
+        missing: !name || !!(markEl && markEl.classList.contains('is-missing'))
+    });
+    return true;
+}
+
+/** Менюто за плочка от лентата: адресира файла, затова ширината ляга на всичките му места. */
+function toggleNmInlineMenuForTile(tile, fileName) {
+    if (!tile) return false;
+    const strip = tile.closest('.nm-attach-strip');
+    const modalBody = tile.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]');
+    if (!strip || !modalBody) return false;
+    const open = nmInlineMenuState;
+    if (open && open.kind === 'tile' && open.tileEl === tile && open.el && open.el.isConnected) {
+        closeNmInlineMenu();
+        return true;
+    }
+    const places = readNoteEditFormats(modalBody, 'format')
+        .filter(f => f.type === 8 && inlineImageName(f.paramstring) === fileName);
+    openNmInlineMenu({
+        kind: 'tile',
+        modalBody,
+        strip,
+        field: document.getElementById('note-edit-textarea'),
+        fileName,
+        tileEl: tile,
+        anchorEl: tile,
+        value: places.length ? inlineImageWidthPct(places[0].paramint) : 30
+    });
+    return true;
+}
+
+// ------------------------------- Пейст и влачене на файл -------------------------------
+
+/**
+ * Файл, пуснат или пейстнат върху редактора, се качва в Images и влиза САМО в лентата - без type=8.
+ * Ако снимката трябва и в текста, това става с менюто от плочката („Сложи в текста"), за да не
+ * прави един и същ жест две различни неща според това как си занесъл файла.
+ */
+function bindNoteEditFileDrop(modalBodyElem) {
+    if (!modalBodyElem || modalBodyElem._nmFileDropBound) return;
+    modalBodyElem._nmFileDropBound = true;
+    const filesFrom = (transfer) => {
+        if (!transfer) return [];
+        try { return Array.from(transfer.files || []); } catch (e) { return []; }
+    };
+    modalBodyElem.addEventListener('paste', (event) => {
+        const files = filesFrom(event.clipboardData);
+        if (!files.length) return; // текстът се пейства както досега
+        event.preventDefault();
+        Promise.resolve(attachFilesToModal(files)).catch(() => { });
+    });
+    modalBodyElem.addEventListener('dragover', (event) => {
+        const types = event.dataTransfer ? Array.from(event.dataTransfer.types || []) : [];
+        if (!types.includes('Files')) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        modalBodyElem.classList.add('nm-file-drop');
+    });
+    modalBodyElem.addEventListener('dragleave', () => modalBodyElem.classList.remove('nm-file-drop'));
+    modalBodyElem.addEventListener('drop', (event) => {
+        modalBodyElem.classList.remove('nm-file-drop');
+        const files = filesFrom(event.dataTransfer);
+        if (!files.length) return;
+        event.preventDefault();
+        Promise.resolve(attachFilesToModal(files)).catch(() => { });
+    });
+}
+
+// ------------------------------- Лентата с прикачените файлове -------------------------------
+
+/** Прикачените файлове на бележката по същото правило, по което ги търсеше showModal. */
+function noteAttachmentItems(noteId, noteGdid) {
+    let attachments = [];
+    if (useIndexedDb) {
+        const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid';
+        if (dbNoteIdType === 'id') {
+            attachments = mediaData.filter(media => +media.noteid === +noteId);
+        } else { // 'gdid'
+            attachments = mediaData.filter(media => media.noteid === noteGdid);
+        }
+    } else {
+        if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
+        else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
+    }
+    return attachments;
+}
+
+/**
+ * Лентата с плочки на прикачените файлове: същият строеж в режим четене (под бележката, след ред) и
+ * в режим Редактиране (под кутията за редактиране), за да е един и същ редът, както в оригинала.
+ * В редакция накрая има и плочка „+", която качва нова снимка - тя влиза само в лентата, не в текста.
+ * @returns {HTMLElement|null} лентата, или null (няма прикачени файлове и не сме в редакция).
+ */
+function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
+    if (!host) return null;
+    const editMode = !!(opts && opts.editMode);
+    // Класът казва на CSS, че тялото е колона: редакторът отгоре, лентата отдолу.
+    host.classList.toggle('nm-edit-with-strip', editMode);
+    // Една лента на бележка: преизградената маха старата (и реда над нея).
+    host.querySelectorAll(':scope > .nm-attach-strip, :scope > .nm-attach-sep').forEach(el => el.remove());
+    if (!noteId && !noteGdid) return null;
+    const attachments = noteAttachmentItems(noteId, noteGdid);
+    if (!attachments.length && !editMode) return null;
+    if (!editMode) {
+        const separator = document.createElement('hr');
+        separator.className = 'nm-attach-sep';
+        separator.style.marginTop = '10px';
+        separator.style.marginBottom = '10px';
+        host.appendChild(separator);
+    }
+    // Футърът е лента от плочки като в оригиналното приложение: снимките се виждат самите те,
+    // другите файлове носят иконата на типа си, лентата се плъзга настрана, когато не се
+    // събират. Имената не стоят под плочките (излизат при задържане), както в оригинала.
+    const stripEl = document.createElement('div');
+    stripEl.className = 'nm-attach-strip';
+    if (editMode) stripEl.dataset.nmEdit = 'true';
+    host.appendChild(stripEl);
+    // Мястото на плочката се заема веднага и в реда на файловете, а съдържанието идва, когато
+    // файлът бъде намерен - иначе редът зависи от това кой файл се чете по-бързо.
+    attachments.forEach(attachment => {
+        const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+        if (!iconData) return;
+        const slot = document.createElement('div');
+        slot.className = 'nm-attach-slot';
+        stripEl.appendChild(slot);
+        const attachmentWrapper = document.createElement('div');
+        attachmentWrapper.style.display = 'flex';
+        attachmentWrapper.style.alignItems = 'center';
+        attachmentWrapper.style.gap = '5px';
+        attachmentWrapper.style.marginTop = '5px';
+        (async () => {
+            try {
+                if (useArhDb) {
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'archive', true); // true for isForModal
+                } else if (useLocalFolder) {
+                    await handleAttachment(attachment, attachmentWrapper, iconData, 'local', true); // true for isForModal
+                } else {
+                    await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData, true); // true for isForModal
+                }
+            } catch (err) {
+                // Ако строенето на плочката се счупи, по-добре обикновеният ред с име, отколкото
+                // изчезнал файл.
+                console.warn('attachment tile: falling back to the plain row', err);
+                slot.appendChild(attachmentWrapper);
+                return;
+            }
+            buildAttachmentTile(attachment, attachmentWrapper, iconData, slot);
+        })();
+    });
+    if (editMode) {
+        // Плочката „+" качва нова снимка: файлът влиза в Images и в лентата, без type=8.
+        const addSlot = document.createElement('div');
+        addSlot.className = 'nm-attach-slot';
+        const addTile = document.createElement('button');
+        addTile.type = 'button';
+        addTile.className = 'nm-attach-tile is-add';
+        addTile.dataset.nmAdd = '1';
+        addTile.textContent = '+';
+        addTile.title = _('nmAddPhoto') || 'Добави снимка';
+        addTile.setAttribute('aria-label', addTile.title);
+        addTile.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const input = document.getElementById('modal-attach-image-input');
+            if (input) input.click();
+        });
+        addSlot.appendChild(addTile);
+        stripEl.appendChild(addSlot);
+    }
+    return stripEl;
+}
+
+/**
+ * Качва файловете в папката по тип (Images/Sound/Video) и ги прави прикачени към бележката - същото,
+ * което прави бутонът за прикачване и полето за избор на файл. Ползва се и от пейста, и от влаченето:
+ * файл, занесен върху редактора, влиза САМО в лентата, без type=8 (за текста има ред „Сложи в текста").
+ * @param {File[]|FileList} files - Файловете от clipboard/drop/input.
+ */
+async function attachFilesToModal(files) {
+    if (!files || files.length === 0) return;
+
+    const mBodyEl = document.getElementById('modal-body');
+    if (!mBodyEl) return;
+    let mId = parseInt(mBodyEl.dataset.id, 10);
+    if (!mId || isNaN(mId)) {
+        // For new notes, ensure they have an ID
+        noteId++;
+        mId = noteId;
+        noteNumord++;
+        mBodyEl.dataset.id = mId;
+    }
+    const targetNoteId = mId;
+
+    if (typeof showToast === 'function') {
+        showToast((typeof _ === 'function' ? _('uploadingSharedImage') || '📤 Uploading files...' : '📤 Uploading files...'), 5000);
+    }
+
+    const folderId = await getFolderID();
+    if (!folderId) {
+        if (typeof showToast === 'function') showToast((typeof _ === 'function' ? _('noGDriveFolderError') || '❌ No Google Drive folder found.' : '❌ No Google Drive folder found.'), 3000);
+        return;
+    }
+
+    // Process files sequentially in the background
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+            const fileType = file.type.startsWith('video') ? 'Video' : (file.type.startsWith('audio') ? 'Sound' : 'Images');
+            let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
+            if (!targetFolderId) {
+                targetFolderId = await createNewGDriveFolder(fileType, folderId);
+                if (targetFolderId) {
+                    folderIds[fileType] = targetFolderId;
+                    localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
+                }
+            }
+            if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
+
+            const imageGdid = await uploadBlobToGDrive(targetFolderId, file.name, file, file.type);
+            if (!imageGdid) throw new Error(`File upload failed: ${file.name}`);
+            // Снимката е още в паметта: плочката и прегледът я показват веднага, вместо да
+            // чакат Drive да даде thumbnail за току-що качения файл.
+            if (fileType === 'Images') rememberFreshAttachmentBlob(imageGdid, file);
+
+            const waitForNoteGdid = () => {
+                return new Promise(resolve => {
+                    const check = (attempts = 0) => {
+                        const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
+                        if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
+                            resolve(noteInData.gdid);
+                        } else if (attempts < 3600) { // Up to 30 mins
+                            setTimeout(() => check(attempts + 1), 500);
+                        } else {
+                            resolve(null);
+                        }
+                    };
+                    check();
+                });
+            };
+            const noteGdid = await waitForNoteGdid();
+            if (!noteGdid) {
+                console.warn(`[Attachment] Note gdid not available after timeout for ${file.name}. Media entry NOT created.`);
+                if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', file.name) : `⚠️ Uploaded ${file.name}, but link failed.`), 7000);
+                continue;
+            }
+
+            const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
+            const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
+            const now = Date.now();
+            const mediaEntry = {
+                datemod: now,
+                description: '',
+                gdid: '',
+                id: maxMediaId + 1,
+                noteid: noteGdid,
+                path: file.name,
+                pathGD: imageGdid,
+                type: mediaTypeNum
+            };
+
+            const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
+            if (mediaFileGdid) {
+                mediaEntry.gdid = mediaFileGdid;
+                await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
+                mediaData.push(mediaEntry);
+                if (useIndexedDb) {
+                    await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+                }
+                if (typeof refreshNoteUI === 'function') {
+                    await refreshNoteUI(noteGdid);
+                } else {
+                    renderNotes();
+                }
+                if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name) : `✅ Attached ${file.name}`), 3000);
+            }
+        } catch (e) {
+            console.error(`[Attachment] Error processing file ${file.name}:`, e);
+            if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message) : `❌ Error: ${e.message}`), 5000);
+        }
+    }
+
+    // В редакция лентата се строи наново, за да покаже новата плочка веднага.
+    const host = document.getElementById('modal-body');
+    if (host && host.classList.contains('nm-edit-with-strip')) {
+        buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid, { editMode: true });
+    }
+}
+
 function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (!modalBodyElem) return;
+    // Менюто на снимка в текста не живее извън редактора, в който е отворено.
+    closeNmInlineMenu();
     const maxModalScroll = modalBodyElem.scrollHeight - modalBodyElem.clientHeight;
     const modalScrollRatio = (charIndex === -1 && maxModalScroll > 0) ? (modalBodyElem.scrollTop / maxModalScroll) : -1;
     const modalBoardNameEl = document.getElementById('modal-board-name');
@@ -23278,6 +24001,26 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
 
     modalBodyElem.appendChild(wrapper);
 
+    // План 10: лентата с прикачените файлове остава и в режим Редактиране - застава под кутията за
+    // редактиране, там където е и в режим четене, за да са снимките под ръка. Тялото става колона
+    // (класът nm-edit-with-strip), за да не изяде лентата височината на редактора.
+    const editStrip = buildNoteAttachmentStrip(modalBodyElem, noteId, noteGdid, { editMode: true });
+    if (editStrip) {
+        // Лентата остава отдолу, колкото е висока, а редакторът взима останалото. Кутиите на
+        // редактора се раздават с flex, а не с height:100% / calc(100% - 60px): при auto височина
+        // на обвивката тези проценти не водят до нищо и титлата с тялото се събират в една ивица.
+        wrapper.style.height = 'auto';
+        wrapper.style.flex = '1 1 auto';
+        wrapper.style.minHeight = '0';
+        const boxes = Array.from(wrapper.children);
+        boxes.forEach(box => { box.style.height = 'auto'; box.style.minHeight = '0'; });
+        if (boxes.length > 1) boxes[0].style.flex = '0 0 60px'; // редът на заглавието
+        const last = boxes[boxes.length - 1];
+        if (last) last.style.flex = '1 1 auto';
+    }
+    // Файл, пейстнат или пуснат с мишката върху редактора, влиза само в лентата (без type=8).
+    bindNoteEditFileDrop(modalBodyElem);
+
     const bodyTextarea = document.getElementById('note-edit-textarea');
     const bodyBackdrop = document.getElementById('note-edit-textarea-backdrop');
     const titleTextarea = document.getElementById('note-edit-title-textarea');
@@ -23289,6 +24032,24 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
         bodyTextarea.addEventListener('scroll', () => { syncNoteEditBackdropOffset(bodyTextarea, bodyBackdrop); }, { passive: true });
         bodyTextarea.addEventListener('input', () => { handleEditInput(bodyTextarea, bodyBackdrop); });
         handleEditInput(bodyTextarea, bodyBackdrop);
+        // Щрак върху маркера на снимка в текста слага каретата там и отваря менюто на снимката;
+        // втори щрак на същия маркер го затваря. Подложката е с pointer-events: none, затова
+        // маркерът се търси по точката на щракването, а не по event.target.
+        bodyTextarea.addEventListener('click', (event) => {
+            if (event.ctrlKey || event.metaKey) return;
+            const markEl = nmInlineMarkAtPoint(bodyBackdrop, event.clientX, event.clientY);
+            if (markEl) {
+                toggleNmInlineMenuForMark(nmInlineFormatFromMark(modalBodyElem, markEl), markEl, modalBodyElem, bodyTextarea);
+                return;
+            }
+            const fmt = nmInlineFormatAtCaret(bodyTextarea, modalBodyElem);
+            if (fmt) {
+                const el = bodyBackdrop.querySelector(`.nm-inline-mark[data-nm-start="${fmt.start}"]`);
+                toggleNmInlineMenuForMark(fmt, el, modalBodyElem, bodyTextarea);
+                return;
+            }
+            closeNmInlineMenu();
+        });
     }
     // A width change (scrollbar coming or going, modal resize) re-wraps both the same way.
     if (typeof ResizeObserver === 'function') {
@@ -23745,6 +24506,8 @@ function getNoteEditColorCss(paramint) {
 }
 
 // Draws the text with its formats into the backdrop under the transparent textarea.
+// type=8 (снимка в текста) се рисува като маркер от един знак: миниатюрата замества звездичката,
+// БЕЗ да променя ширината ѝ - иначе каретата в прозрачната кутия се разминава с нарисувания текст.
 function renderNoteEditBackdrop(backdrop, text, formats) {
     ensureNoteMdStyles();
     const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -23755,6 +24518,14 @@ function renderNoteEditBackdrop(backdrop, text, formats) {
         points.add(Math.max(0, Math.min(text.length, f.end)));
     });
     const sortedPoints = Array.from(points).sort((a, b) => a - b);
+    // Къде стои маркерът на всяка вградена картинка: първият неинтервален знак в диапазона.
+    const images = valid.filter(f => f.type === 8).map((f, index) => ({
+        index,
+        fmt: f,
+        name: inlineImageName(f.paramstring),
+        pos: nmInlineFirstNonSpace(text, f.start, f.end),
+        drawn: false
+    }));
     let html = '';
     for (let i = 0; i < sortedPoints.length - 1; i++) {
         const start = sortedPoints[i];
@@ -23767,6 +24538,7 @@ function renderNoteEditBackdrop(backdrop, text, formats) {
         const css = [];
         const deco = [];
         let italic = false;
+        let image = null;
         active.forEach(f => {
             switch (f.type) {
                 case 1: classes.add('nmd-b'); break;
@@ -23784,6 +24556,8 @@ function renderNoteEditBackdrop(backdrop, text, formats) {
                         classes.add('nmd-small');
                     }
                     break;
+                // Снимката в текста не е текст: маркерът носи сам вида си, друг стил не му трябва.
+                case 8: image = images.find(img => img.fmt === f) || null; break;
                 default: classes.add('nmd-other'); break;
             }
         });
@@ -23792,6 +24566,31 @@ function renderNoteEditBackdrop(backdrop, text, formats) {
             ? `<span${classes.size ? ` class="${[...classes].join(' ')}"` : ''}${css.length ? ` style="${css.join('; ')}"` : ''}>`
             : '';
         const wrap = (t) => open ? open + esc(t) + '</span>' : esc(t);
+        const wrapRaw = (raw) => open ? open + raw + '</span>' : raw;
+        if (image) {
+            // Знаците от диапазона не се виждат, но пазят мястото си (иначе каретата бяга); на
+            // мястото на първия от тях застава маркерът - точно толкова широк, с миниатюра отвътре.
+            let buffer = '';
+            for (let k = 0; k < segment.length; k++) {
+                const position = start + k;
+                const ch = segment[k];
+                if (!image.drawn && position === image.pos) {
+                    if (buffer) { html += wrap(buffer); buffer = ''; }
+                    image.drawn = true;
+                    const mark = `<span class="nm-inline-mark${image.name ? '' : ' is-missing'}"` +
+                        ` data-nm-mark="${image.index}" data-nm-file="${escapeAttr(image.name)}"` +
+                        ` data-nm-start="${image.fmt.start}" data-nm-end="${image.fmt.end}"` +
+                        `${nmInlineMarkStyle(image.name)}>${esc(ch)}</span>`;
+                    html += wrapRaw(mark);
+                    continue;
+                }
+                if (/\s/.test(ch)) { buffer += ch; continue; }
+                if (buffer) { html += wrap(buffer); buffer = ''; }
+                html += `<span class="nm-inline-mark-void">${esc(ch)}</span>`;
+            }
+            if (buffer) html += wrap(buffer);
+            continue;
+        }
         if (italic) {
             // A slant per word: an inline-block keeps the width of the word, and the line still
             // breaks only at the spaces, where the textarea breaks it.
@@ -23804,6 +24603,8 @@ function renderNoteEditBackdrop(backdrop, text, formats) {
         }
     }
     backdrop.innerHTML = html + (text.endsWith('\n') ? '\n ' : '');
+    // Миниатюрите на маркерите идват след текста: подложката не чака Drive, за да се нарисува.
+    hydrateInlineImageMarks(backdrop);
 }
 
 // The backdrop has no scrollbar: it gets the textarea's scrollbar width as padding, so both wrap
@@ -25525,111 +26326,13 @@ function initNoteEditUI() {
     const attachInput = document.getElementById('modal-attach-image-input');
     if (attachInput && !attachInput.hasAttribute('data-bound')) {
         attachInput.setAttribute('data-bound', 'true');
-        attachInput.addEventListener('change', async (e) => {
-            const files = e.target.files;
-            if (!files || files.length === 0) return;
-
-            const mBodyEl = document.getElementById('modal-body');
-            if (!mBodyEl) return;
-            let mId = parseInt(mBodyEl.dataset.id, 10);
-            if (!mId || isNaN(mId)) {
-                // For new notes, ensure they have an ID
-                noteId++;
-                mId = noteId;
-                noteNumord++;
-                mBodyEl.dataset.id = mId;
-            }
-            const targetNoteId = mId;
-
-            if (typeof showToast === 'function') {
-                showToast((typeof _ === 'function' ? _('uploadingSharedImage') || '📤 Uploading files...' : '📤 Uploading files...'), 5000);
-            }
-
-            const folderId = await getFolderID();
-            if (!folderId) {
-                if (typeof showToast === 'function') showToast((typeof _ === 'function' ? _('noGDriveFolderError') || '❌ No Google Drive folder found.' : '❌ No Google Drive folder found.'), 3000);
-                return;
-            }
-
-            // Process files sequentially in the background
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                try {
-                    const fileType = file.type.startsWith('video') ? 'Video' : (file.type.startsWith('audio') ? 'Sound' : 'Images');
-                    let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
-                    if (!targetFolderId) {
-                        targetFolderId = await createNewGDriveFolder(fileType, folderId);
-                        if (targetFolderId) {
-                            folderIds[fileType] = targetFolderId;
-                            localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
-                        }
-                    }
-                    if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
-
-                    const imageGdid = await uploadBlobToGDrive(targetFolderId, file.name, file, file.type);
-                    if (!imageGdid) throw new Error(`File upload failed: ${file.name}`);
-                    // Снимката е още в паметта: плочката и прегледът я показват веднага, вместо да
-                    // чакат Drive да даде thumbnail за току-що качения файл.
-                    if (fileType === 'Images') rememberFreshAttachmentBlob(imageGdid, file);
-
-                    const waitForNoteGdid = () => {
-                        return new Promise(resolve => {
-                            const check = (attempts = 0) => {
-                                const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
-                                if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                    resolve(noteInData.gdid);
-                                } else if (attempts < 3600) { // Up to 30 mins
-                                    setTimeout(() => check(attempts + 1), 500);
-                                } else {
-                                    resolve(null);
-                                }
-                            };
-                            check();
-                        });
-                    };
-                    const noteGdid = await waitForNoteGdid();
-                    if (!noteGdid) {
-                        console.warn(`[Attachment] Note gdid not available after timeout for ${file.name}. Media entry NOT created.`);
-                        if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', file.name) : `⚠️ Uploaded ${file.name}, but link failed.`), 7000);
-                        continue;
-                    }
-
-                    const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-                    const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
-                    const now = Date.now();
-                    const mediaEntry = {
-                        datemod: now,
-                        description: '',
-                        gdid: '',
-                        id: maxMediaId + 1,
-                        noteid: noteGdid,
-                        path: file.name,
-                        pathGD: imageGdid,
-                        type: mediaTypeNum
-                    };
-
-                    const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                    if (mediaFileGdid) {
-                        mediaEntry.gdid = mediaFileGdid;
-                        await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                        mediaData.push(mediaEntry);
-                        if (useIndexedDb) {
-                            await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                        }
-                        if (typeof refreshNoteUI === 'function') {
-                            await refreshNoteUI(noteGdid);
-                        } else {
-                            renderNotes();
-                        }
-                        if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name) : `✅ Attached ${file.name}`), 3000);
-                    }
-                } catch (e) {
-                    console.error(`[Attachment] Error processing file ${file.name}:`, e);
-                    if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message) : `❌ Error: ${e.message}`), 5000);
-                }
-            }
-
+        attachInput.addEventListener('change', (e) => {
+            // Файловете се взимат наведнъж: полето се чисти веднага, за да може същият файл да се
+            // избере пак, а качването върви във фонов режим (както досега).
+            const files = e.target.files ? Array.from(e.target.files) : [];
             attachInput.value = ''; // Reset input
+            if (!files.length) return;
+            Promise.resolve(attachFilesToModal(files)).catch(() => { });
         });
     }
 
