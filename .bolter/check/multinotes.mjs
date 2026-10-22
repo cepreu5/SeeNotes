@@ -30,7 +30,7 @@ const srv = http.createServer(async (req, res) => {
   // Приложението е index-2.html (то зарежда main.js); index.html е само splash.
   const rel = p === '/' ? 'index-2.html' : p;
   try {
-    const b = await readFile(path.join(root, rel));
+    const b = await readFile(path.join(root, rel.endsWith('mainn.js') ? rel.slice(0, -'mainn.js'.length) + 'main.js' : rel));
     res.writeHead(200, { 'Content-Type': types[path.extname(rel)] || 'application/octet-stream', 'cache-control': 'no-store' });
     res.end(b);
   } catch { res.writeHead(404); res.end(); }
@@ -121,6 +121,9 @@ const READ = `(() => {
     closeAllText: win.closeAllBtn ? win.closeAllBtn.textContent.trim() : null,
     closeAllIcon: !!(win.closeAllBtn && win.closeAllBtn.querySelector('svg')),
     closeAllDisplay: win.closeAllBtn ? getComputedStyle(win.closeAllBtn).display : null,
+    closeAllParent: win.closeAllBtn && win.closeAllBtn.parentElement ? win.closeAllBtn.parentElement.className : null,
+    closeAllRect: win.closeAllBtn ? (() => { const r = win.closeAllBtn.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), cy: Math.round(r.top + r.height / 2) }; })() : null,
+    closeRect: (() => { const x = win.box.querySelector('.modal-close'); if (!x) return null; const r = x.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), cy: Math.round(r.top + r.height / 2) }; })(),
     outline: (() => { const cs = getComputedStyle(win.box); return cs.outlineStyle + ' ' + cs.outlineWidth; })(),
   }));
   const overlay = document.getElementById('single-note-overlay');
@@ -311,6 +314,14 @@ const atThree = await read();
 ok(atThree.windows.every(w => w.closeAllShown && w.closeAllDisplay === 'flex'),
   `„Затвори всички": при три отворени се вижда във всеки отворен прозорец (${atThree.windows.map(w => w.closeAllDisplay)})`,
   atThree.windows.map(w => ({ shown: w.closeAllShown, d: w.closeAllDisplay })));
+// Мястото: „Затвори всички" е в дясната група на лентата, точно вляво от хиксчето и на същата
+// вертикала — не в реда с бутоните и не някъде извън лентата (това се чупеше, когато обвивките
+// .note-header-toolbar/.note-header-close-group липсват в HTML и main.js пада в резервния път).
+const place = atThree.windows.filter(w => w.closeAllShown && w.closeAllRect && w.closeRect);
+ok(place.length > 0 && place.every(w => /note-header-close-group/.test(w.closeAllParent || '')
+    && w.closeAllRect.right <= w.closeRect.left + 1 && Math.abs(w.closeAllRect.cy - w.closeRect.cy) <= 2),
+  `„Затвори всички": стои в дясната група, веднага вляво от хиксчето, на същата вертикала (${JSON.stringify(place.map(w => ({ p: w.closeAllParent, a: w.closeAllRect, x: w.closeRect })))})`,
+  place.map(w => ({ parent: w.closeAllParent, all: w.closeAllRect, x: w.closeRect })));
 const closeAllLabel = await page.evaluate(() => ({ i18n: _('closeAllNotes'), lang: currentLang, keyPresent: _('closeAllNotes') !== 'closeAllNotes' }));
 ok(atThree.windows.every(w => w.closeAllTitle === closeAllLabel.i18n && w.closeAllAria === closeAllLabel.i18n)
   && atThree.windows.every(w => w.closeAllIcon && w.closeAllText === '') && closeAllLabel.keyPresent,
@@ -1301,6 +1312,25 @@ await page.locator('#reset-window-geometry').screenshot({ path: FIXED_SHOT('mult
 await darkResetSheet.evaluate(el => el.remove());
 await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
 await closeAllWindows();
+
+// ======================= 7b. Езиковата смяна съществува в този HTML =======================
+// main.js пълни .lang-switcher-container. При подменен HTML (index-2.html, копиран от multinotes)
+// контейнерът липсваше и изборът на език изчезваше, без нито една грешка в конзолата.
+await page.evaluate(() => document.getElementById('settings_button').click());
+await page.waitForTimeout(300);
+const langUi = await page.evaluate(() => {
+  const conts = [...document.querySelectorAll('.lang-switcher-container')];
+  const sels = conts.map(c => c.querySelector('select.lang-select')).filter(Boolean);
+  const sel = sels[0];
+  return {
+    containers: conts.length,
+    selects: sels.length,
+    options: sel ? [...sel.options].map(o => o.value) : [],
+  };
+});
+ok(langUi.selects > 0 && langUi.options.length >= 3,
+  `езиковата смяна е налична: контейнерът съдържа select с ${langUi.options.length} езика (${JSON.stringify(langUi.options)})`, langUi);
+await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
 
 // ======================= 8. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);

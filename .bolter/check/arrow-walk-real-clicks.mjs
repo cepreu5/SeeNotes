@@ -17,7 +17,7 @@ const srv = http.createServer(async (req, res) => {
   const p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   const rel = p === '/' ? 'index-2.html' : p;
   try {
-    const b = await readFile(path.join(root, rel));
+    const b = await readFile(path.join(root, rel.endsWith('mainn.js') ? rel.slice(0, -'mainn.js'.length) + 'main.js' : rel));
     res.writeHead(200, { 'Content-Type': types[path.extname(rel)] || 'application/octet-stream', 'cache-control': 'no-store' });
     res.end(b);
   } catch { res.writeHead(404); res.end(); }
