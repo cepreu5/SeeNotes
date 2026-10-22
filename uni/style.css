@@ -937,8 +937,8 @@ code {
     width: 100%;
     display: flex;
     justify-content: space-between;
-    padding: 0 40px 0 20px;
-    /* Horizontal padding */
+    padding: 0 25px 0 20px;
+    /* Horizontal padding; 25px отдясно държи пин-бутона на 15px по-близо до ръба, отколкото при 40px */
     box-sizing: border-box;
     pointer-events: none;
     /* Make it non-interactive */

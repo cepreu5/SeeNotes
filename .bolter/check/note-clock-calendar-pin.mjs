@@ -398,6 +398,8 @@ const readPins = () => page.evaluate((ids) => {
       notePinned: note.classList.contains('note-pinned'),
       outline: getComputedStyle(note).boxShadow.slice(0, 40),
       pin: note.dataset.pin,
+      // Разстоянието от пин-бутона до десния ръб на бележката: 26px (отстъпът на хедъра е 25px).
+      pinGap: btn ? Math.round(note.getBoundingClientRect().right - btn.getBoundingClientRect().right) : null,
     };
   });
   out.order = [...document.querySelectorAll('#notes-container .note:not(.promo-note)')]
@@ -414,6 +416,7 @@ ok(pins0[N1].title === pinOn && pins0[N1].aria === pinOn,
 ok(pins0[N1].title !== 'pinNoteTooltip', 'pin: подсказката не е името на ключа, а преводът', pins0[N1]);
 ok(pins0[N2].notePinned === false && pins0[N1].notePinned === false, 'pin: никоя бележка не е закачена в началото', pins0);
 ok(pins0.order.join(',') === '102,101,103', `pin: преди закачане редът е по numord (${pins0.order.join(',')})`, pins0);
+ok(pins0[N1].pinGap === 26, `pin: бутончето е на 26px от десния ръб на бележката (${pins0[N1].pinGap})`, pins0[N1]);
 
 await click(`${SEL(N1)} .note-pin-btn`);
 ok(await waitToast(bg.notePinned), 'pin: закачането завършва и показва съобщение', await page.evaluate(() => (document.getElementById('toastNotification') || {}).textContent));
