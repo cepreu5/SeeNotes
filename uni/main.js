@@ -19955,8 +19955,8 @@ function hydrateInlineImages(rootEl) {
             // рамката минава на пиксели и спира да зависи от прозореца. По-тясна бележка пак свива
             // снимката - това го прави max-width: 100% в style.css.
             if (box.dataset.nmView === 'note' && img.naturalWidth) {
-                // Базата е записана при поставянето в размерите на бележката (min(снимката, бележката
-                // тогава)); стара бележка без нея ползва естествената ширина на снимката.
+                // Базата е естествената ширина на снимката, записана при поставянето в размерите на
+                // бележката; стара бележка без нея ползва същата естествена ширина.
                 const recorded = nmInlineBaseWidthForBox(box);
                 if (recorded > 0) box.dataset.nmBase = String(recorded);
                 const base = recorded > 0 ? recorded : img.naturalWidth;
