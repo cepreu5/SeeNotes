@@ -122,7 +122,10 @@ await ctx.route(/^https?:\/\/(?!localhost)/, route => {
     const q = new URL(url).searchParams.get('q') || '';
     if (/mimeType\s*=\s*'application\/vnd\.google-apps\.folder'/.test(q)) {
       const name = (q.match(/name\s*=\s*'([^']*)'/) || [])[1] || '';
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: name === 'Images' ? [{ id: FOLDER_IMAGES, name: 'Images' }] : [] }) });
+      // Папката с данните (CX-Notes) също съществува: под нея стои подпапката Images, в която
+      // приложението качва снимките - по нея се търсят и вградените картинки.
+      const id = name === 'Images' ? FOLDER_IMAGES : 'FOLDER_' + name;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id, name }] }) });
     }
     const name = (q.match(/name\s*=\s*'([^']*)'/) || [])[1] || '';
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: BY_NAME[name] || [] }) });

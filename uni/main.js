@@ -19350,11 +19350,100 @@ function insertInlineImageSlots(html, formats) {
 }
 
 // Едно търсене на папка Images за всички карти наведнъж: няколко карти се хидрират в един и същ
-// кадър, а getFolderIDByName не помни заявка, която още лети (кешира се чак след отговора).
+// кадър, а нито едно от търсенията тук не помни заявка, която още лети.
+//
+// Папката е СЪЩАТА, в която приложението качва снимките: подпапка 'Images' на папката с данните
+// (multinotes_data), която getFolderID намира и записва в folderIds. Досега тук се викаше
+// getFolderIDByName('Images'), а той търси ИЗ ЦЕЛИЯ Drive първата папка с това име (pageSize=1,
+// corpora=allDrives) - при две папки "Images" (друга папка с данни, стар борд, ръчно направена)
+// миниатюрите се търсеха в чужда папка: файлът не се намираше, картинките оставаха с имената си,
+// а клик върху иконата работеше, защото отварянето върви по pathGD, не по име.
+//
+// getFolderID НЕ се вика оттук: getMultinotesDataFolderID при ненамерена папка чисти настройките
+// и презарежда приложението, а една миниатюра не бива да може да изтрие настройките.
 let inlineImageFolderPromise = null;
+let inlineImageDataFolderPromise = null;
+
+/** Токенът за тези заявки: от хранилището на сесията, без gapi и без checkAuth. */
+async function inlineDriveToken() {
+    try {
+        const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!stored) return null;
+        const token = JSON.parse(stored).access_token;
+        return token || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Папка по име (под parentId, или където и да е при липсващ родител).
+ * @returns {Promise<string|null>} Id или null - и при провал, и при липса.
+ */
+async function inlineDriveFolderSearch(name, parentId) {
+    const token = await inlineDriveToken();
+    if (!token) return null;
+    const scoped = parentId ? `'${parentId}' in parents and ` : '';
+    const query = encodeURIComponent(`${scoped}name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const spaces = parentId === 'appDataFolder' ? '&spaces=appDataFolder' : '';
+    const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1${spaces}`;
+    const send = (t) => fetch(url, { headers: { 'Authorization': `Bearer ${t}` } });
+    try {
+        let resp = await send(token);
+        if (resp.status === 401) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass && refresh.tokenData) resp = await send(refresh.tokenData.access_token);
+        }
+        if (!resp.ok) return null;
+        return (await resp.json()).files?.[0]?.id || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/** Папката с данните - същата, в която стои media.txt: памет, записано, после търсене по име. */
+async function inlineImageDataFolderId() {
+    if (typeof cachedMainFolderId !== 'undefined' && cachedMainFolderId) return cachedMainFolderId;
+    const name = (typeof activeFolderName !== 'undefined' && activeFolderName) ? activeFolderName : 'multinotes_data';
+    if (name === 'AppDataFolder') return 'appDataFolder';
+    try {
+        const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
+        const cachedName = localStorage.getItem('gdrive_multinotes_data_id_folder');
+        if (cachedId && (!cachedName || String(cachedName).toLowerCase() === String(name).toLowerCase())) return cachedId;
+    } catch (e) { /* режим без localStorage */ }
+    if (typeof isOffline !== 'undefined' && isOffline) return null;
+    if (!inlineImageDataFolderPromise) {
+        inlineImageDataFolderPromise = inlineDriveFolderSearch(name, null).then(
+            id => { if (!id) inlineImageDataFolderPromise = null; return id; },
+            () => { inlineImageDataFolderPromise = null; return null; }
+        );
+    }
+    return inlineImageDataFolderPromise;
+}
+
 function inlineImageFolderId() {
     if (!inlineImageFolderPromise) {
-        inlineImageFolderPromise = getFolderIDByName(INLINE_IMAGE_FOLDER).then(
+        inlineImageFolderPromise = (async () => {
+            if (typeof folderIds !== 'undefined' && folderIds[INLINE_IMAGE_FOLDER]) {
+                return folderIds[INLINE_IMAGE_FOLDER];
+            }
+            // Същият ред като в getFolderID: първо паметта за сесията, после записаното от
+            // предишно зареждане, и чак тогава питане до Drive.
+            try {
+                const cached = localStorage.getItem(`gdrive_folder_id_${INLINE_IMAGE_FOLDER}`);
+                if (cached) {
+                    if (typeof folderIds !== 'undefined') folderIds[INLINE_IMAGE_FOLDER] = cached;
+                    return cached;
+                }
+            } catch (e) { /* режим без localStorage */ }
+            const dataFolderId = await inlineImageDataFolderId();
+            if (!dataFolderId) return null;
+            const id = await inlineDriveFolderSearch(INLINE_IMAGE_FOLDER, dataFolderId);
+            if (!id) return null;
+            if (typeof folderIds !== 'undefined') folderIds[INLINE_IMAGE_FOLDER] = id;
+            try { localStorage.setItem(`gdrive_folder_id_${INLINE_IMAGE_FOLDER}`, id); } catch (e) { }
+            return id;
+        })().then(
             id => { if (!id) inlineImageFolderPromise = null; return id; },
             () => { inlineImageFolderPromise = null; return null; }
         );

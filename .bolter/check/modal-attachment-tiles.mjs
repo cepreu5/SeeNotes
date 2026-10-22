@@ -116,7 +116,7 @@ await ctx.route(/^https?:\/\/(?!localhost)/, async route => {
     const q = new URL(url).searchParams.get('q') || '';
     if (/mimeType\s*=\s*'application\/vnd\.google-apps\.folder'/.test(q)) {
       const name = (q.match(/name\s*=\s*'([^']*)'/) || [])[1] || '';
-      const id = { Images: 'FOLDER_IMAGES', multinotes_data: 'FOLDER_MULTINOTES_DATA' }[name];
+      const id = name === 'Images' ? 'FOLDER_IMAGES' : 'FOLDER_' + name; // папката с данните + подпапките по тип
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: id ? [{ id, name }] : [] }) });
     }
     const name = (q.match(/name\s*=\s*'([^']*)'/) || [])[1] || '';

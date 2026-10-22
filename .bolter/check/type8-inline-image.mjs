@@ -39,8 +39,10 @@ const fmt = (...objs) => objs.map(o => JSON.stringify(o)).join('|');
 const DRIVE = {
   list: [], // { q, space } - всяка заявка за файлове, за да се види кешът
   thumb: [], // fileId-та, за които е питано за thumbnailLink
+  decoy: [], // заявки, тръгнали към ЧУЖДАТА папка "Images" - трябва да са нула
 };
 const FOLDER_IMAGES = 'FOLDER_IMAGES';
+const DECOY_IMAGES = 'DECOY_IMAGES';
 const BY_NAME = {
   'Wallet.jpg': [
     { id: 'WALLET_NEW', name: 'Wallet.jpg', modifiedTime: '2026-10-20T09:00:00Z' }, // най-новият
@@ -65,16 +67,27 @@ await ctx.route(/^https?:\/\/(?!localhost)/, route => {
     if (!THUMB[fileId]) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ thumbnailLink: `https://thumb.invalid/${fileId}=${THUMB[fileId]}` }) });
   }
-  // 2. Папки и файлове в Drive (getFolderIDByName / findGDFileByName).
+  // 2. Папки и файлове в Drive (getFolderID / findGDFileByName).
   if (url.startsWith('https://www.googleapis.com/drive/v3/files')) {
     const u = new URL(url);
     const q = u.searchParams.get('q') || '';
     DRIVE.list.push(q);
     if (/mimeType\s*=\s*'application\/vnd\.google-apps\.folder'/.test(q)) {
       const name = (q.match(/name\s*=\s*'([^']*)'/) || [])[1] || '';
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: name === 'Images' ? [{ id: FOLDER_IMAGES, name: 'Images' }] : [] }) });
+      // Истинският Drive: папката с данните (CX-Notes) и нейните подпапки по тип. Някъде другаде
+      // има И друга папка "Images" (стар борд) - вижда се само от търсене без 'in parents', и
+      // файловете на приложението НЕ са в нея. Точно тя подвеждаше старото търсене по цялия Drive.
+      if (name === 'Images') {
+        const scoped = /\bin parents\b/.test(q);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id: scoped ? FOLDER_IMAGES : DECOY_IMAGES, name: 'Images' }] }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id: 'FOLDER_' + name, name }] }) });
     }
     const name = (q.match(/name\s*=\s*'([^']*)'/) || [])[1] || '';
+    if (q.includes(DECOY_IMAGES)) {
+      DRIVE.decoy.push(q); // чужда папка: там няма нищо наше
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [] }) });
+    }
     const files = BY_NAME[name] || [];
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files }) });
   }
@@ -246,6 +259,11 @@ ok(walletQueries === 1, `кеш: едно търсене по име за Wallet
 ok(fileQueries === 1, `кеш: едно търсене по име за file_0000.png (${fileQueries})`);
 ok(folderQueries <= 1, `кеш: папка Images се търси веднъж (${folderQueries})`);
 ok(walletThumbQueries === 1, `кеш: един thumbnail на файл, не по един на карта (${walletThumbQueries})`);
+// Папката: снимките са в подпапката Images на папката с данните, не в друга папка със същото име.
+ok(DRIVE.list.some(q => q.includes(FOLDER_IMAGES) && q.includes("name = 'Wallet.jpg'")),
+  'папка: търсенето по име върви в подпапката Images на папката с данните', DRIVE.list.filter(q => q.includes("name = 'Wallet.jpg'")));
+ok(DRIVE.decoy.length === 0,
+  'папка: нито едно търсене не тръгва към другата папка "Images" в Drive', DRIVE.decoy);
 
 // ======================= 4. Липсващ файл: рамка с името, не нищо =======================
 const m = r.missing || { frames: [] };
