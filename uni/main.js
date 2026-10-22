@@ -126,6 +126,9 @@ const eyeOffIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2
 const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="4" y="5" width="16" height="16" rx="2" /><line x1="16" y1="3" x2="16" y2="7" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="4" y1="11" x2="20" y2="11" /><circle cx="12" cy="16" r="1.5" /></svg>`;
 const copyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2" /></svg>`;
 const weeklyViewIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>`;
+// Хиксче за затваряне на мини календара: вектор, за да е центрирано в кръгчето
+// еднакво на всяка система. Текстовият „×" зависи от шрифта и на Windows излиза встрани.
+const closeIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2.6" stroke="currentColor" fill="none" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>`;
 // „Затвори всички" в лентата на прозореца: същата икона като в cx-notes (два листа, горният с хиксче).
 // Плътният преден лист е в сиво-синьото на cx-notes, за да се чете и върху хартията на бележката.
 const closeAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -6256,7 +6259,10 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         if (noteHeaderInfo && noteHeaderInfo.innerText.trim() !== '') {
             const footer = document.createElement('div');
             footer.className = 'modal-note-footer';
+            // Футърът е само за датата и часа. Копието на хедъра носи и пин-бутона,
+            // който във футъра няма смисъл (закачането е на борда, не в модала).
             footer.innerHTML = noteHeaderInfo.innerHTML;
+            footer.querySelectorAll('.note-pin-btn, button').forEach(el => el.remove());
             modalContentBox.appendChild(footer); // Закачаме го за content box-a, не за body-то
         }
     }
@@ -9577,7 +9583,7 @@ function showNoteWeekCalendar(noteElement, anchorDateTimestamp) {
 
         const closeHint = document.createElement('span');
         closeHint.className = 'note-week-close-hint';
-        closeHint.textContent = '×';
+        closeHint.innerHTML = closeIconSvg;
         closeHint.title = 'Close';
         closeHint.setAttribute('aria-hidden', 'true');
 

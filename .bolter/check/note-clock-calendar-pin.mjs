@@ -383,6 +383,57 @@ await page.waitForFunction((sel) => !document.querySelector(sel + ' .note-week-c
 const toggled = await page.evaluate((sel) => getOpenNoteWindows().length + ':' + !document.querySelector(sel + ' .note-week-calendar'), SEL(N1));
 ok(toggled === '0:true', `календар: клик по лентата му го затваря, без да отваря бележката (${toggled})`, toggled);
 
+// Хиксчето е вектор, не текстов глиф, и стои точно в средата на кръгчето си.
+// Текстовият „×" зависи от шрифта: на Windows излиза встрани от центъра.
+await click(`${SEL(N1)} .note-header-date`);
+await page.waitForSelector(`${SEL(N1)} .note-week-calendar .note-week-close-hint`, { timeout: 3000 }).catch(() => { });
+const closeX = await page.evaluate((sel) => {
+  const hint = document.querySelector(sel + ' .note-week-close-hint');
+  if (!hint) return { found: false };
+  const hb = hint.getBoundingClientRect();
+  const svg = hint.querySelector('svg');
+  const sb = svg ? svg.getBoundingClientRect() : null;
+  return {
+    found: true, svg: !!svg, text: hint.textContent.trim(),
+    box: { w: Math.round(hb.width), h: Math.round(hb.height) },
+    dx: sb ? +((sb.x + sb.width / 2) - (hb.x + hb.width / 2)).toFixed(2) : null,
+    dy: sb ? +((sb.y + sb.height / 2) - (hb.y + hb.height / 2)).toFixed(2) : null,
+  };
+}, SEL(N1));
+ok(closeX.found && closeX.svg && closeX.text === '',
+  `календар: × е SVG иконка, не текст (${JSON.stringify(closeX)})`, closeX);
+ok(closeX.dx !== null && Math.abs(closeX.dx) < 1 && Math.abs(closeX.dy) < 1,
+  `календар: × стои в центъра на кръгчето (dx ${closeX.dx}, dy ${closeX.dy})`, closeX);
+ok(closeX.box.w === 16 && closeX.box.h === 16,
+  `календар: кръгчето е 16×16 и не излиза от клетката си (${closeX.box.w}×${closeX.box.h})`, closeX.box);
+await click(`${SEL(N1)} .note-week-calendar .note-week-close-hint`);
+await page.waitForFunction((sel) => !document.querySelector(sel + ' .note-week-calendar'), SEL(N1), { timeout: 3000 }).catch(() => { });
+
+// Футърът на модала носи само датата и часа: пин-бутонът от хедъра не се копира.
+await page.evaluate((sel) => {
+  const n = document.querySelector(sel);
+  showModal({ raw: 'първа бележка', format: '', color: '#FBFF86', boardId: 'B1', id: '101', gdid: 'GN101' }, n);
+}, SEL(N1));
+await page.waitForFunction(() => !!document.querySelector('.modal-note-footer'), null, { timeout: 4000 }).catch(() => { });
+const footer = await page.evaluate(() => {
+  const f = document.querySelector('.modal-note-footer');
+  if (!f) return { found: false };
+  return {
+    found: true, pins: f.querySelectorAll('.note-pin-btn').length,
+    buttons: f.querySelectorAll('button').length,
+    text: (f.textContent || '').replace(/\s+/g, ' ').trim(),
+    inner: (f.innerText || '').replace(/\s+/g, ' ').trim(),
+    hasDateIcon: !!f.querySelector('.note-header-calendar-icon svg'),
+  };
+});
+ok(footer.found === true, 'модал: футърът съществува при включена дата', footer);
+ok(footer.pins === 0 && footer.buttons === 0,
+  `модал: във футъра няма пин-бутон (пинове ${footer.pins}, бутони ${footer.buttons})`, footer);
+ok(footer.hasDateIcon === true && /\d{2}\.\d{2}\.\d{4}/.test(footer.text),
+  `модал: футърът показва иконата и датата (${JSON.stringify(footer.text)})`, footer);
+await page.evaluate(() => { getOpenNoteWindows().forEach(w => { const x = w.el.querySelector('.modal-close'); if (x) x.click(); }); });
+await page.waitForTimeout(300);
+
 // ======================= 3. Закачане на бележка =======================
 const readPins = () => page.evaluate((ids) => {
   const out = {};
