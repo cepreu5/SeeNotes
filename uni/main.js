@@ -1675,28 +1675,56 @@ function openNotesDBAtVersion(version) {
 }
 
 /**
+ * След като отваряне на NOTES_DB_VERSION се провали веднъж (базата на диска е
+ * по-нова), запомняме го: всяко следващо отваряне минава направо без версия,
+ * за да не пълним конзолата със същото предупреждение при всеки DB достъп.
+ * @type {boolean}
+ */
+let notesDbVersionUnavailable = false;
+
+/**
+ * Отварянията минават едно по едно: иначе няколко едновременни извиквания пробват
+ * невалидната версия преди флагът да е вдигнат и предупреждението се повтаря.
+ * @type {Promise<void>}
+ */
+let notesDbOpenQueue = Promise.resolve();
+
+/**
  * Отваря IndexedDB базата данни.
  * Ако базата на диска е по-нова от тази версия на приложението (VersionError),
  * отваря я такава, каквато е, вместо да остане без бележки.
  * @returns {Promise<IDBDatabase>}
  */
 async function openNotesDB() {
-    let db;
+    const waitForPrevious = notesDbOpenQueue;
+    let releaseQueue;
+    notesDbOpenQueue = new Promise((resolve) => { releaseQueue = resolve; });
+    await waitForPrevious;
     try {
-        db = await openNotesDBAtVersion(NOTES_DB_VERSION);
-    } catch (error) {
-        console.warn(`NotesDB: open at version ${NOTES_DB_VERSION} failed (${describeDbError(error)}). Opening the existing database as it is.`);
-        db = await openNotesDBAtVersion(null);
+        let db;
+        if (notesDbVersionUnavailable) {
+            db = await openNotesDBAtVersion(null);
+        } else {
+            try {
+                db = await openNotesDBAtVersion(NOTES_DB_VERSION);
+            } catch (error) {
+                notesDbVersionUnavailable = true;
+                console.warn(`NotesDB: open at version ${NOTES_DB_VERSION} failed (${describeDbError(error)}). Opening the existing database as it is. Shown once.`);
+                db = await openNotesDBAtVersion(null);
+            }
+        }
+        const requiredStores = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME, CONFIG_STORE_NAME];
+        const missingStores = requiredStores.filter(name => !db.objectStoreNames.contains(name));
+        if (missingStores.length > 0) {
+            const nextVersion = db.version + 1;
+            console.warn(`NotesDB: missing stores (${missingStores.join(', ')}), upgrading to version ${nextVersion}.`);
+            db.close();
+            db = await openNotesDBAtVersion(nextVersion);
+        }
+        return db;
+    } finally {
+        releaseQueue();
     }
-    const requiredStores = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME, CONFIG_STORE_NAME];
-    const missingStores = requiredStores.filter(name => !db.objectStoreNames.contains(name));
-    if (missingStores.length > 0) {
-        const nextVersion = db.version + 1;
-        console.warn(`NotesDB: missing stores (${missingStores.join(', ')}), upgrading to version ${nextVersion}.`);
-        db.close();
-        db = await openNotesDBAtVersion(nextVersion);
-    }
-    return db;
 }
 
 /**

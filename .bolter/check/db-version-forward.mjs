@@ -112,6 +112,13 @@ const STATE = () => {
   const joined = logs.join('\n');
   ok(!/Error opening NotesDB/.test(joined), 'v4: няма "Error opening NotesDB" при старт', joined.slice(0, 400));
   ok(!/Error in startApp/.test(joined), 'v4: няма "Error in startApp" при старт', joined.slice(0, 400));
+  const startupWarn = logs.filter(l => /NotesDB: open at version 3 failed/.test(l)).length;
+  ok(startupWarn <= 1, 'v4: предупреждението при старт е най-много едно', startupWarn);
+  // Повторните отваряния (getConfig, getAllFromDB, saveConfig...) не бива да пишат пак.
+  logs.length = 0;
+  for (let i = 0; i < 5; i++) await page.evaluate(STATE);
+  const repeatWarn = logs.filter(l => /NotesDB: open at version 3 failed/.test(l)).length;
+  ok(repeatWarn === 0, 'v4: 5 повторни отваряния не добавят предупреждение в конзолата', repeatWarn);
   await ctx.close();
 }
 
