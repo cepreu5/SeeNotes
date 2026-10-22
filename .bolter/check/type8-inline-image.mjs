@@ -337,6 +337,11 @@ const modal = await page.evaluate(() => {
       state: f.dataset.nmState,
       style: f.style.width,
       pct: inner ? Math.round((f.getBoundingClientRect().width / inner) * 100) : null,
+      // В бележката ширината вече не е процент от колоната, а (paramint/10) × базата на снимката
+      // (22.10): естествената ширина тук, защото записът е стар и няма parambase.
+      view: f.dataset.nmView || null,
+      natural: f.querySelector('img') ? f.querySelector('img').naturalWidth : null,
+      px: Math.round(f.getBoundingClientRect().width),
       parent: f.parentElement ? (f.parentElement.id || f.parentElement.className) : null,
       parentWidth: f.parentElement ? Math.round(f.parentElement.getBoundingClientRect().width) : null,
       imgSrc: f.querySelector('img') ? f.querySelector('img').getAttribute('src') : null,
@@ -346,9 +351,13 @@ const modal = await page.evaluate(() => {
 ok(!modal.missing && modal.frames.length === 2, `модал: две картинки (${modal.frames && modal.frames.length})`);
 ok(!String(modal.text).includes('*'), 'модал: никаква звездичка в текста', modal.text);
 ok(modal.normalized.endsWith(PLAIN), `модал: тялото е същото, думите разделени (${JSON.stringify(modal.text)})`);
-ok(modal.frames[0] && modal.frames[1] && Math.abs(modal.frames[0].pct - 40) <= 2 && Math.abs(modal.frames[1].pct - 20) <= 2,
-  `модал: процентът е от колоната на модала, значи картинката расте с прозореца (колона ${modal.innerWidth}px, ${modal.frames[0] && modal.frames[0].pct}%, ${modal.frames[1] && modal.frames[1].pct}%)`,
-  modal.frames.map(f => ({ pct: f.pct, style: f.style, parent: f.parent, parentWidth: f.parentWidth })));
+// Промяна на собственика (22.10): в бележката процентът е от САМАТА снимка, не от колоната - стара
+// бележка без записана база (parambase) пада на естествената ширина на снимката. Затова ширината тук
+// е в пиксели и не зависи от ширината на колоната; по-тясна колона я свива (max-width: 100%).
+ok(modal.frames[0] && modal.frames[1] && modal.frames.every(f => f.view === 'note' && /px$/.test(f.style)) &&
+  modal.frames[0].px === Math.round(modal.frames[0].natural * 0.4) && modal.frames[1].px === Math.round(modal.frames[1].natural * 0.2),
+  `модал: ширината е (paramint/10) × естествената ширина на снимката, не процент от колоната (колона ${modal.innerWidth}px, ${modal.frames[0] && modal.frames[0].px}px и ${modal.frames[1] && modal.frames[1].px}px)`,
+  modal.frames.map(f => ({ pct: f.pct, style: f.style, px: f.px, natural: f.natural, view: f.view })));
 ok(modal.frames[0] && modal.frames[0].state === 'ready' && !!modal.frames[0].imgSrc,
   `модал: картинката е заредена (${modal.frames[0] && modal.frames[0].state}, ${modal.frames[0] && modal.frames[0].imgSrc})`);
 
