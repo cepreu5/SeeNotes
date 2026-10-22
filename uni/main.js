@@ -6653,7 +6653,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     modalBody.innerHTML = displayContent;
     hydrateInlineImages(modalBody); // вградените картинки (type=8) влизат в рамките си
     // Set modal background color
-    const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+    // По подразбиране изключен: липсваща стойност (първо стартиране) значи изключено.
+    const imgBgrdEnabled = localStorage.getItem('imgBgrd') === 'true';
     if (isPromo) {
         modalContentBox.style.backgroundColor = '#222';
         modalContentBox.style.backgroundImage = 'none';
@@ -8107,7 +8108,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         // Graphical background
         const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
         if (imgBgrdCheckbox) {
-            imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+            imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') === 'true'; // По подразбиране изключен
             imgBgrdCheckbox.addEventListener('change', () => {
                 const isChecked = imgBgrdCheckbox.checked;
                 localStorage.setItem('imgBgrd', isChecked);

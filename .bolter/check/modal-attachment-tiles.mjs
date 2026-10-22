@@ -388,8 +388,16 @@ ok(!ctrlJson.missing && /"pathGD"\s*:\s*"WALLET_NEW"/.test(String(ctrlJson.text)
   `Ctrl+клик: показва JSON записа на прикачения файл, без да зависи от debug (${String(ctrlJson.text).slice(0, 120)})`, ctrlJson);
 
 // ======================= 7. Тясна лента: плъзга се, скролбар не се вижда =======================
+// Ширината се взима от самата лента, а не е твърдо 330px: при изключен графичен фон (новата
+// подразбираща се стойност) CSS маха рамката на бележката (.no-bg-image { border: none }), лентата
+// е няколко пиксела по-широка и 7 плочки може да се съберат точно до ръба.
 await page.evaluate(() => { localStorage.setItem('modalWidth', '330px'); localStorage.setItem('modalHeight', '600px'); });
 await page.setViewportSize({ width: 390, height: 800 });
+await openModal({ gdid: 'G1' });
+await waitScale();
+const stripAt330 = await readTiles();
+const narrowPx = Math.max(180, Math.round(stripAt330.clientWidth) - 60);
+await page.evaluate((w) => { localStorage.setItem('modalWidth', w + 'px'); }, narrowPx);
 await openModal({ gdid: 'G1' });
 await waitScale();
 const narrow = await readTiles();
