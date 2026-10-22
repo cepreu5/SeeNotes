@@ -11829,7 +11829,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     }
 
     // Set modal background color
-    const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+    // По подразбиране изключен: липсваща стойност (първо стартиране) значи изключено.
+    const imgBgrdEnabled = localStorage.getItem('imgBgrd') === 'true';
     if (isPromo) {
         modalContentBox.style.backgroundColor = '#222';
         modalContentBox.style.backgroundImage = 'none';
@@ -17520,7 +17521,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     }
     // Graphical background
     const imgBgrdCheckbox = document.getElementById('img-bgrd-checkbox');
-    imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') !== 'false'; // Default to true
+    imgBgrdCheckbox.checked = localStorage.getItem('imgBgrd') === 'true'; // По подразбиране изключен
     imgBgrdCheckbox.addEventListener('change', () => {
         const isChecked = imgBgrdCheckbox.checked;
         localStorage.setItem('imgBgrd', isChecked);
@@ -24666,7 +24667,7 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
                 bgColor = note.color;
             }
             card.style.backgroundColor = bgColor;
-            if (localStorage.getItem('imgBgrd') !== 'false') card.style.backgroundImage = "url('Note.jpg')";
+            if (localStorage.getItem('imgBgrd') === 'true') card.style.backgroundImage = "url('Note.jpg')";
 
             // Header: Date only (standard look)
             const labelEl = document.createElement('div');
@@ -25554,7 +25555,7 @@ function previewEditedNote() {
         const previewModalBox = document.querySelector('#content-modal .modal-content-box');
         if (previewModalBox && noteColorStr) {
             previewModalBox.style.backgroundColor = noteColorStr;
-            if (localStorage.getItem('imgBgrd') === 'false') {
+            if (localStorage.getItem('imgBgrd') !== 'true') {
                 previewModalBox.style.backgroundImage = 'none';
                 previewModalBox.classList.add('no-bg-image');
             }
@@ -25644,7 +25645,7 @@ function disableNoteEditing(modalBodyElem) {
     if (colorBtn) colorBtn.style.display = 'none';
     const pasteModalBtn = document.getElementById('paste-modal-btn');
     if (pasteModalBtn) pasteModalBtn.style.display = 'none';
-    const imgBgrdEnabled = localStorage.getItem('imgBgrd') !== 'false';
+    const imgBgrdEnabled = localStorage.getItem('imgBgrd') === 'true';
     const modalContentBox = document.querySelector('#content-modal .modal-content-box');
     if (modalContentBox) {
         if (imgBgrdEnabled) {
