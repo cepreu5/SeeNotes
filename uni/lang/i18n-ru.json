@@ -253,5 +253,13 @@
   "errorImportSettings": "Ошибка при загрузке настроек",
   "errorInvalidJson": "Неверная структура JSON-файла.",
   "inlineImgMissing": "нет такого файла в Images",
-  "inlineImgUnavailable": "файл сейчас недоступен"
+  "inlineImgUnavailable": "файл сейчас недоступен",
+  "pinNoteTooltip": "Закрепить заметку",
+  "unpinNoteTooltip": "Открепить заметку",
+  "notePinned": "Заметка закреплена.",
+  "noteUnpinned": "Заметка откреплена.",
+  "weeklyCalendar": "Недельный календарь",
+  "previousWeek": "Предыдущая неделя",
+  "nextWeek": "Следующая неделя",
+  "today": "Сегодня"
 }

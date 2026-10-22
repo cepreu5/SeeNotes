@@ -6695,6 +6695,14 @@ function applyFilters() {
         visibleNotes.sort((a, b) => {
             if (a.classList.contains('boards-note')) return -1;
             if (b.classList.contains('boards-note')) return 1;
+            // 0. Закачените бележки са преди незакачените; най-скоро закачената е най-отгоре.
+            const pinA = Number(a.dataset.pin || 0);
+            const pinB = Number(b.dataset.pin || 0);
+            const isPinnedA = pinA > 0;
+            const isPinnedB = pinB > 0;
+            if (isPinnedA && !isPinnedB) return -1;
+            if (!isPinnedA && isPinnedB) return 1;
+            if (isPinnedA && isPinnedB && pinA !== pinB) return pinB - pinA;
             // 1. Reminder Priority
             if (sortRemindersTop) {
                 const isReminderA = a.dataset.tm === '1';
@@ -9327,6 +9335,272 @@ async function handleGoogleDriveAttachment(attachment, attachmentWrapper, iconDa
     attachmentWrapper.prepend(iconDiv);
 }
 
+// =================================================================================
+// Часовник, седмичен мини календар и закачане на бележка (порт от клон cx-notes)
+// =================================================================================
+// Трите поведения живеят в хедъра на бележката: клик на часа показва аналогов
+// часовник в бележката, клик на датата - седмичен мини календар, а до тях има
+// бутонче за закачане, което вдига бележката най-отпред на борда.
+const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2.4" stroke="currentColor" fill="none"><circle class="pin-dot" cx="12" cy="12" r="7"></circle></svg>`;
+
+// Цвят, записан като цяло число (0xAARRGGBB), се показва като hex.
+function colorIntToHex(intVal) {
+    if (typeof intVal !== 'number') return intVal;
+    return '#' + (intVal >>> 0).toString(16).slice(-6).toUpperCase();
+}
+
+// Цветът на бележката за CSS: индекс в палитрата, цяло число или готов низ.
+function getNoteColorCss(color, fallback = noteColorMap[0]) {
+    if (typeof color === 'number') {
+        return color >= 0 && color < noteColorMap.length
+            ? noteColorMap[color]
+            : (color < 0 ? colorIntToHex(color) : fallback);
+    }
+    return typeof color === 'string' ? color : fallback;
+}
+
+// Моментът, който хедърът показва и по който се отваря календарът: напомняне (timer),
+// календарна дата, дата на промяна, дата на създаване - в този ред.
+function getNoteHeaderDateTimestamp(noteData) {
+    const timer = Number(noteData?.timer || 0);
+    if (timer) {
+        const timerDate = new Date(timer);
+        const isAutoCalendarTimer = timerDate.getHours() === 0 && timerDate.getMinutes() === 0 && timerDate.getSeconds() === 33;
+        if (!isAutoCalendarTimer) return timer;
+    }
+    if (Number(noteData?.calendarDate) > 0) return Number(noteData.calendarDate);
+    if (Number(noteData?.datemod) > 0) return Number(noteData.datemod);
+    return Number(noteData?.date) || 0;
+}
+
+// Аналоговият часовник в бележката: дванадесетте чертички по циферблата и трите
+// стрелки, които се местят всяка секунда. Спира сам, когато бележката бъде
+// пре-рендерирана (елементът вече не е в страницата).
+function startNoteClock(clockElement) {
+    if (!clockElement) return null;
+    const hourHand = clockElement.querySelector('.hour');
+    const minuteHand = clockElement.querySelector('.minute');
+    const secondHand = clockElement.querySelector('.second');
+
+    for (let i = 0; i < 12; i++) {
+        if (i % 3 === 0) continue; // 12, 3, 6 и 9 са цифри, не чертички
+        const mark = document.createElement('div');
+        mark.className = 'mark';
+        mark.style.transform = `translateX(-50%) rotate(${i * 30}deg)`;
+        clockElement.appendChild(mark);
+    }
+
+    const updateClock = () => {
+        if (!clockElement.isConnected) {
+            clearInterval(clockElement._clockInterval);
+            clockElement._clockInterval = null;
+            return;
+        }
+        const now = new Date();
+        const s = now.getSeconds();
+        const m = now.getMinutes();
+        const h = now.getHours();
+        if (hourHand) hourHand.style.transform = `translate(-50%, -100%) rotate(${(h % 12) * 30 + m * 0.5}deg)`;
+        if (minuteHand) minuteHand.style.transform = `translate(-50%, -100%) rotate(${m * 6 + s * 0.1}deg)`;
+        if (secondHand) secondHand.style.transform = `translate(-50%, -100%) rotate(${s * 6}deg)`;
+    };
+    updateClock();
+    clockElement._clockInterval = setInterval(updateClock, 1000);
+    return clockElement._clockInterval;
+}
+
+// Седмичен мини календар върху бележката: 7 реда (по един на ден), стрелки за
+// предишна/следваща седмица, бутон за текущата седмица и по една цветна точка за
+// всяка бележка с календарна дата в този ден. Точката отваря бележката в модала.
+function showNoteWeekCalendar(noteElement, anchorDateTimestamp) {
+    if (!noteElement || !anchorDateTimestamp) return;
+
+    const existingCalendar = noteElement.querySelector('.note-week-calendar');
+    if (existingCalendar) {
+        existingCalendar.remove();
+        return;
+    }
+    document.querySelectorAll('.note-week-calendar').forEach(calendar => calendar.remove());
+
+    const anchorDate = new Date(anchorDateTimestamp);
+    if (Number.isNaN(anchorDate.getTime())) return;
+    anchorDate.setHours(0, 0, 0, 0);
+    const weekStart = new Date(anchorDate);
+    weekStart.setDate(anchorDate.getDate() - ((anchorDate.getDay() + 6) % 7)); // понеделник
+
+    const notesByDay = new Map();
+    allNotesData.forEach(noteData => {
+        if (!noteData.calendarDate || noteData.status === 1) return;
+        const noteDate = new Date(noteData.calendarDate);
+        if (Number.isNaN(noteDate.getTime())) return;
+        noteDate.setHours(0, 0, 0, 0);
+        const key = noteDate.getTime();
+        if (!notesByDay.has(key)) notesByDay.set(key, []);
+        notesByDay.get(key).push(noteData);
+    });
+
+    const calendar = document.createElement('div');
+    calendar.className = 'note-week-calendar';
+    calendar.setAttribute('role', 'dialog');
+    calendar.setAttribute('aria-label', _('weeklyCalendar') || 'Weekly calendar');
+    calendar.addEventListener('click', event => event.stopPropagation());
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const renderWeek = (startDate) => {
+        calendar.replaceChildren();
+        const header = document.createElement('div');
+        header.className = 'note-week-calendar-header';
+
+        const previousWeek = document.createElement('button');
+        previousWeek.type = 'button';
+        previousWeek.className = 'note-week-nav';
+        previousWeek.textContent = '‹';
+        previousWeek.title = _('previousWeek') || 'Previous week';
+        previousWeek.addEventListener('click', event => {
+            event.stopPropagation();
+            const previousStart = new Date(startDate);
+            previousStart.setDate(startDate.getDate() - 7);
+            renderWeek(previousStart);
+        });
+
+        const weekTitle = document.createElement('div');
+        weekTitle.className = 'note-week-title';
+        const weekEnd = new Date(startDate);
+        weekEnd.setDate(startDate.getDate() + 6);
+        weekTitle.textContent = `${formatDate(startDate)} – ${formatDate(weekEnd)}`;
+
+        const nextWeek = document.createElement('button');
+        nextWeek.type = 'button';
+        nextWeek.className = 'note-week-nav';
+        nextWeek.textContent = '›';
+        nextWeek.title = _('nextWeek') || 'Next week';
+        nextWeek.addEventListener('click', event => {
+            event.stopPropagation();
+            const nextStart = new Date(startDate);
+            nextStart.setDate(startDate.getDate() + 7);
+            renderWeek(nextStart);
+        });
+
+        const currentWeek = document.createElement('button');
+        currentWeek.type = 'button';
+        currentWeek.className = 'note-week-today';
+        currentWeek.innerHTML = calendarIconSvg;
+        currentWeek.title = _('today') || 'Today';
+        currentWeek.setAttribute('aria-label', currentWeek.title);
+        currentWeek.addEventListener('click', event => {
+            event.stopPropagation();
+            const currentWeekStart = new Date(today);
+            currentWeekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+            renderWeek(currentWeekStart);
+        });
+
+        const closeHint = document.createElement('span');
+        closeHint.className = 'note-week-close-hint';
+        closeHint.textContent = '×';
+        closeHint.title = 'Close';
+        closeHint.setAttribute('aria-hidden', 'true');
+
+        header.append(previousWeek, weekTitle, currentWeek, closeHint, nextWeek);
+        header.addEventListener('click', event => {
+            if (!event.target.closest('.note-week-nav, .note-week-today')) {
+                event.stopPropagation();
+                calendar.remove();
+            }
+        });
+        calendar.appendChild(header);
+
+        const days = document.createElement('div');
+        days.className = 'note-week-days';
+        for (let index = 0; index < 7; index++) {
+            const day = new Date(startDate);
+            day.setDate(startDate.getDate() + index);
+            const dayCell = document.createElement('div');
+            dayCell.className = 'note-week-day';
+            if (day.getTime() === anchorDate.getTime()) dayCell.classList.add('is-selected');
+            if (day.getTime() === today.getTime()) dayCell.classList.add('is-today');
+
+            const weekdayInitial = day.toLocaleDateString(currentLang, { weekday: 'short' }).trim().charAt(0).toLocaleUpperCase(currentLang);
+            const label = document.createElement('div');
+            label.className = 'note-week-date-label';
+            label.textContent = `${String(day.getDate()).padStart(2, '0')}.${weekdayInitial}`;
+            dayCell.appendChild(label);
+
+            const noteMarkers = document.createElement('div');
+            noteMarkers.className = 'note-week-markers';
+            (notesByDay.get(day.getTime()) || []).forEach(noteData => {
+                const marker = document.createElement('button');
+                marker.type = 'button';
+                marker.className = 'note-week-marker';
+                marker.style.backgroundColor = getNoteColorCss(noteData.color);
+                marker.title = (noteData.notetxt || '').split('\n').find(line => line.trim())?.trim() || '...';
+                marker.setAttribute('aria-label', marker.title);
+                marker.addEventListener('click', event => {
+                    event.stopPropagation();
+                    showModal({
+                        raw: noteData.notetxt || '',
+                        format: noteData.text_span || '',
+                        titleFormat: noteData.title_span || '',
+                        color: getNoteColorCss(noteData.color),
+                        boardId: noteData.boardid,
+                        id: noteData.id,
+                        gdid: noteData.gdid,
+                        datemod: noteData.datemod,
+                        originalNote: noteData
+                    });
+                });
+                noteMarkers.appendChild(marker);
+            });
+            dayCell.appendChild(noteMarkers);
+            days.appendChild(dayCell);
+        }
+        calendar.appendChild(days);
+    };
+
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    renderWeek(currentWeekStart);
+    noteElement.appendChild(calendar);
+}
+
+// Закачане/откачане на бележка. В main записът минава само през IndexedDB (GDrive и
+// локалната папка са изключени навсякъде другаде), затова тук няма нови пътища за запис:
+// вдигаме version, слагаме/махаме pinnedAt, пишем в базата и пре-рендерираме картата.
+async function toggleNotePinned(noteData) {
+    if (!noteData) return false;
+    const target = allNotesData.find(n => (noteData.gdid && n.gdid == noteData.gdid) || (noteData.id && n.id == noteData.id)) || noteData;
+
+    const wasPinned = Number(target.pinnedAt || 0) > 0;
+    target.version = target.version ? parseInt(target.version, 10) + 1 : 1;
+    if (wasPinned) delete target.pinnedAt;
+    else target.pinnedAt = Date.now();
+    target.datemod = Date.now();
+
+    const oldNoteEl = (target.gdid ? document.querySelector(`.note[data-g="${target.gdid}"]`) : null)
+        || (target.id ? document.querySelector(`.note[data-i="${target.id}"]`) : null);
+    if (oldNoteEl) {
+        const updatedEl = await createNoteElement(target);
+        if (updatedEl) oldNoteEl.replaceWith(updatedEl);
+    }
+
+    try {
+        const db = await openNotesDB();
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(NOTE_STORE_NAME, 'readwrite');
+            tx.objectStore(NOTE_STORE_NAME).put(target);
+            tx.oncomplete = () => { db.close(); resolve(); };
+            tx.onerror = () => { db.close(); reject(tx.error); };
+        });
+    } catch (err) {
+        console.error('Failed to save the pinned note:', err);
+    }
+
+    applyFilters();
+    if (typeof updateReloadButtonState === 'function') updateReloadButtonState();
+    showToast(wasPinned ? (_('noteUnpinned') || 'Note unpinned.') : (_('notePinned') || 'Note pinned.'), 2000);
+    return true;
+}
+
 async function createNoteElement(noteContent) {
     const note = document.createElement('div');
     const notesBgrdEnabled = localStorage.getItem('notesBgrd') !== 'false';
@@ -9361,6 +9635,13 @@ async function createNoteElement(noteContent) {
             // data-g -> gdid, data-i -> id
             if (noteGdid) note.dataset.g = noteGdid;
             if (noteID) note.dataset.i = noteID;
+            // data-pin -> pinnedAt: по-новата закачена бележка застава по-напред на борда.
+            if (Number(extraData.pinnedAt || 0) > 0) {
+                note.dataset.pin = extraData.pinnedAt;
+                note.classList.add('note-pinned');
+            } else {
+                note.dataset.pin = '0';
+            }
             // data-b -> boardid
             if (extraData.boardid !== undefined) note.dataset.b = extraData.boardid;
             // data-dm -> datemod
@@ -9427,11 +9708,17 @@ async function createNoteElement(noteContent) {
     const headerTime = document.createElement('span');
     headerTime.className = 'note-header-time';
     // Add click listener to the date to show full note data
+    // Обикновеният клик отваря седмичния мини календар. В debug режим Ctrl+клик
+    // показва суровите данни - същият жест, с който debug показва JSON и другаде.
+    // (Поръчката беше календарът да е в „нормалния случай", но `debug` в main е
+    // винаги true, така че такова условие би оставило календара недостъпен.)
     headerDate.addEventListener('click', (e) => {
-        if (debug) {
-            e.stopPropagation();
+        e.stopPropagation();
+        if (debug && e.ctrlKey) {
             showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+            return;
         }
+        showNoteWeekCalendar(note, getNoteHeaderDateTimestamp(extraData));
     });
 
     if (extraData.timer) {
@@ -9461,8 +9748,68 @@ async function createNoteElement(noteContent) {
             if (timeText) headerTime.textContent = timeText;
         }
     }
+    // Клик на часа: аналогов часовник в бележката. Клик върху циферблата връща оригинала.
+    // Часовникът работи и върху бележка с текст - оригиналът се пази и се връща обратно.
+    headerTime.style.cursor = 'pointer';
+    headerTime.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const originalContent = contentEl.innerHTML;
+        const clockId = `clock-${noteGdid || noteID || 'note'}`;
+
+        // Скриваме заглавния ред, за да има място за циферблата.
+        titleWrapper.style.display = 'none';
+        contentEl.style.display = 'flex';
+        contentEl.style.justifyContent = 'center';
+        contentEl.style.alignItems = 'center';
+        contentEl.style.paddingTop = '35px';
+        contentEl.style.height = '80%';
+        contentEl.innerHTML = `
+            <div class="clock" id="${clockId}" style="margin: auto; transform: scale(0.85); cursor: pointer;"
+                title="Click to close clock">
+                <div class="center"></div>
+                <div class="number n12">12</div>
+                <div class="number n3">3</div>
+                <div class="number n6">6</div>
+                <div class="number n9">9</div>
+                <div class="hand hour"></div>
+                <div class="hand minute"></div>
+                <div class="hand second"></div>
+            </div>`;
+
+        const clockElement = contentEl.querySelector(`#${clockId}`);
+        if (!clockElement) return;
+
+        clockElement.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            if (clockElement._clockInterval) clearInterval(clockElement._clockInterval);
+            clockElement._clockInterval = null;
+            titleWrapper.style.display = '';
+            contentEl.style.display = '';
+            contentEl.style.justifyContent = '';
+            contentEl.style.alignItems = '';
+            contentEl.style.paddingTop = '';
+            contentEl.style.height = '';
+            contentEl.innerHTML = originalContent;
+        });
+
+        startNoteClock(clockElement);
+    });
     headerInfoContainer.appendChild(headerDate);
     headerInfoContainer.appendChild(headerTime);
+    // Закачане: бележката получава червен контур и застава най-отпред на борда.
+    const pinBtn = document.createElement('button');
+    const isPinned = Number(extraData.pinnedAt || 0) > 0;
+    pinBtn.type = 'button';
+    pinBtn.className = `note-pin-btn${isPinned ? ' pinned' : ''}`;
+    pinBtn.innerHTML = pinIconSvg;
+    pinBtn.title = isPinned ? (_('unpinNoteTooltip') || 'Unpin note') : (_('pinNoteTooltip') || 'Pin note');
+    pinBtn.setAttribute('aria-label', pinBtn.title);
+    pinBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        await toggleNotePinned(noteContent);
+    });
+    headerInfoContainer.appendChild(pinBtn);
     // Add the new container before the title
     titleWrapper.appendChild(headerInfoContainer);
     titleWrapper.appendChild(titleEl);

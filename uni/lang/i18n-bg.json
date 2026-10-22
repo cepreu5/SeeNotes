@@ -253,5 +253,13 @@
   "errorLocalFolderNotFound": "Локалната папка не е намерена. Изберете я отново в Настройки.",
   "errorFetchFileId": "Файлът {fileName} не може да бъде изтеглен.",
   "errorImportSettings": "Грешка при четене на настройките",
-  "errorInvalidJson": "Невалидна структура на JSON файла."
+  "errorInvalidJson": "Невалидна структура на JSON файла.",
+  "pinNoteTooltip": "Закачи бележка",
+  "unpinNoteTooltip": "Откачи бележка",
+  "notePinned": "Бележката е закачена.",
+  "noteUnpinned": "Бележката е откачена.",
+  "weeklyCalendar": "Седмичен календар",
+  "previousWeek": "Предишна седмица",
+  "nextWeek": "Следваща седмица",
+  "today": "Днес"
 }

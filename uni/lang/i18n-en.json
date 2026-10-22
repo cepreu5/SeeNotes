@@ -253,5 +253,13 @@
   "errorLocalFolderNotFound": "The local folder was not found. Please select it again in Settings.",
   "errorFetchFileId": "Cannot fetch the file {fileName}.",
   "errorImportSettings": "Error importing settings",
-  "errorInvalidJson": "Invalid JSON file structure."
+  "errorInvalidJson": "Invalid JSON file structure.",
+  "pinNoteTooltip": "Pin note",
+  "unpinNoteTooltip": "Unpin note",
+  "notePinned": "Note pinned.",
+  "noteUnpinned": "Note unpinned.",
+  "weeklyCalendar": "Weekly calendar",
+  "previousWeek": "Previous week",
+  "nextWeek": "Next week",
+  "today": "Today"
 }
