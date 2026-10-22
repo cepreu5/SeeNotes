@@ -287,6 +287,9 @@ ok(s.menu && s.menu.values.join('|') === '40%|40%', `менюто показва
 // Редовете са с центриран текст, както „Махни" - не ляво изравнени (това е и забележката на собственика).
 ok(s.menu && s.menu.centers.every(c => c.justify === 'center' && c.align === 'center' && Math.abs(c.textMid - c.rowMid) <= 2),
   `редовете са с центриран текст (${s.menu && JSON.stringify(s.menu.centers.map(c => [c.text, c.justify, c.align, c.textMid - c.rowMid]))})`);
+ok(s.menu && (s.menu.bottom <= tileRect.cy - 4 || s.menu.top >= tileRect.cy + 4),
+  `менюто излиза над плочката, без да я закрива (меню ${s.menu && s.menu.top}..${s.menu && s.menu.bottom}, плочка ${tileRect.cy})`, s.menu);
+ok(s.menu && s.menu.left >= 0 && s.menu.right <= 1281, `менюто не излиза извън екрана (${s.menu && s.menu.left}..${s.menu && s.menu.right})`, s.menu);
 if (SHOTS) await page.screenshot({ path: `${SHOTS}-2-tile-menu.png` });
 
 // ======================= 4. „Преглед" натиска истинския <a> =======================
@@ -505,8 +508,10 @@ ok(s.menu && s.menu.labels.join('|') === 'Преглед|Махни', `редо�
 ok(s.menu && s.menu.values.join('|') === '30%|30%', `менюто от маркера показва ширината на това място (${s.menu && s.menu.values})`);
 ok(s.menu && s.caret && Math.abs(s.caret[0] - markersStart(inserted.pos)) <= 2, `щракът на маркера слага каретата там (${s.caret})`, { pos: inserted.pos });
 function markersStart(pos) { return pos; }
-ok(s.menu && s.menu.centers.every(c => c.justify === 'center' && c.align === 'center'),
-  'и редовете от маркера са с центриран текст');
+ok(s.menu && s.menu.centers.every(c => c.justify === 'center' && c.align === 'center' && Math.abs(c.textMid - c.rowMid) <= 2),
+  `и редовете от маркера са с центриран текст (${s.menu && JSON.stringify(s.menu.centers.map(c => c.textMid - c.rowMid))})`);
+ok(s.menu && (s.menu.bottom <= markers.cy - 4 || s.menu.top >= markers.cy + 4),
+  `менюто излиза под/над маркера, без да го закрива (меню ${s.menu && s.menu.top}..${s.menu && s.menu.bottom}, маркер ${markers.cy})`, s.menu);
 ok(s.menu && s.menu.centers && s.menu.centers.length === 2,
   `от маркера са два реда (${s.menu && s.menu.centers.length})`);
 if (SHOTS) await page.screenshot({ path: `${SHOTS}-3-marker-menu.png` });
@@ -666,6 +671,43 @@ ok(drop.over && drop.afterDrop, 'влаченето на файл маркира
 ok(drop.pasteFilePrevented === true && drop.pasteTextPrevented === false,
   'пейстът на ФАЙЛ се прихваща, а пейстът на текст си остава както досега', drop);
 ok(drop.formatsAfter === drop.formatsBefore, `нито влаченето, нито пейстът пишат type=8 (${drop.formatsBefore} -> ${drop.formatsAfter})`);
+
+// ======================= 9б. Вмъкване в {{ }} е отказано =======================
+const refused = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const field = document.getElementById('note-edit-textarea');
+  const before = { value: field.value, format: body.dataset.format || '' };
+  const beforeCount = (before.format.split('|').filter(Boolean).length);
+  const guard = {
+    inside: nmInlineInsideCode('а {{код}} б', 5),
+    before: nmInlineInsideCode('а {{код}} б', 0),
+    fence: nmInlineInsideCode('```\nкод\n```', 5),
+  };
+  // Код в бележката, каретата ВЪТРЕ в него: редът „Сложи в текста" не бива да слага маркер там.
+  field.value = 'а {{код}} б';
+  field.dataset.lastVal = field.value;
+  handleEditInput(field, document.getElementById('note-edit-textarea-backdrop'));
+  field.focus();
+  field.setSelectionRange(5, 5);
+  const tile = document.querySelector('#modal-body .nm-attach-tile:not(.is-add)');
+  tile.click();
+  const btn = document.querySelector('.nm-inline-menu [data-nm-menu-action="insert"]');
+  btn.click();
+  await new Promise(r => setTimeout(r, 300));
+  const after = { value: field.value, count: (body.dataset.format || '').split('|').filter(Boolean).length };
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  // Състоянието се връща, за да продължат проверките след това.
+  field.value = before.value;
+  field.dataset.lastVal = before.value;
+  body.dataset.format = before.format;
+  handleEditInput(field, document.getElementById('note-edit-textarea-backdrop'));
+  return { guard, beforeCount, after, restored: field.value === before.value };
+});
+ok(refused.guard.inside === true && refused.guard.before === false && refused.guard.fence === true,
+  `вътре в {{ }} или в ограден код не се слага маркер (${JSON.stringify(refused.guard)})`, refused.guard);
+ok(refused.after.value === 'а {{код}} б' && refused.after.count === refused.beforeCount,
+  `каретата вътре в {{ }}: вмъкването е отказано, кодът е непокътнат (${refused.after.value}, места ${refused.after.count})`, refused);
+ok(refused.restored, 'бележката е върната както беше за следващите проверки');
 
 // ======================= 10. Ширината в бележката идва от записана база, на борда - от колоната =====
 // Решение на собственика (22.10): базата е min(естествената ширина на снимката, ширината на бележката
