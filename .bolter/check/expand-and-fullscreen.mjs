@@ -156,6 +156,15 @@ const NOTE_STATE = `(() => {
       return { win: w ? w.key : null, tag: el ? el.tagName + '.' + (el.className || '') : null };
     })(),
     box: box ? { left: Math.round(box.offsetLeft), top: Math.round(box.offsetTop), w: Math.round(parseFloat(cs.width)), h: Math.round(parseFloat(cs.height)) } : null,
+    // Истинската кутия на екрана (border box, с padding-а) и хиксчето: parseFloat(cs.width) е само
+    // съдържанието, затова при content-box кутията изглежда в екрана, а на екрана е по-голяма с padding-а.
+    rect: box ? (() => { const r = box.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; })() : null,
+    closeRect: (() => {
+      const c = win && win.el.querySelector('.note-header-close-group .modal-close');
+      if (!c || !c.offsetWidth) return null;
+      const r = c.getBoundingClientRect();
+      return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height };
+    })(),
     vw: window.innerWidth, vh: window.innerHeight,
     handleVisible: (() => { const h = box && box.querySelector('.modal-resize-handle'); return h ? getComputedStyle(h).display !== 'none' : null; })(),
   };
@@ -216,6 +225,12 @@ ok(expanded.box.left === 0 && expanded.box.top === 0,
   `разпънатата бележка застава в ъгъла без отстъп (${expanded.box.left},${expanded.box.top})`, expanded.box);
 ok(Math.abs(expanded.box.w - expanded.vw) <= 1 && Math.abs(expanded.box.h - expanded.vh) <= 1,
   `разпънатата бележка е точно колкото екрана (${expanded.box.w}x${expanded.box.h} при ${expanded.vw}x${expanded.vh})`, expanded.box);
+ok(Math.abs(expanded.rect.w - expanded.vw) <= 1 && Math.abs(expanded.rect.h - expanded.vh) <= 1,
+  `истинската кутия на екрана също е точно екрана (${expanded.rect.w}x${expanded.rect.h} при ${expanded.vw}x${expanded.vh})`, expanded.rect);
+ok(!!expanded.closeRect && expanded.closeRect.r <= expanded.rect.r - 1 && expanded.closeRect.b <= expanded.rect.b - 1,
+  `хиксчето стои вътре в бележката (дясно ${expanded.closeRect && expanded.closeRect.r.toFixed(1)} при ръб ${expanded.rect.r.toFixed(1)})`, { close: expanded.closeRect, box: expanded.rect });
+ok(!!expanded.closeRect && expanded.closeRect.r <= expanded.vw && expanded.closeRect.b <= expanded.vh,
+  `хиксчето не излиза извън екрана (дясно ${expanded.closeRect && expanded.closeRect.r.toFixed(1)} при екран ${expanded.vw})`, { close: expanded.closeRect, vw: expanded.vw, vh: expanded.vh });
 ok(expanded.btnHtml === '▼', `стрелката става надолу (${expanded.btnHtml})`, expanded.btnHtml);
 ok(expanded.btnTitle === expanded.i18nCollapseTitle && expanded.i18nCollapseTitle !== 'modalCollapseTooltip',
   `името при разпънат размер също идва от езиковия файл (${expanded.btnTitle})`, expanded.btnTitle);

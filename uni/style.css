@@ -3519,6 +3519,15 @@ body.selection-locked .note.active-selection-note .note-content {
     display: none;
 }
 
+/* Разпънатата бележка е с border-box: main.js дава width/height 100%, а кутията по подразбиране е
+   content-box (padding 10px отляво/отдясно и 50px+10px отгоре/отдолу). Тогава 100% значи 100% от
+   екрана ПЛЮС padding-а, тоест бележката излиза 20px надясно и 60px надолу извън екрана и хиксчето
+   се оказва отвън, отрязано на ръба. С border-box 100% е точно екранът и лентата с хиксчето остава
+   вътре. Важи само за разпънатия режим: при свиване кутията пак е content-box, както преди. */
+.note-window.note-window-expanded .modal-content-box {
+    box-sizing: border-box;
+}
+
 @media (hover: hover) {
     .note-window-bar-btn:hover {
         background-color: rgba(0, 0, 0, 0.1);
