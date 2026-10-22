@@ -769,6 +769,32 @@ ok(stored.imgbase && stored.imgbase['file_0000.png'] === 300 && stored.imgbase['
   `базата стои при размерите на бележката, до името на файла (${JSON.stringify(stored.imgbase)})`, stored);
 ok(stored.textSpanHasBase === false, 'в text_span няма поле за база (само paramint)', stored);
 
+// Базата минава през самия запис на бележката и през JSON-а ѝ (saveEditedNote, ред ~27285).
+// После сесията се чисти, тоест ширината може да дойде само от JSON-а на бележката.
+const persisted = await page.evaluate(() => {
+  const body = document.getElementById('modal-body');
+  const note = allNotesData.find(n => String(n.gdid) === 'G1');
+  // Точно съставът на uiState при запис: normalizeNoteUiState + applyNoteCalDraft.
+  note.uiState = applyNoteCalDraft({
+    ...normalizeNoteUiState(note.uiState), exp: false
+  }, { time: '', repeat: null });
+  // Сякаш бележката идва от диска: само JSON.
+  const fromDisk = JSON.parse(JSON.stringify(note));
+  allNotesData[allNotesData.findIndex(n => String(n.gdid) === 'G1')] = fromDisk;
+  nmInlineBaseFallback.clear();
+  return {
+    imgbase: (fromDisk.uiState && fromDisk.uiState.imgbase) || null,
+    textSpanHasBase: /parambase|imgbase/.test(String(fromDisk.text_span || '')),
+    small: nmInlineBaseWidth(body, 'file_0000.png'),
+    big: nmInlineBaseWidth(body, 'Wallet.jpg'),
+  };
+});
+ok(persisted.imgbase && persisted.imgbase['file_0000.png'] === 300 && persisted.imgbase['Wallet.jpg'] === inserts.column,
+  `базата оцелява записа и JSON-а на бележката (${JSON.stringify(persisted.imgbase)})`, persisted);
+ok(persisted.textSpanHasBase === false, 'след записа в text_span пак няма поле за база', persisted);
+ok(persisted.small === 300 && persisted.big === inserts.column,
+  `след като сесията е изчистена, ширината идва от JSON-а на бележката (${persisted.small}, ${persisted.big})`, persisted);
+
 // Режим преглед на същата бележка - през бутона „Преглед" (окото) в редактора.
 // Сякаш бележката е презаредена: сесийното резервно помнене се чисти - базата трябва да дойде
 // от JSON-а на бележката (uiState), не от паметта на тази сесия.
