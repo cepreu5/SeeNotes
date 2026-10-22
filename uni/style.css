@@ -976,6 +976,31 @@ code {
     display: none;
 }
 
+/* Скрита дата (настройка „Покажи дата на промяна/календар“): маха се само ТЕКСТЪТ.
+   Отляво остава иконата на календара, която отваря мини календара, а отдясно остават
+   иконата на часовника и пин-бутонът - един до друг. */
+.hide-datemod .note-header-date-text,
+.hide-datemod .note-header-time-text {
+    display: none;
+}
+
+/* Икона, която в нормалния хедър не се показва (няма час за показване или датата е само
+   дата на създаване), но при скрита дата трябва да е налична. */
+.note-header-calendar-icon.icon-only-when-hidden,
+.note-header-clock-icon.icon-only-when-hidden {
+    display: none;
+}
+
+.hide-datemod .note-header-calendar-icon.has-header-value,
+.hide-datemod .note-header-clock-icon {
+    display: inline-flex;
+}
+
+/* Малка междина между часовника и пин-бутона, за да не се допират. */
+.hide-datemod .note .note-header-clock-icon {
+    margin-right: 4px;
+}
+
 /* New unified style for all checkboxes in the settings modal */
 .settings-checkbox {
     width: 20px;

@@ -9707,6 +9707,25 @@ async function createNoteElement(noteContent) {
     headerDate.className = 'note-header-date';
     const headerTime = document.createElement('span');
     headerTime.className = 'note-header-time';
+    // Иконата и текстът са отделни елементи. Настройката „Покажи дата на
+    // промяна/календар“ скрива само ТЕКСТА, така че при скрита дата отляво остава
+    // иконата на календара (отваря мини календара), а отдясно - иконата на часовника
+    // и пин-бутонът, един до друг. Досега цялата дата се местеше наведнъж и с нея
+    // изчезваха и часовникът, и достъпът до двата изгледа.
+    const calendarIconEl = document.createElement('span');
+    calendarIconEl.className = 'header-icon note-header-calendar-icon icon-only-when-hidden';
+    calendarIconEl.innerHTML = calendarIconSvg;
+    const clockIconEl = document.createElement('span');
+    clockIconEl.className = 'header-icon note-header-clock-icon icon-only-when-hidden';
+    clockIconEl.innerHTML = clockIconSvg;
+    const dateTextEl = document.createElement('span');
+    dateTextEl.className = 'note-header-date-text';
+    const timeTextEl = document.createElement('span');
+    timeTextEl.className = 'note-header-time-text';
+    headerDate.appendChild(calendarIconEl);
+    headerDate.appendChild(dateTextEl);
+    headerTime.appendChild(clockIconEl);
+    headerTime.appendChild(timeTextEl);
     // Add click listener to the date to show full note data
     // Обикновеният клик отваря седмичния мини календар. В debug режим Ctrl+клик
     // показва суровите данни - същият жест, с който debug показва JSON и другаде.
@@ -9721,31 +9740,44 @@ async function createNoteElement(noteContent) {
         showNoteWeekCalendar(note, getNoteHeaderDateTimestamp(extraData));
     });
 
+    // Какво показва хедърът: напомняне, календарна дата или дата на създаване - в този ред.
+    // Иконата на календара се вижда в нормалния хедър там, където бележката има календарна
+    // дата или напомняне (както досега), а при скрита дата остава сама отляво. Иконата на
+    // часовника се вижда в нормалния хедър само при наличен час; при скрита дата остава
+    // до пин-бутона, за да е достъпен аналоговият часовник.
+    const headerTimestamp = getNoteHeaderDateTimestamp(extraData);
+    if (headerTimestamp) calendarIconEl.classList.add('has-header-value');
     if (extraData.timer) {
         const dateText = formatDate(extraData.timer);
-        if (dateText) headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+        if (dateText) {
+            dateTextEl.textContent = dateText;
+            calendarIconEl.classList.remove('icon-only-when-hidden');
+        }
         const timeText = formatTime(extraData.timer);
-        if (timeText) headerTime.innerHTML = `<span class="header-icon">${clockIconSvg}</span> ${timeText}`;
+        if (timeText) {
+            timeTextEl.textContent = timeText;
+            clockIconEl.classList.add('has-header-value');
+            clockIconEl.classList.remove('icon-only-when-hidden');
+        }
     } else if (extraData.calendarDate) {
         const dateText = formatDate(extraData.calendarDate);
         if (dateText) {
-            headerDate.innerHTML = `<span class="header-icon">${calendarIconSvg}</span> ${dateText}`;
+            dateTextEl.textContent = dateText;
+            calendarIconEl.classList.remove('icon-only-when-hidden');
+            // Има дата, но няма час: часовникът се появява само при скрита дата.
+            clockIconEl.classList.add('has-header-value');
         }
-        // } else if (extraData.datemod) { // Always create the element
-        //     const dateText = formatDate(extraData.datemod);
-        //     if (dateText) {
-        //         headerDate.textContent = dateText; // No icon for datemod
-        //         headerDate.classList.add('datemod-header-date');
-        //         const timeText = formatTime(extraData.datemod);
-        //         if (timeText) headerTime.textContent = timeText;
-        //     }
     } else if (extraData.date) { // Fallback to creation date
         const dateText = formatDate(extraData.date);
         if (dateText) {
-            headerDate.textContent = dateText; // No icon for datemod
-            headerDate.classList.add('creation-header-date');
+            dateTextEl.textContent = dateText; // No icon for datemod
+            dateTextEl.classList.add('creation-header-date');
             const timeText = formatTime(extraData.date);
-            if (timeText) headerTime.textContent = timeText;
+            if (timeText) {
+                timeTextEl.textContent = timeText;
+                clockIconEl.classList.add('has-header-value');
+                clockIconEl.classList.remove('icon-only-when-hidden');
+            }
         }
     }
     // Клик на часа: аналогов часовник в бележката. Клик върху циферблата връща оригинала.
