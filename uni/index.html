@@ -897,54 +897,6 @@
                         </div>
                     </div>
 
-                    <div class="accordion-content" id="data-folders" style="flex-basis: 100%;">
-                        <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 10px;"
-                            id="local-db-wrapper">
-                            <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
-                            <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel"
-                                id="use-local-db-label" style="flex-basis: 122px; flex-shrink: 0;">Local folder:</label>
-                            <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
-                                style="flex-shrink: 0;" />
-                            <span id="local-sync-folder-name"
-                                style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            </span>
-                        </div>
-                        <div class="settings-mobile-row zoom-control-wrapper" id="update-local-folder"
-                            style="margin-top: 0px;">
-                            <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
-                            <label for="update-local-folder-checkbox"
-                                style="margin-right: 10px; flex-basis: 122px; flex-shrink: 0; text-align: left;"
-                                data-key="updateLocalFolderLabel">Update:</label>
-                            <input type="checkbox" id="update-local-folder-checkbox" class="settings-checkbox">
-                        </div>
-
-                        <div class="settings-mobile-row zoom-control-wrapper"
-                            style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
-                            <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
-                            <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
-                                id="use-arh-db-label" style="flex-basis: 122px; flex-shrink: 0;">Archive:</label>
-                            <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox"
-                                style="flex-shrink: 0;" />
-                            <span id="arh-folder-name"
-                                style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            </span>
-                        </div>
-
-                        <div class="settings-section" style="margin-top: 0px; ">
-                            <div style="display: flex; justify-content: center; gap: 10px;">
-                                <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
-                                    <button id="select-folder-btn" class="zoom-btn"
-                                        data-key="localSyncFolderLabel">Select local folder</button>
-                                </div>
-                                <div class="zoom-control-wrapper" id="arh-wrapper"
-                                    style="margin-top: 0; margin-bottom: 0;">
-                                    <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Select
-                                        archive folder</button>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
                 </div>
                 <div class="settings-mobile-row zoom-control-wrapper" id="device-name-wrapper"
                     style="border-top: 1px solid #404040; padding-top: 10px; margin-bottom: 10px; margin-top: 10px;">
@@ -981,6 +933,52 @@
                             <hr class="accordion-line" style="flex-grow: 1; margin-left: 10px;">
                         </div>
                         <div class="accordion-content">
+                            <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 10px;"
+                                id="local-db-wrapper">
+                                <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
+                                <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel"
+                                    id="use-local-db-label" style="flex-basis: 122px; flex-shrink: 0;">Local folder:</label>
+                                <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
+                                    style="flex-shrink: 0;" />
+                                <span id="local-sync-folder-name"
+                                    style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                </span>
+                            </div>
+                            <div class="settings-mobile-row zoom-control-wrapper" id="update-local-folder"
+                                style="margin-top: 0px;">
+                                <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
+                                <label for="update-local-folder-checkbox"
+                                    style="margin-right: 10px; flex-basis: 122px; flex-shrink: 0; text-align: left;"
+                                    data-key="updateLocalFolderLabel">Update:</label>
+                                <input type="checkbox" id="update-local-folder-checkbox" class="settings-checkbox">
+                            </div>
+
+                            <div class="settings-mobile-row zoom-control-wrapper"
+                                style="margin-top: 10px; padding-bottom: 10px;" id="arh-db-wrapper">
+                                <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
+                                <label for="use-arh-db-checkbox" class="settings-icon-label" data-key="useArhDbLabel"
+                                    id="use-arh-db-label" style="flex-basis: 122px; flex-shrink: 0;">Archive:</label>
+                                <input type="checkbox" id="use-arh-db-checkbox" class="settings-checkbox"
+                                    style="flex-shrink: 0;" />
+                                <span id="arh-folder-name"
+                                    style="margin-left: 10px; font-style: italic; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                </span>
+                            </div>
+
+                            <div class="settings-section" style="margin-top: 0px; ">
+                                <div style="display: flex; justify-content: center; gap: 10px;">
+                                    <div class="zoom-control-wrapper" id="local-sync-wrapper" style="margin-top: 0;">
+                                        <button id="select-folder-btn" class="zoom-btn"
+                                            data-key="localSyncFolderLabel">Select local folder</button>
+                                    </div>
+                                    <div class="zoom-control-wrapper" id="arh-wrapper"
+                                        style="margin-top: 0; margin-bottom: 0;">
+                                        <button id="select-arh-btn" class="zoom-btn" data-key="arhFolderLabel">Select
+                                            archive folder</button>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="settings-mobile-row zoom-control-wrapper" id="active-folder-wrapper"
                                 style="margin-top: 0px;">
                                 <label for="active-folder-select" style="margin-right: 10px; white-space: nowrap;"
