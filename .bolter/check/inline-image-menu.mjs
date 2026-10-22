@@ -65,7 +65,9 @@ await ctx.route(/^https?:\/\/(?!localhost)/, route => {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: BY_NAME[name] || [] }) });
   }
   if (url.startsWith('https://thumb.invalid/')) {
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#c6d2e4"/></svg>';
+    // Размерът на самата снимка: Wallet.jpg е голяма (4000px), file_0000.png е малка (300px).
+    const size = url.includes('FILE0000') ? [300, 225] : [4000, 3000];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size[0]}" height="${size[1]}"><rect width="${size[0]}" height="${size[1]}" fill="#c6d2e4"/></svg>`;
     return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg });
   }
   if (url.startsWith('https://accounts.google.com/gsi/client')) {
@@ -355,6 +357,61 @@ ok(undone.menuAfterEscape === false, 'Escape затваря менюто');
 ok(undone.back.join(',') === '4,2' && undone.again.join(',') === '8,2',
   `^Z връща предишната ширина, ^Y я слага пак (${undone.back} -> ${undone.again})`);
 
+// Рендира бележката в режим преглед (без редактор) през ИСТИНСКИЯ път - бутонът „Преглед" (окото)
+// в редактора. Само активният прозорец носи id="modal-body", затова след рендера се ползва
+// глобалният modalBody - точно както го прави приложението.
+const renderNoteView = () => page.evaluate(async () => {
+  if (typeof previewEditedNote !== 'function') return { missing: true };
+  previewEditedNote();
+  const body = (typeof modalBody !== 'undefined' && modalBody) ? modalBody : document.getElementById('modal-body');
+  const box = body.closest('.modal-content-box');
+  box.style.height = '660px';
+  box.style.width = '900px';
+  box.style.maxWidth = '900px';
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const boxes = [...body.querySelectorAll('.nm-inline-img[data-nm-view="note"]')];
+    if (boxes.length && boxes.every(b => b.dataset.nmState !== 'loading')) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  await new Promise(r => setTimeout(r, 80));
+  const column = () => {
+    const c = getComputedStyle(body);
+    return Math.round(body.clientWidth - parseFloat(c.paddingLeft) - parseFloat(c.paddingRight));
+  };
+  const read = () => [...body.querySelectorAll('.nm-inline-img[data-nm-view="note"]')].map(b => ({
+    file: b.dataset.nmFile,
+    style: b.style.width,
+    px: Math.round(b.getBoundingClientRect().width),
+    natural: b.querySelector('img') ? b.querySelector('img').naturalWidth : null,
+    base: b.dataset.nmBase || null,
+    baseUsed: b.dataset.nmBaseUsed || null,
+    pct: b.dataset.nmPct,
+    column: column(),
+  }));
+  const wide = read();
+  // По-широк прозорец на бележката: снимките, които се побират, не бива да мърдат.
+  box.style.width = '1200px';
+  box.style.maxWidth = '1200px';
+  await new Promise(r => setTimeout(() => requestAnimationFrame(r), 60));
+  const wider = read();
+  // И по-тясна бележка от изчислената ширина: тук снимките се свиват, за да се поберат.
+  box.style.width = '160px';
+  box.style.maxWidth = '160px';
+  await new Promise(r => setTimeout(() => requestAnimationFrame(r), 60));
+  const cramped = read();
+  box.style.width = ''; box.style.maxWidth = '';
+  return {
+    wide, wider, cramped, column: column(),
+    diag: {
+      hasEditor: !!body.querySelector('textarea'), bodyClass: body.className, bodyId: body.id,
+      anyInline: body.querySelectorAll('.nm-inline-img').length,
+      allInline: document.querySelectorAll('.nm-inline-img').length,
+      text: body.textContent.slice(0, 160),
+    },
+  };
+});
+
 // ======================= 6. „Сложи в текста": звездичка на каретата, paramint 3 =======================
 const inserted = await page.evaluate(async () => {
   const body = document.getElementById('modal-body');
@@ -371,7 +428,14 @@ const inserted = await page.evaluate(async () => {
   const insertBtn = document.querySelector('.nm-inline-menu [data-nm-menu-action="insert"]');
   const hadButton = !!insertBtn;
   insertBtn.click();
-  const formats = (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x));
+  // Базата на ширината се пита по мрежата (естествената ширина на снимката), затова се изчаква.
+  const deadline = Date.now() + 6000;
+  let formats = [];
+  while (Date.now() < deadline) {
+    formats = (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x));
+    if (formats.some(f => f.type === 8 && f.start === pos)) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
   return {
     hadButton,
     pos,
@@ -382,6 +446,7 @@ const inserted = await page.evaluate(async () => {
     images: formats.filter(f => f.type === 8).map(f => ({ start: f.start, paramint: f.paramint, name: (f.paramstring || '').split('/').pop() })),
     beforeImages,
     caret: [field.selectionStart, field.selectionEnd],
+    column: (() => { const cs = getComputedStyle(field); return Math.round(field.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)); })(),
     after: null,
   };
 });
@@ -394,6 +459,10 @@ ok(inserted.newImage && inserted.newImage.paramstring === 'Wallet.jpg',
   `записът носи името на файла, не целия път (${inserted.newImage && inserted.newImage.paramstring})`);
 ok(inserted.images.length === inserted.beforeImages + 1, `местата на снимки стават ${inserted.images.length} (${inserted.images.map(i => i.paramint)})`);
 ok(inserted.caret[0] === inserted.pos + 1, `каретата остава след новата снимка (${inserted.caret})`);
+// Базата: min(естествената ширина на снимката, ширината на бележката при поставяне). Снимката е
+// широка 4000px, значи базата е колоната на бележката - и се записва в бележката.
+ok(inserted.newImage && inserted.newImage.parambase === inserted.column && inserted.column < 4000,
+  `базата на ширината се записва: min(4000px, колоната ${inserted.column}px) = ${inserted.newImage && inserted.newImage.parambase}`, { newImage: inserted.newImage, column: inserted.column });
 
 // Новото място има маркер и той показва същата снимка.
 const markers = await page.evaluate(async ({ pos }) => {
@@ -588,7 +657,135 @@ ok(drop.pasteFilePrevented === true && drop.pasteTextPrevented === false,
   'пейстът на ФАЙЛ се прихваща, а пейстът на текст си остава както досега', drop);
 ok(drop.formatsAfter === drop.formatsBefore, `нито влаченето, нито пейстът пишат type=8 (${drop.formatsBefore} -> ${drop.formatsAfter})`);
 
-// ======================= 10. Никакви грешки =======================
+// ======================= 10. Ширината в бележката идва от записана база, на борда - от колоната =====
+// Решение на собственика (22.10): базата е min(естествената ширина на снимката, ширината на бележката
+// в момента на поставяне) и се ЗАПИСВА в бележката (parambase). Ширината в пиксели е (paramint/10) ×
+// базата и не се мени с прозореца на бележката; само по-тясна бележка я свива (max-width: 100%).
+// Стара бележка без записана база пада на естествената ширина. На борда остава процент от колоната.
+const inserts = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const field = document.getElementById('note-edit-textarea');
+  if (!body || !field) return { missing: true };
+  const cs = getComputedStyle(field);
+  const column = Math.round(field.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+  const formats = () => (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x));
+  const insertAt = async (name, pos) => {
+    const tile = [...document.querySelectorAll('#modal-body .nm-attach-tile:not(.is-add)')].find(t => t.dataset.nmFileName === name);
+    field.focus();
+    field.setSelectionRange(pos, pos);
+    tile.click();
+    const btn = document.querySelector('.nm-inline-menu [data-nm-menu-action="insert"]');
+    if (!btn) return null;
+    btn.click();
+    const deadline = Date.now() + 6000;
+    while (Date.now() < deadline) {
+      const hit = formats().find(f => f.type === 8 && f.start === pos);
+      if (hit) return hit;
+      await new Promise(r => setTimeout(r, 40));
+    }
+    return null;
+  };
+  // Малката снимка (300px) влиза в широка бележка - базата е самата снимка.
+  const small = await insertAt('file_0000.png', 0);
+  // Голямата (4000px) влиза в края на бележката - базата е ширината на бележката.
+  const bigPos = field.value.length;
+  const big = await insertAt('Wallet.jpg', bigPos);
+  return { column, small, big, text: field.value, format: body.dataset.format || '' };
+});
+ok(!inserts.missing && inserts.small && inserts.small.parambase === 300,
+  `малка снимка (300px) в бележка с колона ${inserts.column}px: базата е 300, не колоната (${inserts.small && inserts.small.parambase})`, inserts);
+ok(!inserts.missing && inserts.big && inserts.big.parambase === inserts.column && inserts.column < 4000,
+  `голяма снимка (4000px): базата е ширината на бележката, ${inserts.big && inserts.big.parambase}px, не 4000`, { big: inserts.big, column: inserts.column });
+ok(!inserts.missing && inserts.small && inserts.small.paramint === 3 && inserts.big && inserts.big.paramint === 3,
+  `нова снимка влиза с 30% (paramint 3), а базата е записана до paramint (${inserts.small && inserts.small.paramint}, ${inserts.big && inserts.big.paramint})`);
+
+// Режим преглед на същата бележка - през бутона „Преглед" (окото) в редактора.
+const view = await renderNoteView();
+const frames = view.wide;
+ok(frames.length === 4, `всичките четири места на снимки се показват в бележката (${frames.length})`, { frames, diag: view.diag });
+ok(frames.every(f => f.style.endsWith('px') && f.px > 0),
+  `в бележката ширината е в пиксели, не в проценти от колоната (${frames.map(f => f.style)})`, frames);
+// Всяка рамка: (paramint/10) × базата, а ако не се побира - колоната на бележката.
+const computedPx = (f) => Math.round((Number(f.baseUsed) || Number(f.natural)) * Number(f.pct) / 100);
+const expectPx = (f) => Math.min(computedPx(f), f.column);
+ok(frames.every(f => Math.abs(f.px - expectPx(f)) <= 2),
+  `ширината на всяка снимка е (paramint/10) × базата: ${frames.map(f => `${f.file} ${f.pct}% от база ${f.baseUsed} = ${f.px}px`).join(' | ')}`, frames);
+const smallFrame = frames.find(f => f.file === 'file_0000.png' && Number(f.base) === 300);
+ok(!!smallFrame && smallFrame.px === 90,
+  `малката снимка (записана база 300): 30% от 300 = 90px (${smallFrame && smallFrame.px}px)`, frames);
+const bigFrame = frames.find(f => f.file === 'Wallet.jpg' && Number(f.base) === Number(inserts.column));
+ok(!!bigFrame && bigFrame.px === Math.round(Number(inserts.column) * 0.3),
+  `голямата снимка (записана база ${inserts.column} = ширината на бележката тогава): 30% = ${bigFrame && bigFrame.px}px`, { bigFrame, frames });
+// Стара бележка: две места без записана база - падат на естествената ширина на снимката.
+const oldSmall = frames.find(f => f.file === 'file_0000.png' && !f.base);
+ok(!!oldSmall && oldSmall.px === 60 && Number(oldSmall.baseUsed) === 300,
+  `старо място без записана база пада на естествената ширина: 20% от 300 = 60px (${oldSmall && oldSmall.px}px, ползвана база ${oldSmall && oldSmall.baseUsed})`, frames);
+const oldBig = frames.find(f => f.file === 'Wallet.jpg' && !f.base);
+ok(!!oldBig && Number(oldBig.baseUsed) === 4000 && oldBig.px === oldBig.column,
+  `старо място на голяма снимка: смята се от 4000px и се свива до колоната ${oldBig && oldBig.column}px (${oldBig && oldBig.px}px)`, frames);
+// Прозорецът на бележката се мени: снимките, които се побират, не мърдат.
+ok(view.wider.every((f, i) => computedPx(frames[i]) > frames[i].column || f.px === frames[i].px),
+  `по-широк прозорец НЕ мени ширината на снимките, които се побират (${frames.map((f, i) => f.px + '->' + view.wider[i].px).join(', ')})`, { wide: frames, wider: view.wider });
+ok(view.wider[0].column > frames[0].column, `колоната наистина е станала по-широка (${frames[0].column} -> ${view.wider[0].column})`);
+ok(view.wider.some((f, i) => f.px > frames[i].px),
+  `свитата до колоната снимка расте с нея (${frames.map((f, i) => f.px + '->' + view.wider[i].px).join(', ')})`);
+// По-тясна бележка от изчислената ширина: снимките се свиват, за да се поберат.
+ok(view.cramped.every(f => f.px <= f.column + 1),
+  `по-тясна бележка свива снимките, за да се поберат (${view.cramped.map(f => f.px + 'px при колона ' + f.column).join(', ')})`, view.cramped);
+ok(view.cramped.every((f, i) => f.px <= frames[i].px),
+  'нито една не расте в по-тясна бележка', { cramped: view.cramped, wide: frames });
+
+// На борда ширината остава процент от колоната (картата следва колоната си).
+const board = await page.evaluate(async ({ sentence, format }) => {
+  isOffline = false;
+  let host = document.getElementById('inline-menu-board-host');
+  if (!host) { host = document.createElement('div'); host.id = 'inline-menu-board-host'; document.body.appendChild(host); }
+  const build = async (width) => {
+    host.innerHTML = '';
+    host.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:400px;display:flex;flex-direction:column;z-index:99999;background:#fff;`;
+    const board0 = (Array.isArray(boardsData) && boardsData[0]) ? boardsData[0] : { gdid: null };
+    const id = 930000 + Math.floor(Math.random() * 50000);
+    const nt = {
+      alarm_type: -1, boardid: board0.gdid, calendarDate: 0, color: 0, date: Date.now(), datemod: Date.now(),
+      eventId: 0, gdid: 'probe' + id, id, notetxt: 'Бележка|' + sentence, numord: id, sellist: 0, status: 0,
+      text_span: format, title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, version: 244,
+    };
+    allNotesData.push(nt);
+    const el = await createNoteElement(nt);
+    el.style.display = 'flex';
+    el.style.contentVisibility = 'visible';
+    host.appendChild(el);
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      const b = el.querySelector('.nm-inline-img');
+      if (b && b.dataset.nmState !== 'loading') break;
+      await new Promise(r => setTimeout(r, 40));
+    }
+    const b = el.querySelector('.nm-inline-img');
+    const content = el.querySelector('.note-content');
+    const cs = getComputedStyle(content);
+    const inner = content.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return {
+      style: b ? b.style.width : null,
+      view: b ? (b.dataset.nmView || null) : undefined,
+      base: b ? (b.dataset.nmBase || null) : null,
+      px: b ? Math.round(b.getBoundingClientRect().width) : null,
+      pct: b && inner ? Math.round((b.getBoundingClientRect().width / inner) * 1000) / 10 : null,
+      column: Math.round(inner),
+    };
+  };
+  const wide = await build(620);
+  const narrow = await build(250);
+  host.remove();
+  return { wide, narrow };
+}, { sentence: SENTENCE, format: FORMAT });
+ok(board.wide.style === '40%' && board.narrow.style === '40%' && !board.wide.base && !board.narrow.base,
+  `на борда рамката остава процент от колоната и няма записана база (${board.wide.style}, ${board.narrow.style})`, board);
+ok(!board.wide.view && !board.narrow.view, `на борда няма data-nm-view="note" (${board.wide.view}, ${board.narrow.view})`);
+ok(Math.abs(board.wide.pct - 40) <= 2 && Math.abs(board.narrow.pct - 40) <= 2,
+  `на борда снимката следва ширината на колоната си, не естествената си ширина (40% от ${board.wide.column}px = ${board.wide.px}px)`, board);
+
+// ======================= 11. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
 if (fails) {
   console.log('Drive заявки: ' + JSON.stringify(DRIVE.list.slice(0, 12)));

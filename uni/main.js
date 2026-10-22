@@ -11826,6 +11826,9 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     // just replacing the separator with a newline for better readability.
     // Special case: if titleFormatString is provided, format the title part separately.
     displayContent = getFormattedNoteHtml(rawContent, formatString, titleFormatString, true);
+    // Редакторът е строен с лента с прикачените файлове под себе си; щом тялото се рисува наново
+    // (преглед, запис, отваряне на бележката), класът се маха заедно съдържанието.
+    modalBody.classList.remove('nm-edit-with-strip', 'nm-file-drop');
     modalBody.innerHTML = displayContent;
     modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
     hydrateInlineImages(modalBody); // вградените картинки (type=8) влизат в рамките си
@@ -19432,12 +19435,25 @@ function escapeAttr(value) {
  * Рамката, която заема мястото на маркера, докато файлът се търси и тегли.
  * Ако записът няма име на файл, не се показва нищо (не остава и маркер в текста).
  */
-function buildInlineImagePlaceholder(format) {
+function buildInlineImagePlaceholder(format, isForModal) {
     const name = inlineImageName(format && format.paramstring);
     if (!name) return '';
     const pct = inlineImageWidthPct(format && format.paramint);
+    // Две места, две ширини (решение на собственика, 22.10):
+    //  - в бележката (редактор и преглед на една бележка) процентът е от САМАТА СНИМКА: рамката
+    //    получава ширина в пиксели, когато картинката се зареди (paramint/10 × естествената ширина),
+    //    и затова не се мени с прозореца на бележката;
+    //  - на борда ширината остава процент от ШИРИНАТА НА КОЛОНАТА, както беше.
+    // И в двата случая CSS-ът слага max-width:100%, значи по-тясна бележка свива снимката, за да
+    // се побере - и само тогава.
+    // Базата: min(естествената ширина на снимката, ширината на бележката при поставянето), записана
+    // в бележката. Старите бележки я нямат - тогава се пада на естествената ширина (виж putImage).
+    const base = Math.round(Number(format && format.parambase) || 0);
+    const view = isForModal ? ' data-nm-view="note"' : '';
+    const baseAttr = (isForModal && base > 0) ? ` data-nm-base="${base}"` : '';
     return `<span class="nm-inline-img is-loading" data-nm-file="${escapeAttr(name)}" ` +
-        `data-nm-state="loading" style="width:${pct}%" role="img" aria-label="${escapeAttr(name)}"></span>`;
+        `data-nm-state="loading"${view} data-nm-pct="${pct}"${baseAttr} style="width:${pct}%" role="img" ` +
+        `aria-label="${escapeAttr(name)}"></span>`;
 }
 
 /**
@@ -19460,12 +19476,12 @@ function maskInlineImageMarkers(segmentText) {
 }
 
 /** Слага готовите рамки на местата на маркерите, по ред - като insertCodeBlocks/insertLinkSlots. */
-function insertInlineImageSlots(html, formats) {
+function insertInlineImageSlots(html, formats, isForModal) {
     if (!formats.length || html.indexOf(INLINE_IMAGE_PLACEHOLDER) === -1) return html;
     const parts = html.split(INLINE_IMAGE_PLACEHOLDER);
     let out = parts[0];
     for (let i = 1; i < parts.length; i++) {
-        out += (i - 1 < formats.length ? buildInlineImagePlaceholder(formats[i - 1]) : '') + parts[i];
+        out += (i - 1 < formats.length ? buildInlineImagePlaceholder(formats[i - 1], isForModal) : '') + parts[i];
     }
     return out;
 }
@@ -19937,6 +19953,20 @@ function hydrateInlineImages(rootEl) {
             box.classList.remove('is-loading');
             box.classList.add('is-ready');
             box.dataset.nmState = 'ready';
+            // В бележката ширината е проценти от САМАТА снимка: щом естествената ширина се знае,
+            // рамката минава на пиксели и спира да зависи от прозореца. По-тясна бележка пак свива
+            // снимката - това го прави max-width: 100% в style.css.
+            if (box.dataset.nmView === 'note' && img.naturalWidth) {
+                // Базата е записана при поставянето (min(снимката, бележката тогава)); стара бележка
+                // без нея ползва естествената ширина на снимката.
+                const recorded = Number(box.dataset.nmBase) || 0;
+                const base = recorded > 0 ? recorded : img.naturalWidth;
+                const px = Math.max(1, Math.round(base * (Number(box.dataset.nmPct) || 100) / 100));
+                box.style.width = px + 'px';
+                box.dataset.nmPx = String(px);
+                box.dataset.nmNatural = String(img.naturalWidth);
+                box.dataset.nmBaseUsed = String(base);
+            }
         });
         img.addEventListener('error', () => {
             // Адресът не се зареди: мъртъв blob, изтекъл подпис или още неготов thumbnail. Нов опит
@@ -20751,7 +20781,7 @@ function formatText(text, formatString, isForModal = false, listIndentMeasureEl 
     html = insertCodeBlocks(html, codeBlocks);
     // Вградените картинки (type=8) се сглобяват накрая, върху готовия низ - като кодовите блокове
     // и markdown линковете: дотогава на мястото на картинката стои един знак и не пречи на редовете.
-    html = insertInlineImageSlots(html, inlineImageSlots);
+    html = insertInlineImageSlots(html, inlineImageSlots, isForModal);
     return html;
 }
 
@@ -23224,8 +23254,17 @@ function showNmInlineGhost(state, pct) {
         return;
     }
     const column = state.modalBody.getBoundingClientRect();
-    const width = Math.max(28, Math.round(column.width * Number(pct) / 100));
-    const height = Math.max(34, Math.min(96, Math.round(width * 0.5)));
+    // Същият размер, с който снимката стои в бележката: проценти от самата снимка, а ако бележката
+    // е по-тясна - колкото се побира (max-width: 100%).
+    const natural = state.natural;
+    const recorded = Number(state.base) || 0;
+    // Същата база, с която снимката ще стои в бележката: записаната в бележката, иначе естествената,
+    // иначе (още неизвестна) колоната.
+    const baseWidth = recorded > 0 ? recorded : (natural && natural.w ? natural.w : Math.round(column.width));
+    let width = Math.round(baseWidth * Number(pct) / 100);
+    width = Math.max(28, Math.min(width, Math.round(column.width)));
+    const aspect = natural && natural.w ? (natural.h / natural.w) : 0.5;
+    const height = Math.max(28, Math.min(200, Math.round(width * aspect)));
     const el = document.createElement('div');
     el.className = 'nm-inline-ghost';
     const label = document.createElement('span');
@@ -23244,6 +23283,31 @@ function showNmInlineGhost(state, pct) {
     if (state.ghost) state.ghost.replaceWith(el);
     else document.body.appendChild(el);
     state.ghost = el;
+}
+
+// Естествената ширина на снимката (в пиксели) за временния кадър при плъзгане: кадърът показва
+// същия размер, с който снимката ще стои в бележката. Пита се веднъж на файл за сесията.
+const nmInlineNaturalCache = new Map();
+
+function nmInlineNaturalSize(fileName) {
+    const key = String(fileName || '');
+    if (!key) return Promise.resolve(null);
+    if (nmInlineNaturalCache.has(key)) return nmInlineNaturalCache.get(key);
+    const entry = inlineImageSourceMode()
+        .then(mode => resolveNoteImageSrc(key, mode, '', { size: INLINE_IMAGE_INLINE_SIZE }))
+        .then(info => {
+            if (!info || info.status !== 'ok' || !info.src) return null;
+            return new Promise(resolve => {
+                const probe = new Image();
+                probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight });
+                probe.onerror = () => resolve(null);
+                probe.src = info.src;
+            });
+        })
+        .catch(() => null);
+    nmInlineNaturalCache.set(key, entry);
+    entry.then(size => { if (!size) nmInlineNaturalCache.delete(key); });
+    return entry;
 }
 
 /**
@@ -23316,7 +23380,7 @@ function removeNmInlineMarker(state) {
 }
 
 /** „Сложи в текста": маркер (звездичка) на каретата + type=8 с името на файла, ширина 30%. */
-function insertNmInlineImage(state) {
+async function insertNmInlineImage(state) {
     const modalBody = state && state.modalBody;
     if (!modalBody || !state.fileName) return false;
     const field = document.getElementById('note-edit-textarea');
@@ -23331,15 +23395,34 @@ function insertNmInlineImage(state) {
         if (typeof showToast === 'function') showToast(_('nmInlineRefusedCode') || 'Тук снимка не може да се сложи', 3000);
         return false;
     }
+    // Базата на ширината: min(естествената ширина на снимката, ширината на бележката в момента на
+    // поставяне). Записва се в самата бележка (parambase), защото иначе ширината в проценти би
+    // зависела от прозореца, а снимката не бива да мърда, когато той се промени.
+    const column = nmInlineNoteColumnWidth(field);
+    let natural = state.natural || null;
+    if (!natural) {
+        natural = await nmInlineNaturalSize(state.fileName);
+        if (natural) state.natural = natural;
+    }
+    const naturalWidth = natural && Number(natural.w) > 0 ? Number(natural.w) : 0;
+    const base = Math.max(1, Math.round(Math.min(naturalWidth > 0 ? naturalWidth : column, column) || column || 1));
     noteEditReplace(field, pos, pos, '*', pos + 1);
     const formats = readNoteEditFormats(modalBody, 'format');
-    formats.push({ start: pos, end: pos + 1, type: 8, paramint: 3, paramstring: state.fileName });
+    formats.push({ start: pos, end: pos + 1, type: 8, paramint: 3, paramstring: state.fileName, parambase: base });
     writeNoteEditFormats(modalBody, 'format', formats);
     refreshNoteEditBackdrops(ctx);
     commitNoteEditUndo(modalBody);
     field.focus();
     field.setSelectionRange(pos + 1, pos + 1);
     return true;
+}
+
+/** Ширината на текстовата колона на бележката в редактора - базата се мери спрямо нея. */
+function nmInlineNoteColumnWidth(field) {
+    if (!field || !field.isConnected) return 0;
+    const cs = getComputedStyle(field);
+    const width = field.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    return Math.max(0, Math.round(width));
 }
 
 /** Каретата стои вътре в {{ }} или в ограден код: там маркер не се слага. */
@@ -23365,6 +23448,7 @@ function openNmInlineMenu(opts) {
         start: Number.isFinite(Number(options.start)) ? Number(options.start) : null,
         end: Number.isFinite(Number(options.end)) ? Number(options.end) : null,
         missing: !!options.missing,
+        base: Math.round(Number(options.base) || 0),
         tileEl: options.tileEl || null,
         anchorRect: (anchorEl && anchorEl.getBoundingClientRect) ? anchorEl.getBoundingClientRect() : modalBody.getBoundingClientRect(),
         value: Math.max(10, Math.min(100, Math.round(Number(options.value) || 30))),
@@ -23472,8 +23556,10 @@ function openNmInlineMenu(opts) {
         insert.className = 'nm-inline-menu-row is-insert';
         insert.dataset.nmMenuAction = 'insert';
         insert.textContent = _('nmInlineInsert') || 'Сложи в текста';
-        insert.addEventListener('click', () => {
-            if (insertNmInlineImage(state)) closeNmInlineMenu();
+        insert.addEventListener('click', async () => {
+            // Изчаква се естествената ширина (за базата): пита се веднъж на файл за сесията, а при
+            // плъзгане върху плочката отговорът обикновено вече е дошъл.
+            if (await insertNmInlineImage(state)) closeNmInlineMenu();
         });
         el.appendChild(insert);
     }
@@ -23481,6 +23567,13 @@ function openNmInlineMenu(opts) {
     document.body.appendChild(el);
     nmInlineMenuState = state;
     positionNmInlineMenu(state);
+    if (state.fileName) {
+        const wanted = state.fileName;
+        nmInlineNaturalSize(wanted).then(size => {
+            if (!size || !nmInlineMenuState || nmInlineMenuState.fileName !== wanted) return;
+            nmInlineMenuState.natural = size;
+        });
+    }
 
     // Затваряне: щрак извън менюто, Escape, плъзгане на текста, промяна на прозореца.
     state.onOutside = (event) => {
@@ -23532,6 +23625,7 @@ function toggleNmInlineMenuForMark(fmt, markEl, modalBody, field) {
         start: fmt.start,
         end: fmt.end,
         anchorEl: markEl,
+        base: fmt.parambase,
         value: inlineImageWidthPct(fmt.paramint),
         missing: !name || !!(markEl && markEl.classList.contains('is-missing'))
     });
@@ -23559,6 +23653,7 @@ function toggleNmInlineMenuForTile(tile, fileName) {
         fileName,
         tileEl: tile,
         anchorEl: tile,
+        base: places.length ? places[0].parambase : 0,
         value: places.length ? inlineImageWidthPct(places[0].paramint) : 30
     });
     return true;
