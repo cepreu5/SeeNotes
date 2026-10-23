@@ -653,7 +653,10 @@ main {
     box-sizing: border-box;
     max-width: 100%;
     margin: 2px 0;
-    vertical-align: middle;
+    /* top, не middle: при middle високата снимка се центроваше по базовата линия и
+       излизаше НАД реда с текста - в първия ред това е точно горният ръб на картата.
+       С top снимката започва на реда и расте надолу. */
+    vertical-align: top;
     cursor: pointer;
     overflow: hidden;
 }

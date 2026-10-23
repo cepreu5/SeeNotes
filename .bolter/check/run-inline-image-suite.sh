@@ -2,7 +2,7 @@
 # Пуска регресиите на вградената снимка и съседните проверки, една по една, и печата
 # последните два реда на всяка (числата и PASS/FAIL).
 cd "$(dirname "$0")/../.." || exit 1
-TESTS="board-attachment-overflow inline-image-menu inline-image-preview-menu inline-image-card-title type8-inline-image type8-inline-image-offline modal-attachment-tiles attachment-tooltip-meta attachment-image-resilience token-refresh-401 board-format-pipe note-header-datemod-toggle settings-advanced-local-rows settings-modal-width onetap-persist md-link-render img-bgrd-default-off"
+TESTS="board-attachment-overflow inline-image-line-align inline-image-menu inline-image-preview-menu inline-image-card-title type8-inline-image type8-inline-image-offline modal-attachment-tiles attachment-tooltip-meta attachment-image-resilience token-refresh-401 board-format-pipe note-header-datemod-toggle settings-advanced-local-rows settings-modal-width onetap-persist md-link-render img-bgrd-default-off"
 total_pass=0; total_fail=0; bad=""
 for t in $TESTS; do
   start=$(date +%s)
