@@ -18568,19 +18568,60 @@ function getPreviewBodyAfterTitle(fullText, titleText, titleLineIndex = undefine
 }
 
 /**
- * Диапазоните на вградените снимки (type=8) от един формат: { start, end } за всяка.
+ * Вградените снимки (type=8) от един формат, заедно със САМИЯ запис: { start, end, format }.
  * Работи и с двата разделителя ('|' и нов ред) - parseFormatsString ги разбира и двата.
+ * Записът (paramstring/paramint) се пази, за да може рамката на снимката да се построи после -
+ * вж. nmLineTextParts и buildInlineImageTitlePlaceholder.
  */
-function nmInlineImageRanges(formatString) {
-    const ranges = [];
+function nmInlineImageFormatEntries(formatString) {
+    const entries = [];
     parseFormatsString(formatString).forEach(f => {
         if (Number(f.type) !== 8) return;
         const start = Number(f.start);
         if (!Number.isFinite(start)) return;
         const end = Number(f.end);
-        ranges.push({ start, end: Number.isFinite(end) && end > start ? end : start + 1 });
+        entries.push({ start, end: Number.isFinite(end) && end > start ? end : start + 1, format: f });
     });
-    return ranges;
+    return entries;
+}
+
+/**
+ * Диапазоните на вградените снимки (type=8) от един формат: { start, end } за всяка.
+ */
+function nmInlineImageRanges(formatString) {
+    return nmInlineImageFormatEntries(formatString).map(e => ({ start: e.start, end: e.end }));
+}
+
+/**
+ * Редът, нарязан на части В РЕДА НА ТЕКСТА: { type: 'text', value } и { type: 'image', format }.
+ * 23.10.2026, трети доклад на собственика: „снимката е на долния ред а заглавието е само думата
+ * Дюнер... Идеята е ако искаме да украсим заглавието с някакви изображения те да останат на реда,
+ * а не да слизат отдолу". Затова заглавието вече се строи от тези части - думите като текст,
+ * снимката на мястото ѝ в реда - вместо да се взимат само думите.
+ * start е офсетът на реда в целия текст, ranges са диапазоните type=8 в същите координати
+ * (записите от nmInlineImageFormatEntries, за да носи всяка част и своя формат).
+ * Текстовите части НЕ са изчистени: носят интервалите си около снимката така, както са в текста.
+ */
+function nmLineTextParts(line, start, ranges) {
+    if (!ranges || !ranges.length) return [{ type: 'text', value: line }];
+    const parts = [];
+    let textRun = '';
+    let i = 0;
+    while (i < line.length) {
+        const at = start + i;
+        const hit = ranges.find(r => at >= r.start && at < r.end);
+        if (!hit) {
+            textRun += line[i];
+            i++;
+            continue;
+        }
+        if (textRun) { parts.push({ type: 'text', value: textRun }); textRun = ''; }
+        // Цялата снимка се прескача, дори диапазонът ѝ да е по-широк от един знак.
+        while (i < line.length && start + i < hit.end) i++;
+        parts.push({ type: 'image', format: hit.format || null });
+    }
+    if (textRun) parts.push({ type: 'text', value: textRun });
+    return parts;
 }
 
 /**
@@ -18593,13 +18634,15 @@ function nmInlineImageRanges(formatString) {
  * ред, срязан с многоточие, и текстът под него изглеждаше разбъркан.
  *
  * Сега редът-заглавие може да носи и снимка: за заглавие се взимат само думите му (знаците на
- * диапазоните type=8 се изрязват), а снимката остава в тялото - вж. setBodyAfterTitleLine.
- * Ред, в който няма нито една дума (само снимка), пак не става заглавие.
- * Връща { index, text, offset, imageFormats } или null, ако такъв ред няма.
+ * диапазоните type=8 се изрязват), а снимката се показва НА РЕДА НА ЗАГЛАВИЕТО - заедно с думите,
+ * по местата им в реда (вж. titleLineParts в createNoteElement). Ред, в който няма нито една дума
+ * (само снимка), пак не става заглавие.
+ * Връща { index, text, offset, imageFormats, parts } или null, ако такъв ред няма.
+ * parts са частите на реда в реда на текста - думи и снимки (вж. nmLineTextParts).
  */
 function nmInlineTitleLine(text, formatString) {
     const value = String(text || '').replace(/\r\n/g, '\n');
-    const ranges = nmInlineImageRanges(formatString);
+    const entries = nmInlineImageFormatEntries(formatString);
     const lines = value.split('\n');
     let offset = 0;
     for (let i = 0; i < lines.length; i++) {
@@ -18609,11 +18652,17 @@ function nmInlineTitleLine(text, formatString) {
         offset = end + 1;
         if (!line.trim()) continue;
         // Снимката е един знак от текста: щом диапазонът ѝ се застъпва с реда, редът държи снимка.
-        const onLine = ranges.filter(r => r.start < end && r.end > start);
+        const onLine = entries.filter(r => r.start < end && r.end > start);
         // Редът се прескача само ако след изрязване на снимките не остане нито една дума.
         const words = nmLineTextWithoutImages(line, start, onLine).trim();
         if (!words) continue;
-        return { index: i, text: words, offset: start, imageFormats: onLine };
+        return {
+            index: i,
+            text: words,
+            offset: start,
+            imageFormats: onLine,
+            parts: nmLineTextParts(line, start, onLine),
+        };
     }
     return null;
 }
@@ -18636,9 +18685,12 @@ function nmLineTextWithoutImages(line, start, ranges) {
 }
 
 /**
- * Форматите, след като от СРЕДАТА на текста се изреже един ред (редът на заглавието, пред който
- * стои ред със снимка): онова, което стои след изрязаното, се измества с дължината му. Само така
- * снимките в тялото на картата остават на местата си. Разделителят се пази какъвто е бил.
+ * Форматите, след като от СРЕДАТА на текста се изреже един ред (редът на заглавието със снимката
+ * му): онова, което стои след изрязаното, се измества с дължината му. Само така снимките в тялото
+ * на картата остават на местата си. Разделителят се пази какъвто е бил.
+ * 23.10.2026: формат, който е ЦЯЛО вътре в изрязаното, се ИЗХВЪРЛЯ. Дотук такъв формат се
+ * свиваше до нулева дължина и на мястото му в тялото оставаше празна рамка на снимка - снимката
+ * вече е в заглавието, значи в тялото не бива да има втора.
  */
 function nmShiftFormatsAfterRemoval(formatString, removeStart, removeLen) {
     if (!formatString || !(removeLen > 0)) return formatString;
@@ -18657,17 +18709,22 @@ function nmShiftFormatsAfterRemoval(formatString, removeStart, removeLen) {
         if (start >= removeEnd) {
             return JSON.stringify({ ...f, start: start - removeLen, end: end - removeLen });
         }
+        // Целият формат е в изрязаното: снимката му отива в заглавието, тук не остава нищо.
+        if (start >= removeStart && end <= removeEnd) return null;
         // Застъпва изрязаното: останалото се събира в началото на изрязаното място.
         const newStart = Math.max(0, Math.min(start, removeStart));
         const newEnd = Math.max(newStart, end - removeLen);
         return JSON.stringify({ ...f, start: newStart, end: newEnd });
-    });
+    }).filter(part => part !== null);
     return parts.join(delimiter) + (hasTrailingPipe ? '|' : '');
 }
 
 /**
  * Тялото на картата, когато заглавието е изрязано от СРЕДАТА на текста (пред него стои ред със
  * снимка), заедно с мястото на изрязаното - по него се разместват форматите.
+ * Ползва се само когато редът-заглавие НЕ носи снимка (първият непразен ред е само снимка, а
+ * заглавие става следващият ред с думи) - тогава иначе снимката от първия ред би изчезнала.
+ * Когато редът-заглавие носи снимка, се ползва nmBodyRemovingTitleLine.
  * Връща { text, removeStart, removeLen }.
  */
 function nmBodyWithoutTitleLine(fullText, titleLine) {
@@ -18683,26 +18740,34 @@ function nmBodyWithoutTitleLine(fullText, titleLine) {
 }
 
 /**
- * Тялото, когато редът-заглавие НОСИ и снимка: думите на заглавието се заличават с интервали на
- * същото място, а знаците на снимките остават. Дължината не се мени, значи форматите не се
- * разместват и снимката от този ред застава в началото на тялото на картата - точно там, където
- * собственикът очаква да я види, вместо да изчезне заедно с изрязания ред.
- * Връща { text }.
+ * Тялото на картата, когато редът-заглавие НОСИ снимка: ЦЕЛИЯТ ред се маха от тялото (думите му
+ * вече са в заглавието, а снимката - на реда на заглавието), заедно с края на реда и празните
+ * редове след него, за да не остава празнина в началото на картата.
+ * 23.10.2026, трети доклад на собственика: „снимката е на долния ред а заглавието е само думата
+ * Дюнер... те да останат на реда, а не да слизат отдолу". Дотук думите се заличаваха с интервали
+ * на мястото им (някогашната nmBodyKeepingTitleLineImages, вече махната), за да остане снимката в
+ * началото на тялото - точно това слизане отдолу е оплакването.
+ * Връща { text, removeStart, removeLen } - по двете числа се разместват форматите на тялото.
+ * text се реже направо от низа, БЕЗ допълнителни .replace: дотук nmBodyWithoutTitleLine триеше
+ * още един знак СЛЕД изчисляването на removeLen и точно това разместваше форматите с един знак.
  */
-function nmBodyKeepingTitleLineImages(fullText, titleLine) {
+function nmBodyRemovingTitleLine(fullText, titleLine) {
     const value = String(fullText || '').replace(/\r\n/g, '\n');
-    const lines = value.split('\n');
-    if (!titleLine || titleLine.index < 0 || titleLine.index >= lines.length) return { text: value };
-    const line = lines[titleLine.index];
-    const ranges = titleLine.imageFormats || [];
-    let masked = '';
-    for (let i = 0; i < line.length; i++) {
-        const at = titleLine.offset + i;
-        masked += ranges.some(r => at >= r.start && at < r.end) ? line[i] : (/\s/.test(line[i]) ? line[i] : ' ');
+    if (!titleLine || !(titleLine.offset >= 0) || titleLine.offset > value.length) {
+        return { text: value, removeStart: 0, removeLen: 0 };
     }
-    lines[titleLine.index] = masked;
-    // Празният ред от заличените думи не бива да стои над снимката - тя застава най-горе в тялото.
-    return { text: lines.join('\n').replace(/^(?:[ \t]*\n)+/, '') };
+    // Ако преди реда на заглавието има само празни редове, режем от самото начало на текста.
+    let removeStart = titleLine.offset;
+    if (!value.slice(0, removeStart).trim()) removeStart = 0;
+    const tail = value.slice(removeStart);
+    const lines = tail.split('\n');
+    // Редът на заглавието е първият; след него - празните редове, които също се махат.
+    let k = 1;
+    while (k < lines.length && !lines[k].trim()) k++;
+    const removeLen = k < lines.length
+        ? lines.slice(0, k).join('\n').length + 1 // маханите редове + краят на последния от тях
+        : tail.length; // след заглавието няма нищо друго - маха се до края
+    return { text: value.slice(0, removeStart) + value.slice(removeStart + removeLen), removeStart, removeLen };
 }
 
 function getVisibleTitleTextForElement(titleEl, sourceText) {
@@ -19607,6 +19672,29 @@ function buildInlineImagePlaceholder(format, isForModal) {
     return `<span class="nm-inline-img is-loading" data-nm-file="${escapeAttr(name)}" ` +
         `data-nm-state="loading"${view} data-nm-pct="${pct}" style="width:${pct}%" role="img" ` +
         `aria-label="${escapeAttr(name)}"></span>`;
+}
+
+/**
+ * Рамката на снимката в ЗАГЛАВИЕТО на картата (23.10.2026, трети доклад на собственика: снимката
+ * от реда-заглавие „да остане на реда, а не да слиза отдолу").
+ *
+ * Ширината е СЪЩАТА като в тялото - процентът от paramint (10..100% от колоната на картата), защото
+ * собственикът (23.10.2026, четвърти доклад): „Снимката в заглавието трябва да е с размера, с който
+ * сме я създали." Дотук тук нямаше ширина и CSS слагаше малка украса 1.1em - снимката се виждаше
+ * смалена, а не такава, каквато я е сложил. Заглавието е един ред (nowrap), значи с голяма снимка
+ * редът просто расте по височина - това е желаното.
+ *
+ * Класът nm-inline-img-title и data-nm-view="title" остават: putImage сменя ширината само при
+ * data-nm-view="note", значи процентът от inline стила тук се запазва както е записан.
+ * Иначе рамката е същата: hydrateInlineImages я намира по .nm-inline-img[data-nm-file] и я пълни.
+ */
+function buildInlineImageTitlePlaceholder(format) {
+    const name = inlineImageName(format && format.paramstring);
+    if (!name) return '';
+    const pct = inlineImageWidthPct(format && format.paramint);
+    return `<span class="nm-inline-img nm-inline-img-title is-loading" data-nm-file="${escapeAttr(name)}" ` +
+        `data-nm-state="loading" data-nm-view="title" data-nm-pct="${pct}" style="width:${pct}%" ` +
+        `role="img" aria-label="${escapeAttr(name)}"></span>`;
 }
 
 /**
@@ -21352,6 +21440,10 @@ async function createNoteElement(noteContent) {
     let previewBodyFormatSource = null;
     // Заглавие няма, защото бележката е само със снимки: тогава то се скрива, за да не заема място.
     let hideTitleBecauseOnlyImages = false;
+    // Частите на реда-заглавие (думи и снимки в реда на текста), когато той носи снимка: от тях се
+    // строи заглавието, за да остане снимката НА РЕДА на заглавието (23.10.2026, трети доклад на
+    // собственика). Когато редът няма снимка, остава null и заглавието е само текст, както досега.
+    let titleLineParts = null;
     // Заглавие се взима само от ред БЕЗ вградена снимка (type=8): редът със снимка остава в тялото,
     // за да се вижда картинката на картата. Затова редът се избира по офсетите си, а не по знака на
     // маркера в текста.
@@ -21361,16 +21453,76 @@ async function createNoteElement(noteContent) {
         const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         return line.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
     };
-    // Тялото на картата след изрязване на реда на заглавието: махат се САМО думите на този ред.
-    // Когато редът носи и снимка, думите се заличават на място, за да остане снимката в тялото.
+    // Същото чистене като titleOfLine, но за ЕДНА част от реда и БЕЗ trim: около снимката в
+    // заглавието интервалите са смисъл - точно те държат думите и картинката на един ред.
+    const cleanTitlePart = (value) => {
+        const symBold = (localStorage.getItem('mdBold') || '**').trim();
+        const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return String(value)
+            .replace(/^#{1,6}\s+/, '')
+            .replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1')
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(LINK_MARKER_REGEX, '')
+            .replace(/[ \t]{2,}/g, ' ');
+    };
+    /**
+     * Съдържанието на заглавие, което носи снимка: текстовите части се чистят, а между тях и
+     * снимката остава ТОЧНО един интервал. Иначе в заглавието излиза двоен интервал (текстът преди
+     * и след снимката си носи своите), а textContent на заглавието престава да е равен на думите
+     * от noteTitle - по него живеят подсказката и сортирането по заглавие.
+     * Снимките стават рамки от buildInlineImageTitlePlaceholder, които hydrateInlineImages пълни.
+     */
+    const buildTitleContentNodes = (parts) => {
+        const items = parts.map(part => part.type === 'image'
+            ? { type: 'image', format: part.format }
+            : { type: 'text', value: cleanTitlePart(part.value) })
+            .filter(p => p.type === 'image' || p.value.trim() !== '');
+        // Интервалите около снимката: ТОЧНО един - и отляво, и отдясно. Те не са разточителство:
+        // интервалът е и мястото, на което редът може да се пренесе, когато снимката е широка
+        // (23.10.2026, четвърти доклад: снимката е с размера, с който е създадена, значи широка
+        // снимка слиза цяла на втория ред, вместо да бъде отрязана).
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type !== 'text') continue;
+            const prev = items[i - 1] || null;
+            const next = items[i + 1] || null;
+            let value = item.value.replace(/[ \t]{2,}/g, ' ');
+            if (!prev) value = value.replace(/^ +/, '');            // началото на заглавието
+            else if (prev.type === 'image') value = ' ' + value.replace(/^ +/, '');
+            if (!next) value = value.replace(/ +$/, '');            // краят на заглавието
+            else if (next.type === 'image') value = value.replace(/ +$/, '') + ' ';
+            item.value = value;
+        }
+        const frag = document.createDocumentFragment();
+        items.forEach(item => {
+            if (item.type === 'image') {
+                const html = buildInlineImageTitlePlaceholder(item.format);
+                if (!html) return;
+                const holder = document.createElement('span');
+                holder.innerHTML = html;
+                while (holder.firstChild) frag.appendChild(holder.firstChild);
+                return;
+            }
+            if (!item.value) return;
+            frag.appendChild(document.createTextNode(item.value));
+        });
+        return frag;
+    };
+    // Тялото на картата след изрязване на реда на заглавието.
+    // 23.10.2026 (трети доклад на собственика): редът-заглавие, който носи снимка, се маха ЦЯЛОТО
+    // от тялото - думите му отиват в заглавието, а снимката застава НА РЕДА на заглавието. Форматите
+    // на тялото се разместват с точното място на изрязаното. Дотук думите се заличаваха на място,
+    // за да остане снимката в началото на тялото, и точно това собственикът видя като „снимката е на
+    // долния ред а заглавието е само думата Дюнер".
     const setBodyAfterTitleLine = (titleLine) => {
         if (!titleLine) {
             displayContent = fileContent;
             return;
         }
-        // Редът-заглавие носи вградена снимка: думите му се заличават, снимката остава в тялото.
         if (titleLine.imageFormats && titleLine.imageFormats.length) {
-            displayContent = nmBodyKeepingTitleLineImages(fileContent, titleLine).text;
+            const cut = nmBodyRemovingTitleLine(fileContent, titleLine);
+            displayContent = cut.text;
+            previewBodyFormatSource = nmShiftFormatsAfterRemoval(textSpan, cut.removeStart, cut.removeLen);
             return;
         }
         const firstNonEmpty = fileContent.replace(/\r\n/g, '\n').split('\n').findIndex(line => line.trim());
@@ -21410,11 +21562,14 @@ async function createNoteElement(noteContent) {
             const titleLine = titleLineFor(fileContent);
             previewTitleSourceText = titleLine ? titleLine.text : '';
             noteTitle = titleLine ? titleOfLine(previewTitleSourceText) : '';
+            // Редът носи снимка: заглавието се строи от частите му, за да стои снимката на реда.
+            titleLineParts = titleLine && titleLine.imageFormats.length ? titleLine.parts : null;
             setBodyAfterTitleLine(titleLine);
         } else {
             const titleLine = titleLineFor(fileContent);
             previewTitleSourceText = titleLine ? titleLine.text : '';
             noteTitle = titleLine ? titleOfLine(previewTitleSourceText) : '';
+            titleLineParts = titleLine && titleLine.imageFormats.length ? titleLine.parts : null;
             setBodyAfterTitleLine(titleLine);
         }
     }
@@ -21434,10 +21589,21 @@ async function createNoteElement(noteContent) {
     if (isHiddenNote && titleSpan && titleSpan.trim() !== '') {
         const strippedTitle = stripLinkMarkersForDisplay(noteTitle, titleSpan);
         titleEl.innerHTML = formatText(strippedTitle.text, strippedTitle.formatString, false);
+    } else if (titleLineParts && titleLineParts.length) {
+        // Редът-заглавие носи снимка: думите и снимката се строят в реда на текста, за да стои
+        // снимката НА РЕДА на заглавието (23.10.2026, трети доклад на собственика), а не в тялото.
+        titleEl.appendChild(buildTitleContentNodes(titleLineParts));
     } else {
         titleEl.textContent = noteTitle.replace(LINK_MARKER_REGEX, '');
     }
     titleEl.className = 'note-title-truncated';
+    if (titleLineParts && titleLineParts.length) {
+        // Снимката е с размера, с който е създадена (23.10.2026, четвърти доклад), значи широка
+        // снимка след думите не се побира на един ред. Класът пуска реда да се пренесе - иначе
+        // nowrap реже снимката в края на заглавието и тя се вижда наполовина. Слага се СЛЕД
+        // задаването на className, иначе то го изтрива.
+        titleEl.classList.add('has-title-img');
+    }
     if (isBorderlessTableNote || hideTitleBecauseOnlyImages) {
         // Няма заглавие - то не заема място (редът с датата и часа си остава както е).
         titleEl.style.display = 'none';
@@ -21656,6 +21822,9 @@ async function createNoteElement(noteContent) {
     // Add the new container before the title
     titleWrapper.appendChild(headerInfoContainer);
     titleWrapper.appendChild(titleEl);
+    // Снимката в заглавието се зарежда като снимките в тялото: дотук се хидрираше само contentEl,
+    // значи рамката в заглавието оставаше вечна рамка (23.10.2026).
+    hydrateInlineImages(titleEl);
     // Use the color map for reliability and define a clear fallback color
     const noteBgColor = (typeof noteColor === 'number')
         ? (noteColor >= 0 && noteColor < noteColorMap.length ? noteColorMap[noteColor] : (noteColor < 0 ? colorIntToHex(noteColor) : getDefaultNoteBg()))

@@ -267,7 +267,10 @@ const readCards = () => page.evaluate(() => {
   const out = {};
   for (const card of document.querySelectorAll('#inline-img-probe-host .note')) {
     const content = card.querySelector('.note-content');
-    const frames = [...(content ? content.querySelectorAll('.nm-inline-img') : [])];
+    // Промяна на 23.10.2026: ред с думи И снимка вече е ЗАГЛАВИЕ на картата и снимката от него стои
+    // на реда на заглавието. Затова рамките се четат от ЦЯЛАТА карта (заглавие + тяло), иначе снимка
+    // от реда-заглавие изглежда сякаш липсва.
+    const frames = [...card.querySelectorAll('.nm-inline-img')];
     const h3 = card.querySelector('h3');
     out[card.dataset.probe] = {
       // В cx-notes картата на борда дава първия ред (или първото му срязване) на заглавие, а
