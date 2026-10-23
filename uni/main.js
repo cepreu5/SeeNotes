@@ -11141,6 +11141,9 @@ function createNoteWindow() {
 function onNoteWindowClosed(win) {
     // Затворен viewer не трябва да оставя звук: плочката, която е свирила, вече я няма.
     stopAttachmentAudio();
+    // Отложените ширини от менюто в режим Преглед се записват тук: този път минава ВСЯКО затваряне
+    // (X, Escape, „затвори всички", смяна на борд) - виж MutationObserver-а във wireNoteWindow.
+    flushNmInlinePreviewChanges().catch(() => { });
     win.el.querySelector('.note-window-sync-banner')?.remove();
     const others = getOpenNoteWindows().filter(w => w !== win);
     if (!others.length) {
@@ -19071,9 +19074,6 @@ function toggleDraftPreviewCheckbox(host, input) {
 // (Google Drive / локална папка / IndexedDB) по същия ред като saveEditedNote. Дължината на текста
 // не се сменя ([ ]<->[x], ☐<->☑), затова форматите (text_span/title_span) остават същите.
 async function saveNoteCheckboxChange(noteObj) {
-    const updateGDriveNow = useGoogleDb && !isOffline;
-    const updateLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
-    const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
     noteObj.version = noteObj.version ? parseInt(noteObj.version, 10) + 1 : 1;
     noteObj.datemod = Date.now();
 
@@ -19101,6 +19101,21 @@ async function saveNoteCheckboxChange(noteObj) {
         if (mb.dataset.baseNote) mb.dataset.baseNote = JSON.stringify(noteObj);
     }
 
+    await writeNoteToSources(noteObj, mb);
+}
+
+/**
+ * Записът на един обект по всички източници - Google Drive, локална папка, IndexedDB - по същия ред
+ * като saveEditedNote. Изнесен е, защото го ползват два пътя: смяната на отметка и записът на
+ * ширината на вградена снимка при затваряне на прозореца в режим Преглед.
+ * mb е тялото на модала, ако той показва точно тази бележка (иначе null).
+ */
+async function writeNoteToSources(noteObj, mb) {
+    const updateGDriveNow = useGoogleDb && !isOffline;
+    const updateLocalFolderNow = (localStorage.getItem('updateLocalFolder') === 'true') && !isOffline;
+    const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
+    const modalShowsNote = !!mb && !mb.querySelector('textarea') &&
+        ((noteObj.gdid && String(mb.dataset.gdid) === String(noteObj.gdid)) || (noteObj.id !== undefined && String(mb.dataset.id) === String(noteObj.id)));
     let gdriveOk = updateGDriveNow;
     if (updateGDriveNow) {
         const isTempGdid = !noteObj.gdid || String(noteObj.gdid) === String(noteObj.id);
@@ -23217,7 +23232,11 @@ function closeNmInlineMenu() {
     if (state.onOutside) document.removeEventListener('mousedown', state.onOutside, true);
     if (state.onKey) document.removeEventListener('keydown', state.onKey, true);
     if (state.onResize) window.removeEventListener('resize', state.onResize);
-    if (state.field && state.onScroll) state.field.removeEventListener('scroll', state.onScroll);
+    if (state.onScroll) {
+        // В редакция се слуша самата кутия; в режим Преглед - носещият елемент, който се превърта.
+        if (state.field) state.field.removeEventListener('scroll', state.onScroll);
+        else document.removeEventListener('scroll', state.onScroll, true);
+    }
     if (state.field && state.onFieldInput) state.field.removeEventListener('input', state.onFieldInput);
 }
 
@@ -23312,11 +23331,13 @@ function nmInlineNaturalSize(fileName) {
 /**
  * Записва ширината в paramint (10..100 -> 1..10).
  * От маркер се пипа само това място; от плочка - всички места на този файл в бележката (от плочката
- * адресираш файла, от маркера - мястото).
+ * адресираш файла, от маркера - мястото). В режим Преглед няма textarea и няма записи под ръка:
+ * там ширината се сменя само на рамките и се помни за записа при затваряне на прозореца.
  */
 function applyNmInlineWidth(state, pct, commit) {
     const modalBody = state && state.modalBody;
     if (!modalBody) return false;
+    if (state.kind === 'preview') return applyNmInlinePreviewWidth(state, pct);
     const step = Math.max(1, Math.min(10, Math.round(Number(pct) / 10)));
     const formats = readNoteEditFormats(modalBody, 'format');
     let changed = false;
@@ -23337,6 +23358,170 @@ function applyNmInlineWidth(state, pct, commit) {
     if (commit) commitNoteEditUndo(modalBody);
     return true;
 }
+
+// ------------------------------- Менюто в режим Преглед -------------------------------
+// В режим Преглед рамката на снимката е в пиксели (data-nm-pct / data-nm-base / data-nm-natural) и
+// няма текстова кутия, значи няма и записи под ръка. Затова плъзгането сменя ширината ВЕДНАГА на
+// екрана, а в бележката се пише чак при затваряне на прозореца (решение на собственика, 23.10.2026).
+// Отложените промени се помнят по ключ на бележката (gdid/id), после по име на файл: едно и също име
+// може да стои на няколко места в текста, а менюто адресира ФАЙЛА, както при плочката.
+const nmInlinePreviewPending = new Map();
+
+/** Стъпалото paramint (1..10) за процентите от плъзгача. */
+function nmInlineWidthStep(pct) {
+    return Math.max(1, Math.min(10, Math.round(Number(pct) / 10)));
+}
+
+/** Рамките на един файл в тялото на бележката (всичките му места там). */
+function nmInlinePreviewFrames(modalBody, fileName) {
+    if (!modalBody || !modalBody.querySelectorAll) return [];
+    const name = inlineImageName(fileName) || String(fileName || '');
+    if (!name) return [];
+    return Array.from(modalBody.querySelectorAll('.nm-inline-img[data-nm-file]'))
+        .filter(box => (inlineImageName(box.dataset.nmFile) || String(box.dataset.nmFile || '')) === name);
+}
+
+/**
+ * Ширината на рамките в пиксели, по същото правило като рендера: базата е записаната в бележката,
+ * иначе естествената ширина на снимката. По-тясна бележка пак свива снимката - това го прави
+ * max-width: 100% в style.css.
+ */
+function applyNmInlinePreviewWidth(state, pct) {
+    const frames = nmInlinePreviewFrames(state && state.modalBody, state && state.fileName);
+    if (!frames.length) return false;
+    const value = nmInlineWidthStep(pct) * 10;
+    frames.forEach(box => {
+        box.dataset.nmPct = String(value);
+        let base = Number(box.dataset.nmBase) || 0;
+        if (!(base > 0)) base = Number(box.dataset.nmNatural) || 0;
+        if (!(base > 0) && state && state.natural && Number(state.natural.w) > 0) base = Number(state.natural.w);
+        box.style.width = base > 0 ? Math.round(base * value / 100) + 'px' : value + '%';
+    });
+    return true;
+}
+
+/** Помни избраната ширина за записа при затваряне на прозореца. */
+function rememberNmInlinePreviewWidth(modalBodyElem, fileName, pct) {
+    const key = nmInlineNoteKey(modalBodyElem);
+    const name = inlineImageName(fileName) || String(fileName || '');
+    if (!key || !name) return false;
+    const map = { ...(nmInlinePreviewPending.get(key) || {}) };
+    map[name] = nmInlineWidthStep(pct);
+    nmInlinePreviewPending.set(key, map);
+    return true;
+}
+
+/**
+ * Преписва paramint за всички записи type=8 с това име на файл в един text_span.
+ * Връща { text, changed }; останалото в записа не се пипа (схемата остава същата - само paramint).
+ */
+function rewriteInlineImageWidths(textSpan, fileName, step) {
+    const name = inlineImageName(fileName) || String(fileName || '');
+    const value = nmInlineWidthStep(Number(step) * 10);
+    const text = String(textSpan || '');
+    if (!name || !text) return { text, changed: false };
+    let changed = false;
+    const out = text.split('|').map(part => {
+        let fmt = null;
+        try { fmt = JSON.parse(part); } catch (e) { return part; }
+        if (!fmt || Number(fmt.type) !== 8) return part;
+        if ((inlineImageName(fmt.paramstring) || String(fmt.paramstring || '')) !== name) return part;
+        if (Number(fmt.paramint) === value) return part;
+        fmt.paramint = value;
+        changed = true;
+        return JSON.stringify(fmt);
+    });
+    return { text: out.join('|'), changed };
+}
+
+/**
+ * Записва отложените ширини от режим Преглед в бележките - по същия път като отметка
+ * (картата на борда, Google Drive, локалната папка, IndexedDB) - и изчиства списъка.
+ * Вика се при затваряне на прозорец на бележка, значи хваща X, Escape, „затвори всички",
+ * смяната на борд и всеки друг път, който маха 'visible'.
+ */
+async function flushNmInlinePreviewChanges() {
+    if (!nmInlinePreviewPending.size) return 0;
+    const pending = Array.from(nmInlinePreviewPending.entries());
+    nmInlinePreviewPending.clear();
+    let saved = 0;
+    for (const [key, widths] of pending) {
+        const note = (typeof allNotesData !== 'undefined' ? allNotesData : [])
+            .find(n => (n.gdid && String(n.gdid) === key) || (n.id !== undefined && n.id !== null && String(n.id) === key));
+        if (!note) continue;
+        let textSpan = note.text_span;
+        let changed = false;
+        Object.keys(widths).forEach(name => {
+            const res = rewriteInlineImageWidths(textSpan, name, widths[name]);
+            if (res.changed) { textSpan = res.text; changed = true; }
+        });
+        if (!changed) continue; // ширината вече е тази - нищо за запис
+        note.text_span = textSpan;
+        note.version = note.version ? parseInt(note.version, 10) + 1 : 1;
+        note.datemod = Date.now();
+        const card = document.querySelector(`.note[data-g="${note.gdid}"]`) || document.querySelector(`.note[data-i="${note.id}"]`);
+        if (card) {
+            const updatedEl = await createNoteElement(note);
+            if (updatedEl) {
+                updatedEl.style.display = card.style.display;
+                card.replaceWith(updatedEl);
+            }
+        }
+        await writeNoteToSources(note, null);
+        saved++;
+    }
+    return saved;
+}
+
+/**
+ * Менюто в режим Преглед: отваря се с щрак върху самата снимка в бележката, а второ щрак върху
+ * същата снимка го затваря (както при маркера).
+ */
+function toggleNmInlineMenuForPreview(box, modalBody) {
+    if (!box || !modalBody || !box.dataset.nmFile) return false;
+    const name = box.dataset.nmFile;
+    const open = nmInlineMenuState;
+    if (open && open.kind === 'preview' && open.fileName === name && open.el && open.el.isConnected) {
+        closeNmInlineMenu();
+        return true;
+    }
+    openNmInlineMenu({
+        kind: 'preview',
+        modalBody,
+        fileName: name,
+        anchorEl: box,
+        // Рамката носи data-nm-pct като ПРОЦЕНТИ (30), а менюто иска стойността на плъзгача.
+        value: Math.max(10, Math.min(100, Math.round(Number(box.dataset.nmPct)) || 100)),
+        missing: box.classList.contains('is-missing') || box.classList.contains('is-unavailable')
+    });
+    return true;
+}
+
+/**
+ * Тялото е на ЗАПИСАНА бележка в режим четене: не чернова, не нов запис, не редакция.
+ * Там менюто има смисъл - има какво да се запише при затваряне.
+ */
+function nmInlinePreviewBodyFor(box) {
+    if (!box || !box.closest) return null;
+    const body = box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]');
+    if (!body) return null; // на борда щракът върху снимка си остава отваряне на бележката
+    if (body.querySelector('textarea')) return null; // в редакция снимката се пипа през маркера
+    if (body.dataset.isPreview === 'true' || body.dataset.draftText !== undefined || body.dataset.isNewNote === 'true') return null;
+    return nmInlineNoteObject(body) ? body : null;
+}
+
+// Щрак върху вградена снимка в режим Преглед отваря менюто ѝ. Прихваща се на window в capture фаза
+// (както квадратчето за отметка), за да не стигне щракът до обработвачите за отваряне/редакция.
+window.addEventListener('click', (e) => {
+    const box = e.target && e.target.closest ? e.target.closest('.nm-inline-img[data-nm-file]') : null;
+    if (!box) return;
+    const body = nmInlinePreviewBodyFor(box);
+    if (!body) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    toggleNmInlineMenuForPreview(box, body);
+}, true);
 
 /**
  * „Преглед": същият ход, който днешният клик върху плочка прави - натиска се истинският <a>, който
@@ -23378,7 +23563,7 @@ function removeNmInlineMarker(state) {
     return true;
 }
 
-/** „Сложи в текста": маркер (звездичка) на каретата + type=8 с името на файла, ширина 30%. */
+/** „Сложи в текста": маркер (звездичка) на каретата + type=8 с името на файла и избраната ширина. */
 async function insertNmInlineImage(state) {
     const modalBody = state && state.modalBody;
     if (!modalBody || !state.fileName) return false;
@@ -23407,8 +23592,12 @@ async function insertNmInlineImage(state) {
     const base = naturalWidth > 0 ? Math.max(1, Math.round(naturalWidth)) : 0;
     if (base > 0) rememberNmInlineBaseWidth(modalBody, state.fileName, base);
     noteEditReplace(field, pos, pos, '*', pos + 1);
+    // Ширината е избраната в менюто: плъзгачът пише в state.value (10..100), а в записа отива
+    // стъпалото paramint 1..10 - същото правило като applyNmInlineWidth. Преди тук стоеше твърдо 3,
+    // затова всяка снимка влизаше с 30%, независимо какво показва плъзгачът.
+    const step = Math.max(1, Math.min(10, Math.round((Number(state.value) || 30) / 10)));
     const formats = readNoteEditFormats(modalBody, 'format');
-    formats.push({ start: pos, end: pos + 1, type: 8, paramint: 3, paramstring: state.fileName });
+    formats.push({ start: pos, end: pos + 1, type: 8, paramint: step, paramstring: state.fileName });
     writeNoteEditFormats(modalBody, 'format', formats);
     refreshNoteEditBackdrops(ctx);
     commitNoteEditUndo(modalBody);
@@ -23503,10 +23692,11 @@ function openNmInlineMenu(opts) {
     if (!modalBody) return null;
     const anchorEl = options.anchorEl || null;
     const state = {
-        kind: options.kind === 'tile' ? 'tile' : 'marker',
+        kind: options.kind === 'tile' ? 'tile' : (options.kind === 'preview' ? 'preview' : 'marker'),
         modalBody,
         strip: options.strip || modalBody.querySelector('.nm-attach-strip'),
-        field: options.field || document.getElementById('note-edit-textarea'),
+        // В режим Преглед няма редактор - и не бива да се хваща текстовата кутия на ДРУГ прозорец.
+        field: options.kind === 'preview' ? null : (options.field || document.getElementById('note-edit-textarea')),
         fileName: String(options.fileName || ''),
         start: Number.isFinite(Number(options.start)) ? Number(options.start) : null,
         end: Number.isFinite(Number(options.end)) ? Number(options.end) : null,
@@ -23525,25 +23715,28 @@ function openNmInlineMenu(opts) {
     el.setAttribute('aria-label', _('nmInlineMenuLabel') || 'Снимка в текста');
     state.el = el;
 
-    // 1. Преглед - първият ред, за да не се губи днешният ход.
-    const preview = document.createElement('button');
-    preview.type = 'button';
-    preview.className = 'nm-inline-menu-row is-preview';
-    preview.dataset.nmMenuAction = 'preview';
-    const chip = document.createElement('span');
-    chip.className = 'nm-inline-menu-chip';
-    preview.append(chip, document.createTextNode(_('nmInlinePreview') || 'Преглед'));
-    if (state.missing || !state.fileName) {
-        preview.disabled = true;
-        preview.classList.add('is-disabled');
-        preview.title = _('inlineImgMissing') || 'няма такъв файл';
-    } else {
-        preview.addEventListener('click', () => {
-            if (previewNmInlineFile(state)) closeNmInlineMenu();
-        });
+    // 1. „Преглед" - само в менюто от плочката. От маркера е излишен (решение на собственика,
+    //    23.10.2026): там остават ширината, „Махни" и „Обнови". Редът натиска истинския <a> на файла.
+    if (state.kind === 'tile') {
+        const preview = document.createElement('button');
+        preview.type = 'button';
+        preview.className = 'nm-inline-menu-row is-preview';
+        preview.dataset.nmMenuAction = 'preview';
+        const chip = document.createElement('span');
+        chip.className = 'nm-inline-menu-chip';
+        preview.append(chip, document.createTextNode(_('nmInlinePreview') || 'Преглед'));
+        if (state.missing || !state.fileName) {
+            preview.disabled = true;
+            preview.classList.add('is-disabled');
+            preview.title = _('inlineImgMissing') || 'няма такъв файл';
+        } else {
+            preview.addEventListener('click', () => {
+                if (previewNmInlineFile(state)) closeNmInlineMenu();
+            });
+        }
+        el.appendChild(preview);
     }
-    el.appendChild(preview);
-    if (state.missing || !state.fileName) {
+    if ((state.missing || !state.fileName) && state.kind !== 'preview') {
         const why = document.createElement('p');
         why.className = 'nm-inline-menu-note';
         why.textContent = _('inlineImgMissing') || 'няма такъв файл';
@@ -23588,10 +23781,21 @@ function openNmInlineMenu(opts) {
         const pct = Math.max(10, Math.min(100, Math.round(Number(range.value) / 10) * 10));
         state.value = pct;
         showValue(pct);
+        if (state.kind === 'preview') {
+            // В режим Преглед снимката се сменя ВЕДНАГА - кадърът е само за маркера в текста.
+            applyNmInlineWidth(state, pct, false);
+            rememberNmInlinePreviewWidth(modalBody, state.fileName, pct);
+            return;
+        }
         showNmInlineGhost(state, pct);
         applyNmInlineWidth(state, pct, false);
     });
     range.addEventListener('change', () => {
+        if (state.kind === 'preview') {
+            applyNmInlineWidth(state, state.value, false);
+            rememberNmInlinePreviewWidth(modalBody, state.fileName, state.value);
+            return;
+        }
         showNmInlineGhost(state, null);
         // Едно стъпало за отмяна на всяка смяна на ширината - и при пускане на плъзгача, и при
         // стъпка с клавиш (двете идват като change). Отмяната се вдига и ако стойността вече е
@@ -23602,8 +23806,9 @@ function openNmInlineMenu(opts) {
     widthBox.append(label, range, scale);
     el.appendChild(widthBox);
 
-    // 3. Последният ред зависи откъде е отворено менюто: от маркера - „Махни" (маха това място),
-    //    от плочка - „Сложи в текста" (маркерът влиза на каретата).
+    // 3. Редовете под плъзгача зависят откъде е отворено менюто: от маркера - „Махни" (маха това
+    //    място), от плочка - „Сложи в текста" (маркерът влиза на каретата), в режим Преглед - нищо
+    //    (там файлът се пипа само по ширина).
     if (state.kind === 'marker') {
         const remove = document.createElement('button');
         remove.type = 'button';
@@ -23614,7 +23819,7 @@ function openNmInlineMenu(opts) {
             if (removeNmInlineMarker(state)) closeNmInlineMenu();
         });
         el.appendChild(remove);
-    } else {
+    } else if (state.kind === 'tile') {
         const insert = document.createElement('button');
         insert.type = 'button';
         insert.className = 'nm-inline-menu-row is-insert';
@@ -23626,6 +23831,28 @@ function openNmInlineMenu(opts) {
             if (await insertNmInlineImage(state)) closeNmInlineMenu();
         });
         el.appendChild(insert);
+    }
+
+    // 4. „Обнови" - последният ред от маркера и от режим Преглед: прилага избрания процент и затваря
+    //    менюто (досега то се затваряше само с щрак извън него). При плочката действието е „Сложи в
+    //    текста", затова там този ред не се показва.
+    if (state.kind !== 'tile') {
+        const update = document.createElement('button');
+        update.type = 'button';
+        update.className = 'nm-inline-menu-row is-insert';
+        update.dataset.nmMenuAction = 'update';
+        update.textContent = _('nmInlineUpdate') || 'Обнови';
+        update.title = _('nmInlineUpdateTitle') || 'Прилага ширината и затваря менюто';
+        update.addEventListener('click', () => {
+            // От маркера ширината вече е приложена при плъзгането; тук се вдига стъпало за отмяна
+            // само ако има промяна (applyNmInlineWidth връща true точно тогава).
+            if (state.kind !== 'preview' && applyNmInlineWidth(state, state.value, false)) {
+                commitNoteEditUndo(modalBody);
+            }
+            if (state.kind === 'preview') rememberNmInlinePreviewWidth(modalBody, state.fileName, state.value);
+            closeNmInlineMenu();
+        });
+        el.appendChild(update);
     }
 
     document.body.appendChild(el);
@@ -23646,6 +23873,8 @@ function openNmInlineMenu(opts) {
         if (el.contains(target)) return;
         // Клик в самата текстова кутия се решава от нейния слушател (втори щрак затваря).
         if (state.field && target === state.field) return;
+        // Същото за самата снимка в режим Преглед: втори щрак върху нея затваря менюто.
+        if (state.kind === 'preview' && target && target.closest && target.closest('.nm-inline-img[data-nm-file]')) return;
         closeNmInlineMenu();
     };
     state.onKey = (event) => {
@@ -23663,6 +23892,9 @@ function openNmInlineMenu(opts) {
     if (state.field) {
         state.field.addEventListener('scroll', state.onScroll, { passive: true });
         state.field.addEventListener('input', state.onFieldInput);
+    } else {
+        // Режим Преглед: няма кутия, а менюто виси до снимката - при превъртане на бележката се затваря.
+        document.addEventListener('scroll', state.onScroll, true);
     }
     return state;
 }

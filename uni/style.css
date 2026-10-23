@@ -4993,6 +4993,8 @@ body.selection-locked .note.active-selection-note .note-content {
     text-align: center;
     white-space: nowrap;
     cursor: pointer;
+    /* Тъч: редът е поне 30px висок, за да се уцели с пръст (менюто се ползва и на телефон). */
+    min-height: 30px;
     -webkit-appearance: none;
     appearance: none;
 }
@@ -5077,6 +5079,8 @@ body.selection-locked .note.active-selection-note .note-content {
 .nm-inline-menu-range {
     display: block;
     width: 100%;
+    /* Плъзгачът е по цялата ширина на менюто и висок 28px - същото заради пръста. */
+    height: 28px;
     margin: 0;
     accent-color: #3a6ff0;
     cursor: pointer;

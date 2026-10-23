@@ -562,6 +562,8 @@
     "nmInlineWidthAria": "Image width, percent",
     "nmInlineInsert": "Put in the text",
     "nmInlineRemove": "Remove",
+    "nmInlineUpdate": "Update",
+    "nmInlineUpdateTitle": "Applies the width and closes the menu",
     "nmAddPhoto": "Add a photo",
     "nmInlineRefusedCode": "An image cannot go here"
 }

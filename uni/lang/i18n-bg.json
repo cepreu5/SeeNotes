@@ -562,6 +562,8 @@
     "nmInlineWidthAria": "Ширина на снимката, проценти",
     "nmInlineInsert": "Сложи в текста",
     "nmInlineRemove": "Махни",
+    "nmInlineUpdate": "Обнови",
+    "nmInlineUpdateTitle": "Прилага ширината и затваря менюто",
     "nmAddPhoto": "Добави снимка",
     "nmInlineRefusedCode": "Тук снимка не може да се сложи"
 }
