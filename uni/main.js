@@ -18544,12 +18544,14 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
     return finalHtml;
 }
 
-function getPreviewBodyAfterTitle(fullText, titleText) {
+// titleLineIndex се подава, когато заглавието не е първият непразен ред (пред него стои ред със
+// снимка - той остава в тялото). Без него редът се търси както досега: първият непразен.
+function getPreviewBodyAfterTitle(fullText, titleText, titleLineIndex = undefined) {
     if (!fullText || !titleText) return fullText || '';
     const normalizedText = String(fullText).replace(/\r\n/g, '\n');
     const lines = normalizedText.split('\n');
-    const titleLineIndex = lines.findIndex(line => line.trim());
-    if (titleLineIndex === -1) return normalizedText;
+    if (!Number.isInteger(titleLineIndex)) titleLineIndex = lines.findIndex(line => line.trim());
+    if (titleLineIndex < 0 || titleLineIndex >= lines.length) return normalizedText;
     const originalLine = lines[titleLineIndex];
     const leadingWhitespaceLength = originalLine.length - originalLine.trimStart().length;
     const trimmedLine = originalLine.trim();
@@ -18563,6 +18565,93 @@ function getPreviewBodyAfterTitle(fullText, titleText) {
         lines.splice(titleLineIndex, 1);
     }
     return lines.join('\n').replace(/^\s*\n/, '');
+}
+
+/**
+ * Диапазоните на вградените снимки (type=8) от един формат: { start, end } за всяка.
+ * Работи и с двата разделителя ('|' и нов ред) - parseFormatsString ги разбира и двата.
+ */
+function nmInlineImageRanges(formatString) {
+    const ranges = [];
+    parseFormatsString(formatString).forEach(f => {
+        if (Number(f.type) !== 8) return;
+        const start = Number(f.start);
+        if (!Number.isFinite(start)) return;
+        const end = Number(f.end);
+        ranges.push({ start, end: Number.isFinite(end) && end > start ? end : start + 1 });
+    });
+    return ranges;
+}
+
+/**
+ * Първият ред от текста, който става за ЗАГЛАВИЕ на картата: непразен и БЕЗ вградена снимка.
+ * Редът със снимка остава в тялото, за да се вижда картинката на картата, затова се сравняват
+ * офсетите на самия ред с диапазоните type=8, а не знакът на маркера в текста.
+ * Връща { index, text, offset } или null, ако такъв ред няма (бележка само със снимки).
+ */
+function nmInlineTitleLine(text, formatString) {
+    const value = String(text || '').replace(/\r\n/g, '\n');
+    const ranges = nmInlineImageRanges(formatString);
+    const lines = value.split('\n');
+    let offset = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const start = offset;
+        const end = offset + line.length;
+        offset = end + 1;
+        if (!line.trim()) continue;
+        // Снимката е един знак от текста: щом диапазонът ѝ се застъпва с реда, редът държи снимка.
+        if (ranges.some(r => r.start < end && r.end > start)) continue;
+        return { index: i, text: line.trim(), offset: start };
+    }
+    return null;
+}
+
+/**
+ * Форматите, след като от СРЕДАТА на текста се изреже един ред (редът на заглавието, пред който
+ * стои ред със снимка): онова, което стои след изрязаното, се измества с дължината му. Само така
+ * снимките в тялото на картата остават на местата си. Разделителят се пази какъвто е бил.
+ */
+function nmShiftFormatsAfterRemoval(formatString, removeStart, removeLen) {
+    if (!formatString || !(removeLen > 0)) return formatString;
+    const hasTrailingPipe = formatString.endsWith('|');
+    const body = hasTrailingPipe ? formatString.slice(0, -1) : formatString;
+    const delimiter = body.includes('|') ? '|' : '\n';
+    const removeEnd = removeStart + removeLen;
+    const parts = body.split(/[|\n]/).map(part => {
+        let f = null;
+        try { f = JSON.parse(part); } catch (e) { return part; }
+        if (!f || f.start === undefined || f.end === undefined) return part;
+        const start = Number(f.start);
+        const end = Number(f.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return part;
+        if (end <= removeStart) return part; // преди изрязаното - не мърда
+        if (start >= removeEnd) {
+            return JSON.stringify({ ...f, start: start - removeLen, end: end - removeLen });
+        }
+        // Застъпва изрязаното: останалото се събира в началото на изрязаното място.
+        const newStart = Math.max(0, Math.min(start, removeStart));
+        const newEnd = Math.max(newStart, end - removeLen);
+        return JSON.stringify({ ...f, start: newStart, end: newEnd });
+    });
+    return parts.join(delimiter) + (hasTrailingPipe ? '|' : '');
+}
+
+/**
+ * Тялото на картата, когато заглавието е изрязано от СРЕДАТА на текста (пред него стои ред със
+ * снимка), заедно с мястото на изрязаното - по него се разместват форматите.
+ * Връща { text, removeStart, removeLen }.
+ */
+function nmBodyWithoutTitleLine(fullText, titleLine) {
+    const value = String(fullText || '').replace(/\r\n/g, '\n');
+    const lines = value.split('\n');
+    if (!titleLine || titleLine.index < 0 || titleLine.index >= lines.length) {
+        return { text: value, removeStart: 0, removeLen: 0 };
+    }
+    const removeStart = titleLine.offset;
+    const removeLen = lines[titleLine.index].length + 1; // редът и неговият край на реда
+    lines.splice(titleLine.index, 1);
+    return { text: lines.join('\n').replace(/^\s*\n/, ''), removeStart, removeLen };
 }
 
 function getVisibleTitleTextForElement(titleEl, sourceText) {
@@ -21203,6 +21292,37 @@ async function createNoteElement(noteContent) {
     let displayContent = fileContent;
     let previewTitleSourceText = '';
     let adjustPreviewBodyToRenderedTitle = false;
+    // Готови формати за тялото, когато заглавието е изрязано от СРЕДАТА на текста (пред него стои ред
+    // със снимка): тогава тялото не е плътен откъс и офсет към форматите не се прилага.
+    let previewBodyFormatSource = null;
+    // Заглавие няма, защото бележката е само със снимки: тогава то се скрива, за да не заема място.
+    let hideTitleBecauseOnlyImages = false;
+    // Заглавие се взима само от ред БЕЗ вградена снимка (type=8): редът със снимка остава в тялото,
+    // за да се вижда картинката на картата. Затова редът се избира по офсетите си, а не по знака на
+    // маркера в текста.
+    const titleLineFor = (text) => nmInlineTitleLine(text, textSpan);
+    const titleOfLine = (line) => {
+        const symBold = (localStorage.getItem('mdBold') || '**').trim();
+        const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return line.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
+    };
+    // Тялото на картата след изрязване на реда на заглавието: маха се САМО този ред. Когато пред
+    // него стои ред със снимка, изрязаното е в средата на текста и форматите се разместват.
+    const setBodyAfterTitleLine = (titleLine) => {
+        if (!titleLine) {
+            displayContent = fileContent;
+            return;
+        }
+        const firstNonEmpty = fileContent.replace(/\r\n/g, '\n').split('\n').findIndex(line => line.trim());
+        if (titleLine.index === firstNonEmpty) {
+            displayContent = getPreviewBodyAfterTitle(fileContent, titleLine.text, titleLine.index);
+            adjustPreviewBodyToRenderedTitle = true;
+            return;
+        }
+        const cut = nmBodyWithoutTitleLine(fileContent, titleLine);
+        displayContent = cut.text;
+        previewBodyFormatSource = nmShiftFormatsAfterRemoval(textSpan, cut.removeStart, cut.removeLen);
+    };
     // При явен разделител '|' записът пази text_span в координати на ТЯЛОТО (вж. postEditNoteState:
     // форматите на тялото се сериализират отделно), затова офсетът на заглавието НЕ се изважда.
     // Без '|' (първият ред се показва като заглавие) форматите са спрямо целия текст и офсетът важи.
@@ -21227,29 +21347,23 @@ async function createNoteElement(noteContent) {
             // text_span е тяло-относителен при '|' — offset не се прилага в renderPreviewContent.
             isPipeBodyContent = true;
         } else if (isType1Note) {
-            previewTitleSourceText = (fileContent.split('\n').find(line => line.trim()) || '').trim();
-            const symBold = (localStorage.getItem('mdBold') || '**').trim();
-            const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            noteTitle = previewTitleSourceText.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
-            displayContent = getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
-            adjustPreviewBodyToRenderedTitle = true;
+            const titleLine = titleLineFor(fileContent);
+            previewTitleSourceText = titleLine ? titleLine.text : '';
+            noteTitle = titleLine ? titleOfLine(previewTitleSourceText) : '';
+            setBodyAfterTitleLine(titleLine);
         } else {
-            const lines = fileContent.split('\n');
-            for (const line of lines) {
-                const trimmedLine = line.trim();
-                if (trimmedLine) {
-                    previewTitleSourceText = trimmedLine;
-                    const symBold = (localStorage.getItem('mdBold') || '**').trim();
-                    const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    noteTitle = trimmedLine.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
-                    break;
-                }
-            }
-            displayContent = getPreviewBodyAfterTitle(fileContent, previewTitleSourceText);
-            adjustPreviewBodyToRenderedTitle = true;
+            const titleLine = titleLineFor(fileContent);
+            previewTitleSourceText = titleLine ? titleLine.text : '';
+            noteTitle = titleLine ? titleOfLine(previewTitleSourceText) : '';
+            setBodyAfterTitleLine(titleLine);
         }
     }
-    if (!noteTitle && !isHiddenNote && !isBorderlessTableNote) { noteTitle = '...'; }
+    if (!noteTitle && !isHiddenNote && !isBorderlessTableNote) {
+        // Бележка само със снимки остава БЕЗ заглавие: редът със снимка е в тялото, а едно „..." над
+        // него би стояло като заглавие на нищо. Празна бележка без снимки пази днешното „...".
+        if (nmInlineImageRanges(textSpan).length) hideTitleBecauseOnlyImages = true;
+        else noteTitle = '...';
+    }
     if (isBorderlessTableNote) {
         note.classList.add('note-borderless-table');
     }
@@ -21264,7 +21378,8 @@ async function createNoteElement(noteContent) {
         titleEl.textContent = noteTitle.replace(LINK_MARKER_REGEX, '');
     }
     titleEl.className = 'note-title-truncated';
-    if (isBorderlessTableNote) {
+    if (isBorderlessTableNote || hideTitleBecauseOnlyImages) {
+        // Няма заглавие - то не заема място (редът с датата и часа си остава както е).
         titleEl.style.display = 'none';
     }
     // Create header info container for date and time
@@ -21533,12 +21648,15 @@ async function createNoteElement(noteContent) {
     // него. В модала мярката остава #modal-body (undefined = по подразбиране).
     const noteListMeasureEl = isForModal ? undefined : getNoteListMeasureEl(note);
     const renderPreviewContent = (contentForPreview) => {
-        let formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
+        // Когато заглавието е изрязано от СРЕДАТА на текста, тялото не е плътен откъс от него:
+        // форматите идват готови (с разместени позиции) и офсет към тях не се прилага.
+        const readyFormatSource = previewBodyFormatSource;
+        let formatSource = readyFormatSource !== null ? readyFormatSource : ((textSpan && textSpan.trim() !== '') ? textSpan : null);
         const titleFormatSource = (titleSpan && titleSpan.trim() !== '') ? titleSpan : null;
         // Намираме точния символен офсет, ако първият ред (заглавието) е отделен
         const rawOffset = fileContent.indexOf(contentForPreview);
         const offset = rawOffset !== -1 ? rawOffset : Math.max(0, fileContent.length - contentForPreview.length);
-        if (offset > 0 && formatSource && !isPipeBodyContent) {
+        if (readyFormatSource === null && offset > 0 && formatSource && !isPipeBodyContent) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
         contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
@@ -23264,6 +23382,47 @@ function positionNmInlineMenu(state) {
     el.classList.toggle('is-above', top < Math.round(anchor.top));
 }
 
+// Адресите за временния кадър - по име на файл за сесията. Плочката може да е за файл, който още не
+// е в текста: тогава маркерите не са го питали и кадърът би останал празна рамка.
+const nmInlineGhostSrcCache = new Map();
+
+/** Адресът, с който снимката на плочката вече е заредена (fillAttachmentThumb я слага там). */
+function nmInlineTilePhotoSrc(state) {
+    const tile = state && state.tileEl;
+    if (!tile || !tile.querySelector) return '';
+    const img = tile.querySelector('.nm-attach-tile-photo img');
+    const src = img ? (img.getAttribute('src') || '') : '';
+    return src;
+}
+
+/**
+ * Адресът за временния кадър. Редът е: миниатюра от маркерите в тази сесия; иначе вече заредената
+ * снимка в самата плочка; иначе питане по мрежата - веднъж на файл за сесията. Кадърът не чака:
+ * докато адресът се търси, се вижда рамката по подразбиране (тя е фонът на .nm-inline-ghost).
+ */
+function nmInlineGhostSource(state, el) {
+    const name = String((state && state.fileName) || '');
+    if (!name) return '';
+    const known = nmInlineMarkThumb(name);
+    if (known) return known;
+    const fromTile = nmInlineTilePhotoSrc(state);
+    let entry = nmInlineGhostSrcCache.get(name);
+    if (!entry) {
+        entry = (fromTile ? Promise.resolve(fromTile) : inlineImageSourceMode()
+            .then(mode => resolveNoteImageSrc(name, mode, '', { size: INLINE_IMAGE_INLINE_SIZE }))
+            .then(info => (info && info.status === 'ok' && info.src) ? info.src : ''))
+            .catch(() => '');
+        nmInlineGhostSrcCache.set(name, entry);
+        entry.then(src => { if (!src) nmInlineGhostSrcCache.delete(name); });
+    }
+    // Адресът може да дойде и след като кадърът е построен - тогава се слага на него, ако още е на екрана.
+    entry.then(src => {
+        if (!src || !el || !el.isConnected) return;
+        el.style.setProperty('--nm-mark-img', `url("${src}")`);
+    });
+    return fromTile;
+}
+
 /** Временният кадър, който показва избраната ширина, докато плъзгачът се мести. */
 function showNmInlineGhost(state, pct) {
     if (!state) return;
@@ -23288,7 +23447,9 @@ function showNmInlineGhost(state, pct) {
     const label = document.createElement('span');
     label.textContent = Math.round(Number(pct)) + '%';
     el.appendChild(label);
-    const src = nmInlineMarkThumb(state.fileName);
+    // Кадърът показва самата снимка, ако адресът ѝ е известен; иначе остава рамката по подразбиране,
+    // докато адресът дойде (затова openNmInlineMenu вече го показва и преди плъзгачът да е мърдан).
+    const src = nmInlineGhostSource(state, el);
     if (src) el.style.setProperty('--nm-mark-img', `url("${src}")`);
     el.style.width = width + 'px';
     el.style.height = height + 'px';
@@ -23337,7 +23498,13 @@ function nmInlineNaturalSize(fileName) {
 function applyNmInlineWidth(state, pct, commit) {
     const modalBody = state && state.modalBody;
     if (!modalBody) return false;
-    if (state.kind === 'preview') return applyNmInlinePreviewWidth(state, pct);
+    if (state.kind === 'preview') {
+        const resized = applyNmInlinePreviewWidth(state, pct);
+        // В режим Преглед на ЧЕРНОВА ширината трябва да оцелее записа: преписва се и в черновата,
+        // и в начертаните формати (по тях прегледът се рисува наново).
+        if (state.draft) writeNmInlineDraftWidths(state, pct);
+        return resized;
+    }
     const step = Math.max(1, Math.min(10, Math.round(Number(pct) / 10)));
     const formats = readNoteEditFormats(modalBody, 'format');
     let changed = false;
@@ -23408,6 +23575,131 @@ function rememberNmInlinePreviewWidth(modalBodyElem, fileName, pct) {
     const map = { ...(nmInlinePreviewPending.get(key) || {}) };
     map[name] = nmInlineWidthStep(pct);
     nmInlinePreviewPending.set(key, map);
+    return true;
+}
+
+/**
+ * Преписва paramint в ЧЕРНОВАТА на режим Преглед: и в previewDraftFormat (в координатите на черновата
+ * - точно това приема записът), и в dataset.format (по него прегледът се рисува наново). Пипа се само
+ * записът type=8 за този файл - по име, както при плочката.
+ */
+function writeNmInlineDraftWidths(state, pct) {
+    const body = state && state.modalBody;
+    if (!body || !state.fileName) return false;
+    const step = nmInlineWidthStep(pct);
+    let changed = false;
+    ['previewDraftFormat', 'format'].forEach(key => {
+        const current = body.dataset[key];
+        if (current === undefined) return;
+        const res = rewriteInlineImageWidths(current, state.fileName, step);
+        if (res.changed) { body.dataset[key] = res.text; changed = true; }
+    });
+    return changed;
+}
+
+/**
+ * Снимка на състоянието при отваряне на менюто - за реда „Отказ", който връща всичко както е било.
+ * В редакция се помнят paramint на местата, които менюто пипа (маркерът - своето място, плочката -
+ * всичките места на файла); в режим Преглед - ширината на всяка рамка и черновата/отложената ширина.
+ */
+function captureNmInlineOriginals(state) {
+    if (!state || !state.modalBody) return;
+    state.originalSteps = [];
+    state.originalFrames = [];
+    state.originalDraftFormats = null;
+    state.originalPending = null;
+    if (state.kind === 'preview') {
+        nmInlinePreviewFrames(state.modalBody, state.fileName).forEach(box => {
+            state.originalFrames.push({ box, pct: box.dataset.nmPct, width: box.style.width });
+        });
+        if (state.draft) {
+            state.originalDraftFormats = {
+                previewDraftFormat: state.modalBody.dataset.previewDraftFormat,
+                format: state.modalBody.dataset.format
+            };
+            return;
+        }
+        const key = nmInlineNoteKey(state.modalBody);
+        const name = inlineImageName(state.fileName) || String(state.fileName || '');
+        const map = key ? nmInlinePreviewPending.get(key) : null;
+        state.originalPending = {
+            key,
+            name,
+            had: !!(map && Object.prototype.hasOwnProperty.call(map, name)),
+            step: map ? map[name] : undefined
+        };
+        return;
+    }
+    readNoteEditFormats(state.modalBody, 'format').forEach(f => {
+        if (!f || f.type !== 8) return;
+        if (state.kind === 'marker') {
+            if (f.start !== state.start) return;
+        } else if (inlineImageName(f.paramstring) !== state.fileName) {
+            return;
+        }
+        state.originalSteps.push({ start: f.start, step: f.paramint });
+    });
+}
+
+/** „Отказ" в редакция: връща paramint на местата, които менюто е пипнало, и нищо друго в записа. */
+function cancelNmInlineEditSteps(state) {
+    const modalBody = state && state.modalBody;
+    if (!modalBody || !state.originalSteps || !state.originalSteps.length) return false;
+    const formats = readNoteEditFormats(modalBody, 'format');
+    let changed = false;
+    formats.forEach(f => {
+        if (!f || f.type !== 8) return;
+        const original = state.originalSteps.find(o => o.start === f.start);
+        if (!original) return;
+        if (Number(f.paramint) !== Number(original.step)) { f.paramint = original.step; changed = true; }
+    });
+    if (!changed) return false;
+    writeNoteEditFormats(modalBody, 'format', formats);
+    refreshNoteEditBackdrops(getNoteEditContext(document.getElementById('note-edit-textarea')));
+    return true;
+}
+
+/**
+ * „Отказ" в режим Преглед: рамките се връщат на ширината от отварянето, черновата - на форматите
+ * от отварянето, а отложената за запис ширина - точно на онова, което е било в списъка.
+ */
+function cancelNmInlinePreviewWidths(state) {
+    (state.originalFrames || []).forEach(item => {
+        const box = item.box;
+        if (!box || !box.isConnected) return;
+        if (item.pct === undefined || item.pct === '') delete box.dataset.nmPct;
+        else box.dataset.nmPct = item.pct;
+        box.style.width = item.width;
+    });
+    if (state.draft) {
+        const body = state.modalBody;
+        const originals = state.originalDraftFormats || {};
+        if (body) {
+            ['previewDraftFormat', 'format'].forEach(key => {
+                if (originals[key] === undefined) delete body.dataset[key];
+                else body.dataset[key] = originals[key];
+            });
+        }
+        return true;
+    }
+    const pending = state.originalPending;
+    if (pending && pending.key) {
+        const map = { ...(nmInlinePreviewPending.get(pending.key) || {}) };
+        if (pending.had) map[pending.name] = pending.step;
+        else delete map[pending.name];
+        if (Object.keys(map).length) nmInlinePreviewPending.set(pending.key, map);
+        else nmInlinePreviewPending.delete(pending.key);
+    }
+    return true;
+}
+
+/** Редът „Отказ": връща промените, направени от отварянето насам, и затваря менюто. */
+function cancelNmInlineMenu(state) {
+    if (state) {
+        if (state.kind === 'preview') cancelNmInlinePreviewWidths(state);
+        else cancelNmInlineEditSteps(state);
+    }
+    closeNmInlineMenu();
     return true;
 }
 
@@ -23488,6 +23780,8 @@ function toggleNmInlineMenuForPreview(box, modalBody) {
     openNmInlineMenu({
         kind: 'preview',
         modalBody,
+        // Чернова в режим Преглед: ширината се пише направо в нея, а не се отлага за затварянето.
+        draft: nmInlineDraftPreviewBody(modalBody),
         fileName: name,
         anchorEl: box,
         // Рамката носи data-nm-pct като ПРОЦЕНТИ (30), а менюто иска стойността на плъзгача.
@@ -23498,14 +23792,27 @@ function toggleNmInlineMenuForPreview(box, modalBody) {
 }
 
 /**
- * Тялото е на ЗАПИСАНА бележка в режим четене: не чернова, не нов запис, не редакция.
- * Там менюто има смисъл - има какво да се запише при затваряне.
+ * Тяло в режим Преглед на ЧЕРНОВА (бутонът „Преглед" в редактора): няма текстова кутия, а тялото на
+ * черновата (draftText) и форматите ѝ (previewDraftFormat) стоят в data-атрибути - точно двойката,
+ * която записът после приема. Само там ширината се пише направо в черновата, а не в бележката.
+ */
+function nmInlineDraftPreviewBody(body) {
+    if (!body || !body.dataset) return false;
+    if (body.dataset.isPreview !== 'true' || body.dataset.draftText === undefined) return false;
+    return !body.querySelector('textarea');
+}
+
+/**
+ * Тялото, в което щрак върху снимка отваря менюто: записана бележка в режим четене ИЛИ чернова в
+ * режим Преглед (бутонът „Преглед"). В редакция снимката се пипа през маркера, а на борда щракът
+ * върху снимка си остава отваряне на бележката.
  */
 function nmInlinePreviewBodyFor(box) {
     if (!box || !box.closest) return null;
     const body = box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]');
     if (!body) return null; // на борда щракът върху снимка си остава отваряне на бележката
     if (body.querySelector('textarea')) return null; // в редакция снимката се пипа през маркера
+    if (nmInlineDraftPreviewBody(body)) return body; // Режим Преглед на чернова: пише се в черновата
     if (body.dataset.isPreview === 'true' || body.dataset.draftText !== undefined || body.dataset.isNewNote === 'true') return null;
     return nmInlineNoteObject(body) ? body : null;
 }
@@ -23697,6 +24004,8 @@ function openNmInlineMenu(opts) {
         strip: options.strip || modalBody.querySelector('.nm-attach-strip'),
         // В режим Преглед няма редактор - и не бива да се хваща текстовата кутия на ДРУГ прозорец.
         field: options.kind === 'preview' ? null : (options.field || document.getElementById('note-edit-textarea')),
+        // Режим Преглед на ЧЕРНОВА (окото в редактора): ширината се пише в черновата, не в бележката.
+        draft: !!options.draft,
         fileName: String(options.fileName || ''),
         start: Number.isFinite(Number(options.start)) ? Number(options.start) : null,
         end: Number.isFinite(Number(options.end)) ? Number(options.end) : null,
@@ -23706,8 +24015,11 @@ function openNmInlineMenu(opts) {
         tileEl: options.tileEl || null,
         anchorRect: (anchorEl && anchorEl.getBoundingClientRect) ? anchorEl.getBoundingClientRect() : modalBody.getBoundingClientRect(),
         value: Math.max(10, Math.min(100, Math.round(Number(options.value) || 30))),
+        // Снимката на състоянието за реда „Отказ" - ширините от мига на отварянето.
+        originalSteps: [], originalFrames: [], originalDraftFormats: null, originalPending: null,
         el: null, ghost: null
     };
+    captureNmInlineOriginals(state);
     const el = document.createElement('div');
     el.className = 'nm-inline-menu';
     el.dataset.nmMenu = state.kind;
@@ -23784,7 +24096,8 @@ function openNmInlineMenu(opts) {
         if (state.kind === 'preview') {
             // В режим Преглед снимката се сменя ВЕДНАГА - кадърът е само за маркера в текста.
             applyNmInlineWidth(state, pct, false);
-            rememberNmInlinePreviewWidth(modalBody, state.fileName, pct);
+            // В черновата промяната вече е в нея; за записана бележка се помни за записа при затваряне.
+            if (!state.draft) rememberNmInlinePreviewWidth(modalBody, state.fileName, pct);
             return;
         }
         showNmInlineGhost(state, pct);
@@ -23793,7 +24106,7 @@ function openNmInlineMenu(opts) {
     range.addEventListener('change', () => {
         if (state.kind === 'preview') {
             applyNmInlineWidth(state, state.value, false);
-            rememberNmInlinePreviewWidth(modalBody, state.fileName, state.value);
+            if (!state.draft) rememberNmInlinePreviewWidth(modalBody, state.fileName, state.value);
             return;
         }
         showNmInlineGhost(state, null);
@@ -23849,20 +24162,43 @@ function openNmInlineMenu(opts) {
             if (state.kind !== 'preview' && applyNmInlineWidth(state, state.value, false)) {
                 commitNoteEditUndo(modalBody);
             }
-            if (state.kind === 'preview') rememberNmInlinePreviewWidth(modalBody, state.fileName, state.value);
+            if (state.kind === 'preview') {
+                if (!state.draft) rememberNmInlinePreviewWidth(modalBody, state.fileName, state.value);
+            }
             closeNmInlineMenu();
         });
         el.appendChild(update);
     }
 
+    // 5. „Отказ" - последният ред във всяко от двете менюта (и в това от режим Преглед): връща
+    //    ширината от мига на отварянето и затваря. Червеното е запазено за „Махни", затова редът е
+    //    неутрален (виж .nm-inline-menu-row.is-cancel в style.css).
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'nm-inline-menu-row is-cancel';
+    cancel.dataset.nmMenuAction = 'cancel';
+    cancel.textContent = _('nmInlineCancel') || 'Отказ';
+    cancel.title = _('nmInlineCancelTitle') || 'Връща ширината от отварянето на менюто';
+    cancel.addEventListener('click', () => cancelNmInlineMenu(state));
+    el.appendChild(cancel);
+
     document.body.appendChild(el);
     nmInlineMenuState = state;
     positionNmInlineMenu(state);
+    // От плочката менюто се отваря с ширината на файла (30%, ако още не е в текста) и с НЕГОВАТА
+    // снимка - иначе собственикът вижда празна рамка, докато не мръдне плъзгача. От маркера кадърът
+    // се показва едва при плъзгане, защото там редът под менюто е текстът на бележката.
+    if (state.kind === 'tile') showNmInlineGhost(state, state.value);
     if (state.fileName) {
         const wanted = state.fileName;
         nmInlineNaturalSize(wanted).then(size => {
             if (!size || !nmInlineMenuState || nmInlineMenuState.fileName !== wanted) return;
             nmInlineMenuState.natural = size;
+            // Кадърът от плочката вече стои на екрана: щом естествената ширина дойде, той застава в
+            // ТОЧНИЯ размер, с който снимката ще влезе в бележката (иначе първият кадър е по колоната).
+            if (nmInlineMenuState.kind === 'tile' && nmInlineMenuState.ghost) {
+                showNmInlineGhost(nmInlineMenuState, nmInlineMenuState.value);
+            }
         });
     }
 

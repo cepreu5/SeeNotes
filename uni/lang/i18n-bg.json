@@ -564,6 +564,8 @@
     "nmInlineRemove": "Махни",
     "nmInlineUpdate": "Обнови",
     "nmInlineUpdateTitle": "Прилага ширината и затваря менюто",
+    "nmInlineCancel": "Отказ",
+    "nmInlineCancelTitle": "Връща ширината от отварянето на менюто",
     "nmAddPhoto": "Добави снимка",
     "nmInlineRefusedCode": "Тук снимка не може да се сложи"
 }

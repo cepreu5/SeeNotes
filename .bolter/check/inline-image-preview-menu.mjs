@@ -238,9 +238,9 @@ await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), nu
 s = await frameState();
 ok(s.menu && s.menu.kind === 'preview', `щрак върху снимката в режим Преглед отваря менюто (${s.menu && s.menu.kind})`, s.menu);
 ok(s.menus === 1, `отворило се е едно меню (${s.menus})`);
-ok(s.menu && s.menu.actions.join(',') === 'update',
-  `в това меню има само „Обнови" (${s.menu && s.menu.actions})`, s.menu && s.menu.labels);
-ok(s.menu && s.menu.labels.join('|') === 'Обнови', `редът е „Обнови" на български (${s.menu && s.menu.labels})`);
+ok(s.menu && s.menu.actions.join(',') === 'update,cancel',
+  `в това меню има само „Обнови" и „Отказ" (${s.menu && s.menu.actions})`, s.menu && s.menu.labels);
+ok(s.menu && s.menu.labels.join('|') === 'Обнови|Отказ', `редовете са „Обнови" и „Отказ" на български (${s.menu && s.menu.labels})`);
 ok(s.menu && !['preview', 'remove', 'insert'].some(a => s.menu.actions.includes(a)),
   `няма „Преглед", „Махни" и „Сложи в текста" (${s.menu && s.menu.actions})`);
 ok(s.menu && s.menu.range === '30' && s.menu.values.join('|') === '30%|30%',
@@ -412,7 +412,316 @@ const cbState = await page.evaluate(async () => {
 ok(cbState.missing !== true && cbState.after === true && cbState.toggledInText,
   `кликът върху отметка в текста работи както досега, [ ] -> [x] (${JSON.stringify(cbState)})`, cbState);
 
-// ======================= 9. Никакви грешки =======================
+// ======================= 9. Режим Преглед (окото) - снимката отваря менюто си =======================
+// Собственикът: „Режим Преглед: клик на снимката в текста все още я отваря, а не отваря менюто за
+// промяна". Минава се по истинския път: редакция -> окото („Преглед") -> щрак върху снимката.
+// Тук ширината се пише в ЧЕРНОВАТА (previewDraftFormat + format) и оцелява записа.
+const DRAFT_GDID = 'G_DRAFT';
+const DRAFT_ID = 'draft-1';
+const DRAFT_RAW = 'Чернова|' + SENTENCE;
+const DRAFT_ATTACH = [{ datemod: 1, description: '', gdid: 'MD1', id: 31, path: SMALL, pathGD: SMALL_ID, type: 1 }];
+
+// Прочита на един запис ОТ ИЗТОЧНИКА (IndexedDB) по неговия ключ.
+const dbSpansFor = (gdid) => page.evaluate(async ({ gdid }) => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open('NotesDB'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const rows = await new Promise(res => { const tx = db.transaction(['notes'], 'readonly'); const rq = tx.objectStore('notes').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => res([]); });
+  db.close();
+  const hit = rows.find(r => String(r.gdid) === String(gdid));
+  if (!hit) return { missing: true, rows: rows.length };
+  const spans = String(hit.text_span || '').split('|').filter(Boolean).map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+  return {
+    paramints: spans.filter(s => s.type === 8).map(s => s.paramint),
+    names: spans.filter(s => s.type === 8).map(s => String(s.paramstring || '').split('/').pop()),
+    version: hit.version, textSpan: hit.text_span, notetxt: hit.notetxt,
+  };
+}, { gdid });
+
+// Чака се записаният paramint в източника (записът върви във фонов режим).
+const waitDbParamintFor = async (gdid, want, ms = 8000) => {
+  const deadline = Date.now() + ms;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = await dbSpansFor(gdid);
+    if (last && last.paramints && last.paramints.includes(want)) return last;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return last;
+};
+
+const draftOpened = await page.evaluate(async ({ raw, format, gdid, id, attach }) => {
+  useArhDb = false; useLocalFolder = false; useGoogleDb = true; useIndexedDb = true;
+  dbSourceGlobal = null; dirHandle = null; isOffline = false;
+  authToken = { access_token: 'tok', issued_at: Date.now(), expires_in: 3600 };
+  if (!mediaData.some(m => m.noteid === gdid)) mediaData.push(...attach.map(a => ({ ...a, noteid: gdid })));
+  if (!allNotesData.some(n => String(n.gdid) === String(gdid))) {
+    allNotesData.push({
+      alarm_type: -1, calendarDate: 0, color: 0, date: Date.now(), datemod: Date.now(), eventId: 0,
+      gdid, id, notetxt: raw, numord: 905, sellist: 0, status: 0, text_span: format,
+      title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, uiState: {}, version: 40,
+    });
+  }
+  showModal({ raw, format, gdid, id });
+  const before = document.getElementById('modal-body');
+  const beforeBox = before.closest('.modal-content-box');
+  beforeBox.style.height = '660px';
+  beforeBox.style.maxHeight = '660px';
+  enableNoteEditing(before);
+  const editorBody = document.getElementById('modal-body');
+  const editorImages = (editorBody.dataset.format || '').split('|').filter(Boolean).length;
+  // Окото: истинският бутон „Преглед" в редактора.
+  const eye = document.getElementById('note-preview-btn');
+  const hadEye = !!eye;
+  eye.click();
+  const preview = document.getElementById('modal-body');
+  const box = preview.closest('.modal-content-box');
+  box.style.height = '660px';
+  box.style.maxHeight = '660px';
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const b = preview.querySelector('.nm-inline-img[data-nm-view="note"]');
+    if (b && b.dataset.nmState === 'ready' && b.querySelector('img')) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  // Прозорецът се отваря със смаляване (scale 0.7 -> 1): геометрията се мери само на мащаб 1.
+  while (Date.now() < deadline) {
+    const scale = box.getBoundingClientRect().width / (box.offsetWidth || 1);
+    if (Math.abs(scale - 1) < 0.002) break;
+    await new Promise(r => requestAnimationFrame(r));
+  }
+  await new Promise(r => setTimeout(r, 60));
+  const frame = preview.querySelector('.nm-inline-img[data-nm-view="note"]');
+  const r = frame.getBoundingClientRect();
+  return {
+    hadEye,
+    editorImages,
+    isPreview: preview.dataset.isPreview,
+    hasDraft: preview.dataset.draftText !== undefined,
+    hasEditor: !!preview.querySelector('textarea'),
+    previewDraftFormat: preview.dataset.previewDraftFormat,
+    renderedFormat: preview.dataset.format,
+    frame: { px: Math.round(r.width), pct: frame.dataset.nmPct, cx: Math.round(r.left + r.width / 2), cy: Math.round(r.top + r.height / 2) },
+    windows: (typeof noteWindows !== 'undefined' ? noteWindows.filter(w => w.open).length : null),
+  };
+}, { raw: DRAFT_RAW, format: FORMAT, gdid: DRAFT_GDID, id: DRAFT_ID, attach: DRAFT_ATTACH });
+ok(draftOpened.isPreview === 'true' && draftOpened.hasDraft && draftOpened.hasEditor === false,
+  `окото води в Режим Преглед на ЧЕРНОВАТА: isPreview, draftText и без текстова кутия (${JSON.stringify({ isPreview: draftOpened.isPreview, hasDraft: draftOpened.hasDraft, hasEditor: draftOpened.hasEditor })})`, draftOpened);
+ok(draftOpened.frame.px === Math.round(WIDE * 30 / 100) && draftOpened.frame.pct === '30',
+  `снимката в прегледа е на 30% (${draftOpened.frame.px}px)`, draftOpened);
+if (SHOTS) await page.screenshot({ path: `${SHOTS}-4-draft-preview.png` });
+
+// Щрак върху снимката: отваря се менюто, а НЕ файлът.
+await page.mouse.click(draftOpened.frame.cx, draftOpened.frame.cy);
+await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
+const draftClick = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const frame = body.querySelector('.nm-inline-img[data-nm-view="note"]');
+  const menu = document.querySelector('.nm-inline-menu');
+  const overlay = document.querySelector('.image-preview-overlay');
+  const r = frame ? frame.getBoundingClientRect() : null;
+  return {
+    menu: menu ? menu.dataset.nmMenu : null,
+    labels: menu ? [...menu.querySelectorAll('.nm-inline-menu-row')].map(b => b.textContent.trim()) : null,
+    actions: menu ? [...menu.querySelectorAll('[data-nm-menu-action]')].map(b => b.dataset.nmMenuAction) : null,
+    range: menu ? menu.querySelector('.nm-inline-menu-range').value : null,
+    values: menu ? [...menu.querySelectorAll('[data-nm-menu-value]')].map(v => v.textContent.trim()) : null,
+    overlay: overlay ? (overlay.querySelector('img') || {}).src || true : null,
+    px: r ? Math.round(r.width) : null,
+    isPreview: body.dataset.isPreview,
+    stillPreview: !!body.querySelector('.nm-inline-img[data-nm-view="note"]'),
+    menus: document.querySelectorAll('.nm-inline-menu').length,
+    // Форматите от мига на отварянето - с тях се сравнява каквото върне „Отказ".
+    draftFormatOpen: body.dataset.previewDraftFormat,
+    renderedFormatOpen: body.dataset.format,
+  };
+});
+ok(draftClick.menu === 'preview' && draftClick.menus === 1,
+  `щрак върху снимката в Режим Преглед отваря МЕНЮТО, не файла (меню ${draftClick.menu})`, draftClick);
+ok(!draftClick.overlay && draftClick.stillPreview,
+  `файлът не се отваря - няма преглед на файла, снимката си стои в бележката (${JSON.stringify(draftClick.overlay)})`, draftClick);
+ok(draftClick.actions && draftClick.actions.join(',') === 'update,cancel',
+  `менюто е само с „Обнови" и „Отказ" (${draftClick.actions})`, draftClick);
+ok(draftClick.labels && draftClick.labels.join('|') === 'Обнови|Отказ',
+  `редовете са с думите от i18n (${draftClick.labels})`, draftClick);
+ok(draftClick.range === '30' && draftClick.values.join('|') === '30%|30%',
+  `плъзгачът отваря на сегашната ширина (${draftClick.values})`, draftClick);
+if (SHOTS) await page.screenshot({ path: `${SHOTS}-5-draft-menu.png` });
+
+// Второ щракване върху СЪЩАТА снимка затваря менюто (същият ход като при маркера в текста).
+await page.mouse.click(draftOpened.frame.cx, draftOpened.frame.cy);
+await page.waitForFunction(() => !document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
+const draftToggle = await page.evaluate(() => {
+  const body = document.getElementById('modal-body');
+  const frame = body.querySelector('.nm-inline-img[data-nm-view="note"]');
+  return { menu: !!document.querySelector('.nm-inline-menu'), frame: !!frame, px: frame ? Math.round(frame.getBoundingClientRect().width) : null };
+});
+ok(draftToggle.menu === false && draftToggle.frame === true && draftToggle.px === Math.round(WIDE * 30 / 100),
+  `второ щракване върху същата снимка затваря менюто, а снимката си стои (${draftToggle.px}px)`, draftToggle);
+await page.mouse.click(draftOpened.frame.cx, draftOpened.frame.cy);
+await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
+const reopened = await page.evaluate(() => {
+  const menu = document.querySelector('.nm-inline-menu');
+  return { menu: menu ? menu.dataset.nmMenu : null, range: menu ? menu.querySelector('.nm-inline-menu-range').value : null };
+});
+ok(reopened.menu === 'preview' && reopened.range === '30',
+  `и третото щракване го отваря пак на сегашната ширина (${reopened.range}%)`, reopened);
+
+// Плъзгане до 70%: рамката расте ВЕДНАГА, а черновата (и начертаните формати) носят новия paramint.
+const draftSlid = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const pctOf = (key) => (body.dataset[key] || '').split('|').filter(Boolean).map(x => JSON.parse(x)).filter(f => f.type === 8).map(f => f.paramint);
+  const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+  range.value = '70';
+  range.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  range.dispatchEvent(new Event('change', { bubbles: true }));
+  const frame = body.querySelector('.nm-inline-img[data-nm-view="note"]');
+  return {
+    px: Math.round(frame.getBoundingClientRect().width),
+    pct: frame.dataset.nmPct,
+    draft: pctOf('previewDraftFormat'),
+    rendered: pctOf('format'),
+    values: [...document.querySelectorAll('.nm-inline-menu [data-nm-menu-value]')].map(v => v.textContent.trim()),
+  };
+});
+ok(draftSlid.px === Math.round(WIDE * 70 / 100) && draftSlid.pct === '70',
+  `в прегледа снимката расте веднага: 70% от ${WIDE}px = ${Math.round(WIDE * 0.7)}px (${draftSlid.px}px)`, draftSlid);
+ok(draftSlid.draft.join(',') === '7' && draftSlid.rendered.join(',') === '7',
+  `и новият paramint влиза и в черновата, и в начертаните формати (чернова ${draftSlid.draft}, преглед ${draftSlid.rendered})`, draftSlid);
+
+// „Отказ" в това меню връща ширината от отварянето - и на екрана, и в черновата.
+const draftCancel = await page.evaluate(async ({ openDraft, openFormat }) => {
+  const body = document.getElementById('modal-body');
+  const pctOf = (key) => (body.dataset[key] || '').split('|').filter(Boolean).map(x => JSON.parse(x)).filter(f => f.type === 8).map(f => f.paramint);
+  document.querySelector('.nm-inline-menu [data-nm-menu-action="cancel"]').click();
+  await new Promise(r => setTimeout(r, 60));
+  const frame = body.querySelector('.nm-inline-img[data-nm-view="note"]');
+  return {
+    px: Math.round(frame.getBoundingClientRect().width),
+    pct: frame.dataset.nmPct,
+    draft: body.dataset.previewDraftFormat,
+    format: body.dataset.format,
+    draftPcts: pctOf('previewDraftFormat'),
+    menu: !!document.querySelector('.nm-inline-menu'),
+    sameAsBefore: body.dataset.previewDraftFormat === openDraft && body.dataset.format === openFormat,
+  };
+}, { openDraft: draftClick.draftFormatOpen, openFormat: draftClick.renderedFormatOpen });
+ok(draftCancel.menu === false, '„Отказ" затваря менюто и в Режим Преглед');
+ok(draftCancel.px === Math.round(WIDE * 30 / 100) && draftCancel.pct === '30',
+  `„Отказ" връща ширината на екрана: пак 30% (${draftCancel.px}px)`, draftCancel);
+ok(draftCancel.sameAsBefore && draftCancel.draftPcts.join(',') === '3',
+  `и черновата се връща точно каквато беше - paramint 3 (${draftCancel.draftPcts})`, draftCancel);
+if (SHOTS) await page.screenshot({ path: `${SHOTS}-6-draft-cancelled.png` });
+
+// Промяна, оставена без „Отказ", оцелява ЗАПИСА на черновата.
+const draftSaved = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const frame = body.querySelector('.nm-inline-img[data-nm-view="note"]');
+  const r = frame.getBoundingClientRect();
+  return { cx: Math.round(r.left + r.width / 2), cy: Math.round(r.top + r.height / 2) };
+});
+await page.mouse.click(draftSaved.cx, draftSaved.cy);
+await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
+const beforeSave = await dbSpansFor(DRAFT_GDID);
+const saved = await page.evaluate(async () => {
+  const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+  range.value = '60';
+  range.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // „Обнови" прилага и затваря; после записът е истинският бутон на дъното.
+  document.querySelector('.nm-inline-menu [data-nm-menu-action="update"]').click();
+  await new Promise(r => setTimeout(r, 60));
+  const body = document.getElementById('modal-body');
+  const frame = body.querySelector('.nm-inline-img[data-nm-view="note"]');
+  const before = {
+    px: Math.round(frame.getBoundingClientRect().width),
+    draft: (body.dataset.previewDraftFormat || '').split('|').filter(Boolean).map(x => JSON.parse(x)).filter(f => f.type === 8).map(f => f.paramint),
+  };
+  const saveBtn = document.getElementById('note-save-btn');
+  const hadSave = !!saveBtn && getComputedStyle(saveBtn).display !== 'none';
+  saveBtn.click();
+  return { hadSave, before };
+});
+ok(saved.hadSave && saved.before.px === Math.round(WIDE * 60 / 100),
+  `в черновата ширината е 60% преди записа (${saved.before.px}px)`, saved);
+const afterSave = await waitDbParamintFor(DRAFT_GDID, 6);
+ok(afterSave && afterSave.paramints && afterSave.paramints.includes(6),
+  `след ЗАПИС на черновата бележката в източника носи новия paramint 6 (${JSON.stringify(afterSave && afterSave.paramints)})`, { beforeSave, afterSave });
+ok(afterSave && afterSave.names && afterSave.names.includes(SMALL),
+  `записът носи името на файла, значи е същото място (${afterSave && afterSave.names})`, afterSave);
+ok(afterSave && afterSave.version > ((beforeSave && beforeSave.version) || 0),
+  `записът е вдигнал version (${beforeSave && beforeSave.version} -> ${afterSave && afterSave.version})`, { beforeSave, afterSave });
+
+// ======================= 10. „Отказ" в режим четене не оставя нищо за запис =======================
+// Записана бележка в режим четене: плъзгането се отлага (nmInlinePreviewPending) и се записва при
+// ЗАТВАРЯНЕ. „Отказ" трябва да махне точно това отлагане - иначе затварянето би записало отменената
+// ширина. Бележката вече е в източника с paramint 10 от раздел 7.
+const readDbBefore = await dbSpansFor(GDID);
+ok(readDbBefore && readDbBefore.paramints && readDbBefore.paramints.includes(10),
+  `преди проверката източникът носи paramint 10 (${JSON.stringify(readDbBefore && readDbBefore.paramints)})`, readDbBefore);
+await openNote({ raw: RAW, format: readDbBefore.textSpan, gdid: GDID, id: NID });
+const readFrame = await frameState();
+ok(!readFrame.missing && readFrame.pct === '100' && readFrame.px === WIDE,
+  `бележката се отваря в режим четене със записаната ширина (${readFrame.px}px, ${readFrame.pct}%)`, readFrame);
+
+await page.mouse.click(readFrame.cx, readFrame.cy);
+await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
+const readCancel = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const frame = body.querySelector('.nm-inline-img[data-nm-view="note"]');
+  const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+  range.value = '50';
+  range.dispatchEvent(new Event('input', { bubbles: true }));
+  range.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const slid = {
+    px: Math.round(frame.getBoundingClientRect().width),
+    pct: frame.dataset.nmPct,
+    pending: nmInlinePreviewPending.size,
+    pendingSteps: [...nmInlinePreviewPending.values()].map(m => Object.values(m).join(',')),
+  };
+  document.querySelector('.nm-inline-menu [data-nm-menu-action="cancel"]').click();
+  await new Promise(r => setTimeout(r, 60));
+  return {
+    slid,
+    after: {
+      px: Math.round(frame.getBoundingClientRect().width),
+      pct: frame.dataset.nmPct,
+      pending: nmInlinePreviewPending.size,
+      style: frame.style.width,
+      menu: !!document.querySelector('.nm-inline-menu'),
+    },
+  };
+});
+ok(readCancel.slid.px === Math.round(WIDE * 50 / 100) && readCancel.slid.pending === 1,
+  `плъзгането сменя рамката веднага и се отлага за запис (${readCancel.slid.px}px, отложени ${readCancel.slid.pending})`, readCancel);
+ok(readCancel.after.px === WIDE && readCancel.after.pct === '100' && readCancel.after.style === WIDE + 'px',
+  `„Отказ" връща рамката на записаната ширина (${readCancel.after.px}px, ${readCancel.after.style})`, readCancel);
+ok(readCancel.after.pending === 0 && readCancel.after.menu === false,
+  `и маха отлагането за запис, а менюто се затваря (отложени ${readCancel.after.pending})`, readCancel);
+
+// Затваряне на прозореца: ако отменената ширина беше останала отложена, тук щеше да се запише.
+const closedAfterCancel = await page.evaluate(async () => {
+  const win = (typeof activeNoteWindow !== 'undefined' && activeNoteWindow) ? activeNoteWindow : null;
+  const el = win ? win.el : document.getElementById('content-modal');
+  const btn = el.querySelector('.modal-close');
+  if (btn) btn.click(); else el.classList.remove('visible');
+  const deadline = Date.now() + 6000;
+  while (Date.now() < deadline) {
+    const stillOpen = win ? win.open : el.classList.contains('visible');
+    if (!stillOpen) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return { open: win ? win.open : el.classList.contains('visible') };
+});
+ok(closedAfterCancel.open === false, 'модалът се затваря след „Отказ"', closedAfterCancel);
+await new Promise(r => setTimeout(r, 400));
+const readDbAfter = await dbSpansFor(GDID);
+ok(readDbAfter && readDbAfter.paramints && readDbAfter.paramints.join(',') === '10',
+  `в източника остава старата ширина - отмененото НЕ се записва (${JSON.stringify(readDbAfter && readDbAfter.paramints)})`, { readDbBefore, readDbAfter });
+ok(readDbAfter && readDbAfter.version === readDbBefore.version,
+  `и version не е вдигнат, значи няма запис изобщо (${readDbBefore && readDbBefore.version} -> ${readDbAfter && readDbAfter.version})`, { readDbBefore, readDbAfter });
+
+// ======================= 11. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
 if (fails) {
   console.log('Drive заявки: ' + JSON.stringify(DRIVE.list.slice(0, 10)));

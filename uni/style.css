@@ -5042,6 +5042,17 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .nm-inline-menu-row.is-remove:hover { background: rgba(180, 83, 74, .14); }
 
+/* Отказ: връща ширината от отварянето на менюто. Неутрален, за да не се бърка с „Махни", което
+   маха снимката от текста (червеното е запазено за него). */
+.nm-inline-menu-row.is-cancel {
+    border-color: rgba(0, 0, 0, .2);
+    background: #f1efea;
+    color: #4a4e54;
+    font-weight: 600;
+}
+
+.nm-inline-menu-row.is-cancel:hover { background: #e8e5dd; }
+
 .nm-inline-menu-row:disabled,
 .nm-inline-menu-row.is-disabled {
     opacity: .55;

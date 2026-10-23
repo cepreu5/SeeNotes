@@ -38,8 +38,10 @@ const DATA_FOLDER = 'FOLDER_MULTINOTES_DATA';
 const BY_NAME = {
   'Wallet.jpg': [{ id: 'WALLET_NEW', name: 'Wallet.jpg', modifiedTime: '2026-10-20T09:00:00Z' }],
   'file_0000.png': [{ id: 'FILE0000', name: 'file_0000.png', modifiedTime: '2026-10-19T09:00:00Z' }],
+  // Файл, който НЕ е в текста на бележката: менюто от плочката трябва да го покаже още първия път.
+  'nova.jpg': [{ id: 'NOVA_NEW', name: 'nova.jpg', modifiedTime: '2026-10-21T09:00:00Z' }],
 };
-const THUMB = { WALLET_NEW: 's220', FILE0000: 's220' };
+const THUMB = { WALLET_NEW: 's220', FILE0000: 's220', NOVA_NEW: 's220' };
 
 const browser = await chromium.launch({ args: ['--num-raster-threads=4'] });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
@@ -65,8 +67,9 @@ await ctx.route(/^https?:\/\/(?!localhost)/, route => {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: BY_NAME[name] || [] }) });
   }
   if (url.startsWith('https://thumb.invalid/')) {
-    // Размерът на самата снимка: Wallet.jpg е голяма (4000px), file_0000.png е малка (300px).
-    const size = url.includes('FILE0000') ? [300, 225] : [4000, 3000];
+    // Размерът на самата снимка: Wallet.jpg е голяма (4000px), малките (file_0000.png, nova.jpg)
+    // са 300px - така и 30%, и 60% се побират в колоната и се вижда точната стойност.
+    const size = /FILE0000|NOVA_NEW/.test(url) ? [300, 225] : [4000, 3000];
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size[0]}" height="${size[1]}"><rect width="${size[0]}" height="${size[1]}" fill="#c6d2e4"/></svg>`;
     return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg });
   }
@@ -276,12 +279,12 @@ await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), nu
 s = await state();
 ok(s.menu && s.menu.kind === 'tile', `щрак върху плочка отваря менюто (${s.menu && s.menu.kind})`);
 ok(s.menuCount === 1, `отворило се е едно меню (${s.menuCount})`);
-ok(s.menu && s.menu.actions.join(',') === 'preview,insert', `редовете от плочка са Преглед и „Сложи в текста" (${s.menu && s.menu.actions})`, s.menu && s.menu.labels);
+ok(s.menu && s.menu.actions.join(',') === 'preview,insert,cancel', `редовете от плочка са Преглед, „Сложи в текста" и „Отказ" (${s.menu && s.menu.actions})`, s.menu && s.menu.labels);
 ok(s.menu && !s.menu.actions.includes('update'),
   `в менюто от плочката НЯМА „Обнови" - там действието е „Сложи в текста" (${s.menu && s.menu.actions})`);
 ok(s.menu && s.menu.actions[0] === 'preview' && s.menu.labels[0] === 'Преглед',
   `първият ред е „Преглед" (${s.menu && s.menu.labels.join(' | ')})`);
-ok(s.menu && s.menu.labels.join('|') === 'Преглед|Сложи в текста', `редовете от плочката са с думите от плана (${s.menu && s.menu.labels})`);
+ok(s.menu && s.menu.labels.join('|') === 'Преглед|Сложи в текста|Отказ', `редовете от плочката са с думите от плана, последният е „Отказ" (${s.menu && s.menu.labels})`);
 ok(s.menu && s.menu.width <= 300, `менюто не е по-широко от 300px (${s.menu && s.menu.width})`);
 ok(s.menu && s.menu.range && s.menu.range.min === '10' && s.menu.range.max === '100' && s.menu.range.step === '10',
   `плъзгачът е 10..100 стъпка 10 (${s.menu && JSON.stringify(s.menu.range)})`);
@@ -514,11 +517,11 @@ await page.mouse.click(markers.cx, markers.cy);
 await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
 s = await state();
 ok(s.menu && s.menu.kind === 'marker', `щрак върху маркера отваря менюто (${s.menu && s.menu.kind})`, hit);
-ok(s.menu && s.menu.actions.join(',') === 'remove,update', `редовете от маркера са „Махни" и „Обнови" (${s.menu && s.menu.actions})`, s.menu && s.menu.labels);
-ok(s.menu && s.menu.labels.join('|') === 'Махни|Обнови', `редовете от маркера са „Махни" и „Обнови" (${s.menu && s.menu.labels})`);
+ok(s.menu && s.menu.actions.join(',') === 'remove,update,cancel', `редовете от маркера са „Махни", „Обнови" и „Отказ" (${s.menu && s.menu.actions})`, s.menu && s.menu.labels);
+ok(s.menu && s.menu.labels.join('|') === 'Махни|Обнови|Отказ', `редовете от маркера са с думите от плана, последният е „Отказ" (${s.menu && s.menu.labels})`);
 ok(s.menu && !s.menu.actions.includes('preview'), `в менюто от маркера НЯМА „Преглед" (${s.menu && s.menu.actions})`);
-ok(s.menu && s.menu.actions[s.menu.actions.length - 1] === 'update',
-  `последният ред е „Обнови" (${s.menu && s.menu.actions})`);
+ok(s.menu && s.menu.actions[s.menu.actions.length - 2] === 'update' && s.menu.actions[s.menu.actions.length - 1] === 'cancel',
+  `„Обнови" е предпоследният ред, а последният е „Отказ" (${s.menu && s.menu.actions})`);
 ok(s.menu && s.menu.actions.includes('update') && s.menu.labels.includes('Обнови'),
   `редът „Обнови" е с думата от i18n (${s.menu && s.menu.labels})`);
 ok(s.menu && s.menu.values.join('|') === '30%|30%', `менюто от маркера показва ширината на това място (${s.menu && s.menu.values})`);
@@ -528,8 +531,8 @@ ok(s.menu && s.menu.centers.every(c => c.justify === 'center' && c.align === 'ce
   `и редовете от маркера са с центриран текст (${s.menu && JSON.stringify(s.menu.centers.map(c => c.textMid - c.rowMid))})`);
 ok(s.menu && (s.menu.bottom <= markers.cy - 4 || s.menu.top >= markers.cy + 4),
   `менюто излиза под/над маркера, без да го закрива (меню ${s.menu && s.menu.top}..${s.menu && s.menu.bottom}, маркер ${markers.cy})`, s.menu);
-ok(s.menu && s.menu.centers && s.menu.centers.length === 2,
-  `от маркера са два реда (${s.menu && s.menu.centers.length})`);
+ok(s.menu && s.menu.centers && s.menu.centers.length === 3,
+  `от маркера са три реда - „Махни", „Обнови" и „Отказ" (${s.menu && s.menu.centers.length})`);
 if (SHOTS) await page.screenshot({ path: `${SHOTS}-3-marker-menu.png` });
 
 // От маркера се пипа само това място.
@@ -630,8 +633,8 @@ ok(!narrowMenu.missing && narrowMenu.fitsViewport && narrowMenu.withinColumn,
   `менюто не излиза нито извън бележката, нито извън екрана (меню ${narrowMenu.left}..${narrowMenu.right}, колона ${narrowMenu.column})`, { narrowMenu, narrowHit });
 ok(!narrowMenu.missing && narrowMenu.note && /Images|файл/i.test(narrowMenu.note),
   `при маркер без файл менюто казва защо (${narrowMenu.note})`, narrowMenu);
-ok(!narrowMenu.missing && narrowMenu.actions.join(',') === 'remove,update',
-  `и там редовете са „Махни" и „Обнови", без „Преглед" (${narrowMenu.actions})`);
+ok(!narrowMenu.missing && narrowMenu.actions.join(',') === 'remove,update,cancel',
+  `и там редовете са „Махни", „Обнови" и „Отказ", без „Преглед" (${narrowMenu.actions})`);
 const removedMissing = await page.evaluate(() => {
   const before = (document.getElementById('modal-body').dataset.format || '').split('|').filter(Boolean).length;
   document.querySelector('.nm-inline-menu [data-nm-menu-action="remove"]').click();
@@ -1068,8 +1071,8 @@ const markerMenu = await page.evaluate(() => {
     range: m ? m.querySelector('.nm-inline-menu-range').value : null,
   };
 });
-ok(markerMenu.kind === 'marker' && markerMenu.actions && markerMenu.actions.join(',') === 'remove,update',
-  `под маркера редовете са „Махни" и „Обнови" (${JSON.stringify(markerMenu)})`, markerMenu);
+ok(markerMenu.kind === 'marker' && markerMenu.actions && markerMenu.actions.join(',') === 'remove,update,cancel',
+  `под маркера редовете са „Махни", „Обнови" и „Отказ" (${JSON.stringify(markerMenu)})`, markerMenu);
 ok(markerMenu.values && markerMenu.values.join('|') === '40%|40%' && markerMenu.range === '40',
   `менюто отваря с ширината на това място (${markerMenu.values})`, markerMenu);
 // Само щрак върху „Обнови" (плъзгачът не е мърдан): менюто се затваря, ширината не се пипа,
@@ -1120,7 +1123,255 @@ ok(applied.places.length === 2 && applied.places.filter(p => p.start === openedM
 ok(applied.undoAfter === applied.undoBefore,
   `„Обнови" не вдига второ стъпало: пускането на плъзгача вече го е вдигнало (${applied.undoBefore} -> ${applied.undoAfter})`, applied);
 
-// ======================= 13. Никакви грешки =======================
+// ======================= 13. Менюто от плочката показва снимката още първия път =======================
+// Собственикът: „при клик на икона в лентата се отваря менюто без нищо повече, ако мръднем
+// процентите - показва се празна рамка". Затова се проверява файл, който още НЕ е в текста на
+// бележката: маркерите не са го питали, значи миниатюрата му е студена - точно случаят от оплакването.
+const TILE_NOTE = 'Само текст, в който още няма снимка';
+const TILE_ATTACH = [
+  { datemod: 1, description: '', gdid: 'MT1', id: 71, path: 'Wallet.jpg', pathGD: 'WALLET_NEW', type: 1 },
+  { datemod: 1, description: '', gdid: 'MT2', id: 72, path: 'nova.jpg', pathGD: 'NOVA_NEW', type: 1 },
+];
+const tileOpened = await page.evaluate(async ({ raw, attach }) => {
+  if (!mediaData.some(m => m.noteid === 'G_TILE')) mediaData.push(...attach.map(a => ({ ...a, noteid: 'G_TILE' })));
+  showModal({ raw, format: '', gdid: 'G_TILE', id: 'tile-1' });
+  const body = document.getElementById('modal-body');
+  if (!allNotesData.some(n => String(n.gdid) === 'G_TILE')) {
+    allNotesData.push({
+      alarm_type: -1, calendarDate: 0, color: 0, date: Date.now(), datemod: Date.now(), eventId: 0,
+      gdid: 'G_TILE', id: 'tile-1', notetxt: raw, numord: 904, sellist: 0, status: 0,
+      text_span: '', title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, uiState: {}, version: 1,
+    });
+  }
+  enableNoteEditing(body);
+  const box = body.closest('.modal-content-box');
+  box.style.height = '660px';
+  box.style.maxHeight = '660px';
+  await new Promise(r => setTimeout(() => requestAnimationFrame(r), 40));
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const tiles = [...body.querySelectorAll('.nm-attach-tile:not(.is-add)')];
+    if (tiles.length === 2 && tiles.every(t => t.dataset.state === 'ready')) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  // Няма нито един запис type=8: снимката е само в лентата.
+  const images = (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x)).filter(f => f.type === 8).length;
+  const cs = getComputedStyle(body);
+  return {
+    images,
+    tiles: [...body.querySelectorAll('.nm-attach-tile:not(.is-add)')].map(t => t.dataset.nmFileName + ':' + t.dataset.state),
+    column: Math.round(body.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)),
+  };
+}, { raw: TILE_NOTE, attach: TILE_ATTACH });
+ok(tileOpened.images === 0 && tileOpened.tiles.length === 2,
+  `новата бележка има две снимки в лентата и НИТО една в текста (${tileOpened.tiles.join(', ')})`, tileOpened);
+
+// Прозорецът се отваря със смаляване (scale 0.7 -> 1): плочката се мери само на мащаб 1, иначе
+// щракът с мишката пада на мястото, където плочката вече не е.
+const tileScale = await waitScale();
+await page.evaluate(() => new Promise(r => setTimeout(() => requestAnimationFrame(r), 120)));
+const tileMenuRect = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const box = body.closest('.modal-content-box');
+  const tile = [...document.querySelectorAll('#modal-body .nm-attach-tile:not(.is-add)')].find(t => t.dataset.nmFileName === 'nova.jpg');
+  // Прозорецът се подрежда надолу с всеки нов (лентата е на дъното му) и може да излезе под екрана:
+  // вдига се, както собственикът би го дръпнал - иначе щракът с мишката пада извън видимата част.
+  if (tile.getBoundingClientRect().bottom > window.innerHeight - 4) {
+    box.style.top = '24px';
+  }
+  await new Promise(r => requestAnimationFrame(r));
+  const r = tile.getBoundingClientRect();
+  return {
+    cx: Math.round(r.left + r.width / 2), cy: Math.round(r.top + r.height / 2),
+    inStrip: !!tile.closest('.nm-attach-strip'), editMode: !!tile.closest('.nm-edit-with-strip'),
+    inView: r.top >= 0 && r.bottom <= window.innerHeight,
+  };
+});
+ok(tileScale && tileMenuRect.inStrip && tileMenuRect.editMode && tileMenuRect.inView,
+  `плочката е в лентата на редактора и е в картината (x${tileMenuRect.cx}, y${tileMenuRect.cy})`, tileMenuRect);
+
+// Истинско щракване върху плочката на файла, който още не е в текста.
+await page.mouse.click(tileMenuRect.cx, tileMenuRect.cy);
+await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
+const ghost30 = await page.evaluate(async () => {
+  const ghostNow = () => document.querySelector('.nm-inline-ghost');
+  const menuNow = () => document.querySelector('.nm-inline-menu');
+  if (!ghostNow()) return { missing: true, menu: !!menuNow() };
+  const deadline = Date.now() + 8000;
+  // Адресът на снимката идва по мрежата (или от самата плочка): изчаква се да застане на кадъра.
+  while (Date.now() < deadline) {
+    if (/thumb\.invalid/.test(getComputedStyle(ghostNow()).backgroundImage)) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  // Естествената ширина на снимката също идва по мрежата: щом дойде, кадърът застава в ТОЧНИЯ
+  // размер - 30% от 300px = 90px (вж. natural в showNmInlineGhost).
+  while (Date.now() < deadline) {
+    const g = ghostNow();
+    if (g && Math.abs(Math.round(g.getBoundingClientRect().width) - 90) <= 2) break;
+    await new Promise(r => setTimeout(r, 40));
+  }
+  const g = ghostNow();
+  const menu = menuNow();
+  const r = g.getBoundingClientRect();
+  return {
+    label: g.textContent.trim(),
+    bg: getComputedStyle(g).backgroundImage,
+    width: Math.round(r.width),
+    height: Math.round(r.height),
+    pointerEvents: getComputedStyle(g).pointerEvents,
+    kind: menu ? menu.dataset.nmMenu : null,
+    range: menu ? menu.querySelector('.nm-inline-menu-range').value : null,
+    values: menu ? [...menu.querySelectorAll('[data-nm-menu-value]')].map(v => v.textContent.trim()) : null,
+    labels: menu ? [...menu.querySelectorAll('.nm-inline-menu-row')].map(b => b.textContent.trim()) : null,
+    actions: menu ? [...menu.querySelectorAll('[data-nm-menu-action]')].map(b => b.dataset.nmMenuAction) : null,
+    cancelClass: menu ? (menu.querySelector('[data-nm-menu-action="cancel"]') || {}).className : null,
+  };
+});
+ok(ghost30.kind === 'tile' && ghost30.missing !== true && ghost30.label === '30%',
+  `още при отварянето от плочката излиза кадър на избрания процент (${ghost30.label} при меню ${ghost30.kind})`, ghost30);
+ok(ghost30.range === '30' && ghost30.values && ghost30.values.join('|') === '30%|30%',
+  `файл, който още не е в текста, отваря менюто на стандартните 30% (${ghost30.values})`, ghost30);
+ok(/thumb\.invalid/.test(String(ghost30.bg)) && !/linear-gradient/.test(String(ghost30.bg)),
+  `кадърът носи САМАТА снимка (адрес от фалшивия Drive), не само рамката по подразбиране (${String(ghost30.bg).slice(0, 70)})`, ghost30);
+ok(Math.abs(ghost30.width - 90) <= 2 && Math.abs(ghost30.height - 68) <= 3,
+  `кадърът е в ТОЧНИЯ размер: 30% от 300px = 90px (${ghost30.width}x${ghost30.height})`, ghost30);
+ok(ghost30.pointerEvents === 'none', `кадърът остава само за окото, не хваща щракове (${ghost30.pointerEvents})`);
+ok(ghost30.actions && ghost30.actions[ghost30.actions.length - 1] === 'cancel' && ghost30.labels[ghost30.labels.length - 1] === 'Отказ',
+  `последният ред в менюто от плочката е „Отказ" (${ghost30.labels})`, ghost30);
+ok(ghost30.cancelClass === 'nm-inline-menu-row is-cancel',
+  `редът „Отказ" е с неутралния клас, не с червения на „Махни" (${ghost30.cancelClass})`, ghost30);
+if (SHOTS) await page.screenshot({ path: `${SHOTS}-4-tile-ghost.png` });
+
+// Плъзгането мести СЪЩАТА тази снимка: 60% от 300px = 180px.
+const ghost60 = await page.evaluate(async () => {
+  const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+  range.value = '60';
+  range.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const g = document.querySelector('.nm-inline-ghost');
+  const r = g.getBoundingClientRect();
+  const menu = document.querySelector('.nm-inline-menu');
+  return {
+    label: g.textContent.trim(),
+    bg: getComputedStyle(g).backgroundImage,
+    width: Math.round(r.width),
+    widthNow: menu.querySelector('.nm-inline-menu-range').value,
+    values: [...menu.querySelectorAll('[data-nm-menu-value]')].map(v => v.textContent.trim()),
+  };
+});
+ok(ghost60.label === '60%' && ghost60.values.join('|') === '60%|60%',
+  `докато плъзгачът се мести, числото се сменя (${ghost60.values})`, ghost60);
+ok(ghost60.width > ghost30.width && Math.abs(ghost60.width - 180) <= 3,
+  `същата снимка се уголемява на живо: 60% от 300px = 180px (${ghost30.width}px -> ${ghost60.width}px)`, { ghost30, ghost60 });
+ok(/thumb\.invalid/.test(String(ghost60.bg)),
+  `снимката остава на кадъра и след плъзгането (${String(ghost60.bg).slice(0, 70)})`, ghost60);
+if (SHOTS) await page.screenshot({ path: `${SHOTS}-5-tile-ghost-60.png` });
+
+// ======================= 14. „Отказ" връща ширината и в двете менюта =======================
+// Първо снимката влиза в текста при 30%, за да има какво да върне „Отказ".
+const tileInserted = await page.evaluate(async () => {
+  const body = document.getElementById('modal-body');
+  const field = document.getElementById('note-edit-textarea');
+  const pos = field.value.length;
+  field.focus();
+  field.setSelectionRange(pos, pos);
+  const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+  range.value = '30';
+  range.dispatchEvent(new Event('input', { bubbles: true }));
+  range.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('.nm-inline-menu [data-nm-menu-action="insert"]').click();
+  const deadline = Date.now() + 6000;
+  while (Date.now() < deadline) {
+    const hit = (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x)).find(f => f.type === 8 && f.start === pos);
+    if (hit) return { pos, paramint: hit.paramint, format: body.dataset.format, menu: !!document.querySelector('.nm-inline-menu') };
+    await new Promise(r => setTimeout(r, 40));
+  }
+  return { pos, missing: true, format: body.dataset.format };
+});
+ok(tileInserted.paramint === 3 && tileInserted.menu === false,
+  `снимката влезе в текста при 30% (paramint ${tileInserted.paramint}) и менюто се затвори`, tileInserted);
+
+// От плочката: плъзгачът на 70, после „Отказ" - записът трябва да е точно същият низ като преди.
+const tileCancel = await page.evaluate(async ({ pos }) => {
+  const body = document.getElementById('modal-body');
+  const before = body.dataset.format;
+  const tile = [...document.querySelectorAll('#modal-body .nm-attach-tile:not(.is-add)')].find(t => t.dataset.nmFileName === 'nova.jpg');
+  tile.click();
+  const pcts = () => (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x)).filter(f => f.type === 8).map(f => f.paramint);
+  const onOpen = pcts();
+  const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+  range.value = '70';
+  range.dispatchEvent(new Event('input', { bubbles: true }));
+  range.dispatchEvent(new Event('change', { bubbles: true }));
+  const moved = pcts();
+  const cancelBtn = document.querySelector('.nm-inline-menu [data-nm-menu-action="cancel"]');
+  const hadButton = !!cancelBtn;
+  cancelBtn.click();
+  await new Promise(r => setTimeout(r, 60));
+  return {
+    before, hadButton, onOpen, moved, after: body.dataset.format,
+    afterPcts: pcts(),
+    menu: !!document.querySelector('.nm-inline-menu'),
+    ghost: !!document.querySelector('.nm-inline-ghost'),
+    text: document.getElementById('note-edit-textarea').value,
+    start: pos,
+  };
+}, { pos: tileInserted.pos });
+ok(tileCancel.hadButton, 'в менюто от плочката има ред „Отказ"');
+ok(tileCancel.onOpen.join(',') === '3' && tileCancel.moved.join(',') === '7',
+  `плъзгането до 70% пише paramint 7 (${tileCancel.moved})`, tileCancel);
+ok(tileCancel.after === tileCancel.before,
+  `„Отказ" връща записа БАЙТ ПО БАЙТ какъвто беше (paramint 3, нищо друго не се пипа)`, tileCancel);
+ok(tileCancel.menu === false && tileCancel.ghost === false,
+  `„Отказ" затваря менюто и маха кадъра (меню ${tileCancel.menu}, кадър ${tileCancel.ghost})`, tileCancel);
+
+// От маркера в текста: същото, но се пипа само това място.
+const markerCancel = await page.evaluate(async ({ pos }) => {
+  const body = document.getElementById('modal-body');
+  const backdrop = document.getElementById('note-edit-textarea-backdrop');
+  const mark = backdrop.querySelector(`.nm-inline-mark[data-nm-start="${pos}"]`);
+  mark.scrollIntoView({ block: 'center' });
+  await new Promise(r => requestAnimationFrame(r));
+  const r = mark.getBoundingClientRect();
+  return { cx: Math.round(r.left + r.width / 2), cy: Math.round(r.top + r.height / 2), width: Math.round(r.width), left: Math.round(r.left), before: body.dataset.format };
+}, { pos: tileInserted.pos });
+await page.mouse.click(markerCancel.cx, markerCancel.cy);
+await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 3000 }).catch(() => { });
+const markerCanceled = await page.evaluate(async ({ pos, before, rectWidth, rectLeft }) => {
+  const body = document.getElementById('modal-body');
+  const menu = document.querySelector('.nm-inline-menu');
+  const labels = menu ? [...menu.querySelectorAll('.nm-inline-menu-row')].map(b => b.textContent.trim()) : null;
+  const actions = menu ? [...menu.querySelectorAll('[data-nm-menu-action]')].map(b => b.dataset.nmMenuAction) : null;
+  const range = menu.querySelector('.nm-inline-menu-range');
+  range.value = '70';
+  range.dispatchEvent(new Event('input', { bubbles: true }));
+  range.dispatchEvent(new Event('change', { bubbles: true }));
+  const moved = (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x)).filter(f => f.type === 8).map(f => f.paramint);
+  document.querySelector('.nm-inline-menu [data-nm-menu-action="cancel"]').click();
+  await new Promise(r => setTimeout(r, 60));
+  const mark = document.getElementById('note-edit-textarea-backdrop').querySelector(`.nm-inline-mark[data-nm-start="${pos}"]`);
+  const r = mark.getBoundingClientRect();
+  return {
+    labels, actions, moved,
+    after: body.dataset.format,
+    afterPcts: (body.dataset.format || '').split('|').filter(Boolean).map(x => JSON.parse(x)).filter(f => f.type === 8).map(f => f.paramint),
+    menu: !!document.querySelector('.nm-inline-menu'),
+    markWidth: Math.round(r.width),
+    markLeft: Math.round(r.left),
+    before, rectWidth, rectLeft,
+  };
+}, { pos: tileInserted.pos, before: markerCancel.before, rectWidth: markerCancel.width, rectLeft: markerCancel.left });
+ok(markerCanceled.labels && markerCanceled.labels[markerCanceled.labels.length - 1] === 'Отказ',
+  `и в менюто от маркера последният ред е „Отказ" (${markerCanceled.labels})`, markerCanceled.actions);
+ok(markerCanceled.moved.join(',') === '7', `плъзгането от маркера пише paramint 7 (${markerCanceled.moved})`, markerCanceled);
+ok(markerCanceled.after === markerCanceled.before && markerCanceled.afterPcts.join(',') === '3',
+  `„Отказ" връща paramint 3 и не пипа друго в записа (${markerCanceled.afterPcts})`, markerCanceled);
+ok(markerCanceled.menu === false, 'и там менюто се затваря');
+ok(Math.abs(markerCanceled.markWidth - markerCanceled.rectWidth) <= 1 && Math.abs(markerCanceled.markLeft - markerCanceled.rectLeft) <= 1,
+  `маркерът в текста не мърда: същата ширина и същото място (${markerCanceled.rectWidth}x${markerCanceled.rectLeft} -> ${markerCanceled.markWidth}x${markerCanceled.markLeft})`, markerCanceled);
+if (SHOTS) await page.screenshot({ path: `${SHOTS}-6-after-cancel.png` });
+
+// ======================= 15. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
 if (fails) {
   console.log('Drive заявки: ' + JSON.stringify(DRIVE.list.slice(0, 12)));
