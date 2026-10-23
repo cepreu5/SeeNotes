@@ -265,20 +265,24 @@ ok(!!iw && iw.contentText === '' && iw.markerChar === 'no-star',
   `тялото не показва нито звездичката, нито текста на заглавието („${iw && iw.contentText}\")`, iw);
 
 // --- 3. Текст и снимка на един ред ---
+// Промяна на 23.10.2026 (втори доклад на собственика): редът с думи И снимка ВЕЧЕ е заглавие -
+// взимат се само думите му, а снимката остава в тялото. По-рано редът се прескачаше и заглавие
+// ставаше следващият ред, от което картата показваше чужд ред и текстът изглеждаше разбъркан.
 const mixed = byKey['text-and-img'];
-ok(!!mixed && mixed.title === 'Долният ред е заглавие',
-  `ред с текст И снимка не става заглавие - взима се следващият ред без снимка („${mixed && mixed.title}\")`, mixed);
-ok(!!mixed && mixed.title !== 'Кратка бележка * тук' && mixed.imgs === 1 && mixed.imgState === 'ready',
+ok(!!mixed && mixed.title === 'Кратка бележка тук',
+  `ред с текст И снимка е заглавие - само думите му, без знака на снимката („${mixed && mixed.title}")`, mixed);
+ok(!!mixed && mixed.imgs === 1 && mixed.imgState === 'ready',
   `картата показва снимката в тялото на този ред (${mixed && mixed.imgs} рамка, ${mixed && mixed.imgState})`, mixed);
-ok(!!mixed && /Кратка бележка/.test(String(mixed.contentText)),
-  `редът с текста и снимката остава в тялото („${mixed && mixed.contentText}\")`, mixed);
+ok(!!mixed && !/Кратка бележка/.test(String(mixed.contentText)) && /Долният ред/.test(String(mixed.contentText)),
+  `в тялото не остава текстът на заглавието, а следващият ред е там („${mixed && mixed.contentText}")`, mixed);
 
-// --- 3б. Един ред с текст и снимка и нищо друго: без заглавие, но без „..." ---
+// --- 3б. Един ред с текст и снимка и нищо друго: заглавието е текстът, снимката е в тялото ---
 const oneLine = byKey['one-line-mixed'];
-ok(!!oneLine && oneLine.title === '' && oneLine.titleDisplay === 'none',
-  `един ред с текст и снимка: картата остава без заглавие, а не с „...\" („${oneLine && oneLine.title}\")`, oneLine);
-ok(!!oneLine && oneLine.imgs === 1 && /Кратка бележка/.test(String(oneLine.contentText)),
-  `и снимката, и текстът са в тялото („${oneLine && oneLine.contentText}\")`, oneLine);
+ok(!!oneLine && oneLine.title === 'Кратка бележка тук' && oneLine.titleDisplay !== 'none',
+  `един ред с текст и снимка: заглавието е текстът, а не „..." („${oneLine && oneLine.title}")`, oneLine);
+ok(!!oneLine && oneLine.imgs === 1,
+  `и снимката е в тялото, а не изчезнала (${oneLine && oneLine.imgs} рамка, ${oneLine && oneLine.imgState})`, oneLine);
+
 
 // --- 3в. Същото и за бележка от тип 1 (markdown) ---
 const md = byKey['markdown-img-first'];

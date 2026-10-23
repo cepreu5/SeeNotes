@@ -110,17 +110,21 @@ await page.waitForFunction(() => contentModal, null, { timeout: 20000 });
 const pathOf = (f) => '/storage/emulated/0/Pictures/Images/' + f;
 const fmt = (...objs) => objs.map(o => JSON.stringify(o)).join('|');
 
+// Промяна на 23.10.2026 (втори доклад на собственика): редът с думи И снимка вече е ЗАГЛАВИЕ на
+// картата - думите отиват в заглавието, а снимката остава в тялото. Затова тук текстът на първия ред
+// става заглавие, а редът под него дава ТЕКСТ, спрямо който се мери снимката. Точно това вижда и
+// собственикът: „Test for pics" като заглавие и снимката под него, а не над картата.
 const CASES = [
-  // „Test for pics" + снимка на същия (първи) ред, 30% ширина - точно случаят от снимката на собственика.
-  { key: 'first-line-pct30', raw: 'Test for pics *', file: SMALL, pct: 3 },
-  // Същото, но снимката е в НАЧАЛОТО на първия ред.
-  { key: 'img-first-pct30', raw: '* Test for pics', file: SMALL, pct: 3 },
-  // Снимка на цялата ширина: не се побира след текста, значи се пренася на нов ред.
-  { key: 'first-line-pct100', raw: 'Test for pics *', file: SMALL, pct: 10 },
-  // Снимка на втория ред: не бива да застъпва реда с текста над себе си.
-  { key: 'second-line-pct30', raw: 'Test for pics\n*', file: SMALL, pct: 3 },
-  // Висока снимка (600px) в първия ред: горният ѝ ръб трябва да е в текста, не над него.
-  { key: 'tall-first-line', raw: 'Test for pics *', file: TALL, pct: 3 },
+  // „Test for pics" + снимка на същия ред, 30% ширина, и ред текст под него.
+  { key: 'first-line-pct30', raw: 'Test for pics *\nОще един ред текст', file: SMALL, pct: 3 },
+  // Същото, но снимката е в НАЧАЛОТО на реда.
+  { key: 'img-first-pct30', raw: '* Test for pics\nОще един ред текст', file: SMALL, pct: 3 },
+  // Снимка на цялата ширина: не се побира след думите, значи се пренася на нов ред.
+  { key: 'first-line-pct100', raw: 'Test for pics *\nОще един ред текст', file: SMALL, pct: 10 },
+  // Снимка на свой ред: не бива да застъпва заглавието над себе си.
+  { key: 'second-line-pct30', raw: 'Test for pics\n*\nОще един ред текст', file: SMALL, pct: 3 },
+  // Висока снимка (600px) на същия ред като думите: горният ѝ ръб не бива да е над заглавието.
+  { key: 'tall-first-line', raw: 'Test for pics *\nОще един ред текст', file: TALL, pct: 3 },
 ];
 for (const c of CASES) {
   const at = c.raw.indexOf('*');
@@ -202,12 +206,14 @@ for (const r of built) {
   ok(r.content && r.content.scrollTop === 0, `${r.key}: бележката не е превъртяна (scrollTop 0)`, r.content);
 }
 
-// Снимка в СЪЩИЯ ред като текста: върховете им съвпадат, снимката не стърчи над реда с текста.
+// Снимка от реда-заглавие: думите са в заглавието, а снимката е в тялото - значи започва ПОД
+// заглавието, не над него и не над горния ръб на картата.
 for (const key of ['first-line-pct30', 'img-first-pct30', 'tall-first-line']) {
   const r = by[key];
-  if (!r || !r.frame || !r.line) { ok(false, `${key}: има рамка и ред с текст`, r); continue; }
-  const d = r.frame.top - r.line.top;
-  ok(d >= -1 && d <= 4, `${key}: снимката започва на реда с текста, не над него (${d}px)`, r);
+  if (!r || !r.frame || !r.title) { ok(false, `${key}: има рамка и заглавие`, r); continue; }
+  const d = r.frame.top - r.title.bottom;
+  ok(d >= -1, `${key}: снимката започва под заглавието, не над него (${d}px)`, r);
+  ok(!!r.line, `${key}: под снимката има ред с текст в тялото`, r);
 }
 
 // Снимка на втория ред: първият ред (без снимка) става ЗАГЛАВИЕ на картата, а снимката остава
@@ -218,11 +224,14 @@ for (const key of ['first-line-pct30', 'img-first-pct30', 'tall-first-line']) {
     `second-line-pct30: снимката е под заглавието на картата (${r && r.frame && r.title ? r.frame.top - r.title.bottom : '?'}px)`, r);
 }
 
-// Снимка на цялата ширина, пренесена на нов ред: стои ПОД текста.
+// Снимка на цялата ширина: думите отиват в заглавието, снимката е в началото на тялото, а редът
+// текст под нея остава под снимката.
 {
   const r = by['first-line-pct100'];
-  ok(r && r.frame && r.line && r.frame.top >= r.line.bottom - 1,
-    `first-line-pct100: пренесената снимка стои под реда с текста (${r && r.frame && r.line ? r.frame.top - r.line.bottom : '?'}px)`, r);
+  ok(r && r.frame && r.title && r.frame.top >= r.title.bottom - 1,
+    `first-line-pct100: снимката стои под заглавието (${r && r.frame && r.title ? r.frame.top - r.title.bottom : '?'}px)`, r);
+  ok(r && r.frame && r.line && r.line.top >= r.frame.bottom - 1,
+    `first-line-pct100: редът текст стои под снимката (${r && r.frame && r.line ? r.line.top - r.frame.bottom : '?'}px)`, r);
 }
 
 ok(errs.length === 0, 'няма грешки в конзолата', errs.slice(0, 3));
