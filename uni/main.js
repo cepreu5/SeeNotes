@@ -18643,6 +18643,8 @@ function nmLineTextParts(line, start, ranges) {
 function nmInlineTitleLine(text, formatString) {
     const value = String(text || '').replace(/\r\n/g, '\n');
     const entries = nmInlineImageFormatEntries(formatString);
+    // Всички формати (не само снимките) - по цветовете им се разпознава прикрит (маскиран) ред.
+    const allFormats = parseFormatsString(formatString);
     const lines = value.split('\n');
     let offset = 0;
     for (let i = 0; i < lines.length; i++) {
@@ -18656,6 +18658,15 @@ function nmInlineTitleLine(text, formatString) {
         // Редът се прескача само ако след изрязване на снимките не остане нито една дума.
         const words = nmLineTextWithoutImages(line, start, onLine).trim();
         if (!words) continue;
+        // 23.10.2026, пети доклад на собственика: ред, в който има САМО линк (гол адрес, markdown
+        // линк или {#L#} маркер), също не става заглавие - иначе картата показва срязания адрес като
+        // заглавие. Редът остава в тялото (вж. setBodyAfterTitleLine), за да се вижда линкът там,
+        // а заглавие става следващият ред с истински думи.
+        if (!nmLineHasWordsBesidesLinks(words)) continue;
+        // 23.10.2026, пети доклад на собственика (продължение): прикрит (маскиран) ред също не
+        // става заглавие - текстът му е невидим на борда (прозрачен цвят или цвят колкото фона),
+        // значи заглавие от него би показало точно онова, което собственикът е скрил.
+        if (nmLineIsConcealed(line, start, onLine, allFormats)) continue;
         return {
             index: i,
             text: words,
@@ -18682,6 +18693,116 @@ function nmLineTextWithoutImages(line, start, ranges) {
     // На мястото на изрязаната снимка остават два интервала (преди и след нея) - събират се в един,
     // за да не изглежда заглавието разредено: „Кратка бележка * тук" -> „Кратка бележка тук".
     return out.replace(/[ \t]{2,}/g, ' ');
+}
+
+/**
+ * Формите на линк в ТЕКСТА на бележката: markdown линкът [етикет](адрес) заедно с варианта
+ * „https://[етикет](адрес)", който app-ът сам произвежда при поставяне на линк (вж. маскирането
+ * в processNoteContent), маскираният линк {#L<n>#} и голият адрес (същият urlRegex като там).
+ * Ползват се и от двете проверки по-долу, за да няма две различни представи за „какво е линк".
+ */
+const nmMarkdownLinkRegex = /(?:(?:https?|ftp|file):\/\/)?\[[^\]\n]*\]\([^()\s]+\)/i;
+const nmBareUrlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/i;
+
+/**
+ * Има ли редът ДУМИ, които не са част от линк?
+ * 23.10.2026, пети доклад на собственика: „На едната снимка е реалната съдържание на бележка в
+ * която има снимка и линк от нея, на другата е как тази бележка се показва в борда - неправилно,
+ * линкът се взима като заглавие, поправи го". Бележката започва с ГОЛ адрес (https://youtu.be/...),
+ * който няма думи, но има знаци - затова досегашната проверка „има ли текст" го приемаше за
+ * заглавие и картата показваше срязан адрес с многоточие вместо съдържанието на бележката.
+ * От реда се махат всички форми на линк; ако не остане нито една буква или цифра, редът е САМО
+ * линк и заглавие от него не се взима (редът остава в тялото, за да се вижда линкът там).
+ */
+function nmLineHasWordsBesidesLinks(text) {
+    let rest = String(text || '');
+    if (!rest.trim()) return false;
+    rest = rest.replace(nmMarkdownLinkRegex, ' ');
+    rest = rest.replace(LINK_MARKER_REGEX, ' ');
+    rest = rest.replace(nmBareUrlRegex, ' ');
+    return /[\p{L}\p{N}]/u.test(rest);
+}
+
+/**
+ * Има ли в текста изобщо линк - гол адрес, markdown линк или {#L<n>#} маркер (същите форми като в
+ * nmLineHasWordsBesidesLinks, само че за целия текст).
+ * 23.10.2026, пети доклад на собственика: бележка, в която всеки ред е само линк или само снимка,
+ * остава БЕЗ заглавие - както бележката само със снимки. Иначе над нея стои „..." като заглавие
+ * на нищо, а то е точно срязаният адрес, който собственикът видя.
+ */
+function nmTextHasLink(text) {
+    const value = String(text || '');
+    if (!value) return false;
+    if (nmMarkdownLinkRegex.test(value)) return true;
+    // replace с глобалния LINK_MARKER_REGEX (не .test) - така lastIndex му остава 0 и не размества
+    // следващите го обхождания на маркерите в полетата на бележката.
+    return value.replace(LINK_MARKER_REGEX, '').length !== value.length || nmBareUrlRegex.test(value);
+}
+
+/**
+ * Цветът на формат type=4 (цвят на текста) / type=5 (фон) като { r, g, b, a } - по същото правило
+ * като getNoteEditColorCss: липсващата прозрачност значи плътен цвят, освен при чисто прозрачен
+ * (alpha 0 при нулев цвят), който прави текста невидим.
+ */
+function nmFormatColorParts(paramint) {
+    const v = Number(paramint) || 0;
+    const rgb = v & 0x00ffffff;
+    let a = (v >> 24) & 0xff;
+    if (a === 0 && rgb !== 0) a = 255;
+    return { r: (v >> 16) & 0xff, g: (v >> 8) & 0xff, b: v & 0xff, a };
+}
+
+/**
+ * Тъмен ли е цветът? По яркостта на канала (същата сметка като за четим текст): тъмният фон под
+ * обикновения (черен) текст на картата прави знаците нечетими, значи редът е прикрит.
+ */
+function nmColorLooksDark(color) {
+    return (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) < 76; // ~0.3 от 255
+}
+
+/**
+ * Прикрит (боядисан) ред: ВСЕКИ негов неинтервален знак е покрит с цветови формат от редактора -
+ * цвят на текста (type=4) и/или фон (type=5) - и поне един от тях прави знака нечетим: текстът е
+ * прозрачен, съвпада с фона си, или редът е боядисан и с цвят, и с фон (цветът на текста и фонът са
+ * зададени заедно - точно така изглежда прикритият ред на картата: черен блок с блед текст).
+ * Такъв ред НЕ става заглавие.
+ * 23.10.2026, пети доклад на собственика: „заглавие не стават нито ред само със снимка, нито
+ * прикрит/маскиран ред, нито ред само с линк". Реалната бележка от доклада е точно такава: снимка
+ * на първия ред, прикрит ред с цветове на втория и гол адрес на третия - и досега бордът вдигаше
+ * адреса за заглавие, защото прикритият ред просто нямаше как да бъде разпознат като прикрит.
+ * Ред със снимка не е прикрит: снимката се вижда.
+ */
+function nmLineIsConcealed(line, start, imageRanges, formats) {
+    if (!line || !formats || !formats.length) return false;
+    const ranges = Array.isArray(imageRanges) ? imageRanges : [];
+    let checked = 0;
+    for (let i = 0; i < line.length; i++) {
+        const at = start + i;
+        if (/\s/.test(line[i])) continue;
+        if (ranges.some(r => at >= r.start && at < r.end)) return false; // снимката се вижда
+        checked++;
+        let color = null;
+        let background = null;
+        for (const f of formats) {
+            const type = Number(f.type);
+            if (type !== 4 && type !== 5) continue;
+            if (!(Number(f.start) <= at && Number(f.end) > at)) continue;
+            if (type === 4) color = f;
+            else background = f;
+        }
+        // Знак без никакъв цветови формат се чете - значи редът не е прикрит.
+        if (!color && !background) return false;
+        const text = color ? nmFormatColorParts(color.paramint) : null;
+        const fill = background ? nmFormatColorParts(background.paramint) : null;
+        // Нечетим знак: прозрачен текст; текст върху фон със същия цвят; боядисан ред (цвят И фон
+        // заедно); или само тъмен фон под обикновения черен текст на картата (черно на черно).
+        const invisible = !!(text && (text.a === 0
+            || (fill && fill.a > 0 && text.r === fill.r && text.g === fill.g && text.b === fill.b)))
+            || !!(!text && fill && fill.a > 0 && nmColorLooksDark(fill));
+        const painted = !!color && !!background;
+        if (!invisible && !painted) return false;
+    }
+    return checked > 0;
 }
 
 /**
@@ -21438,8 +21559,9 @@ async function createNoteElement(noteContent) {
     // Готови формати за тялото, когато заглавието е изрязано от СРЕДАТА на текста (пред него стои ред
     // със снимка): тогава тялото не е плътен откъс и офсет към форматите не се прилага.
     let previewBodyFormatSource = null;
-    // Заглавие няма, защото бележката е само със снимки: тогава то се скрива, за да не заема място.
-    let hideTitleBecauseOnlyImages = false;
+    // Заглавие няма, защото в бележката няма ред с думи извън линк (само снимки, прикрит ред или
+    // линк): тогава то се скрива, за да не заема място и да не показва „..." на мястото на адреса.
+    let hideCardTitleNoWords = false;
     // Частите на реда-заглавие (думи и снимки в реда на текста), когато той носи снимка: от тях се
     // строи заглавието, за да остане снимката НА РЕДА на заглавието (23.10.2026, трети доклад на
     // собственика). Когато редът няма снимка, остава null и заглавието е само текст, както досега.
@@ -21576,7 +21698,12 @@ async function createNoteElement(noteContent) {
     if (!noteTitle && !isHiddenNote && !isBorderlessTableNote) {
         // Бележка само със снимки остава БЕЗ заглавие: редът със снимка е в тялото, а едно „..." над
         // него би стояло като заглавие на нищо. Празна бележка без снимки пази днешното „...".
-        if (nmInlineImageRanges(textSpan).length) hideTitleBecauseOnlyImages = true;
+        if (nmInlineImageRanges(textSpan).length) hideCardTitleNoWords = true;
+        // 23.10.2026 (пети доклад на собственика): същото важи и когато няма ред с думи ИЗВЪН линк,
+        // а в бележката има линк - иначе „..." пак би застанал на мястото на адреса, който вече не се
+        // вдига за заглавие. Тялото тогава е ЦЯЛОТО съдържание (setBodyAfterTitleLine с null), значи
+        // линкът се вижда на борда и е кликаем при one-tap.
+        else if (nmTextHasLink(fileContent)) hideCardTitleNoWords = true;
         else noteTitle = '...';
     }
     if (isBorderlessTableNote) {
@@ -21604,7 +21731,7 @@ async function createNoteElement(noteContent) {
         // задаването на className, иначе то го изтрива.
         titleEl.classList.add('has-title-img');
     }
-    if (isBorderlessTableNote || hideTitleBecauseOnlyImages) {
+    if (isBorderlessTableNote || hideCardTitleNoWords) {
         // Няма заглавие - то не заема място (редът с датата и часа си остава както е).
         titleEl.style.display = 'none';
     }
