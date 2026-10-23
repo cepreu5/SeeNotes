@@ -18584,10 +18584,18 @@ function nmInlineImageRanges(formatString) {
 }
 
 /**
- * Първият ред от текста, който става за ЗАГЛАВИЕ на картата: непразен и БЕЗ вградена снимка.
- * Редът със снимка остава в тялото, за да се вижда картинката на картата, затова се сравняват
- * офсетите на самия ред с диапазоните type=8, а не знакът на маркера в текста.
- * Връща { index, text, offset } или null, ако такъв ред няма (бележка само със снимки).
+ * Първият ред от текста, който става за ЗАГЛАВИЕ на картата: първият непразен ред, в който има и
+ * ДУМИ, а не само снимка.
+ *
+ * Собственикът (23.10.2026, втори доклад): „в борда за заглавие се показва неправилен ред и част от
+ * текста липсва". Дотук ред със снимка се прескачаше НАЦЯЛО, затова при „Дюнер *" заглавие ставаше
+ * следващият ред (дългото въведение), а думата „Дюнер" оставаше в тялото - картата показваше чужд
+ * ред, срязан с многоточие, и текстът под него изглеждаше разбъркан.
+ *
+ * Сега редът-заглавие може да носи и снимка: за заглавие се взимат само думите му (знаците на
+ * диапазоните type=8 се изрязват), а снимката остава в тялото - вж. setBodyAfterTitleLine.
+ * Ред, в който няма нито една дума (само снимка), пак не става заглавие.
+ * Връща { index, text, offset, imageFormats } или null, ако такъв ред няма.
  */
 function nmInlineTitleLine(text, formatString) {
     const value = String(text || '').replace(/\r\n/g, '\n');
@@ -18601,10 +18609,30 @@ function nmInlineTitleLine(text, formatString) {
         offset = end + 1;
         if (!line.trim()) continue;
         // Снимката е един знак от текста: щом диапазонът ѝ се застъпва с реда, редът държи снимка.
-        if (ranges.some(r => r.start < end && r.end > start)) continue;
-        return { index: i, text: line.trim(), offset: start };
+        const onLine = ranges.filter(r => r.start < end && r.end > start);
+        // Редът се прескача само ако след изрязване на снимките не остане нито една дума.
+        const words = nmLineTextWithoutImages(line, start, onLine).trim();
+        if (!words) continue;
+        return { index: i, text: words, offset: start, imageFormats: onLine };
     }
     return null;
+}
+
+/**
+ * Текстът на един ред без знаците на вградените снимки в него: „Дюнер *" -> „Дюнер".
+ * start е офсетът на реда в целия текст, ranges са диапазоните type=8 в същите координати.
+ */
+function nmLineTextWithoutImages(line, start, ranges) {
+    if (!ranges || !ranges.length) return line;
+    let out = '';
+    for (let i = 0; i < line.length; i++) {
+        const at = start + i;
+        if (ranges.some(r => at >= r.start && at < r.end)) continue;
+        out += line[i];
+    }
+    // На мястото на изрязаната снимка остават два интервала (преди и след нея) - събират се в един,
+    // за да не изглежда заглавието разредено: „Кратка бележка * тук" -> „Кратка бележка тук".
+    return out.replace(/[ \t]{2,}/g, ' ');
 }
 
 /**
@@ -18652,6 +18680,29 @@ function nmBodyWithoutTitleLine(fullText, titleLine) {
     const removeLen = lines[titleLine.index].length + 1; // редът и неговият край на реда
     lines.splice(titleLine.index, 1);
     return { text: lines.join('\n').replace(/^\s*\n/, ''), removeStart, removeLen };
+}
+
+/**
+ * Тялото, когато редът-заглавие НОСИ и снимка: думите на заглавието се заличават с интервали на
+ * същото място, а знаците на снимките остават. Дължината не се мени, значи форматите не се
+ * разместват и снимката от този ред застава в началото на тялото на картата - точно там, където
+ * собственикът очаква да я види, вместо да изчезне заедно с изрязания ред.
+ * Връща { text }.
+ */
+function nmBodyKeepingTitleLineImages(fullText, titleLine) {
+    const value = String(fullText || '').replace(/\r\n/g, '\n');
+    const lines = value.split('\n');
+    if (!titleLine || titleLine.index < 0 || titleLine.index >= lines.length) return { text: value };
+    const line = lines[titleLine.index];
+    const ranges = titleLine.imageFormats || [];
+    let masked = '';
+    for (let i = 0; i < line.length; i++) {
+        const at = titleLine.offset + i;
+        masked += ranges.some(r => at >= r.start && at < r.end) ? line[i] : (/\s/.test(line[i]) ? line[i] : ' ');
+    }
+    lines[titleLine.index] = masked;
+    // Празният ред от заличените думи не бива да стои над снимката - тя застава най-горе в тялото.
+    return { text: lines.join('\n').replace(/^(?:[ \t]*\n)+/, '') };
 }
 
 function getVisibleTitleTextForElement(titleEl, sourceText) {
@@ -21310,11 +21361,16 @@ async function createNoteElement(noteContent) {
         const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         return line.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
     };
-    // Тялото на картата след изрязване на реда на заглавието: маха се САМО този ред. Когато пред
-    // него стои ред със снимка, изрязаното е в средата на текста и форматите се разместват.
+    // Тялото на картата след изрязване на реда на заглавието: махат се САМО думите на този ред.
+    // Когато редът носи и снимка, думите се заличават на място, за да остане снимката в тялото.
     const setBodyAfterTitleLine = (titleLine) => {
         if (!titleLine) {
             displayContent = fileContent;
+            return;
+        }
+        // Редът-заглавие носи вградена снимка: думите му се заличават, снимката остава в тялото.
+        if (titleLine.imageFormats && titleLine.imageFormats.length) {
+            displayContent = nmBodyKeepingTitleLineImages(fileContent, titleLine).text;
             return;
         }
         const firstNonEmpty = fileContent.replace(/\r\n/g, '\n').split('\n').findIndex(line => line.trim());
