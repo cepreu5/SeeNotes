@@ -251,6 +251,16 @@ ok(s.menu && s.menu.rect && s.menu.rect.left >= 0 && s.menu.rect.right <= 1281,
   `менюто не излиза извън екрана (${s.menu && s.menu.rect && s.menu.rect.left}..${s.menu && s.menu.rect && s.menu.rect.right})`);
 if (SHOTS) await page.screenshot({ path: `${SHOTS}-2-menu.png` });
 
+// Без меню останалите проверки няма как да минат (например на дървото без тази промяна щракът
+// отваря редактора) - проверката свършва тук с ясен провал, вместо да падне по средата.
+if (!s.menu) {
+  ok(false, 'менюто в режим Преглед не се отвори с щрак върху снимката');
+  await browser.close(); srv.close();
+  console.log(`\n${n - fails}/${n} проверки минават`);
+  console.log(fails ? `${fails} FAILED` : 'ALL PASS');
+  process.exit(fails ? 1 : 0);
+}
+
 // ======================= 3. Плъзгането сменя ширината ВЕДНАГА =======================
 const before = s.px;
 const slid = await page.evaluate(async () => {

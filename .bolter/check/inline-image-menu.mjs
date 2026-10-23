@@ -436,9 +436,16 @@ const inserted = await page.evaluate(async () => {
   const pos = before.indexOf('widget') !== -1 ? before.indexOf('widget') + 'widget'.length : before.length;
   field.focus();
   field.setSelectionRange(pos, pos);
-  // Менюто се отваря от плочката (то е същото, което собственикът щраква).
+  // Менюто се отваря от плочката (то е същото, което собственикът щраква), а плъзгачът се слага
+  // изрично на 30%: от 23.10 вмъкването взема стойността на плъзгача, а тя помни последния избор
+  // (в раздел 5 плъзгачът беше оставен на 80%).
   const tile = document.querySelector('#modal-body .nm-attach-tile:not(.is-add)');
   tile.click();
+  const rangeFor30 = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+  rangeFor30.value = '30';
+  rangeFor30.dispatchEvent(new Event('input', { bubbles: true }));
+  rangeFor30.dispatchEvent(new Event('change', { bubbles: true }));
+  const shownBeforeInsert = (document.querySelector('.nm-inline-menu [data-nm-menu-value]') || {}).textContent;
   const insertBtn = document.querySelector('.nm-inline-menu [data-nm-menu-action="insert"]');
   const hadButton = !!insertBtn;
   insertBtn.click();
@@ -452,6 +459,7 @@ const inserted = await page.evaluate(async () => {
   }
   return {
     hadButton,
+    shownBeforeInsert,
     pos,
     starAt: field.value[pos],
     lengthDelta: field.value.length - before.length,
@@ -466,6 +474,7 @@ const inserted = await page.evaluate(async () => {
   };
 });
 ok(inserted.hadButton, 'менюто от плочката има ред „Сложи в текста"');
+ok(inserted.shownBeforeInsert === '30%', `преди вмъкването плъзгачът е на 30% (${inserted.shownBeforeInsert})`);
 ok(inserted.starAt === '*' && inserted.lengthDelta === 1,
   `„Сложи в текста" слага звездичка на каретата (знак „${inserted.starAt}", дължина +${inserted.lengthDelta})`, inserted);
 ok(inserted.newImage && inserted.newImage.paramint === 3,
@@ -737,6 +746,11 @@ const inserts = await page.evaluate(async () => {
     tile.click();
     const btn = document.querySelector('.nm-inline-menu [data-nm-menu-action="insert"]');
     if (!btn) return null;
+    // Ширината се избира на плъзгача ПРЕДИ вмъкването - вмъкването вече взема неговата стойност.
+    const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
+    range.value = '30';
+    range.dispatchEvent(new Event('input', { bubbles: true }));
+    range.dispatchEvent(new Event('change', { bubbles: true }));
     btn.click();
     const deadline = Date.now() + 6000;
     while (Date.now() < deadline) {
@@ -1077,7 +1091,10 @@ const applied = await page.evaluate(async ({ start }) => {
   const body = document.getElementById('modal-body');
   const range = document.querySelector('.nm-inline-menu .nm-inline-menu-range');
   range.value = '50';
+  // Плъзгането на приложението идва като input, а пускането на плъзгача - като change; change-ът
+  // е стъпалото за отмяна (както в раздел 5 на inline-image-menu.mjs).
   range.dispatchEvent(new Event('input', { bubbles: true }));
+  range.dispatchEvent(new Event('change', { bubbles: true }));
   const shown = (document.querySelector('.nm-inline-menu [data-nm-menu-value]') || {}).textContent;
   const before = body._noteEditUndo ? body._noteEditUndo.entries.length : 0;
   document.querySelector('.nm-inline-menu [data-nm-menu-action="update"]').click();
@@ -1090,7 +1107,8 @@ const applied = await page.evaluate(async ({ start }) => {
     paramint: fmt ? fmt.paramint : null,
     menu: !!document.querySelector('.nm-inline-menu'),
     places: all.map(f => ({ start: f.start, paramint: f.paramint })),
-    undoGrew: after - before,
+    undoBefore: before,
+    undoAfter: after,
   };
 }, { start: openedMarker.start });
 ok(applied.shown === '50%', `плъзгачът показва 50% (${applied.shown})`, applied);
@@ -1099,8 +1117,8 @@ ok(applied.menu === false, 'и затваря менюто');
 ok(applied.places.length === 2 && applied.places.filter(p => p.start === openedMarker.start)[0].paramint === 5
   && applied.places.filter(p => p.start !== openedMarker.start)[0].paramint === 2,
   `пипа се само това място, другата снимка остава 2 (${JSON.stringify(applied.places)})`, applied);
-ok(applied.undoGrew === 1,
-  `всеки „Обнови" с промяна е едно стъпало за отмяна (${applied.undoGrew})`, applied);
+ok(applied.undoAfter === applied.undoBefore,
+  `„Обнови" не вдига второ стъпало: пускането на плъзгача вече го е вдигнало (${applied.undoBefore} -> ${applied.undoAfter})`, applied);
 
 // ======================= 13. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
