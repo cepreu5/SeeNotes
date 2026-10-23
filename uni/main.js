@@ -21735,6 +21735,14 @@ async function createNoteElement(noteContent) {
         // Няма заглавие - то не заема място (редът с датата и часа си остава както е).
         titleEl.style.display = 'none';
     }
+    if (hideCardTitleNoWords) {
+        // 23.10.2026 (шести доклад на собственика): „Пак се прояви проблемът със застъпването на
+        // хедъра от снимките". Хедърът с датата/часа е absolute и не участва в layout-а - единственото,
+        // което държи тялото далеч от него, е margin-top: 50px на скритото заглавие. Без заглавие този
+        // марж изчезва и първият елемент на тялото (снимката) застава върху датата/часа. Класът пази
+        // същите 50px през wrapper-а - същият прецедент като при бележките-таблици без рамка.
+        note.classList.add('no-card-title');
+    }
     // Create header info container for date and time
     const headerInfoContainer = document.createElement('div');
     headerInfoContainer.className = 'note-header-info';
