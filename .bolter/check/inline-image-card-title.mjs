@@ -107,13 +107,14 @@ const star = (i) => i; // маркерът стои на мястото на з�
 
 const CASES = [
   {
-    // Само снимка: няма ред без маркер, значи няма заглавие.
+    // Само снимка: няма ред с думи, значи няма заглавие.
     key: 'only',
     raw: '*',
     format: fmt(span8(0, 1, IMG, 3)),
     wantTitle: '',
     wantHidden: true,
     wantImage: true,
+    wantTitleImage: false,
   },
   {
     // Първи ред - снимка, втори - дума: заглавието е думата, а снимката остава в тялото.
@@ -123,36 +124,74 @@ const CASES = [
     wantTitle: 'Началният екран',
     wantHidden: false,
     wantImage: true,
+    wantTitleImage: false,
   },
   {
-    // Текст И снимка на един ред: този ред не става заглавие - картата показва снимката в тялото.
+    // Текст И снимка на един ред (23.10.2026, трети доклад): този ред ВЕЧЕ е заглавие, а снимката
+    // стои НА НЕГО - в заглавието, не в тялото.
     key: 'text-and-img',
     raw: 'Кратка бележка * тук\nДолният ред е заглавие',
     format: fmt(span8(15, 16, IMG, 3)),
-    wantTitle: 'Долният ред е заглавие',
+    wantTitle: 'Кратка бележка тук',
     wantHidden: false,
-    wantImage: true,
+    wantImage: false,
+    wantTitleImage: true,
+    wantPct: 30,
+    wantBodyText: 'Долният ред е заглавие',
   },
   {
-    // Един ред с текст и снимка и нищо друго: заглавие няма, но „..." също не бива да излиза.
+    // Един ред с текст и снимка и нищо друго: заглавието е текстът със снимката на реда му, а
+    // тялото е празно - нито рамка на снимка, нито точка-точка-точка.
     key: 'one-line-mixed',
     raw: 'Кратка бележка * тук',
     format: fmt(span8(15, 16, IMG, 3)),
-    wantTitle: '',
-    wantHidden: true,
-    wantImage: true,
+    wantTitle: 'Кратка бележка тук',
+    wantHidden: false,
+    wantImage: false,
+    wantTitleImage: true,
+    wantPct: 30,
+    wantBodyText: '',
   },
   {
-    // Празна бележка без снимки: днешното „..." остава.
+    // Точно докладът на собственика: заглавие „Дюнер", снимката НА РЕДА на заглавието, а тялото
+    // започва с „Дълго въведение" - без воден празен ред и без рамка на снимка.
+    key: 'duner',
+    raw: 'Дюнер *\n\nДълго въведение\nоще ред',
+    format: fmt(span8(6, 7, IMG, 3)),
+    wantTitle: 'Дюнер',
+    wantHidden: false,
+    wantImage: false,
+    wantTitleImage: true,
+    wantPct: 30,
+    wantBodyText: 'Дълго въведение още ред',
+  },
+  {
+    // Снимка на ЦЯЛАТА ширина на картата (paramint 10 = 100%): собственикът (23.10.2026): „Снимката в
+    // заглавието трябва да е с размера, с който сме я създали." Тук това се вижда веднага - снимката
+    // е колкото картата, а не малка украса до думата.
+    key: 'duner-wide',
+    raw: 'Дюнер *\n\nДълго въведение',
+    format: fmt(span8(6, 7, IMG, 10)),
+    wantTitle: 'Дюнер',
+    wantHidden: false,
+    wantImage: false,
+    wantTitleImage: true,
+    wantPct: 100,
+    wantBodyText: 'Дълго въведение',
+  },
+  {
+    // Празна бележка без снимки: днешното заглавие от три точки остава.
     key: 'empty',
     raw: '   ',
     format: '',
     wantTitle: '...',
     wantHidden: false,
     wantImage: false,
+    wantTitleImage: false,
   },
   {
-    // Бележка от тип 1 (markdown): правилото е същото - редът със снимка не става заглавие.
+    // Бележка от тип 1 (markdown): първият ред е само снимка, значи заглавие е вторият ред, а
+    // снимката остава в тялото.
     key: 'markdown-img-first',
     raw: '*\n**Началният екран**',
     format: fmt(span8(0, 1, IMG, 3)),
@@ -160,15 +199,19 @@ const CASES = [
     wantTitle: 'Началният екран',
     wantHidden: false,
     wantImage: true,
+    wantTitleImage: false,
   },
   {
-    // Обикновена бележка със снимка на ВТОРИЯ ред: заглавието е първият ред, снимката е в тялото.
+    // Обикновена бележка със снимка на ВТОРИЯ ред: заглавието е първият ред (без снимка),
+    // снимката е в тялото.
     key: 'plain-then-img',
     raw: 'Обикновена бележка\n*\nи още текст',
     format: fmt(span8('Обикновена бележка\n'.length, 'Обикновена бележка\n'.length + 1, IMG, 3)),
     wantTitle: 'Обикновена бележка',
     wantHidden: false,
     wantImage: true,
+    wantTitleImage: false,
+    wantBodyText: 'и още текст',
   },
 ];
 for (const c of CASES) {
@@ -220,16 +263,59 @@ const built = await page.evaluate(async ({ cases, small }) => {
     const titleEl = el.querySelector('.note-title-truncated');
     const content = el.querySelector('.note-content');
     const frame = content ? content.querySelector('.nm-inline-img[data-nm-file]') : null;
+    // Рамката на снимката В ЗАГЛАВИЕТО (23.10.2026): тя не е в contentEl, затова се търси в titleEl.
+    const titleFrame = titleEl ? titleEl.querySelector('.nm-inline-img[data-nm-file]') : null;
     const header = el.querySelector('.note-header-info');
+    // Горният ръб на ТЕКСТА в заглавието: по него се мери дали снимката не стърчи над реда.
+    let titleTextTop = null;
+    if (titleEl) {
+      const walker = document.createTreeWalker(titleEl, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.nodeValue.trim()) continue;
+        const r = document.createRange();
+        r.setStart(node, 0);
+        r.setEnd(node, Math.min(3, node.nodeValue.length));
+        titleTextTop = Math.round(r.getBoundingClientRect().top);
+        break;
+      }
+    }
+    const tfr = titleFrame ? titleFrame.getBoundingClientRect() : null;
+    const cardR = el.getBoundingClientRect();
     return {
       key: el.dataset.probeKey,
-      title: titleEl ? titleEl.textContent : null,
+      hostW: Math.round(host.getBoundingClientRect().width),
+      card: { left: Math.round(cardR.left), right: Math.round(cardR.right), top: Math.round(cardR.top), bottom: Math.round(cardR.bottom) },
+      title: titleEl ? titleEl.textContent.replace(/\s+/g, ' ').trim() : null,
+      titleHtml: titleEl ? titleEl.innerHTML.slice(0, 240) : null,
       titleDisplay: titleEl ? getComputedStyle(titleEl).display : null,
       titleBox: titleEl ? Math.round(titleEl.getBoundingClientRect().height) : null,
+      titleFontSize: titleEl ? parseFloat(getComputedStyle(titleEl).fontSize) : null,
+      titleTextTop: titleTextTop,
+      titleFrame: titleFrame ? {
+        state: titleFrame.dataset.nmState || null,
+        view: titleFrame.dataset.nmView || null,
+        pct: titleFrame.dataset.nmPct || null,
+        top: Math.round(tfr.top),
+        h: Math.round(tfr.height),
+        w: Math.round(tfr.width),
+        left: Math.round(tfr.left),
+        right: Math.round(tfr.right),
+        vAlign: getComputedStyle(titleFrame).verticalAlign,
+      } : null,
       hasTitleEl: !!titleEl,
       header: !!header,
       headerText: header ? header.textContent.trim().slice(0, 24) : null,
-      contentText: content ? content.textContent.replace(/\s+/g, ' ').trim().slice(0, 60) : null,
+      contentText: content ? (() => {
+        // Тялото по редове: <br> се брои за интервал. Иначе двете съседни думи се слепват в
+        // textContent („въведениеоще“) и проверката за текста на тялото мери друго.
+        const clone = content.cloneNode(true);
+        clone.querySelectorAll('br').forEach(br => br.replaceWith(document.createTextNode(' ')));
+        return clone.textContent.replace(/\s+/g, ' ').trim().slice(0, 60);
+      })() : null,
+      contentHtml: content ? content.innerHTML.slice(0, 200) : null,
+      contentW: content ? Math.round(content.getBoundingClientRect().width) : null,
+      contentScrollTop: content ? content.scrollTop : null,
       imgState: frame ? (frame.dataset.nmState || null) : null,
       imgPx: frame ? Math.round(frame.getBoundingClientRect().width) : null,
       imgPct: frame ? (frame.dataset.nmPct || null) : null,
@@ -243,68 +329,81 @@ const byKey = {};
 built.forEach(b => { byKey[b.key] = b; });
 ok(built.length === CASES.length, `всичките ${CASES.length} карти се построиха (${built.map(b => b.key).join(', ')})`, built);
 
-// --- 1. Бележка само със снимка: заглавие няма, снимката е в тялото ---
-const only = byKey['only'];
-ok(!!only && only.hasTitleEl, 'картата има елемент за заглавие (той се крие, не се маха)', only);
-ok(!!only && only.title === '' && only.titleDisplay === 'none',
-  `само снимка: НЯМА заглавие - нито знака на маркера, нито „...\" („${only && only.title}\", display ${only && only.titleDisplay})`, only);
-ok(!!only && only.header === true && !!only.headerText,
-  `редът с датата и часа си остава (${only && only.headerText})`, only);
-ok(!!only && only.imgs === 1 && only.imgState === 'ready' && only.imgPx > 0,
-  `снимката стои в тялото на картата (.note-content .nm-inline-img, ${only && only.imgPx}px)`, only);
-ok(!!only && only.markerChar === 'no-star',
-  `знакът на маркера не се вижда като текст на картата (${only && only.markerChar})`, only);
+// --- 1. Общо за всеки случай: заглавието е точно очакваният текст, рамката на снимката е там,
+// където я очакваме (на реда на заглавието или в тялото), а редът с датата и часа си стои. ---
+for (const c of CASES) {
+  const b = byKey[c.key];
+  ok(!!b, `${c.key}: картата се построи`, b);
+  if (!b) continue;
+  ok(b.title === c.wantTitle,
+    `${c.key}: заглавието е „${c.wantTitle}“ („${b.title}“)`, b);
+  ok((b.titleDisplay === 'none') === !!c.wantHidden,
+    `${c.key}: заглавието ${c.wantHidden ? 'е скрито' : 'се вижда'} (display ${b.titleDisplay})`, b);
+  ok(!!b.titleFrame === !!c.wantTitleImage,
+    `${c.key}: ${c.wantTitleImage ? 'снимката е в заглавието' : 'в заглавието няма снимка'} (${!!b.titleFrame})`, b);
+  ok(b.imgs === (c.wantImage ? 1 : 0),
+    `${c.key}: ${c.wantImage ? 'снимката е в тялото' : 'в тялото няма рамка на снимка'} (${b.imgs} рамки)`, b);
+  if (c.wantBodyText !== undefined) {
+    ok(String(b.contentText) === c.wantBodyText,
+      `${c.key}: тялото е „${c.wantBodyText}“ („${b.contentText}“)`, b);
+  }
+  ok(b.header === true && !!b.headerText,
+    `${c.key}: редът с датата и часа си остава (${b.headerText})`, b);
+  ok(b.markerChar === 'no-star',
+    `${c.key}: знакът на маркера не се вижда като текст (${b.markerChar})`, b);
+  ok(b.contentScrollTop === 0,
+    `${c.key}: картата не е превъртяна (scrollTop ${b.contentScrollTop})`, b);
+}
 
-// --- 2. Първи ред снимка, втори ред дума ---
-const iw = byKey['img-then-word'];
-ok(!!iw && iw.title === 'Началният екран' && iw.titleDisplay !== 'none',
-  `първи ред снимка, втори ред дума: заглавието е думата от втория ред („${iw && iw.title}\")`, iw);
-ok(!!iw && iw.imgs === 1 && iw.imgState === 'ready',
-  `и снимката пак се вижда в тялото, а не е изчезнала с изрязания ред (${iw && iw.imgs} рамка, ${iw && iw.imgState})`, iw);
-ok(!!iw && iw.contentText === '' && iw.markerChar === 'no-star',
-  `тялото не показва нито звездичката, нито текста на заглавието („${iw && iw.contentText}\")`, iw);
+// --- 2. Снимката в заглавието е С РАЗМЕРА, С КОИТО Е СЪЗДАДЕНА (23.10.2026, четвърти доклад на
+// собственика: „Снимката в заглавието трябва да е с размера, с който сме я създали"). Значи:
+// заредена, с ширината на същия процент от колоната като в тялото, с горен ръб на нивото на текста
+// и изцяло в картата. Заглавието вече МОЖЕ да расте по височина - снимката не се смалява. ---
+const CARD = built[0].hostW; // ширината на картата (host) - по нея се смята процентът
+for (const c of CASES) {
+  if (!c.wantTitleImage) continue;
+  const b = byKey[c.key];
+  if (!b || !b.titleFrame) { ok(false, `${c.key}: има рамка на снимка в заглавието`, b); continue; }
+  const f = b.titleFrame;
+  ok(f.state === 'ready', `${c.key}: снимката в заглавието е заредена (${f.state})`, b);
+  ok(f.view === 'title', `${c.key}: рамката е в режим на заглавие, не на бележка (data-nm-view ${f.view})`, b);
+  ok(f.w > 0 && f.h > 0, `${c.key}: снимката в заглавието има реални размери (${f.w}×${f.h})`, b);
+  // Същата ширина като в тялото: процентът е записан на рамката (data-nm-pct), а ширината се мери
+  // спрямо ширината на КАРТАТА - така се вижда дали снимката е с размера си, а не смалена украса.
+  ok(String(f.pct) === String(c.wantPct),
+    `${c.key}: рамката помни процента, с който е създадена снимката (${f.pct}, очаквано ${c.wantPct})`, b);
+  // Мярката е КОЛОНАТА на бележката (.note-content): точно по нея се смята процентът и в тялото,
+  // значи същият процент трябва да даде същите пиксели - „с размера, с който сме я създали".
+  const colW = b.contentW || CARD;
+  const wantW = Math.round(colW * Number(c.wantPct) / 100);
+  ok(Math.abs(f.w - wantW) <= 8,
+    `${c.key}: ширината е ${c.wantPct}% от колоната на бележката (${f.w}px, очаквано ~${wantW}px)`, b);
+  // Не е смалена украса: процентът стига и до височината - картинката е 300×225, значи 100% ширина
+  // дава снимка, по-висока от един ред текст.
+  if (Number(c.wantPct) >= 50) {
+    ok(f.h > (b.titleFontSize || 16) * 1.6,
+      `${c.key}: високата снимка не е смалена до реда (${f.h}px при шрифт ${b.titleFontSize}px)`, b);
+  }
+  ok(b.titleTextTop === null || f.top >= b.titleTextTop - 2,
+    `${c.key}: горният ръб на снимката не е над горния ръб на текста в заглавието (${b.titleTextTop === null ? '?' : f.top - b.titleTextTop}px)`, b);
+  ok(f.left >= b.card.left - 1 && f.right <= b.card.right + 1,
+    `${c.key}: снимката не излиза извън картата (ляво ${f.left - b.card.left}px, дясно ${f.right - b.card.right}px)`, b);
+  ok(b.contentScrollTop === 0, `${c.key}: картата не е превъртяна (scrollTop ${b.contentScrollTop})`, b);
+}
 
-// --- 3. Текст и снимка на един ред ---
-// Промяна на 23.10.2026 (втори доклад на собственика): редът с думи И снимка ВЕЧЕ е заглавие -
-// взимат се само думите му, а снимката остава в тялото. По-рано редът се прескачаше и заглавие
-// ставаше следващият ред, от което картата показваше чужд ред и текстът изглеждаше разбъркан.
-const mixed = byKey['text-and-img'];
-ok(!!mixed && mixed.title === 'Кратка бележка тук',
-  `ред с текст И снимка е заглавие - само думите му, без знака на снимката („${mixed && mixed.title}")`, mixed);
-ok(!!mixed && mixed.imgs === 1 && mixed.imgState === 'ready',
-  `картата показва снимката в тялото на този ред (${mixed && mixed.imgs} рамка, ${mixed && mixed.imgState})`, mixed);
-ok(!!mixed && !/Кратка бележка/.test(String(mixed.contentText)) && /Долният ред/.test(String(mixed.contentText)),
-  `в тялото не остава текстът на заглавието, а следващият ред е там („${mixed && mixed.contentText}")`, mixed);
+// --- 3. Точно докладът на собственика (23.10.2026): „снимката е на долния ред а заглавието е само
+// думата Дюнер... те да останат на реда, а не да слизат отдолу". ---
+const duner = byKey['duner'];
+ok(!!duner && duner.title === 'Дюнер' && duner.titleDisplay !== 'none',
+  `Дюнер: заглавието е само думата „Дюнер“ („${duner && duner.title}“)`, duner);
+ok(!!duner && !!duner.titleFrame && duner.titleFrame.state === 'ready',
+  `Дюнер: снимката стои НА РЕДА на заглавието и е заредена (${duner && duner.titleFrame && duner.titleFrame.state})`, duner);
+ok(!!duner && duner.imgs === 0,
+  `Дюнер: в тялото НЯМА рамка на снимка (${duner && duner.imgs})`, duner);
+ok(!!duner && String(duner.contentText) === 'Дълго въведение още ред',
+  `Дюнер: тялото започва с „Дълго въведение“ - без воден празен ред и без разбъркан текст („${duner && duner.contentText}“)`, duner);
 
-// --- 3б. Един ред с текст и снимка и нищо друго: заглавието е текстът, снимката е в тялото ---
-const oneLine = byKey['one-line-mixed'];
-ok(!!oneLine && oneLine.title === 'Кратка бележка тук' && oneLine.titleDisplay !== 'none',
-  `един ред с текст и снимка: заглавието е текстът, а не „..." („${oneLine && oneLine.title}")`, oneLine);
-ok(!!oneLine && oneLine.imgs === 1,
-  `и снимката е в тялото, а не изчезнала (${oneLine && oneLine.imgs} рамка, ${oneLine && oneLine.imgState})`, oneLine);
-
-
-// --- 3в. Същото и за бележка от тип 1 (markdown) ---
-const md = byKey['markdown-img-first'];
-ok(!!md && md.title === 'Началният екран' && md.titleDisplay !== 'none',
-  `бележка от тип 1: пак се взима редът без снимка, а не знакът на маркера („${md && md.title}\")`, md);
-ok(!!md && md.imgs === 1 && md.imgState === 'ready',
-  `и там снимката се вижда в тялото на картата (${md && md.imgs} рамка, ${md && md.imgState})`, md);
-
-// --- 4. Празна бележка без снимки пази „..." ---
-const empty = byKey['empty'];
-ok(!!empty && empty.title === '...' && empty.titleDisplay !== 'none',
-  `празна бележка без снимки пази днешното „...\" („${empty && empty.title}\")`, empty);
-ok(!!empty && empty.imgs === 0, `в нея няма рамка на снимка (${empty && empty.imgs})`, empty);
-
-// --- 5. Обикновена бележка със снимка на втория ред ---
-const plain = byKey['plain-then-img'];
-ok(!!plain && plain.title === 'Обикновена бележка' && plain.imgs === 1,
-  `обикновена бележка: заглавието е първият ред, снимката е в тялото („${plain && plain.title}\", ${plain && plain.imgs} рамка)`, plain);
-ok(!!plain && /и още текст/.test(String(plain.contentText)),
-  `и останалият текст е в тялото („${plain && plain.contentText}\")`, plain);
-
-// --- 6. Заглавие с явен разделител '|' продължава да печели ---
+// --- 4. Заглавие с явен разделител '|' продължава да печели (и снимката му остава в тялото). ---
 const piped = await page.evaluate(async () => {
   const host = document.getElementById('card-title-host');
   host.innerHTML = '';
@@ -325,23 +424,25 @@ const piped = await page.evaluate(async () => {
   host.appendChild(el);
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
-    const f = el.querySelector('.nm-inline-img');
+    const f = el.querySelector('.note-content .nm-inline-img');
     if (f && f.dataset.nmState && f.dataset.nmState !== 'loading') break;
     await new Promise(r => setTimeout(r, 40));
   }
   const frame = el.querySelector('.note-content .nm-inline-img');
+  const titleEl = el.querySelector('.note-title-truncated');
   return {
-    title: el.querySelector('.note-title-truncated') ? el.querySelector('.note-title-truncated').textContent : null,
+    title: titleEl ? titleEl.textContent : null,
+    titleFrames: titleEl ? titleEl.querySelectorAll('.nm-inline-img').length : 0,
     imgState: frame ? (frame.dataset.nmState || null) : null,
     imgs: el.querySelectorAll('.note-content .nm-inline-img').length,
     contentText: el.querySelector('.note-content') ? el.querySelector('.note-content').textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : null,
   };
 });
-ok(piped.title === 'Явно заглавие' && piped.imgs === 1 && piped.imgState === 'ready',
-  `явният разделител '|' пак дава заглавието, а снимката е в тялото („${piped.title}\", ${piped.imgs} рамка)`, piped);
+ok(piped.title === 'Явно заглавие' && piped.imgs === 1 && piped.imgState === 'ready' && piped.titleFrames === 0,
+  `явният разделител '|' пак дава заглавието, а снимката е в тялото („${piped.title}“, ${piped.imgs} рамка, в заглавието ${piped.titleFrames})`, piped);
 
-// --- 7. Линията с датата и часът не се пипат от скриването на заглавието ---
-ok(!!only && only.header === true && built.every(b => b.header === true),
+// --- 5. Линията с датата и часът не се пипат от скриването на заглавието ---
+ok(built.every(b => b.header === true),
   `редът с датата и часа стои на всичките карти (${built.map(b => b.header).join(', ')})`, built);
 
 if (SHOTS) await page.screenshot({ path: `${SHOTS}-card-titles.png`, fullPage: false });

@@ -157,7 +157,12 @@ const readCards = () => page.evaluate(() => {
     // Процентната ширина се смята спрямо съдържащата кутия (content box), не спрямо border box-а.
     const cs = getComputedStyle(content);
     const inner = content.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const frames = [...content.querySelectorAll('.nm-inline-img')];
+    // Промяна на 23.10.2026 (доклади на собственика): ред с думи И снимка вече е ЗАГЛАВИЕ на картата
+    // и снимката от него стои НА РЕДА на заглавието. Затова рамките се четат от ЦЯЛАТА карта, не само
+    // от тялото - иначе снимка от реда-заглавие изглежда сякаш липсва.
+    const frames = [...card.querySelectorAll('.nm-inline-img')];
+    // Процентът се мери спрямо колоната, в която рамката стои: в заглавието - ширината на заглавието.
+    const h3inner = h3 ? h3.clientWidth - parseFloat(getComputedStyle(h3).paddingLeft || 0) - parseFloat(getComputedStyle(h3).paddingRight || 0) : 0;
     out[card.dataset.probe] = {
       title: h3 ? h3.textContent.trim() : null,
       offline: typeof isOffline !== 'undefined' ? isOffline : 'undefined',
@@ -177,7 +182,11 @@ const readCards = () => page.evaluate(() => {
           file: f.dataset.nmFile,
           state: f.dataset.nmState,
           inlineStyleWidth: f.style.width,
-          widthPct: inner ? Math.round((r.width / inner) * 100) : null,
+          widthPct: (() => {
+            const inTitle = !!(f.closest && f.closest('.note-title-truncated'));
+            const base = inTitle ? h3inner : inner;
+            return base ? Math.round((r.width / base) * 100) : null;
+          })(),
           // Колко излиза вдясно от колоната на бележката (положително = извън нея).
           overflowRight: Math.round(r.right - cr.right),
           rectLeft: Math.round(r.left),
@@ -404,7 +413,7 @@ const oneReady = await page.waitForFunction(() => {
 }, null, { timeout: 15000 }).then(() => true).catch(() => false);
 await page.evaluate(() => new Promise(r => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(r)), 400)));
 const one = (await readCards()).one || { frames: [] };
-ok(oneReady, `един ред: двете картинки влизат в пре-рендираното тяло (${one.frames.map(f => f.state)})`);
+ok(oneReady, `един ред: двете картинки на картата са готови (${one.frames.map(f => f.state)})`);
 ok(one.frames.length === 2 && one.frames.every(f => f.state === 'ready' && !!f.imgSrc),
   `един ред: картинките се зареждат и на картата (${one.frames.map(f => f.state)})`);
 ok(!String(one.title).includes('*') && !String(one.text).includes('*'),

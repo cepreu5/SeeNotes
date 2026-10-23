@@ -4,12 +4,18 @@
 // Причината беше vertical-align: middle в style.css: рамката се центроваше по базовата линия на
 // текста, значи висока снимка в първия ред излизаше НАД реда с текста - точно до горния ръб на
 // картата, а при високи снимки и над него. Сега рамката е vertical-align: top и расте надолу.
+// Промяна на 23.10.2026 (трети доклад на собственика): ред с думи И снимка вече е ЗАГЛАВИЕ на
+// картата и снимката от него стои НА РЕДА на заглавието. Затова тук всеки случай започва с ред
+// „Заглавие" БЕЗ снимка, а снимката е на реда под него - подравняването се мери в ТЯЛОТО, където
+// още има смисъл (снимката в заглавието се мери в inline-image-card-title.mjs).
 // Проверява се по ИСТИНСКИЯ път на картата (createNoteElement) с истинска разредка в браузър,
 // не по пресметнато правило:
-//   - снимка в първия ред: горният ѝ ръб не е над реда с текста и не е над горния ръб на текста;
-//   - снимка в началото на първия ред: същото;
-//   - снимка на втория ред: не застъпва реда над себе си;
-//   - снимка на цялата ширина, която се пренася на нов ред: стои под текста, не над него;
+//   - снимка в първия ред на тялото: горният ѝ ръб не е над текста на бележката и думите от реда
+//     ѝ са на нейния ред;
+//   - снимка в началото на реда: същото;
+//   - снимка на своя ред: не застъпва реда над себе си;
+//   - снимка на цялата ширина, която се пренася на нов ред: стои под думите, а текстът след нея -
+//     под нея;
 //   - висока снимка (по-висока от текста на картата): горният ѝ ръб е в текста на бележката,
 //     картата не е превъртяна (scrollTop 0), значи снимката не е изтикана нагоре.
 // Пуска се от корена на хранилището (cx-notes):
@@ -110,21 +116,21 @@ await page.waitForFunction(() => contentModal, null, { timeout: 20000 });
 const pathOf = (f) => '/storage/emulated/0/Pictures/Images/' + f;
 const fmt = (...objs) => objs.map(o => JSON.stringify(o)).join('|');
 
-// Промяна на 23.10.2026 (втори доклад на собственика): редът с думи И снимка вече е ЗАГЛАВИЕ на
-// картата - думите отиват в заглавието, а снимката остава в тялото. Затова тук текстът на първия ред
-// става заглавие, а редът под него дава ТЕКСТ, спрямо който се мери снимката. Точно това вижда и
-// собственикът: „Test for pics" като заглавие и снимката под него, а не над картата.
 const CASES = [
+  // Промяна на 23.10.2026 (трети доклад на собственика): ред с думи И снимка вече е ЗАГЛАВИЕ на
+  // картата и снимката от него стои НА РЕДА на заглавието. Затова тук всеки случай започва с
+  // ред-заглавие БЕЗ снимка, а снимката слиза на реда под него - така подравняването се мери там,
+  // където то още има смисъл: в ТЯЛОТО на картата.
   // „Test for pics" + снимка на същия ред, 30% ширина, и ред текст под него.
-  { key: 'first-line-pct30', raw: 'Test for pics *\nОще един ред текст', file: SMALL, pct: 3 },
+  { key: 'first-line-pct30', raw: 'Заглавие\nTest for pics *\nОще един ред текст', file: SMALL, pct: 3 },
   // Същото, но снимката е в НАЧАЛОТО на реда.
-  { key: 'img-first-pct30', raw: '* Test for pics\nОще един ред текст', file: SMALL, pct: 3 },
+  { key: 'img-first-pct30', raw: 'Заглавие\n* Test for pics\nОще един ред текст', file: SMALL, pct: 3 },
   // Снимка на цялата ширина: не се побира след думите, значи се пренася на нов ред.
-  { key: 'first-line-pct100', raw: 'Test for pics *\nОще един ред текст', file: SMALL, pct: 10 },
+  { key: 'first-line-pct100', raw: 'Заглавие\nTest for pics *\nОще един ред текст', file: SMALL, pct: 10 },
   // Снимка на свой ред: не бива да застъпва заглавието над себе си.
-  { key: 'second-line-pct30', raw: 'Test for pics\n*\nОще един ред текст', file: SMALL, pct: 3 },
+  { key: 'second-line-pct30', raw: 'Заглавие\nTest for pics\n*\nОще един ред текст', file: SMALL, pct: 3 },
   // Висока снимка (600px) на същия ред като думите: горният ѝ ръб не бива да е над заглавието.
-  { key: 'tall-first-line', raw: 'Test for pics *\nОще един ред текст', file: TALL, pct: 3 },
+  { key: 'tall-first-line', raw: 'Заглавие\nTest for pics *\nОще един ред текст', file: TALL, pct: 3 },
 ];
 for (const c of CASES) {
   const at = c.raw.indexOf('*');
@@ -166,23 +172,27 @@ const built = await page.evaluate(async ({ cases }) => {
   }
   return [...host.querySelectorAll('[data-probe-key]')].map(el => {
     const content = el.querySelector('.note-content');
-    const frame = el.querySelector('.nm-inline-img');
+    const frame = el.querySelector('.note-content .nm-inline-img');
     const card = el.getBoundingClientRect();
     const cr = content ? content.getBoundingClientRect() : null;
     const fr = frame ? frame.getBoundingClientRect() : null;
-    // Първият ТЕКСТОВ възел с букви: по него се мери къде стои редът с текста.
-    let line = null;
+    // Ред с текст в тялото: ПЪРВИЯТ и ПОСЛЕДНИЯТ текстов възел с букви в .note-content. Първият
+    // казва къде започва текстът под заглавието, последният - че текстът продължава ПОД снимката,
+    // когато тя се пренесе на свой ред.
+    const lines = [];
     if (content) {
       const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-      let t = null;
-      while (walker.nextNode()) { if (walker.currentNode.nodeValue.trim()) { t = walker.currentNode; break; } }
-      if (t) {
+      while (walker.nextNode()) {
+        const t = walker.currentNode;
+        if (!t.nodeValue.trim()) continue;
         const r = document.createRange();
         r.setStart(t, 0); r.setEnd(t, Math.min(3, t.nodeValue.length));
         const rr = r.getBoundingClientRect();
-        line = { top: Math.round(rr.top), bottom: Math.round(rr.bottom) };
+        lines.push({ top: Math.round(rr.top), bottom: Math.round(rr.bottom) });
       }
     }
+    const line = lines[0] || null;
+    const lastLine = lines.length > 1 ? lines[lines.length - 1] : null;
     const titleEl = el.querySelector('.note-title-truncated, .note-title-wrapper');
     const tr = titleEl && titleEl.getBoundingClientRect && titleEl.getBoundingClientRect().height ? titleEl.getBoundingClientRect() : null;
     return {
@@ -193,6 +203,7 @@ const built = await page.evaluate(async ({ cases }) => {
       content: cr ? { top: Math.round(cr.top), bottom: Math.round(cr.bottom), scrollTop: content.scrollTop, scrollH: content.scrollHeight, clientH: content.clientHeight } : null,
       frame: fr ? { top: Math.round(fr.top), bottom: Math.round(fr.bottom), w: Math.round(fr.width), h: Math.round(fr.height), verticalAlign: getComputedStyle(frame).verticalAlign } : null,
       line,
+      lastLine,
     };
   });
 }, { cases: CASES });
@@ -206,32 +217,35 @@ for (const r of built) {
   ok(r.content && r.content.scrollTop === 0, `${r.key}: бележката не е превъртяна (scrollTop 0)`, r.content);
 }
 
-// Снимка от реда-заглавие: думите са в заглавието, а снимката е в тялото - значи започва ПОД
-// заглавието, не над него и не над горния ръб на картата.
+// Снимка на първия ред НА ТЯЛОТО (заглавието е отделен ред с думи): думите от нейния ред остават
+// при нея, а снимката започва на реда, не над заглавието.
 for (const key of ['first-line-pct30', 'img-first-pct30', 'tall-first-line']) {
   const r = by[key];
   if (!r || !r.frame || !r.title) { ok(false, `${key}: има рамка и заглавие`, r); continue; }
   const d = r.frame.top - r.title.bottom;
   ok(d >= -1, `${key}: снимката започва под заглавието, не над него (${d}px)`, r);
-  ok(!!r.line, `${key}: под снимката има ред с текст в тялото`, r);
+  // Рамката има margin 2px отгоре, затова горният ѝ ръб е малко под върха на реда - важното е да не
+  // е НАД него и двата да делят едно и също вертикално място.
+  ok(!!r.line && r.frame.top >= r.line.top - 1 && r.line.top < r.frame.bottom,
+    `${key}: думите от реда на снимката са на нейния ред, не над нея (${r.line ? r.frame.top - r.line.top : '?'}px)`, r);
 }
 
-// Снимка на втория ред: първият ред (без снимка) става ЗАГЛАВИЕ на картата, а снимката остава
-// в тялото - значи трябва да е ПОД заглавието, а не да го застъпва.
+// Снимка на втория ред на тялото: стои под заглавието, а не го застъпва.
 {
   const r = by['second-line-pct30'];
   ok(r && r.title && r.frame && r.frame.top >= r.title.bottom - 1,
     `second-line-pct30: снимката е под заглавието на картата (${r && r.frame && r.title ? r.frame.top - r.title.bottom : '?'}px)`, r);
+  ok(r && r.line && r.frame && r.line.top <= r.frame.top + 1,
+    `second-line-pct30: редът с думи „Test for pics" е НАД снимката (${r && r.line && r.frame ? r.line.top - r.frame.top : '?'}px)`, r);
 }
 
-// Снимка на цялата ширина: думите отиват в заглавието, снимката е в началото на тялото, а редът
-// текст под нея остава под снимката.
+// Снимка на цялата ширина: пренася се на свой ред, значи стои ПОД думите и НАД текста след нея.
 {
   const r = by['first-line-pct100'];
   ok(r && r.frame && r.title && r.frame.top >= r.title.bottom - 1,
     `first-line-pct100: снимката стои под заглавието (${r && r.frame && r.title ? r.frame.top - r.title.bottom : '?'}px)`, r);
-  ok(r && r.frame && r.line && r.line.top >= r.frame.bottom - 1,
-    `first-line-pct100: редът текст стои под снимката (${r && r.frame && r.line ? r.line.top - r.frame.bottom : '?'}px)`, r);
+  ok(r && r.frame && r.lastLine && r.lastLine.top >= r.frame.bottom - 1,
+    `first-line-pct100: текстът след снимката стои под нея (${r && r.frame && r.lastLine ? r.lastLine.top - r.frame.bottom : '?'}px)`, r);
 }
 
 ok(errs.length === 0, 'няма грешки в конзолата', errs.slice(0, 3));
