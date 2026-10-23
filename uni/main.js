@@ -20046,7 +20046,11 @@ function hydrateInlineImages(rootEl) {
     // Едно и също поставяне на картинката в рамката за всички режими, за да не се разминават
     // състоянията (is-loading / is-ready / data-nmState) между Drive и файла от диска.
     const putImage = (box, fileName, src, fileId, onRetry) => {
-        if (!box.isConnected) return false; // картата вече е преизградена - новата рамка ще поеме
+        // НЕ се отказва при откачена рамка: бордът строи картата, преди да я сложи в страницата,
+        // а адресът на снимката идва по мрежата след това. Дотук тук стоеше `if (!box.isConnected)
+        // return false`, значи всяка карта, построена извън страницата, оставаше вечна рамка -
+        // никой не я хидрира повторно. Картинката се слага и в откачен елемент; ако картата бъде
+        // преизградена, старата рамка просто изчезва заедно със стария елемент.
         if (!src) { markInlineImageUnavailable(box, 'unavailable'); return false; }
         const img = document.createElement('img');
         img.alt = fileName;
@@ -21727,14 +21731,20 @@ async function createNoteElement(noteContent) {
         if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
             note.dataset.ho = '1';
         }
-        // Проверка дали да показваме иконите за прикачени файлове в затворената бележка
-        const oneTapLinksEnabled = isOneTapLinksEnabled();
-        const shouldShowAttachments = isForModal || oneTapLinksEnabled;
+        // Списъкът с прикачени файлове (икона + линк с име) се показва САМО в модала.
+        // Решение на собственика, 23.10.2026: картата на борда не съдържа никакви линкове към
+        // прикачени файлове - нито към снимките, нито към останалите. Там прикачените се виждат
+        // само като икони по тип във футъра (.note-footer), а снимката в текста е самата снимка.
+        // Дотук тук стоеше `isForModal || isOneTapLinksEnabled()`, значи при включен „Един клик -
+        // линк" редовете влизаха в тялото на картата и избутваха текста извън нея.
+        const shouldShowAttachments = isForModal;
         if (shouldShowAttachments) {
+            // Само модалът: там прикачените стоят под тялото, всяко на свой ред.
+            const attachHost = contentEl;
             const separator = document.createElement('hr');
             separator.style.marginTop = '10px';
             separator.style.marginBottom = '10px';
-            contentEl.appendChild(separator);
+            attachHost.appendChild(separator);
             await Promise.all(attachments.map(async attachment => {
                 const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
                 if (!iconData) return;
@@ -21766,7 +21776,7 @@ async function createNoteElement(noteContent) {
                     // --- ЛОГИКА ЗА GOOGLE DRIVE (ИЛИ FALLBACK) ---
                     await handleGoogleDriveAttachment(attachment, attachmentWrapper, iconData);
                 }
-                contentEl.appendChild(attachmentWrapper);
+                attachHost.appendChild(attachmentWrapper);
             }));
 
         }

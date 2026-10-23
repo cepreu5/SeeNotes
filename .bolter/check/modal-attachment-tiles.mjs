@@ -839,6 +839,12 @@ const board = await page.evaluate(async () => {
     // (.note-footer .footer-icon), не като лента от плочки - това е решението в плана.
     icons: [...el.querySelectorAll('.note-footer .footer-icon')].map(i => i.dataset.type),
     links: [...el.querySelectorAll('.note-content a')].map(a => a.textContent),
+    attBlock: (() => {
+      const b = el.querySelector('.note-attachments');
+      if (!b) return null;
+      const nb = el.getBoundingClientRect(); const bb = b.getBoundingClientRect();
+      return nb.bottom >= bb.bottom - 1 && bb.height > 0;
+    })(),
     text: el.innerText.replace(/\s+/g, ' ').trim(),
   };
 });
@@ -846,8 +852,15 @@ ok(board.tiles === 0 && board.strip === false,
   `борд: картата НЕ получава плочки и лента (${board.tiles}, ${board.strip})`);
 ok(board.icons.includes('1') && board.icons.includes('3') && board.icons.includes('2') && board.icons.includes('4'),
   `борд: остават редовете с икони по тип - снимка, друг файл, звук и видео (${JSON.stringify(board.icons)})`);
+// Решение на собственика от 23.10.2026: картата на борда НЕ съдържа линкове към прикачените
+// файлове - нито към снимките, нито към останалите. Прикачените се виждат само като икони по тип
+// във футъра. Дотук тук се проверяваше същото, а после за кратко обратното.
 ok(!board.text.includes('Wallet.jpg') && !board.text.includes('Винетка 2026-27.pdf'),
-  `борд: имената на файловете не стоят на картата, както и преди (${JSON.stringify(board.text)})`);
+  `борд: имената на прикачените не стоят на картата (${JSON.stringify(board.text)})`);
+ok(!board.links.length,
+  `борд: на картата няма линк към прикачен файл (${JSON.stringify(board.links)})`);
+ok(!board.attBlock,
+  `борд: картата не получава блок с прикачени файлове (${JSON.stringify(board.attBlock)})`);
 
 // ======================= 12. Никакви грешки =======================
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
