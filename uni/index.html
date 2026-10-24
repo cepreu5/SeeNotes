@@ -1182,43 +1182,23 @@
         // ── Gallery carousel ────────────────────────────────
         // The same photos live in two sets under msm-ex: land/ for a wide
         // screen (desktop, tablet turned sideways) and port/ for a phone held
-        // upright. Each folder holds a list.json with its file names, and the
-        // carousel takes the set that fits the screen and swaps it when the
-        // screen changes. A folder without a usable list.json falls back to
-        // the other one; GALLERY_FALLBACK covers a page opened without a server.
+        // upright. There is no index file to keep in step with them: the
+        // carousel asks GitHub for the contents of the folder, so it shows
+        // whatever is in there, however many files and whatever they are
+        // called. The listing is cached for a few minutes, so a visit costs at
+        // most one request. A folder that cannot be listed falls back to the
+        // other one.
         (function () {
             const GALLERY_ROOT = 'msm-ex';
             const UPRIGHT = '(max-width: 720px) and (orientation: portrait)';
-            const GALLERY_FALLBACK = [
-                '1764551652828.jpg',
-                '1764551676242.jpg',
-                '1764551691209.jpg',
-                '1764551755697.jpg',
-                '1764553894822.jpg',
-                '1764553917946.jpg',
-                '1764553933512.jpg',
-                '1764553941918.jpg',
-                '1764553952897.jpg',
-                '1764553963870.jpg',
-                '1764553974033.jpg',
-                '1764553984943.jpg',
-                '1764553993077.jpg',
-                '1764554001197.jpg',
-                '1764554007494.jpg',
-                '1764554013461.jpg',
-                '1764554019417.jpg',
-                '1764554055674.jpg',
-                '1764554064490.jpg',
-                '1764554083159.jpg',
-                '1764554091671.jpg',
-                '1764554098238.jpg',
-                '1764554106965.jpg',
-                '1764554137382.jpg',
-                '1764554248286.jpg',
-                '1764554317449.jpg',
-                '1764554407319.jpg',
-                '1764554540104.jpg'
-            ];
+            // Where the folders live, so the page can ask for their contents.
+            // These three lines are the only thing to change if the site (or
+            // the photos) ever moves to another repository, folder or branch.
+            const GALLERY_REPO = 'cepreu5/SeeNotes';
+            const GALLERY_BRANCH = 'main';
+            const GALLERY_PAGE_DIR = 'uni';
+            const IMAGE_FILE = /\.(jpe?g|png|webp|avif|gif)$/i;
+            const LIST_TTL = 5 * 60 * 1000;
             const CLOSE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
             const track = document.getElementById('galleryTrack');
@@ -1389,15 +1369,51 @@
                 return name === 'port' ? 'land' : 'port';
             }
 
-            function readList(name) {
-                return fetch(GALLERY_ROOT + '/' + name + '/list.json', { cache: 'no-cache' })
-                    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no manifest'))))
-                    .then((list) => {
-                        const files = (Array.isArray(list) ? list : (list && list.files) || [])
-                            .filter((file) => typeof file === 'string' && file);
-                        if (!files.length) throw new Error('empty manifest');
-                        return { folder: name, files: files };
+            // The folder's own contents, newest listing cached in the browser.
+            function cacheKey(name) {
+                return 'gallery-list:' + GALLERY_REPO + '@' + GALLERY_BRANCH + ':'
+                    + GALLERY_PAGE_DIR + '/' + GALLERY_ROOT + '/' + name;
+            }
+
+            function readCache(name) {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(cacheKey(name)) || 'null');
+                    if (!saved || !Array.isArray(saved.files) || !saved.files.length) return null;
+                    if (Date.now() - saved.at > LIST_TTL) return null;
+                    return saved.files;
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            function writeCache(name, files) {
+                try {
+                    localStorage.setItem(cacheKey(name), JSON.stringify({ at: Date.now(), files: files }));
+                } catch (e) {
+                    /* private mode or full storage: just skip the cache */
+                }
+            }
+
+            function readFolder(name) {
+                const url = 'https://api.github.com/repos/' + GALLERY_REPO + '/contents/'
+                    + GALLERY_PAGE_DIR + '/' + GALLERY_ROOT + '/' + name + '?ref=' + GALLERY_BRANCH;
+                return fetch(url, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-cache' })
+                    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no listing: ' + r.status))))
+                    .then((entries) => {
+                        const files = (Array.isArray(entries) ? entries : [])
+                            .filter((entry) => entry && entry.type === 'file' && IMAGE_FILE.test(entry.name || ''))
+                            .map((entry) => entry.name)
+                            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                        if (!files.length) throw new Error('empty folder');
+                        writeCache(name, files);
+                        return files;
                     });
+            }
+
+            function readList(name) {
+                const cached = readCache(name);
+                if (cached) return Promise.resolve({ folder: name, files: cached });
+                return readFolder(name).then((files) => ({ folder: name, files: files }));
             }
 
             let currentFolder = '';
@@ -1409,12 +1425,17 @@
                 const token = loadToken;
                 readList(name)
                     .catch(() => readList(otherSet(name)))
-                    .catch(() => ({ folder: name, files: GALLERY_FALLBACK }))
                     .then((result) => {
                         if (token !== loadToken) return;
                         currentFolder = result.folder;
                         loadedSet = name;
                         build(result.files, keepIndex);
+                    })
+                    .catch(() => {
+                        // Neither folder could be reached. Leave the carousel on
+                        // whatever it is already showing rather than blanking it.
+                        if (token !== loadToken) return;
+                        loadedSet = name;
                     });
             }
 
