@@ -156,6 +156,14 @@ const NOTE_STATE = `(() => {
       return { win: w ? w.key : null, tag: el ? el.tagName + '.' + (el.className || '') : null };
     })(),
     box: box ? { left: Math.round(box.offsetLeft), top: Math.round(box.offsetTop), w: Math.round(parseFloat(cs.width)), h: Math.round(parseFloat(cs.height)) } : null,
+    // Лентата с отворените бележки: тя се показва, докато има отворена бележка, и разпънатата
+    // бележка свършва над нея - затова проверките за височината ѝ трябват мярката ѝ.
+    bar: (() => {
+      const b = document.getElementById('open-notes-bar');
+      if (!b || !b.classList.contains('is-visible')) return { visible: false, h: 0, top: null };
+      const r = b.getBoundingClientRect();
+      return { visible: true, h: Math.round(r.height), top: Math.round(r.top) };
+    })(),
     // Истинската кутия на екрана (border box, с padding-а) и хиксчето: parseFloat(cs.width) е само
     // съдържанието, затова при content-box кутията изглежда в екрана, а на екрана е по-голяма с padding-а.
     rect: box ? (() => { const r = box.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; })() : null,
@@ -223,10 +231,15 @@ const expanded = await noteState();
 ok(expanded.expanded === true, 'бутонът разпъва бележката', expanded);
 ok(expanded.box.left === 0 && expanded.box.top === 0,
   `разпънатата бележка застава в ъгъла без отстъп (${expanded.box.left},${expanded.box.top})`, expanded.box);
-ok(Math.abs(expanded.box.w - expanded.vw) <= 1 && Math.abs(expanded.box.h - expanded.vh) <= 1,
-  `разпънатата бележка е точно колкото екрана (${expanded.box.w}x${expanded.box.h} при ${expanded.vw}x${expanded.vh})`, expanded.box);
-ok(Math.abs(expanded.rect.w - expanded.vw) <= 1 && Math.abs(expanded.rect.h - expanded.vh) <= 1,
-  `истинската кутия на екрана също е точно екрана (${expanded.rect.w}x${expanded.rect.h} при ${expanded.vw}x${expanded.vh})`, expanded.rect);
+// Лентата с отворените бележки се показва още при ЕДНА отворена бележка (собственикът, 25.10.2026),
+// а разпънатата бележка свършва над нея (b1.39): височината е екранът минус височината на лентата
+// минус 8px пролука. Ако лентата не е на екрана, бележката е на цялата височина.
+const barH = expanded.bar && expanded.bar.visible ? expanded.bar.h : 0;
+const expectH = expanded.vh - (barH ? barH + 8 : 0);
+ok(Math.abs(expanded.box.w - expanded.vw) <= 1 && Math.abs(expanded.box.h - expectH) <= 2,
+  `разпънатата бележка е по цялата ширина и свършва над лентата (${expanded.box.w}x${expanded.box.h} при екран ${expanded.vw}x${expanded.vh}, лента ${barH}px)`, expanded.box);
+ok(Math.abs(expanded.rect.w - expanded.vw) <= 1 && Math.abs(expanded.rect.h - expectH) <= 2,
+  `истинската кутия на екрана също свършва над лентата (${expanded.rect.w}x${expanded.rect.h} при екран ${expanded.vw}x${expanded.vh}, лента ${barH}px)`, expanded.rect);
 ok(!!expanded.closeRect && expanded.closeRect.r <= expanded.rect.r - 1 && expanded.closeRect.b <= expanded.rect.b - 1,
   `хиксчето стои вътре в бележката (дясно ${expanded.closeRect && expanded.closeRect.r.toFixed(1)} при ръб ${expanded.rect.r.toFixed(1)})`, { close: expanded.closeRect, box: expanded.rect });
 ok(!!expanded.closeRect && expanded.closeRect.r <= expanded.vw && expanded.closeRect.b <= expanded.vh,

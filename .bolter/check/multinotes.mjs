@@ -408,7 +408,15 @@ ok(xUnderShade.open === 0,
 await openNote({ id: 'S5', gdid: 'GS5', boardId: 'B1', raw: 'пак една' }, 1);
 const shadeBefore = await read();
 ok(shadeBefore.shade && shadeBefore.shade.visible, `единична бележка: затъмнението пак е там (${JSON.stringify(shadeBefore.shade)})`, shadeBefore.shade);
-await page.mouse.click(24, 860);
+// Натискът е ДАЛЕЧ от прозореца, но и НАД лентата с отворените бележки: тя се показва още при една
+// отворена бележка и стои над затъмнението в дъното на екрана - там натискът е неин, не на
+// затъмнението (това е и смисълът на лентата: да се натиска). Точката се взема над лентата.
+const shadePoint = await page.evaluate(() => {
+  const bar = document.getElementById('open-notes-bar');
+  const barTop = bar && bar.classList.contains('is-visible') ? bar.getBoundingClientRect().top : window.innerHeight;
+  return { x: 24, y: Math.round(barTop - 40) };
+});
+await page.mouse.click(shadePoint.x, shadePoint.y);
 await page.waitForFunction(() => getOpenNoteWindows().length === 0, null, { timeout: 5000 }).catch(() => { });
 const shadeClick = await read();
 ok(shadeClick.open === 0 && shadeClick.shade && !shadeClick.shade.visible,
