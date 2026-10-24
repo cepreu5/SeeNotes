@@ -11141,6 +11141,9 @@ function createNoteWindow() {
 function onNoteWindowClosed(win) {
     // Затворен viewer не трябва да оставя звук: плочката, която е свирила, вече я няма.
     stopAttachmentAudio();
+    // Кадърът от посочване на маркер виси над документа (position: fixed) - със затварянето на
+    // бележката той губи мястото си и остава да виси над борда, ако не се махне тук.
+    hideNmInlineHoverGhost(true);
     // Отложените ширини от менюто в режим Преглед се записват тук: този път минава ВСЯКО затваряне
     // (X, Escape, „затвори всички", смяна на борд) - виж MutationObserver-а във wireNoteWindow.
     flushNmInlinePreviewChanges().catch(() => { });
@@ -23814,13 +23817,19 @@ function nmInlineGhostSource(state, el) {
     return fromTile;
 }
 
-/** Временният кадър, който показва избраната ширина, докато плъзгачът се мести. */
+/**
+ * Временният кадър, който показва избраната ширина: докато плъзгачът в менюто се мести, или - с
+ * state.fullSize - при посочване/докосване на маркера в текста (тогава е в РЕАЛНИЯ размер).
+ * Връща елемента на кадъра (или null), за да може викащият да го държи и да го маха сам.
+ */
 function showNmInlineGhost(state, pct) {
-    if (!state) return;
+    if (!state) return null;
     if (pct === null || pct === undefined) {
         if (state.ghost) { state.ghost.remove(); state.ghost = null; }
-        return;
+        return null;
     }
+    // Кадърът от менюто: този от посочването се маха, за да не стоят два един върху друг.
+    if (!state.fullSize) hideNmInlineHoverGhost(true);
     const column = state.modalBody.getBoundingClientRect();
     // Същият размер, с който снимката стои в бележката: проценти от самата снимка, а ако бележката
     // е по-тясна - колкото се побира (max-width: 100%).
@@ -23832,9 +23841,20 @@ function showNmInlineGhost(state, pct) {
     let width = Math.round(baseWidth * Number(pct) / 100);
     width = Math.max(28, Math.min(width, Math.round(column.width)));
     const aspect = natural && natural.w ? (natural.h / natural.w) : 0.5;
-    const height = Math.max(28, Math.min(200, Math.round(width * aspect)));
+    // Кадърът от менюто има таван на височината (200 px): той е ориентир до плъзгача и не бива да
+    // закрива бележката. Кадърът при посочване показва РЕАЛНИЯ размер, затова таван там няма -
+    // снимка 300x600 на 100% се вижда точно 300x600. Не се ли побира на екрана, смалява се ЦЕЛИЯТ
+    // по пропорция: отрязан кадър не показва размера, а само една част от снимката.
+    let height = Math.max(28, Math.min(200, Math.round(width * aspect)));
+    if (state.fullSize) {
+        const maxH = Math.max(60, window.innerHeight - 24);
+        const maxW = Math.max(60, window.innerWidth - 12);
+        const scale = Math.min(1, maxH / Math.max(1, Math.round(width * aspect)), maxW / Math.max(1, width));
+        width = Math.max(28, Math.round(width * scale));
+        height = Math.max(28, Math.round(width * aspect));
+    }
     const el = document.createElement('div');
-    el.className = 'nm-inline-ghost';
+    el.className = 'nm-inline-ghost' + (state.fullSize ? ' is-full' : '');
     const label = document.createElement('span');
     label.textContent = Math.round(Number(pct)) + '%';
     el.appendChild(label);
@@ -23848,11 +23868,162 @@ function showNmInlineGhost(state, pct) {
     const left = Math.max(6, Math.min(Math.round(column.left) + 2, window.innerWidth - width - 6));
     let top = Math.round(anchor.top) - height - 8;
     if (top < 8) top = Math.min(window.innerHeight - height - 8, Math.round(anchor.bottom) + 8);
+    // Кадърът при посочване е висок колкото самата снимка: държи се в екрана и когато мястото над
+    // маркера стига само за част от него.
+    if (state.fullSize) top = Math.max(8, Math.min(top, Math.max(8, window.innerHeight - height - 8)));
     el.style.left = left + 'px';
     el.style.top = top + 'px';
     if (state.ghost) state.ghost.replaceWith(el);
     else document.body.appendChild(el);
     state.ghost = el;
+    return el;
+}
+
+// ------------------- Кадър в реален размер при посочване на маркер -------------------
+// Маркерът в текста е висок един знак - иначе каретата в прозрачната текстова кутия бяга от
+// нарисувания текст (виж renderNoteEditBackdrop), - затова в редактора снимката се вижда колкото
+// миниатюра. Собственикът (24.10.2026) поиска при посочване или докосване да вижда самата снимка в
+// РЕАЛНИЯ ѝ размер, без това да разваля подредбата: затова кадърът е отделен слой върху документа
+// (position: fixed, pointer-events: none). Текстът, форматите, селекцията и каретата не се пипат
+// изобщо - кадърът само се показва и се маха.
+const nmInlineHoverState = {
+    el: null, mark: null, field: null, fileName: '', natural: null, showTimer: 0, hideTimer: 0, session: 0
+};
+
+/** Процентът на маркера: paramint 1..10 -> 10..100%; липсва ли - 30%, както при вмъкването. */
+function nmInlineMarkPct(fmt) {
+    const step = Number(fmt && fmt.paramint);
+    if (!Number.isFinite(step) || step <= 0) return 30;
+    return Math.min(100, Math.max(10, Math.round(step) * 10));
+}
+
+/**
+ * Маха кадъра от посочване. Със закъснение, когато показалецът е минал на друго място (иначе кадърът
+ * мига при преминаване между два маркера); незабавно - когато текстът или прозорецът под него вече
+ * са други.
+ */
+function hideNmInlineHoverGhost(immediate) {
+    if (nmInlineHoverState.showTimer) { clearTimeout(nmInlineHoverState.showTimer); nmInlineHoverState.showTimer = 0; }
+    if (nmInlineHoverState.hideTimer) { clearTimeout(nmInlineHoverState.hideTimer); nmInlineHoverState.hideTimer = 0; }
+    // Всяко скриване затваря сесията: отговорът за естествения размер на стара снимка не бива да
+    // строи кадър на нейно място.
+    nmInlineHoverState.session++;
+    const drop = () => {
+        if (nmInlineHoverState.el) { nmInlineHoverState.el.remove(); nmInlineHoverState.el = null; }
+        if (immediate) { nmInlineHoverState.mark = null; nmInlineHoverState.natural = null; }
+    };
+    if (immediate) { drop(); return; }
+    if (!nmInlineHoverState.el) return;
+    nmInlineHoverState.hideTimer = setTimeout(() => { nmInlineHoverState.hideTimer = 0; drop(); }, 200);
+}
+
+/** Кадърът на един маркер в реалния размер на избрания процент (посочване или докосване). */
+function showNmInlineHoverGhost(mark, field, backdrop, modalBody) {
+    if (!mark || !mark.isConnected || !field || !field.isConnected || !backdrop || !modalBody) return false;
+    // Докато менюто на снимката е отворено, размерът се показва от него - втори кадър не бива да
+    // изскача над менюто.
+    if (nmInlineMenuState) return false;
+    const name = String(mark.dataset.nmFile || '');
+    if (!name) return false;
+    if (nmInlineHoverState.hideTimer) { clearTimeout(nmInlineHoverState.hideTimer); nmInlineHoverState.hideTimer = 0; }
+    const session = ++nmInlineHoverState.session;
+    const sameFile = nmInlineHoverState.fileName === name;
+    const state = {
+        // Реалният размер няма тавана от 200 px, който пази мястото на менюто (виж showNmInlineGhost).
+        fullSize: true,
+        modalBody,
+        fileName: name,
+        natural: sameFile ? nmInlineHoverState.natural : null,
+        // Същата база като в бележката: записаната в uiState.imgbase, иначе естествената ширина.
+        base: nmInlineBaseWidth(modalBody, name),
+        anchorRect: mark.getBoundingClientRect(),
+        ghost: nmInlineHoverState.el
+    };
+    nmInlineHoverState.mark = mark;
+    nmInlineHoverState.field = field;
+    nmInlineHoverState.fileName = name;
+    nmInlineHoverState.el = showNmInlineGhost(state, nmInlineMarkPct(nmInlineFormatFromMark(modalBody, mark)));
+    if (!nmInlineHoverState.el) return false;
+    if (state.natural) {
+        nmInlineHoverState.natural = state.natural;
+        return true;
+    }
+    // Естественият размер се пита веднъж на файл за сесията. Дойде ли след кадъра, кадърът се строи
+    // наново - иначе първият би бил с чужда пропорция (а височината при реалния размер е точно тя).
+    nmInlineNaturalSize(name).then(size => {
+        if (!size || session !== nmInlineHoverState.session) return;
+        nmInlineHoverState.natural = size;
+        const liveMark = nmInlineHoverState.mark;
+        if (!nmInlineHoverState.el || !liveMark || !liveMark.isConnected) return;
+        showNmInlineHoverGhost(liveMark, field, backdrop, modalBody);
+    });
+    return true;
+}
+
+/**
+ * Посочване и докосване на маркер в редактора. Слушателите са на самата текстова кутия, защото
+ * подложката е с pointer-events: none - маркерът се търси по точката на показалеца
+ * (nmInlineMarkAtPoint), а не по event.target.
+ */
+function initNmInlineHoverGhost(field, backdrop, modalBody) {
+    if (!field || !backdrop || !modalBody) return;
+    const markAt = (event) => nmInlineMarkAtPoint(backdrop, event.clientX, event.clientY);
+    field.addEventListener('pointermove', (event) => {
+        // Тъчът няма „посочване": там кадърът излиза още при натискането (pointerdown по-долу).
+        if (event.pointerType === 'touch') return;
+        // С натиснат бутон показалецът се движи, за да се маркира текст - в средата на такова
+        // движение кадър не бива да изскача.
+        if (event.buttons) { nmInlineHoverState.mark = null; hideNmInlineHoverGhost(false); return; }
+        if (nmInlineMenuState) { hideNmInlineHoverGhost(false); return; }
+        const mark = markAt(event);
+        if (!mark) { nmInlineHoverState.mark = null; hideNmInlineHoverGhost(false); return; }
+        if (nmInlineHoverState.hideTimer) { clearTimeout(nmInlineHoverState.hideTimer); nmInlineHoverState.hideTimer = 0; }
+        if (nmInlineHoverState.mark === mark && (nmInlineHoverState.el || nmInlineHoverState.showTimer)) return;
+        nmInlineHoverState.mark = mark;
+        if (nmInlineHoverState.showTimer) clearTimeout(nmInlineHoverState.showTimer);
+        // Кратко задържане: показалецът минава през целия текст, а кадър при всяко преминаване би мигал.
+        nmInlineHoverState.showTimer = setTimeout(() => {
+            nmInlineHoverState.showTimer = 0;
+            if (nmInlineHoverState.mark === mark) showNmInlineHoverGhost(mark, field, backdrop, modalBody);
+        }, 120);
+    });
+    field.addEventListener('pointerleave', () => { nmInlineHoverState.mark = null; hideNmInlineHoverGhost(false); });
+    // Докосване: кадърът излиза ВЕДНАГА, още при натискането - при тъч няма задържане на показалец,
+    // а досега снимката се виждаше едва след мърдане на плъзгача в менюто.
+    field.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'touch') return;
+        const mark = markAt(event);
+        if (!mark) { nmInlineHoverState.mark = null; hideNmInlineHoverGhost(true); return; }
+        if (nmInlineHoverState.showTimer) { clearTimeout(nmInlineHoverState.showTimer); nmInlineHoverState.showTimer = 0; }
+        showNmInlineHoverGhost(mark, field, backdrop, modalBody);
+    });
+    // Писането мести маркера, значи и снимката под кадъра: кадърът изчезва.
+    field.addEventListener('input', () => { nmInlineHoverState.mark = null; hideNmInlineHoverGhost(true); });
+    field.addEventListener('scroll', () => { nmInlineHoverState.mark = null; hideNmInlineHoverGhost(true); }, { passive: true });
+}
+
+// Затварянето на прозореца на бележката става по няколко пътя (✕, щрак извън него, Escape, запис),
+// затова кадърът се маха от едно място: щом натискането, скролът или промяната на прозореца са извън
+// бележката, в която живее маркерът, кадърът вече няма къде да стои. Слушателите се слагат веднъж.
+let nmInlineHoverGlobalsBound = false;
+
+function bindNmInlineHoverGlobals() {
+    if (nmInlineHoverGlobalsBound) return;
+    nmInlineHoverGlobalsBound = true;
+    const drop = () => {
+        nmInlineHoverState.mark = null;
+        hideNmInlineHoverGhost(true);
+    };
+    window.addEventListener('resize', drop);
+    document.addEventListener('scroll', () => { if (nmInlineHoverState.el) drop(); }, true);
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') drop(); }, true);
+    document.addEventListener('mousedown', (event) => {
+        const field = nmInlineHoverState.field;
+        if (!nmInlineHoverState.el || !field) return;
+        const body = (field.closest && field.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]')) || field.parentElement;
+        if (body && body.contains(event.target)) return;
+        drop();
+    }, true);
 }
 
 // Естествената ширина на снимката (в пиксели) за временния кадър при плъзгане: кадърът показва
@@ -25092,8 +25263,10 @@ async function linkPendingAttachmentInBackground(targetNoteId, file, fileType, i
 
 function enableNoteEditing(modalBodyElem, charIndex = -1) {
     if (!modalBodyElem) return;
-    // Менюто на снимка в текста не живее извън редактора, в който е отворено.
+    // Менюто на снимка в текста не живее извън редактора, в който е отворено; същото за кадъра от
+    // посочване - той виси над документа и при влизане в редакция не бива да остава от предишния.
     closeNmInlineMenu();
+    hideNmInlineHoverGhost(true);
     const maxModalScroll = modalBodyElem.scrollHeight - modalBodyElem.clientHeight;
     const modalScrollRatio = (charIndex === -1 && maxModalScroll > 0) ? (modalBodyElem.scrollTop / maxModalScroll) : -1;
     const modalBoardNameEl = document.getElementById('modal-board-name');
@@ -25319,6 +25492,10 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             }
             closeNmInlineMenu();
         });
+        // Кадърът с реалния размер при посочване (или докосване) на маркера - виж
+        // initNmInlineHoverGhost. Подредбата на текста не се пипа: кадърът е отделен слой.
+        bindNmInlineHoverGlobals();
+        initNmInlineHoverGhost(bodyTextarea, bodyBackdrop, modalBodyElem);
     }
     // A width change (scrollbar coming or going, modal resize) re-wraps both the same way.
     if (typeof ResizeObserver === 'function') {
