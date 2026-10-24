@@ -572,6 +572,9 @@ ok(s.tiles.length === 8 && s.tiles.every(t => t.hiddenTile),
     `всичките 8 плочки са приглушени (${s.tiles.filter(t => t.hiddenTile).length})`, s.tiles.map(t => t.hiddenTile));
 ok(s.tiles.every(t => t.opacity > 0.4 && t.opacity < 0.7),
     `приглушаването е ~0.55 (${s.tiles.map(t => t.opacity).slice(0, 3).join(', ')})`, s.tiles.map(t => t.opacity));
+// Скрит прозорец (display: none) също дава четим се изчислен фон - плочката пази точния си цвят.
+ok(s.tiles.every(t => !!t.winBg && t.bg === t.winBg),
+    `и при скрити бележки плочките пазят точния им цвят (${s.tiles.slice(0, 3).map(t => t.bg + ' = ' + t.winBg).join(' | ')})`, s.tiles.slice(0, 3));
 ok(s.hideBtn.mode === 'show' && /Покажи всички бележки/.test(s.hideBtn.title || ''),
     `щом всички са скрити, бутонът става „покажи всички" (mode ${s.hideBtn.mode}, „${s.hideBtn.title}")`, s.hideBtn);
 
