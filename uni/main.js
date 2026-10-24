@@ -11689,7 +11689,27 @@ function refreshOpenNotesBar() {
                 if (bar._barDragged && bar._barDragged()) return;
                 const target = openNotesBarWindowFor(tile);
                 if (!target) return;
+                // Плочката на активната и видима бележка е превключвател (b2.77): първи клик я скрива,
+                // а вторият (плочката на вече скритата бележка) я връща на екрана през
+                // activateNoteWindow долу - тоест същата плочка показва и скрива.
+                if (target === activeNoteWindow && !target.hidden) {
+                    hideNoteWindow(target);
+                    // „Активна, но невидима\" бележка би поела клавиатурния вход и писането, затова
+                    // активността минава към друга ВИДИМА бележка - без да я вдига отпред.
+                    // getTopNoteWindow пада към всички, когато няма видими: тогава не се пипа нищо
+                    // (същото като „скрий всички\", което също не мести активността).
+                    const next = getTopNoteWindow();
+                    if (next && next !== target && !next.hidden) activateNoteWindow(next, false);
+                    // Лентата се опреснява винаги: плочката получава is-hidden, а бутонът
+                    // „скрий/покажи всички\" - вярната роля. updateSingleNoteOverlay вика
+                    // refreshOpenNotesBar в началото си (а activateNoteWindow - само при смяна на
+                    // активната), затова тук минава само пътят без смяна.
+                    else updateSingleNoteOverlay();
+                    return;
+                }
                 // Точно както клик върху прозореца на бележката: идва най-отпред и става активна.
+                // Скрита бележка се показва тук (activateNoteWindow вика showNoteWindow) - това е
+                // вторият клик на плочката.
                 activateNoteWindow(target, true);
                 tile.scrollIntoView({ inline: 'nearest', block: 'nearest' });
             });
