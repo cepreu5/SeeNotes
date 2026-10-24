@@ -1,11 +1,17 @@
 // Окончателното триене на бележка трие и прикачените ѝ: файловете от папка Images (в Drive и в
-// локалната папка), записите им в media.txt и вградените в текста снимки - но САМО файловете,
-// които никоя друга жива бележка не ползва. Бележка в кошчето също се брои за ползвател, защото
-// се възстановява заедно със снимките си; докато е в кошчето, нищо не се пипа.
+// локалната папка), записите им в media.txt и вградените в текста снимки. Докато бележката е в
+// кошчето, нищо не се пипа.
 // Собственик (24.10.2026): „Поправи окончателното изтриване на бележка: заедно с бележката да се
 // трият и файловете на прикачените ѝ от папка Images (в Drive и в локалната папка) и записите им в
 // media.txt, но само ако никоя друга жива бележка не ползва същия файл. При бележка в кошчето нищо
 // да не се пипа."
+// Собственик (24.10.2026, след PR #52) - ЗАМЯНА на проверките дали името се ползва другаде: „не
+// искам никакви допълнителни проверки — гледаме във всички папки за приложения кои записи сочат към
+// изтритата бележка и ги трием, толкова". Затова файл, чието име ползва друга бележка, бележка в
+// кошчето или фон на борд, вече СЕ трие; оцелява само Drive копие с ДРУГО id на чужд запис.
+// Собственик (24.10.2026, след това): „вградена снимка без запис" няма - затова по име в Drive не
+// се търси НИКОГА (той изрично отхвърли всякаква проверка/търсене по име). nameLookups трябва да е
+// празно във всеки случай; проверките, които очакваха търсене по име, са махнати.
 // Проверяват се заявките, които наистина тръгват към Drive (DELETE по id), и какво остава в
 // mediaData след триенето - тоест наблюдава се резултатът, не кодът.
 // Пуска се от корена на хранилището (cx-notes):
@@ -38,7 +44,8 @@ const deletes = [];
 // файлове с това име, затова по него се вижда дали приложението е посегнало към чуждо копие.
 const nameLookups = [];
 const FOLDER_IMAGES = 'FOLDER_IMAGES', FOLDER_DATA = 'FOLDER_DATA';
-// Файлове в папка Images по име - за вградените снимки, които нямат запис в media.txt и се търсят по име.
+// Файлове в папка Images по име. Приложението НЕ бива да търси по име; ако все пак го направи, тези
+// файлове щяха да се намерят и изтрият, а nameLookups го хваща.
 const BY_NAME = {
   'inlineA.png': [{ id: 'IMG_INLINE_A', name: 'inlineA.png', modifiedTime: '2026-10-24T08:00:00Z' }],
   'inlineB.png': [{ id: 'IMG_INLINE_B', name: 'inlineB.png', modifiedTime: '2026-10-24T08:00:00Z' }],
@@ -185,7 +192,8 @@ ok(!afterA.notes.some(nt => nt.gdid === 'NOTEA_GID_0000001'), '(а) бележк
 ok(deleted().includes('NOTEA_GID_0000001'), `(а) изтрит е файлът на бележката в Drive (${JSON.stringify(deleted())})`, deleted());
 ok(deleted().includes('MEDIA_REC_A_1'), '(а) изтрит е файлът-ЗАПИС на прикачения в media.txt (в Drive)', deleted());
 ok(deleted().includes('IMG_ONLY_A'), '(а) изтрит е файлът на прикачения от папка Images (по pathGD)', deleted());
-ok(deleted().includes('IMG_INLINE_A'), '(а) изтрита е и вградената в текста снимка (намерена по име)', deleted());
+// Търсенето на вградената снимка по име е махнато (собственикът: вградена снимка без запис няма).
+ok(!deleted().includes('IMG_INLINE_A'), '(а) вградената снимка без запис НЕ се търси и не се трие по име', deleted());
 ok(!afterA.media.some(m => m.gdid === 'MEDIA_REC_A_1'), '(а) записът е махнат от mediaData (media.txt)', afterA.media);
 
 // Същият път, но през самия помощник - за да се види отчетът, който отива в конзолата.
@@ -197,15 +205,16 @@ deletes.length = 0;
 const reportB = await page.evaluate(() => (typeof deleteNoteAttachmentFiles === 'function'
   ? deleteNoteAttachmentFiles('NOTEB_GID_0000002', 102)
   : null));
-ok(reportB && reportB.records === 1 && reportB.files === 2 && reportB.kept === 0,
-  `(а) отчетът на помощника: 1 запис, 2 файла, 0 запазени (${JSON.stringify(reportB)})`, reportB);
+ok(reportB && reportB.records === 1 && reportB.files === 1 && !('kept' in reportB),
+  `(а) отчетът на помощника: 1 запис, 1 файл (само по id), без поле kept (${JSON.stringify(reportB)})`, reportB);
 
 // =====================================================================================
 // (б) Същият файл, прикачен към две бележки. Всяко прикачване качва файла в Drive НАНОВО
 //     (uploadBlobToGDrive, без дедупликация), така че двете бележки имат ОТДЕЛНИ копия с еднакво
-//     име и различен pathGD. Копието на изтритата бележка се трие по собственото си id - иначе
-//     остава завинаги; копието на Б остава. Локалният Images/shared.png се пази, защото Б сочи
-//     същото име, и по име в Drive не се търси (това би върнало и копието на Б).
+//     име и различен pathGD. Копието на изтритата бележка се трие по собственото си id; копието
+//     на Б остава, защото е на записа на Б и не влиза в списъка. Собственикът изрично поиска БЕЗ
+//     проверки дали името се ползва другаде, затова локалният Images/shared.png вече СЕ трие.
+//     По име в Drive не се търси - записът на А има id.
 // =====================================================================================
 await seed(
   [noteObj('NOTEA2_GID_0000003', 103, { text: 'А ползва shared.png' }),
@@ -213,20 +222,25 @@ await seed(
   [mediaObj('MEDIA_REC_A2_1', 9101, 'NOTEA2_GID_0000003', 'shared.png', 'IMG_SHARED_A'),
    mediaObj('MEDIA_REC_B2_1', 9102, 'NOTEB2_GID_0000004', 'shared.png', 'IMG_SHARED_B')],
   [BOARD]);
-deletes.length = 0; nameLookups.length = 0;
+deletes.length = 0; // nameLookups не се нулира: в края се проверява, че е празно за всички случаи
+await useFakeLocalFolder();
 await page.evaluate(() => permanentlyDeleteNote('NOTEA2_GID_0000003', 103, true));
 const afterB = await state();
+const localShared = await localRemoved();
+await dropFakeLocalFolder();
 ok(deleted().includes('IMG_SHARED_A'),
   `(б) собственото Drive копие на изтритата бележка СЕ трие (${JSON.stringify(deleted())})`, deleted());
 ok(!deleted().includes('IMG_SHARED_B'), '(б) копието на другата бележка НЕ се трие', deleted());
-ok(!nameLookups.includes('shared.png'), '(б) по име в Drive не се търси - името още се ползва', nameLookups);
+ok(!nameLookups.includes('shared.png'), '(б) по име в Drive не се търси - записът има id', nameLookups);
+// Без проверки (изричното искане на собственика): локалният файл се трие, макар Б да сочи същото име.
+ok(localShared.includes('shared.png'), `(б) локалният Images/shared.png СЕ трие (${JSON.stringify(localShared)})`, localShared);
 ok(deleted().includes('MEDIA_REC_A2_1'), '(б) записът на изтритата бележка се маха', deleted());
 ok(!deleted().includes('MEDIA_REC_B2_1'), '(б) записът на другата бележка остава', deleted());
 ok(afterB.media.some(m => m.gdid === 'MEDIA_REC_B2_1') && !afterB.media.some(m => m.gdid === 'MEDIA_REC_A2_1'),
   '(б) в media.txt остава само записът на другата бележка', afterB.media);
 
 // (б2) Две копия на един файл, прикачени към ЕДНА бележка (два записа, еднакво име, различен
-//      pathGD), никоя друга не го ползва: и двете копия са нейни и се трият.
+//      pathGD): и двете копия са нейни и се трият.
 await seed(
   [noteObj('NOTEDUP_GID_0000011', 111, { text: 'два пъти twice.png' })],
   [mediaObj('MEDIA_REC_DUP_1', 9501, 'NOTEDUP_GID_0000011', 'twice.png', 'IMG_TWICE_1'),
@@ -241,26 +255,27 @@ await dropFakeLocalFolder();
 ok(deleted().includes('IMG_TWICE_1') && deleted().includes('IMG_TWICE_2'),
   `(б2) и двете копия на бележката се трият (${JSON.stringify(deleted())})`, deleted());
 ok(!afterDup.media.some(m => m.noteid === 'NOTEDUP_GID_0000011'), '(б2) и двата записа изчезват от mediaData', afterDup.media);
-ok(localDup.includes('twice.png'), `(б2) локалният Images/twice.png се трие - никой друг не го ползва (${JSON.stringify(localDup)})`, localDup);
+ok(localDup.includes('twice.png'), `(б2) локалният Images/twice.png се трие (${JSON.stringify(localDup)})`, localDup);
 
 // (б3) Друга ЖИВА бележка има прикачен файл със същото име (path) и свой pathGD: копието на
-//      изтриваната се трие по id, копието на другата и локалният Images/mixed.png остават, а по
-//      име не се търси - това би върнало и чуждото копие.
+//      изтриваната се трие по id, копието на другата остава (друго id, чужд запис). Собственикът
+//      изрично поиска БЕЗ проверки, затова локалният Images/mixed.png вече СЕ трие. По име не се
+//      търси, защото записът има id - търсенето би върнало и чуждото копие.
 await seed(
   [noteObj('NOTEMIX_GID_0000012', 112, { text: 'прикачен mixed.png' }),
    noteObj('NOTEOTH_GID_0000013', 113, { text: 'и тази има mixed.png' })],
   [mediaObj('MEDIA_REC_MIX_1', 9601, 'NOTEMIX_GID_0000012', 'mixed.png', 'IMG_MIXED_OWN'),
    mediaObj('MEDIA_REC_OTH_1', 9602, 'NOTEOTH_GID_0000013', 'mixed.png', 'IMG_MIXED_FOREIGN')],
   [BOARD]);
-deletes.length = 0; nameLookups.length = 0;
+deletes.length = 0; // nameLookups не се нулира: в края се проверява, че е празно за всички случаи
 await useFakeLocalFolder();
 await page.evaluate(() => permanentlyDeleteNote('NOTEMIX_GID_0000012', 112, true));
 const localMix = await localRemoved();
 await dropFakeLocalFolder();
 ok(deleted().includes('IMG_MIXED_OWN'), `(б3) собственото копие се трие по id (${JSON.stringify(deleted())})`, deleted());
 ok(!deleted().includes('IMG_MIXED_FOREIGN'), '(б3) копието на другата бележка НЕ се трие', deleted());
-ok(!localMix.includes('mixed.png'), `(б3) локалният Images/mixed.png остава (${JSON.stringify(localMix)})`, localMix);
-ok(!nameLookups.includes('mixed.png'), `(б3) няма търсене по име за mixed.png (${JSON.stringify(nameLookups)})`, nameLookups);
+ok(localMix.includes('mixed.png'), `(б3) локалният Images/mixed.png СЕ трие - без проверки (${JSON.stringify(localMix)})`, localMix);
+ok(nameLookups.length === 0, `(б3) няма никакво търсене по име (${JSON.stringify(nameLookups)})`, nameLookups);
 
 // =====================================================================================
 // (в) Бележка в кошчето: нищо не се пипа, а след възстановяване прикачените са там.
@@ -285,7 +300,8 @@ ok(afterRestore.media.some(m => m.gdid === 'MEDIA_REC_C_1' && m.path === 'trashC
 ok(deleted().length === 0, `(в) и при възстановяването нищо не се трие (${JSON.stringify(deleted())})`, deleted());
 
 // =====================================================================================
-// (г) Файл, който ползва ДРУГА бележка В КОШЧЕТО, се пази - тя се връща със снимките си.
+// (г) Бележка в кошчето с файл със същото име НЕ пази файловете на изтриваната: собственикът
+//     изрично поиска без проверки. Оцелява само копието на бележката в кошчето (друго id, неин запис).
 // =====================================================================================
 await seed(
   [noteObj('NOTED_TRASH_0000006', 106, { status: 1, text: 'в кошчето: keepMe.png' }),
@@ -300,20 +316,20 @@ await seed(
 deletes.length = 0;
 await page.evaluate(() => permanentlyDeleteNote('NOTEE_GID_0000007', 107, true));
 const afterG = await state();
-// Бележката в кошчето има СВОЕ копие (IMG_KEEP_D) - то се пази; копието на изтритата е отделно и се трие.
-ok(!deleted().includes('IMG_KEEP_D'), `(г) копието на бележката в кошчето се пази (${JSON.stringify(deleted())})`, deleted());
+// Бележката в кошчето има СВОЕ копие (IMG_KEEP_D) с друго id - то не е в списъка; копието на изтритата се трие.
+ok(!deleted().includes('IMG_KEEP_D'), `(г) копието на бележката в кошчето (друго id) остава (${JSON.stringify(deleted())})`, deleted());
 ok(deleted().includes('IMG_KEEP_E'), '(г) собственото копие на изтритата бележка се трие', deleted());
 ok(deleted().includes('MEDIA_REC_E_1'), '(г) записът на изтритата бележка се маха', deleted());
 ok(afterG.media.some(m => m.gdid === 'MEDIA_REC_D_1'), '(г) записът на бележката в кошчето остава', afterG.media);
 
 deletes.length = 0;
 await page.evaluate(() => permanentlyDeleteNote('NOTEU_GID_0000009', 109, true));
-ok(!deleted().includes('IMG_INLINE_KEEP'),
-  `(г) вградена снимка, чието име ползва бележка от кошчето, не се търси и не се трие по име (${JSON.stringify(deleted())})`, deleted());
+// Проверката „вградената снимка се трие по име" е махната: по име не се търси (изричното искане на собственика).
 ok(deleted().includes('NOTEU_GID_0000009'), '(г) самата бележка пак се трие', deleted());
 
 // =====================================================================================
-// (д) Файл, който е фон на борд, също е „ползван". backpath е id на файла в Drive.
+// (д) Фонът на борд не пази файла: собственикът изрично поиска без проверки, затова прикаченият
+//     файл на бележката се трие, дори борд да го ползва за фон (backpath е id на файла в Drive).
 // =====================================================================================
 await seed(
   [noteObj('NOTEF_GID_0000010', 110, { text: 'бележка с фон на борд' })],
@@ -321,9 +337,10 @@ await seed(
   [Object.assign({}, BOARD, { backpath: 'IMG_BOARD_BG' })]);
 deletes.length = 0;
 await page.evaluate(() => permanentlyDeleteNote('NOTEF_GID_0000010', 110, true));
-ok(!deleted().includes('IMG_BOARD_BG'), `(д) файл, който е фон на борд, се пази (${JSON.stringify(deleted())})`, deleted());
+ok(deleted().includes('IMG_BOARD_BG'), `(д) файлът СЕ трие, макар да е фон на борд (${JSON.stringify(deleted())})`, deleted());
 ok(deleted().includes('MEDIA_REC_F_1'), '(д) записът на бележката пак се маха', deleted());
 
+ok(nameLookups.length === 0, `никъде не се търси по име в Drive (${JSON.stringify(nameLookups)})`, nameLookups);
 ok(errs.length === 0, `няма нехванати грешки в конзолата (${JSON.stringify(errs.slice(0, 3))})`, errs.slice(0, 3));
 
 await browser.close();
