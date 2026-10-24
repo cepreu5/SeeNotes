@@ -283,6 +283,7 @@ const floaterState = (id) => page.evaluate((id) => {
         top: cs.top,
         inlineBottom: el.style.getPropertyValue('bottom').trim(),
         inlineTop: el.style.getPropertyValue('top').trim(),
+        translate: cs.translate,
         rectTop: round(r.top), rectBottom: round(r.bottom), rectW: round(r.width), rectH: round(r.height),
     };
 }, id);
@@ -780,7 +781,155 @@ ok(Math.abs(numPx(addR.bottom) - numPx(baseAdd.bottom)) <= 1,
     `bottom на „+" се върна на първоначалната стойност (${addR.bottom} срещу ${baseAdd.bottom})`, { addR, baseAdd });
 
 tick('до тук: 14) избутване на бутоните');
-// --- 15) Никакви грешки в конзолата / страницата -------------------------------------------
+
+// --- 15) Фонът на лентата е 50% прозрачен (b2.74) ------------------------------------------
+// Собственикът (24.10.2026): „направи фона на лентата 50% прозрачен". Мери се ИЗЧИСЛЕНИЯТ цвят, не
+// текстът в stylesheet-а: rgba(...) с алфа точно 0.5 и същият тон като преди (#37474F).
+const barBackground = () => page.evaluate(() => {
+    const bar = document.getElementById('open-notes-bar');
+    if (!bar) return null;
+    const color = getComputedStyle(bar).backgroundColor;
+    const m = color.match(/^rgba?\(([^)]+)\)$/);
+    const parts = m ? m[1].split(',').map(v => parseFloat(v)) : [];
+    return { color, rgb: parts.slice(0, 3), alpha: parts.length === 4 ? parts[3] : 1 };
+});
+const barBg = await barBackground();
+ok(!!barBg && Math.abs(barBg.alpha - 0.5) < 0.001,
+    `фонът на лентата е 50% прозрачен (${barBg && barBg.color})`, barBg);
+ok(!!barBg && barBg.rgb.join(',') === '55,71,79',
+    `тонът на фона е същият като преди, #37474F (${barBg && barBg.rgb})`, barBg);
+
+// --- 16) Разпъната бележка: иконата на асистента не се мести два пъти (b2.74) --------------
+// Собственикът: „expanded режим на бележката да проверява дали иконата на асистента е най-долу и тогава
+// да я мести, защото когато лентата вече я е преместила се получава двойно преместване - излишно".
+// Отстъпът на иконата при разпъната бележка е 60px; лентата вдига СЪЩИТЕ 60px. Значи двете заедно
+// дават 130px от долния ръб вместо 70 - това е двойното преместване.
+const bodyFlags = () => page.evaluate(() => ({
+    expanded: document.body.classList.contains('modal-note-expanded'),
+    lift: document.body.classList.contains('modal-note-expanded-fab-lift'),
+    bar: document.body.classList.contains('open-notes-bar-visible'),
+}));
+// Разпъването минава през истинския бутон на активната бележка (стрелката в хедъра ѝ).
+const clickExpand = () => page.evaluate(() => {
+    const list = getOpenNoteWindows();
+    const win = list.find(w => w.el.classList.contains('note-window-active')) || list[0];
+    if (!win) return false;
+    activateNoteWindow(win, true);
+    const btn = document.getElementById('modal-expand-btn');
+    if (!btn) return false;
+    btn.click();
+    return true;
+});
+// Разстоянието на иконата от долния ръб: bottom от изчисления стил плюс отрицателния translate (с
+// който я качва отстъпът при разпъната бележка). В този тестов режим бутонът е display: none, значи
+// мярката се взима от стиловете (bottom/translate), а не от getBoundingClientRect.
+const fabOffset = (f) => {
+    const shift = (String(f.translate).match(/-([\d.]+)px/) || [])[1];
+    return numPx(f.bottom) + (shift ? parseFloat(shift) : 0);
+};
+
+await closeAllOpenNotes();
+await settle();
+for (const key of ['photo', 'bread']) await openNote(key);
+await settle();
+await page.setViewportSize({ width: 1280, height: 900 });
+await settle();
+let flags = await bodyFlags();
+let fab = await floaterState('kb-fab');
+barR = await barRect();
+ok(!flags.bar && !flags.expanded && !flags.lift && fab.present,
+    `изходно: 2 бележки, без лента, без отстъп (${JSON.stringify(flags)})`, flags);
+const fabOffsetPlain = fabOffset(fab);
+ok(Math.abs(fabOffsetPlain - 10) <= 0.6,
+    `без бележка в разпънат вид иконата е на 10px от долния ръб (${fabOffsetPlain})`, fab);
+
+// а) Разпъване БЕЗ лента: иконата отстъпва 60px - това е истинското преместване.
+ok(await clickExpand(), 'разпъването минава през бутона в хедъра на бележката');
+await settle();
+flags = await bodyFlags();
+fab = await floaterState('kb-fab');
+ok(flags.expanded && flags.lift,
+    `разпъната бележка, иконата е на долния ръб → отстъпът е включен (${JSON.stringify(flags)})`, flags);
+ok(Math.abs(fabOffset(fab) - (fabOffsetPlain + 60)) <= 1.5,
+    `без лента иконата отстъпва точно 60px (${fabOffset(fab)} срещу ${fabOffsetPlain + 60})`, { fab, fabOffsetPlain });
+
+// б) Свиване: отстъпът изчезва и иконата се връща точно на мястото си.
+ok(await clickExpand(), 'свиването минава през същия бутон');
+await settle();
+flags = await bodyFlags();
+fab = await floaterState('kb-fab');
+ok(!flags.expanded && !flags.lift,
+    `свита бележка → няма отстъп (${JSON.stringify(flags)})`, flags);
+ok(Math.abs(fabOffset(fab) - fabOffsetPlain) <= 1.5,
+    `иконата се върна на долния ръб (${fabOffset(fab)} срещу ${fabOffsetPlain})`, { fab, fabOffsetPlain });
+
+// в) Разпъване, КОГАТО ЛЕНТАТА ВЕЧЕ Е ВИДИМА: лентата я е вдигнала и втори отстъп не се дава.
+await openNote('plan');
+await settle();
+flags = await bodyFlags();
+barR = await barRect();
+ok(flags.bar && !hidden(barR),
+    `3 бележки → лентата е на екрана и вдига бутоните (${JSON.stringify(flags)})`, { flags, barR });
+const fabInBar = await floaterState('kb-fab');
+const expectedOffset = 10 + numPx(barR.varH) + 8;
+ok(Math.abs(fabOffset(fabInBar) - expectedOffset) <= 0.6,
+    `лентата е вдигнала иконата с височината си + 8px (${fabOffset(fabInBar)} срещу ${expectedOffset})`, { fabInBar, barR });
+ok(await clickExpand(), 'разпъването на активната бележка минава при видима лента');
+await settle();
+flags = await bodyFlags();
+fab = await floaterState('kb-fab');
+ok(flags.expanded && flags.bar && !flags.lift,
+    `при видима лента иконата НЕ получава втори отстъп (${JSON.stringify(flags)})`, flags);
+ok(!/-\s*60px/.test(String(fab.translate)),
+    `translate на иконата не носи вторите 60px (translate ${fab.translate})`, fab);
+ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
+    `иконата стои на ${expectedOffset}px от долния ръб, не на ${expectedOffset + 60}px (${fabOffset(fab)})`,
+    { fab, expectedOffset });
+ok(fabOffset(fab) > numPx(barR.rectH),
+    `иконата е над лентата и в разпъната бележка (${fabOffset(fab)} > ${numPx(barR.rectH)})`, { fab, barR });
+
+// г) Свиване при видима лента: нищо не се размества, лентата продължава да я вдига.
+ok(await clickExpand(), 'свиването минава при видима лента');
+await settle();
+flags = await bodyFlags();
+fab = await floaterState('kb-fab');
+ok(!flags.expanded && !flags.lift && flags.bar,
+    `свито при видима лента: пак без отстъп, лентата я вдига (${JSON.stringify(flags)})`, flags);
+ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
+    `иконата остава на ${expectedOffset}px от долния ръб (${fabOffset(fab)})`, fab);
+
+// --- 17) „Скрий/покажи всички": иконите са стрелки, не око (b2.74) -------------------------
+// Собственикът: „бутонът око да стане със стрелки вместо око". Двойна стрелка НАДОЛУ значи „скрий
+// всички", двойна НАГОРЕ - „покажи всички".
+const hideIcon = () => page.evaluate(() => {
+    const btn = document.querySelector('#open-notes-bar .open-notes-bar-hide');
+    if (!btn) return null;
+    const svg = btn.querySelector('svg');
+    return {
+        mode: btn.dataset.mode,
+        title: btn.getAttribute('title'),
+        circles: svg ? svg.querySelectorAll('circle').length : -1,
+        paths: svg ? [...svg.querySelectorAll('path')].map(p => p.getAttribute('d')) : [],
+    };
+});
+let icon = await hideIcon();
+ok(!!icon && icon.mode === 'hide' && icon.circles === 0 && icon.paths.length === 2
+    && icon.paths.every(d => /l6 5\.6/.test(d)),
+    `в състояние „скрий" иконата е две стрелки надолу, без око (${icon && icon.paths.join(' | ')})`, icon);
+await page.locator('#open-notes-bar .open-notes-bar-hide').click();
+await settle();
+icon = await hideIcon();
+ok(!!icon && icon.mode === 'show' && icon.circles === 0 && icon.paths.length === 2
+    && icon.paths.every(d => /l6-5\.6/.test(d)),
+    `в състояние „покажи" иконата е две стрелки нагоре, без око (${icon && icon.paths.join(' | ')})`, icon);
+await page.locator('#open-notes-bar .open-notes-bar-hide').click();
+await settle();
+icon = await hideIcon();
+ok(!!icon && icon.mode === 'hide' && icon.paths.every(d => /l6 5\.6/.test(d)),
+    `връщането в „скрий" връща стрелките надолу (${icon && icon.mode})`, icon);
+
+tick('до тук: 17) прозрачен фон, отстъп на иконата и стрелки');
+// --- 18) Никакви грешки в конзолата / страницата -------------------------------------------
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
 
 await browser.close();

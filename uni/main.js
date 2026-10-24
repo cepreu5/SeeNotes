@@ -10913,8 +10913,38 @@ function applyExpandedModalSize(modalContentBox, isExpanded) {
     modalContentBox.style.maxHeight = 'none';
 }
 
+// Разпънатата бележка закрива долния ръб (там е лентата ѝ с инструменти), затова иконата на асистента
+// отстъпва 60px нагоре. Отстъпът се дава САМО когато иконата още стои на долния ръб: щом лентата на
+// бележките вече я е вдигнала (тя вдига точно същите 60px) или собственикът я е преместил другаде,
+// второ отместване само я качва излишно - двойно преместване (b2.74).
+const EXPANDED_FAB_LIFT_CLASS = 'modal-note-expanded-fab-lift';
+
+function kbFabStandsOnBottomEdge(fab) {
+    if (!fab) return false;
+    const top = (fab.style.getPropertyValue('top') || '').trim();
+    const bottom = (fab.style.getPropertyValue('bottom') || '').trim();
+    // Преместен бутон минава на top (bottom: auto), значи вече не е на долния ръб. Празна инлайн
+    // стойност значи, че бутонът ползва основното си място от stylesheet-а - то е долният ръб.
+    if (top && top !== 'auto') return false;
+    return bottom !== 'auto';
+}
+
+function expandedFabLiftNeeded() {
+    if (!document.body || !document.body.classList.contains('modal-note-expanded')) return false;
+    // Лентата на бележките вече е вдигнала иконата - отстъпът е направен, втори не трябва.
+    if (document.body.classList.contains('open-notes-bar-visible')) return false;
+    return kbFabStandsOnBottomEdge(document.getElementById('kb-fab'));
+}
+
+/** Класът, който дава отстъпа на иконата при разпъната бележка - пресмята се наново при всяка промяна. */
+function syncExpandedFabLift() {
+    if (!document.body) return;
+    document.body.classList.toggle(EXPANDED_FAB_LIFT_CLASS, expandedFabLiftNeeded());
+}
+
 function setExpandedModalFloatingControls(isExpanded) {
     document.body.classList.toggle('modal-note-expanded', isExpanded);
+    syncExpandedFabLift();
 }
 
 function updateModalExpandButton(isExpanded) {
@@ -11356,6 +11386,9 @@ function syncOpenNotesBarLift(visible) {
         setOpenNotesBarHeightVar(0);
     }
     applyOpenNotesBarLift();
+    // Състоянието на лентата решава и дали иконата на асистента има нужда от отстъп при разпъната
+    // бележка - иначе двете отмествания се събират.
+    syncExpandedFabLift();
 }
 
 /**
@@ -13703,16 +13736,16 @@ const productTourIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria
 function productTourLabel() {
     return (localStorage.getItem('language') === 'bg') ? 'Пусни демо-тура' : 'Play the demo tour';
 }
-// „Скрий всички бележки" (b2.70): око със зачеркване - прозорците изчезват от екрана, но остават
-// отворени. Двете икони са една рисунка с разменено състояние, за да си личи, че бутонът сменя ролята си.
+// „Скрий всички бележки" (b2.70, иконата е стрелки от b2.74): прозорците изчезват от екрана, но
+// остават отворени. Собственикът поиска стрелки вместо око - двойна стрелка надолу за „скрий" и
+// двойна нагоре за „покажи", за да се чете посоката на действие, а не око.
 const hideAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M2.6 12s3.6-6.2 9.4-6.2S21.4 12 21.4 12s-3.6 6.2-9.4 6.2S2.6 12 2.6 12z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" />
-    <circle cx="12" cy="12" r="2.7" fill="currentColor" stroke="none" />
-    <path d="M4.2 19.8L19.8 4.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+    <path d="M6 6.4l6 5.6 6-5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M6 13.4l6 5.6 6-5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
 </svg>`;
 const showAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M2.6 12s3.6-6.2 9.4-6.2S21.4 12 21.4 12s-3.6 6.2-9.4 6.2S2.6 12 2.6 12z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" />
-    <circle cx="12" cy="12" r="2.7" fill="currentColor" stroke="none" />
+    <path d="M6 17.6l6-5.6 6 5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M6 10.6l6-5.6 6 5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
 </svg>`;
 // Close all notes: two overlapping windows of the SAME size, the x in the upper (front) one (CX, 2026-10-07).
 // The front window is drawn last and filled with the button's own colour, so it hides the part of the back
