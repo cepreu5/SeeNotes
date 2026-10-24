@@ -4,7 +4,8 @@
 // от лентата нагоре".
 // Проверява се с ИСТИНСКИЯ widget на Ko-fi (скриптовете и стиловете му са в fixtures/kofi/cdn и се
 // сервират локално, за да не зависи тестът от мрежата) върху ИСТИНСКИЯ uni/style.css:
-//   - контейнерът и iframe-ът са колкото видимия бутон (около 62x48), не 195x65;
+//   - контейнерът и iframe-ът са колкото видимия бутон (88x48, защото бутонът на Ko-fi е 87x46), не 195x65;
+//   - вътре в iframe-а няма скролбар и бутонът не се реже отгоре (оплакване на собственика, 24.10.2026);
 //   - логото е изцяло вътре в iframe-а и не се реже;
 //   - клик извън контейнера НЕ се прихваща от widget-а (стига до елемента под него);
 //   - клик/докосване върху логото отваря прозорчето на Ko-fi;
@@ -100,8 +101,12 @@ async function measure(page, wrapSel, frameSel) {
         const r = el => el ? (b => ({ x: +b.x.toFixed(1), y: +b.y.toFixed(1), w: +b.width.toFixed(1), h: +b.height.toFixed(1), right: +b.right.toFixed(1), bottom: +b.bottom.toFixed(1) }))(el.getBoundingClientRect()) : null;
         const d = f ? f.contentDocument : null;
         const img = d ? d.querySelector('.kofiimg') : null;
+        const btn = d ? d.querySelector('.floatingchat-donate-button') : null;
         const de = d ? d.documentElement : null;
         const ir = img ? img.getBoundingClientRect() : null;
+        const br = btn ? btn.getBoundingClientRect() : null;
+        // Скролбарът вътре в iframe-а се вижда като scrollW/H > clientW/H.
+        const body = d ? d.body : null;
         // Точка извън контейнера: какво реално ще получи клика там.
         const freePoint = wrap ? { x: wrap.getBoundingClientRect().right + 40, y: wrap.getBoundingClientRect().bottom - 20 } : null;
         const hit = freePoint ? document.elementFromPoint(freePoint.x, freePoint.y) : null;
@@ -111,6 +116,12 @@ async function measure(page, wrapSel, frameSel) {
             viewport: de ? { w: de.clientWidth, h: de.clientHeight } : null,
             img: ir ? { x: +ir.x.toFixed(1), y: +ir.y.toFixed(1), w: +ir.width.toFixed(1), h: +ir.height.toFixed(1) } : null,
             imgInside: !!(ir && de) ? (ir.left >= -0.5 && ir.top >= -0.5 && ir.right <= de.clientWidth + 0.5 && ir.bottom <= de.clientHeight + 0.5) : null,
+            // Бутонът на Ko-fi (лого + padding) трябва да е ЦЯЛ вътре, иначе връхчето му се реже.
+            btn: br ? { top: +br.top.toFixed(1), bottom: +br.bottom.toFixed(1), w: +br.width.toFixed(1), h: +br.height.toFixed(1) } : null,
+            btnInside: !!(br && de) ? (br.top >= -0.5 && br.left >= -0.5 && br.bottom <= de.clientHeight + 0.5 && br.right <= de.clientWidth + 0.5) : null,
+            // Няма ли място за съдържанието, браузърът слага скролбар - това е оплакването на собственика.
+            noScrollbar: !!(body) ? (body.scrollWidth <= body.clientWidth + 1 && body.scrollHeight <= body.clientHeight + 1) : null,
+            bodyScroll: body ? { sw: body.scrollWidth, sh: body.scrollHeight, cw: body.clientWidth, ch: body.clientHeight } : null,
             gapBottom: wrap ? +(innerHeight - wrap.getBoundingClientRect().bottom).toFixed(1) : null,
             hitOutside: hit ? (hit.tagName + (hit.id ? '#' + hit.id : '')) : null,
             viewportH: innerHeight,
@@ -142,12 +153,16 @@ async function popupState(page, popupSel) {
 
     const m = await measure(page, WRAP, FRAME);
     ok(m.wrapDisplay !== 'none', 'на десктоп се вижда контейнерът .floatingchat-container-wrap', m.wrapDisplay);
-    ok(m.wrap && Math.abs(m.wrap.w - 62) <= 2 && Math.abs(m.wrap.h - 48) <= 2,
-        'контейнерът е колкото бутона (около 62x48), не 180x65', m.wrap);
-    ok(m.frame && Math.abs(m.frame.w - 62) <= 2 && Math.abs(m.frame.h - 48) <= 2,
-        'iframe-ът е колкото контейнера (около 62x48), не 195x65', m.frame);
-    ok(m.frame && m.frame.w * m.frame.h <= 3300,
-        'площта, която iframe-ът покрива, е под 3300 кв. px (преди беше 12675)', m.frame && m.frame.w * m.frame.h);
+    ok(m.wrap && Math.abs(m.wrap.w - 88) <= 2 && Math.abs(m.wrap.h - 48) <= 2,
+        'контейнерът е колкото бутона (около 88x48), не 180x65', m.wrap);
+    ok(m.frame && Math.abs(m.frame.w - 88) <= 2 && Math.abs(m.frame.h - 48) <= 2,
+        'iframe-ът е колкото контейнера (около 88x48), не 195x65', m.frame);
+    ok(m.frame && m.frame.w * m.frame.h <= 4600,
+        'площта, която iframe-ът покрива, е под 4600 кв. px (преди беше 12675)', m.frame && m.frame.w * m.frame.h);
+    ok(m.noScrollbar === true,
+        'вътре в iframe-а НЯМА скролбар (съдържанието се побира)', m.bodyScroll);
+    ok(m.btnInside === true,
+        'бутонът на Ko-fi е изцяло вътре в iframe-а - не се реже отгоре', { btn: m.btn, viewport: m.viewport });
     ok(m.imgInside === true, 'логото на Ko-fi е изцяло вътре в iframe-а (не се реже)', { img: m.img, viewport: m.viewport });
     ok(Math.abs(m.gapBottom - 12) <= 2, 'без лента иконката стои на 12px от долу', m.gapBottom);
     ok(m.hitOutside === 'DIV#under', 'клик извън контейнера стига до елемента под него (не го прихваща widget-ът)', m.hitOutside);
@@ -197,10 +212,14 @@ async function popupState(page, popupSel) {
     ok(m.wrapDisplay !== 'none', 'на телефон се вижда .floatingchat-container-wrap-mobi', m.wrapDisplay);
     const desktopHidden = await page.evaluate(() => getComputedStyle(document.querySelector('.floatingchat-container-wrap')).display);
     ok(desktopHidden === 'none', 'десктопният контейнер остава скрит на телефон', desktopHidden);
-    ok(m.wrap && Math.abs(m.wrap.w - 62) <= 2 && Math.abs(m.wrap.h - 48) <= 2,
-        'мобилният контейнер е колкото бутона (около 62x48), не 195x50', m.wrap);
-    ok(m.frame && Math.abs(m.frame.w - 62) <= 2 && Math.abs(m.frame.h - 48) <= 2,
+    ok(m.wrap && Math.abs(m.wrap.w - 88) <= 2 && Math.abs(m.wrap.h - 48) <= 2,
+        'мобилният контейнер е колкото бутона (около 88x48), не 195x50', m.wrap);
+    ok(m.frame && Math.abs(m.frame.w - 88) <= 2 && Math.abs(m.frame.h - 48) <= 2,
         'мобилният iframe е колкото контейнера', m.frame);
+    ok(m.noScrollbar === true,
+        'в мобилния iframe НЯМА скролбар (съдържанието се побира)', m.bodyScroll);
+    ok(m.btnInside === true,
+        'мобилният бутон на Ko-fi е изцяло вътре - не се реже отгоре', { btn: m.btn, viewport: m.viewport });
     ok(m.imgInside === true, 'логото е изцяло вътре в мобилния iframe', { img: m.img, viewport: m.viewport });
     ok(Math.abs(m.gapBottom - 12) <= 2, 'без лента иконката стои на 12px от долу', m.gapBottom);
     ok(m.hitOutside === 'DIV#under', 'клик извън контейнера стига до елемента под него', m.hitOutside);
