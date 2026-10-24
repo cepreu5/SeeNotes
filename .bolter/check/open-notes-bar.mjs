@@ -20,7 +20,10 @@
 //   - бележка със снимка показва <img> в плочката си, бележка без снимка - буквена плочка;
 //   - разпъната бележка при видима лента (extended mode, b2.75): долният ред с бутоните и редът с
 //     датата под него свършват НАД лентата, всеки бутон се натиска (elementFromPoint), а щом лентата
-//     изчезне, бележката се връща на цялата височина - на 1280x900 и на 390x844.
+//     изчезне, бележката се връща на цялата височина - на 1280x900 и на 390x844;
+//   - клик на плочката на АКТИВНАТА бележка я скрива (плочката става is-hidden), втори клик върху
+//     същата плочка я показва пак и я прави активна - плочката е превключвател, а клик на плочка на
+//     друга/скрита бележка работи както досега (b2.77).
 // Пуска се от корена на хранилището:
 //   node .bolter/check/open-notes-bar.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -1122,6 +1125,177 @@ tick('19c) 390x844');
 await page.setViewportSize({ width: 1280, height: 900 });
 await settle();
 tick('до тук: 19) разпъната бележка над лентата');
+
+tick('20) подготовка');
+// --- 20) Клик на плочката на активната бележка я скрива, втори клик я показва (b2.77) ---------
+// Собственикът (24.10.2026): „ако имаме лента и кликнем бутона на активната бележка веднъж - тя да
+// се скрива, втори път - показва се". Досега клик на плочка само активираше бележката, значи клик
+// върху плочката на ВЕЧЕ активната не правеше нищо видимо. Тук се проверява по истинския път:
+// истински кликове с показалеца върху плочките и истински прозорци (showModal).
+await page.setViewportSize({ width: 1280, height: 900 });
+await settle();
+ok(await closeAllOpenNotes(), '20) изходно: няма отворени бележки');
+for (const key of ['bread', 'plan', 'call']) await openNote(key);
+await settle();
+s = await barState();
+let ws20 = await windowsState();
+ok(ws20.open.length === 3 && !hidden(s) && s.tiles.length === 3,
+    `20) три бележки са отворени, лентата е видима с 3 плочки (${ws20.open.length}, display ${s.display})`, s.tiles.map(t => t.key));
+
+// Плочка по gdid: редът в лентата следва getOpenNoteWindows(), затова индексът се търси по ключа.
+const tileIndexFor = async (gdid) => (await barState()).tiles.findIndex(t => (t.key || '').includes(gdid));
+const clickTile = async (gdid) => {
+    const idx = await tileIndexFor(gdid);
+    if (idx < 0) return false;
+    await page.locator('#open-notes-bar .open-notes-bar-tile').nth(idx).click();
+    await settle();
+    return true;
+};
+const winOf = (ws, gdid) => ws.open.find(w => w.gdid === gdid) || null;
+const tileStateOf = async (gdid) => {
+    const st = await barState();
+    const t = st.tiles.find(x => (x.key || '').includes(gdid));
+    return t || null;
+};
+// Състоянието на един прозорец, прочетено в самата страница: класът note-window-hidden, display и
+// дали наистина се вижда на екрана (мярката на кутията).
+const winProbe = (gdid) => page.evaluate((g) => {
+    const w = getOpenNoteWindows().find(x => x.body.dataset.gdid === g);
+    if (!w) return { present: false };
+    const r = w.box.getBoundingClientRect();
+    return {
+        present: true,
+        hidden: !!w.hidden,
+        hidClass: w.el.classList.contains('note-window-hidden'),
+        display: getComputedStyle(w.el).display,
+        active: w.el.classList.contains('note-window-active'),
+        z: Number(w.el.style.zIndex) || 0,
+        boxH: Math.round(r.height),
+    };
+}, gdid);
+
+// Клик на плочката на ДРУГА (неактивна) видима бележка: старото поведение - става активна и идва
+// най-отпред. Така активната бележка е известна преди превключването.
+ok(await clickTile('BAR2'), '20) клик на плочката на BAR2 минава');
+ws20 = await windowsState();
+ok(ws20.activeGdid === 'BAR2' && winOf(ws20, 'BAR2').z === ws20.maxZ && (await tileStateOf('BAR2')).active,
+    `20) клик на плочка на друга видима бележка я прави активна и най-отпред (${ws20.activeGdid}, z ${winOf(ws20, 'BAR2').z} от ${ws20.maxZ})`, ws20.open);
+
+// --- Първи клик на плочката на активната: бележката се скрива -------------------------------
+ok(await clickTile('BAR2'), '20) клик на плочката на активната бележка BAR2 минава');
+s = await barState();
+ws20 = await windowsState();
+const p20hidden = await winProbe('BAR2');
+ok(p20hidden.hidden === true && p20hidden.hidClass === true,
+    `20) клик на плочката на активната бележка я скрива (hidden ${p20hidden.hidden}, клас ${p20hidden.hidClass})`, p20hidden);
+ok(p20hidden.display === 'none' && p20hidden.boxH === 0,
+    `20) скритият прозорец не се вижда (display ${p20hidden.display}, височина ${p20hidden.boxH})`, p20hidden);
+const t20hidden = await tileStateOf('BAR2');
+// Приглушаването е с преход (opacity 1 -> 0.55), значи тук се проверява КЛАСЪТ, а не междинната
+// стойност; самата непрозрачност се мери в част 10, след като преходът е свършил.
+ok(!!t20hidden && t20hidden.hiddenTile === true && t20hidden.active === false,
+    `20) плочката на скритата бележка получава is-hidden и вече не е откроена (is-hidden ${t20hidden && t20hidden.hiddenTile}, is-active ${t20hidden && t20hidden.active})`, t20hidden);
+const p20others = [await winProbe('BAR3'), await winProbe('BAR4')];
+ok(p20others.every(p => p.hidden === false && p.hidClass === false && p.display !== 'none' && p.boxH > 0),
+    `20) другите две бележки остават видими (${p20others.map(p => p.hidden ? 'h' : 'v').join('')})`, p20others);
+ok(ws20.open.length === 3 && !hidden(s) && s.tiles.length === 3,
+    `20) скриването не затваря бележката и лентата остава (отворени ${ws20.open.length}, плочки ${s.tiles.length})`, ws20.open.map(w => w.hidden));
+// „Активна, но невидима" бележка би поела клавиатурния вход и писането - активността минава към
+// друга ВИДИМА бележка, без да я вдига отпред.
+ok(ws20.activeGdid !== 'BAR2' && ws20.activeGdid !== ''
+    && (winOf(ws20, ws20.activeGdid) || {}).hidden === false,
+    `20) активността минава към друга ВИДИМА бележка (${ws20.activeGdid})`, ws20.open);
+ok(s.hideBtn.mode === 'hide' && /Скрий всички бележки/.test(s.hideBtn.title || ''),
+    `20) бутонът „скрий/покажи всички" не сменя ролята си, щом не всички са скрити (mode ${s.hideBtn.mode})`, s.hideBtn);
+
+// --- Втори клик на СЪЩАТА плочка: бележката се връща на екрана и става активна --------------
+ok(await clickTile('BAR2'), '20) втори клик на същата плочка минава');
+s = await barState();
+ws20 = await windowsState();
+const p20back = await winProbe('BAR2');
+ok(p20back.hidden === false && p20back.hidClass === false && p20back.display !== 'none' && p20back.boxH > 0,
+    `20) вторият клик връща бележката на екрана (hidden ${p20back.hidden}, display ${p20back.display}, височина ${p20back.boxH})`, p20back);
+const t20back = await tileStateOf('BAR2');
+ok(!!t20back && t20back.hiddenTile === false && t20back.active === true,
+    `20) плочката вече не е приглушена и отново е откроена (is-hidden ${t20back && t20back.hiddenTile}, is-active ${t20back && t20back.active})`, t20back);
+ok(p20back.active === true && ws20.activeGdid === 'BAR2' && p20back.z === ws20.maxZ,
+    `20) върнатата бележка е активна и най-отпред (${ws20.activeGdid}, z ${p20back.z} от ${ws20.maxZ})`, ws20.open);
+ok(ws20.open.length === 3 && ws20.open.every(w => w.hidden === false),
+    `20) след връщането и трите бележки са видими (${ws20.open.map(w => w.hidden ? 'h' : 'v').join('')})`, ws20.open.map(w => w.hidden));
+
+// --- Клик на плочката на СКРИТА бележка я показва и я прави активна --------------------------
+// Скрива се активната, активна става друга видима, и чак после се кликва плочката на скритата -
+// тоест вторият клик стига до пътя за скрита бележка, а не до превключването.
+ok(await clickTile('BAR2'), '20) BAR2 се скрива пак с клик на плочката си');
+ws20 = await windowsState();
+ok((await winProbe('BAR2')).hidden === true && ws20.activeGdid !== 'BAR2',
+    `20) BAR2 е скрита, активна е друга бележка (${ws20.activeGdid})`, ws20.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')));
+// Видима, но НЕактивна бележка: клик на плочката ѝ я активира (старото поведение не е счупено).
+const otherVisible = (ws20.open.find(w => !w.hidden && w.gdid !== ws20.activeGdid) || {}).gdid;
+ok(!!otherVisible && await clickTile(otherVisible), `20) клик на плочката на другата видима бележка (${otherVisible}) минава`);
+ws20 = await windowsState();
+ok(ws20.activeGdid === otherVisible && winOf(ws20, otherVisible).hidden === false
+    && winOf(ws20, otherVisible).z === ws20.maxZ && (await winProbe('BAR2')).hidden === true,
+    `20) клик на плочка на друга видима бележка я активира и вдига, а скритата си остава скрита (active ${ws20.activeGdid})`, ws20.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')));
+ok(await clickTile('BAR2'), '20) клик на плочката на СКРИТАТА BAR2 минава');
+ws20 = await windowsState();
+const p20shown = await winProbe('BAR2');
+ok(p20shown.hidden === false && p20shown.display !== 'none' && p20shown.active === true && p20shown.z === ws20.maxZ,
+    `20) скрита бележка се показва и става активна от клик на плочката си (hidden ${p20shown.hidden}, active ${p20shown.active}, z ${p20shown.z} от ${ws20.maxZ})`, p20shown);
+ok(ws20.open.length === 3 && ws20.open.every(w => w.hidden === false),
+    `20) и трите бележки са видими след това (${ws20.open.map(w => w.hidden ? 'h' : 'v').join('')})`, ws20.open.map(w => w.hidden));
+
+// --- Плъзгане по лентата не скрива и не показва нищо ----------------------------------------
+// Показалецът натиска ВЪРХУ плочка, минава повече от 6px и пуска пак върху нея: това е плъзгане,
+// а не клик - значи превключването не бива да се задейства (иначе плъзгането по лентата щеше да
+// крие бележки). Показалецът идва през истинския вход на браузъра, не през изкуствено събитие.
+const ws20BeforeDrag = await windowsState();
+const s20BeforeDrag = await barState();
+const dragIdx = s20BeforeDrag.tiles.findIndex(t => (t.key || '').includes(ws20BeforeDrag.activeGdid));
+const dragBox = await page.locator('#open-notes-bar .open-notes-bar-tile').nth(dragIdx).boundingBox();
+await page.mouse.move(dragBox.x + dragBox.width / 2, dragBox.y + dragBox.height / 2);
+await page.mouse.down();
+await page.mouse.move(dragBox.x + dragBox.width / 2 + 12, dragBox.y + dragBox.height / 2, { steps: 8 });
+await page.mouse.up();
+await settle();
+const ws20AfterDrag = await windowsState();
+const p20afterDrag = await winProbe(ws20BeforeDrag.activeGdid);
+const t20afterDrag = await tileStateOf(ws20BeforeDrag.activeGdid);
+ok(ws20AfterDrag.activeGdid === ws20BeforeDrag.activeGdid && p20afterDrag.hidden === false
+    && ws20AfterDrag.open.every(w => w.hidden === false),
+    `20) плъзгане по лентата не скрива бележка (active ${ws20BeforeDrag.activeGdid} -> ${ws20AfterDrag.activeGdid}, hidden ${p20afterDrag.hidden})`,
+    { before: ws20BeforeDrag.activeGdid, after: ws20AfterDrag.activeGdid });
+ok(!!t20afterDrag && t20afterDrag.hiddenTile === false && !(await hidden(await barState())),
+    '20) нито една плочка не става is-hidden от плъзгане и лентата остава видима', t20afterDrag);
+
+// --- 20б) Последната ВИДИМА бележка: активността остава, лентата не изчезва ------------------
+// Когато друга видима бележка няма, активността не се мести (същото като „скрий всички") - иначе
+// getTopNoteWindow() връща и скритите и активна щеше да стане невидима бележка.
+// Тук трите се скриват една по една през плочките им и се гледа какво остава.
+for (let i = 0; i < 3; i++) {
+    const activeG = (await windowsState()).activeGdid;
+    ok(!!activeG && await clickTile(activeG), `20б) клик на плочката на активната ${activeG} (${i + 1}/3) минава`);
+    ok((await winProbe(activeG)).hidden === true, `20б) ${activeG} се скри от клик на плочката си (${i + 1}/3)`);
+}
+s = await barState();
+ws20 = await windowsState();
+const activeCount20 = await page.evaluate(() => getOpenNoteWindows().filter(w => w.el.classList.contains('note-window-active')).length);
+ok(ws20.open.length === 3 && ws20.open.every(w => w.hidden === true),
+    `20б) и трите бележки са скрити, но нито една не е затворена (${ws20.open.map(w => w.hidden ? 'h' : 'v').join('')})`, ws20.open);
+ok(activeCount20 === 1,
+    `20б) активна остава точно една бележка, както при „скрий всички" (${activeCount20})`, activeCount20);
+ok(!hidden(s) && s.tiles.length === 3 && s.tiles.every(t => t.hiddenTile),
+    `20б) лентата остава с три приглушени плочки (display ${s.display})`, s.tiles.map(t => t.hiddenTile));
+ok(s.hideBtn.mode === 'show' && /Покажи всички бележки/.test(s.hideBtn.title || ''),
+    `20б) щом всички са скрити, бутонът става „покажи всички" (mode ${s.hideBtn.mode})`, s.hideBtn);
+// И обратно: клик на скрита плочка връща точно нея - вторият клик от превключването.
+const lastHiddenG = ws20.open[0].gdid;
+ok(await clickTile(lastHiddenG), `20б) клик на плочката на скритата ${lastHiddenG} минава`);
+ws20 = await windowsState();
+ok(ws20.open.filter(w => !w.hidden).length === 1 && (await winProbe(lastHiddenG)).active === true,
+    `20б) връща се само тя и става активна (${ws20.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).join(' ')})`, ws20.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')));
+
+tick('до тук: 20) превключване от плочка');
 
 // --- 18) Никакви грешки в конзолата / страницата -------------------------------------------
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
