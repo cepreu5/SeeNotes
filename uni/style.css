@@ -1,4 +1,8 @@
 :root {
+    /* Колко е висока лентата на отворените бележки. Стои 0px, докато лентата не се покаже: всичко,
+       закачено за долния ръб на екрана (асистентът, „+", стрелката нагоре, лентата с действията),
+       се мести с тази стойност и се връща на мястото си, щом лентата изчезне - без остатък. */
+    --open-notes-bar-h: 0px;
     --note-font-size: 16px;
     /* Default font size for notes */
     --note-bg-0: #FBFF86;
@@ -42,7 +46,36 @@ body:not(.app-ready) #kb-fab {
 }
 
 /* A note modal blocks creating another note; hide the global add button. */
-body:has(.note-window.visible) #add-note-fab {
+/* --- Избутване на плаващите бутони над лентата (b2.70) ------------------------------------------
+   Докато лентата е на екрана, всичко закачено за долния ръб се качва над нея, вместо да остане зад
+   нея. Правилото важи САМО под body.open-notes-bar-visible, значи щом лентата изчезне, елементите
+   се връщат на точното си място (променливата също се връща на 0px). Бутоните с инлайн позиция
+   (!important от местенето) не могат да се вдигнат оттук - тях ги вдига applyOpenNotesBarLift. */
+body.open-notes-bar-visible #kb-loading-panel {
+    bottom: calc(80px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible .board-filter-popup {
+    bottom: calc(20px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #scrollTopBtn {
+    bottom: calc(20px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #selection-bar {
+    bottom: calc(0px + var(--open-notes-bar-h) + 8px);
+}
+/* Съобщенията („Прикачено: ...") излизат точно на долния ръб - иначе лентата ги закрива. */
+body.open-notes-bar-visible .toast-notification {
+    bottom: calc(0px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #kb-fab {
+    bottom: calc(10px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #add-note-fab {
+    bottom: calc(10px + var(--open-notes-bar-h) + 8px);
+}
+
+/* Скритите бележки не са на екрана: бутонът за нова бележка остава достъпен. */
+body:has(.note-window.visible:not(.note-window-hidden)) #add-note-fab {
     display: none !important;
 }
 
@@ -4673,6 +4706,11 @@ body.selection-locked .note.active-selection-note .note-content {
 #note-windows-layer:empty {
     display: none;
 }
+/* Скрита бележка (b2.70): прозорецът остава отворен, но не се вижда и не прихваща кликове.
+   Класът 'visible' значи „отворена" и затова скриването НЕ го маха - то не е затваряне. */
+.note-window.note-window-hidden {
+    display: none !important;
+}
 .note-window.modal-overlay,
 .note-window.modal-overlay.visible {
     background: transparent;
@@ -4757,6 +4795,139 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 #single-note-overlay.visible {
     display: block;
+}
+
+/* --- Лента на отворените бележки (b2.70) -------------------------------------------------------
+   Показва се при повече от 2 отворени бележки, най-отдолу на екрана: плочка 40px на всяка бележка
+   (миниатюра или буквен квадрат в неин цвят) и бутон за затваряне на всички, който стои ИЗВЪН
+   приплъзващия се ред. Редът се приплъзва настрани, когато плочките не се побират; скролбарът е
+   скрит, а плочките не се свиват (flex: 0 0 40px). */
+#open-notes-bar {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    height: 52px;
+    padding: 6px 8px;
+    align-items: center;
+    gap: 8px;
+    background: #37474F;
+    border-top: 2px solid #546E7A;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    /* Слоят на прозорците не приема кликове; лентата приема своите. */
+    pointer-events: auto;
+}
+#open-notes-bar.is-visible {
+    display: flex;
+}
+.open-notes-bar-strip {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.open-notes-bar-strip::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.open-notes-bar-tile {
+    position: relative;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+    cursor: pointer;
+    transition: box-shadow 0.15s ease;
+}
+/* Активната бележка: 2px в акцентния цвят на приложението. Открояването е отвън (box-shadow), за
+   да не се мени размерът и подредбата на плочката. */
+.open-notes-bar-tile.is-active {
+    box-shadow: 0 0 0 2px #3a6ff0;
+}
+.open-notes-bar-letters {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    line-height: 1;
+    user-select: none;
+}
+.open-notes-bar-thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+.open-notes-bar-tile.has-thumb .open-notes-bar-thumb {
+    display: block;
+}
+.open-notes-bar-tile.has-thumb .open-notes-bar-letters {
+    display: none;
+}
+/* Скрита бележка: плочката е приглушена - клик на нея я връща на екрана. */
+.open-notes-bar-tile.is-hidden {
+    opacity: 0.55;
+}
+.open-notes-bar-tile.is-hidden:hover {
+    opacity: 0.8;
+}
+.open-notes-bar-hide,
+.open-notes-bar-close {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #546E7A;
+    color: #fff;
+    cursor: pointer;
+}
+.open-notes-bar-hide {
+    background: #455A64;
+    color: #fff;
+    cursor: pointer;
+}
+.open-notes-bar-hide:hover,
+.open-notes-bar-close:hover {
+    background: #607D8B;
+}
+.open-notes-bar-hide svg,
+.open-notes-bar-close svg {
+    width: 22px;
+    height: 22px;
 }
 
 /* Обхождането след включване на Google Календар (b2.11): брояч и лента в реда под ключа.

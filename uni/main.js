@@ -11098,6 +11098,9 @@ function restoreNoteWindowIds(win) {
 
 function activateNoteWindow(win, front = true) {
     if (!win) return;
+    // Скрита бележка се връща на екрана, преди да стане активна: „активна, но невидима" не е
+    // състояние, което потребителят може да види (клик на плочка, showModal за нея, < / >).
+    if (win.hidden) showNoteWindow(win);
     // Звукът от плочка в друга бележка не остава да свири, когато тази стане активна. Клик върху
     // самата плочка не спира нищо - тя е в същия прозорец (виж stopAttachmentAudioOutside).
     stopAttachmentAudioOutside(win.el);
@@ -11123,6 +11126,9 @@ function activateNoteWindow(win, front = true) {
         if (win.open) setExpandedModalFloatingControls(win.body.dataset.isExpanded === 'true');
         // Историята за отмяна е на бележка: при смяна на прозореца започва от тук.
         resetNoteEditUndoHistory(win.body);
+        // Открояването в лентата на отворените бележки следва активната: и когато прозорецът не се
+        // вдига отпред (withNoteWindow), плочката пак трябва да сочи вярната бележка.
+        refreshOpenNotesBar();
     }
     if (front) raiseNoteWindow(win);
 }
@@ -11152,15 +11158,22 @@ function isSingleNoteMode() {
 function applySingleNoteModeSetting() {
     const checkbox = document.getElementById('single-note-mode-checkbox');
     if (checkbox) checkbox.checked = isSingleNoteMode();
+    // В режим „единична бележка" лентата не се показва, значи скрита бележка остава недостъпна -
+    // затова включването на режима връща на екрана всичко скрито.
+    if (isSingleNoteMode()) getHiddenNoteWindows().forEach(showNoteWindow);
     updateSingleNoteOverlay();
 }
 
 function updateSingleNoteOverlay() {
     updateCloseAllNotesButtons();
+    // Лентата на отворените бележки върви заедно с прозорците: тук минава всяко вдигане, всяко
+    // затваряне и „затвори всички", значи състоянието ѝ никога не изостава от прозорците.
+    refreshOpenNotesBar();
     const layer = document.getElementById('note-windows-layer');
     if (!layer) return;
     let overlay = document.getElementById('single-note-overlay');
-    const top = isSingleNoteMode() ? getTopNoteWindow() : null;
+    // Скритите бележки не участват в режима „единична бележка": няма видим прозорец - няма и сянка.
+    const top = isSingleNoteMode() ? getTopVisibleNoteWindow() : null;
     if (!top) {
         overlay?.classList.remove('visible');
         return;
@@ -11171,7 +11184,7 @@ function updateSingleNoteOverlay() {
         overlay.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const win = getTopNoteWindow();
+            const win = getTopVisibleNoteWindow();
             if (!win) return;
             activateNoteWindow(win, true);
             win.el.querySelector('.modal-close')?.click();
@@ -11182,6 +11195,442 @@ function updateSingleNoteOverlay() {
     if (overlay.parentNode !== layer || overlay.nextSibling !== top.el) layer.insertBefore(overlay, top.el);
     overlay.classList.add('visible');
 }
+
+// --- Лента на отворените бележки (b2.70) ------------------------------------------------------
+// Собственикът (24.10.2026): „когато имаме отворени повече от 2 бележки най-отдолу на екрана да се
+// появи лента с мини-изображения (40px) на бележките и бутон за затваряне на всички бележки, която
+// да се приплъзва, ако няма достатъчно място на екрана. кликването на иконка активира съответната
+// ѝ бележка".
+// Лентата живее в #note-windows-layer - същият родител като прозорците - затова носи
+// pointer-events: auto и z-index над всеки прозорец: иначе вдигнат с клик прозорец би я закрил.
+// Показва се при ПОВЕЧЕ от 2 отворени бележки ("повече от 2" значи три и нагоре) ИЛИ когато има
+// скрити бележки - иначе няма как да ги върнеш обратно. В режим „единична бележка" не се показва:
+// там достъпна е само горната бележка.
+const OPEN_NOTES_BAR_MIN = 2;
+const OPEN_NOTES_BAR_Z = NOTE_WINDOW_Z_BASE + 9000;
+// Размерът на миниатюрата: плочката е 40px, значи 80px стигат за плътна картинка на екран с
+// двойна плътност, а заявката остава малка.
+const OPEN_NOTES_BAR_THUMB_SIZE = 80;
+// Колко се чака миниатюрата, преди плочката да остане с буквите си: лентата не бива да чака мрежата.
+const OPEN_NOTES_BAR_THUMB_WAIT = 1000;
+// Цветовете на буквените плочки. Цветът се избира по gdid/id на бележката, значи е един и същ при
+// всяко преподреждане - плочката не сменя цвят, докато бележката е отворена.
+const OPEN_NOTES_BAR_COLORS = ['#546E7A', '#00897B', '#5E35B1', '#C62828', '#EF6C00', '#2E7D32', '#0277BD', '#6D4C41'];
+// Намерен адрес на миниатюра по име на файл: при всяко опресняване плочката се строи наново, а без
+// този кеш всяка смяна на активната бележка връща картинката в началото и тя мига. Помни се за
+// КОЛКОТО и общият кеш на thumbnail-ите (INLINE_IMAGE_THUMB_TTL): подписаният адрес на Drive изтича
+// и не бива да се ползва до края на сесията.
+const openNotesBarThumbSrc = new Map();
+let openNotesBarKeySeq = 0;
+
+/** Ключът на плочката за един прозорец: бележката (gdid/id), а за бележка без id - самият прозорец. */
+function openNotesBarKeyFor(win) {
+    const gdid = win.body.dataset.gdid || '';
+    const id = win.body.dataset.id || '';
+    if (gdid || id) return `n\u0000${gdid}\u0000${id}`;
+    if (!win.barKey) win.barKey = `w\u0000${++openNotesBarKeySeq}`;
+    return win.barKey;
+}
+
+/** Прозорецът, към който сочи една плочка (по ключа ѝ), или null, ако вече е затворен. */
+function openNotesBarWindowFor(tile) {
+    const key = tile && tile.dataset.barKey;
+    if (!key) return null;
+    return getOpenNoteWindows().find(w => openNotesBarKeyFor(w) === key) || null;
+}
+
+// --- Скриване на бележките без затваряне (b2.70) ----------------------------------------------
+// Собственикът: „скрий всички бележки" - прозорците изчезват от екрана, но НЕ се затварят: бележката
+// остава отворена в noteWindows с текста, позицията и незаписаните си промени. Затова тук НЕ се
+// вика onNoteWindowClosed (тоест няма и въпрос за незаписване), нищо не се трие и нищо не се записва.
+// Скритият прозорец е display: none, значи не прихваща кликове и не участва в single-note overlay-а.
+
+/** Скритите отворени бележки. */
+function getHiddenNoteWindows() {
+    return getOpenNoteWindows().filter(w => w.hidden);
+}
+
+/** Скрива един прозорец: маха го от екрана, без да го затваря. */
+function hideNoteWindow(win) {
+    if (!win || !win.open || win.hidden) return;
+    win.hidden = true;
+    // Класът 'visible' НЕ се пипа: той значи „отворена" и свалянето му минава през затваряне.
+    win.el.classList.add('note-window-hidden');
+    if (activeNoteWindow === win) setExpandedModalFloatingControls(false);
+}
+
+/** Връща скрит прозорец на екрана (без да го вдига и без да го прави активен). */
+function showNoteWindow(win) {
+    if (!win || !win.hidden) return;
+    win.hidden = false;
+    win.el.classList.remove('note-window-hidden');
+    if (activeNoteWindow === win && win.open) setExpandedModalFloatingControls(win.body.dataset.isExpanded === 'true');
+}
+
+/** Бутонът в лентата: скрива всички отворени бележки наведнъж - без питане и без затваряне. */
+function hideAllNoteWindows() {
+    getOpenNoteWindows().forEach(hideNoteWindow);
+    updateSingleNoteOverlay();
+}
+
+/** Бутонът в лентата, когато всички са скрити: връща всички наведнъж, най-горната - активна. */
+function showAllNoteWindows() {
+    const hidden = getHiddenNoteWindows();
+    if (!hidden.length) return;
+    hidden.forEach(showNoteWindow);
+    const top = getTopNoteWindow();
+    if (top) activateNoteWindow(top, true);
+    updateSingleNoteOverlay();
+}
+
+// --- Лентата избутва нагоре плаващите бутони на долния ръб (b2.70) ------------------------------
+// Собственикът: „докато лентата е видима, тя ИЗБУТВА нагоре плаващите бутони, които стоят най-долу
+// на екрана... те трябва да се качат НАД лентата, а не да са зад нея."
+// Механизъм: височината на лентата се мери и се записва в --open-notes-bar-h, а класът
+// body.open-notes-bar-visible включва правилата, които я ползват. Класът се маха и променливата се
+// връща на 0px, щом лентата изчезне - тогава нищо не остава отместено.
+// Бутоните, които местенето слага с инлайн !important (kb-fab, add-note-fab, scrollTopBtn), не могат
+// да бъдат вдигнати от stylesheet - затова тук инлайн стойността им се обвива в calc() със същата
+// променлива. Обвивката се разпознава и се разгъва при всяко викане, значи местене на бутон, докато
+// лентата е видима, не оставя сметката сгрешена.
+const OPEN_NOTES_BAR_LIFT_GAP = 8;
+const OPEN_NOTES_BAR_FLOATERS = ['kb-fab', 'add-note-fab', 'scrollTopBtn'];
+const OPEN_NOTES_BAR_LIFT_RE = /^calc\((.+?)\s*[+-]\s*var\(--open-notes-bar-h\)\s*[+-]\s*8px\)$/;
+
+/** Височината на лентата в пиксели, или 0, ако не се вижда. */
+function openNotesBarHeight() {
+    const bar = document.getElementById('open-notes-bar');
+    if (!bar || !bar.classList.contains('is-visible')) return 0;
+    return Math.round(bar.getBoundingClientRect().height) || 0;
+}
+
+/** Казва на CSS колко е висока лентата (0, когато я няма на екрана). */
+function setOpenNotesBarHeightVar(px) {
+    document.documentElement.style.setProperty('--open-notes-bar-h', (px > 0 ? px : 0) + 'px');
+}
+
+/**
+ * Вдига плаващите бутони с инлайн позиция над лентата. Основната стойност се взима от самата
+ * инлайн стойност (обвивката от предишно викане се разгъва), значи повторното викане не трупа
+ * отместване, а скриването връща точната първоначална стойност.
+ */
+function applyOpenNotesBarLift() {
+    if (!document.body) return;
+    const lifted = document.body.classList.contains('open-notes-bar-visible');
+    OPEN_NOTES_BAR_FLOATERS.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        // Оста е тази, по която елементът е закачен за долния ръб: при местене бутоните минават на
+        // top/right, значи тогава се вдига top (с изваждане), а не bottom.
+        const bottomRaw = el.style.getPropertyValue('bottom').trim();
+        const topRaw = el.style.getPropertyValue('top').trim();
+        const axis = bottomRaw && bottomRaw !== 'auto' ? 'bottom' : (topRaw && topRaw !== 'auto' ? 'top' : null);
+        // Без инлайн позиция елементът се вдига от stylesheet правилата (body.open-notes-bar-visible):
+        // тук не се пипа, за да не му се смени основната стойност.
+        if (!axis) return;
+        const priority = el.style.getPropertyPriority(axis) || '';
+        const raw = axis === 'bottom' ? bottomRaw : topRaw;
+        // Обвивката от предишно викане се разгъва: иначе отместването се трупа.
+        const unwrapped = (raw && OPEN_NOTES_BAR_LIFT_RE.test(raw)) ? raw.replace(OPEN_NOTES_BAR_LIFT_RE, '$1') : raw;
+        const base = unwrapped || '0px';
+        if (!lifted) {
+            // Лентата я няма: връща се точно основната стойност - без остатъчно отместване.
+            el.style.setProperty(axis, base, priority);
+            return;
+        }
+        const value = axis === 'bottom'
+            ? `calc(${base} + var(--open-notes-bar-h) + ${OPEN_NOTES_BAR_LIFT_GAP}px)`
+            : `calc(${base} - var(--open-notes-bar-h) - ${OPEN_NOTES_BAR_LIFT_GAP}px)`;
+        el.style.setProperty(axis, value, priority);
+    });
+}
+
+/** Включва/изключва избутването: класът на body и височината в променливата вървят заедно. */
+function syncOpenNotesBarLift(visible) {
+    if (!document.body) return;
+    if (visible) {
+        setOpenNotesBarHeightVar(openNotesBarHeight());
+        document.body.classList.add('open-notes-bar-visible');
+    } else {
+        document.body.classList.remove('open-notes-bar-visible');
+        setOpenNotesBarHeightVar(0);
+    }
+    applyOpenNotesBarLift();
+}
+
+/**
+ * Заглавието на бележката за плочката - СЪЩАТА логика, с която бордът строи заглавието на картата
+ * (nmInlineTitleLine + nmTitleCleanLine), за да не се разминават двете места: първият ред с думи,
+ * при '|' - текстът преди разделителя.
+ */
+function openNotesBarTitleFor(note) {
+    if (!note) return '';
+    const text = String(note.notetxt || '');
+    if (!text) return '';
+    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(text) : text.indexOf('|');
+    const source = pipeIndex !== -1 ? text.slice(0, pipeIndex) : text;
+    const line = nmInlineTitleLine(source, note.text_span);
+    if (line) return nmTitleCleanLine(line.text);
+    // Ред с думи няма (само снимка или само линк): първият непразен ред, ако има такъв.
+    const first = source.replace(/\r\n/g, '\n').split('\n').find(l => l.trim()) || '';
+    return nmTitleCleanLine(first.replace(LINK_MARKER_REGEX, ''));
+}
+
+/** Първите 1-2 букви на заглавието - за буквената плочка. */
+function openNotesBarLetters(title) {
+    const words = String(title || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+    if (!words.length) return '\u00b7';
+    const first = Array.from(words[0])[0] || '';
+    const second = words[1] ? (Array.from(words[1])[0] || '') : (Array.from(words[0])[1] || '');
+    return (first + second).toUpperCase();
+}
+
+/** Цветът на буквената плочка: детерминиран по gdid/id на бележката. */
+function openNotesBarColorFor(note, win) {
+    const seed = String((note && (note.gdid || note.id)) || win.body.dataset.gdid || win.body.dataset.id || '');
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) % 100003;
+    return OPEN_NOTES_BAR_COLORS[hash % OPEN_NOTES_BAR_COLORS.length];
+}
+
+/** Първата вградена снимка (type=8) на бележката - тя става миниатюрата в плочката. */
+function openNotesBarImageName(note) {
+    if (!note) return '';
+    try {
+        for (const name of noteInlineImageNames(note)) {
+            if (name) return name;
+        }
+    } catch (e) { }
+    return '';
+}
+
+/**
+ * Миниатюрата идва по СЪЩИЯ път като снимките в бележката (resolveNoteImageSrc): Drive - thumbnail на
+ * файла, локална папка/архив - файлът от диска. Чака се ~1 секунда; ако не дойде или се провали,
+ * плочката остава с буквите си - лентата не чака мрежата и не се строи наново заради това.
+ */
+function openNotesBarFetchThumb(tile, fileName) {
+    const name = String(fileName || '');
+    if (!name || !tile) return;
+    const put = (src) => {
+        if (!src || !tile.isConnected) return;
+        let img = tile.querySelector('.open-notes-bar-thumb');
+        if (!img) {
+            img = document.createElement('img');
+            img.className = 'open-notes-bar-thumb';
+            img.alt = '';
+            img.decoding = 'async';
+            img.addEventListener('load', () => tile.classList.add('has-thumb'));
+            img.addEventListener('error', () => {
+                // Мъртъв адрес (изтекъл подпис): плочката се връща на буквите, а адресът се забравя,
+                // за да не се показва празно при следващото опресняване.
+                img.remove();
+                tile.classList.remove('has-thumb');
+                openNotesBarThumbSrc.delete(name);
+            });
+            tile.appendChild(img);
+        }
+        if (img.getAttribute('src') !== src) img.src = src;
+    };
+    const cached = openNotesBarThumbSrc.get(name);
+    // Стар адрес не се ползва: подписаният линк на Drive изтича и <img> остава празен.
+    if (cached && Date.now() - cached.at < INLINE_IMAGE_THUMB_TTL) { put(cached.src); return; }
+    const work = (async () => {
+        try {
+            const mode = await inlineImageSourceMode();
+            const res = await resolveNoteImageSrc(name, mode, null, { size: OPEN_NOTES_BAR_THUMB_SIZE });
+            return res && res.status === 'ok' && res.src ? res.src : null;
+        } catch (e) { return null; }
+    })();
+    const waited = new Promise(resolve => setTimeout(() => resolve(null), OPEN_NOTES_BAR_THUMB_WAIT));
+    Promise.race([work, waited]).then(src => {
+        if (!src) return;
+        openNotesBarThumbSrc.set(name, { at: Date.now(), src });
+        put(src);
+    }).catch(() => { });
+}
+
+/**
+ * Плъзгане по лентата не бива да „избира" бележка случайно - само истински клик. Затова при
+ * показалец, изминал повече от няколко пиксела от натискането, кликът върху плочка се прескача.
+ */
+function wireOpenNotesBarDragGuard(bar) {
+    if (bar._barDragged) return;
+    let downX = 0, downY = 0, dragged = false;
+    bar.addEventListener('pointerdown', (e) => { downX = e.clientX; downY = e.clientY; dragged = false; }, true);
+    bar.addEventListener('pointermove', (e) => {
+        if (dragged) return;
+        if (Math.abs(e.clientX - downX) > 6 || Math.abs(e.clientY - downY) > 6) dragged = true;
+    }, true);
+    bar._barDragged = () => dragged;
+}
+
+/** Лентата се строи при първата нужда и остава в слоя; скрита е с клас, не се маха. */
+function ensureOpenNotesBar() {
+    const layer = document.getElementById('note-windows-layer');
+    if (!layer) return null;
+    let bar = document.getElementById('open-notes-bar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'open-notes-bar';
+        bar.setAttribute('role', 'toolbar');
+        // z-index над всеки прозорец: прозорците се вдигат до NOTE_WINDOW_Z_BASE + 5000.
+        bar.style.zIndex = String(OPEN_NOTES_BAR_Z);
+        const strip = document.createElement('div');
+        strip.className = 'open-notes-bar-strip';
+        bar.appendChild(strip);
+        // „Скрий всички бележки" / „Покажи всички бележки": един бутон, който сменя ролята си, когато
+        // всички са скрити (иначе няма как да ги върнеш). Стои ВДЯСНО, до бутона за затваряне.
+        const hideBtn = document.createElement('button');
+        hideBtn.type = 'button';
+        hideBtn.className = 'open-notes-bar-hide';
+        hideBtn.dataset.mode = 'hide';
+        hideBtn.innerHTML = hideAllNotesIconSvg;
+        hideBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (hideBtn.dataset.mode === 'show') showAllNoteWindows();
+            else hideAllNoteWindows();
+        });
+        bar.appendChild(hideBtn);
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'open-notes-bar-close';
+        closeBtn.innerHTML = closeAllNotesIconSvg;
+        // Същата функция като бутона в менюто: въпросът за незаписани промени остава ЕДИН.
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeAllNoteWindows();
+        });
+        bar.appendChild(closeBtn);
+        wireOpenNotesBarDragGuard(bar);
+    }
+    // Лентата е ПОСЛЕДНОТО дете на слоя: над всички прозорци и извън подредбата им.
+    if (bar.parentNode !== layer || layer.lastElementChild !== bar) layer.appendChild(bar);
+    return bar;
+}
+
+/** Една плочка: миниатюра на бележката или буквен квадрат в неин цвят, с открояване за активната. */
+function openNotesBarFillTile(tile, win) {
+    const note = findNoteForWindow(win);
+    const title = openNotesBarTitleFor(note);
+    const file = openNotesBarImageName(note);
+    const color = openNotesBarColorFor(note, win);
+    const isActive = win === activeNoteWindow;
+    tile.classList.toggle('is-active', isActive);
+    // Скритата бележка е приглушена, за да се различава от показана - клик на плочката я връща.
+    tile.classList.toggle('is-hidden', !!win.hidden);
+    if (isActive) tile.setAttribute('aria-current', 'true');
+    else tile.removeAttribute('aria-current');
+    tile.setAttribute('aria-label', title || (_('openNotesBar') || 'Open notes'));
+    if (title) tile.title = title; else tile.removeAttribute('title');
+    // Съдържанието се строи само когато се е сменило (бележката е друга, сменило се е заглавието
+    // или снимката) - иначе картинката се зарежда отначало при всяко вдигане на прозорец.
+    const sig = `${title}\u0000${file}\u0000${color}`;
+    if (tile.dataset.barSig === sig) return;
+    tile.dataset.barSig = sig;
+    let letters = tile.querySelector('.open-notes-bar-letters');
+    if (!letters) {
+        letters = document.createElement('span');
+        letters.className = 'open-notes-bar-letters';
+        tile.appendChild(letters);
+    }
+    letters.textContent = openNotesBarLetters(title);
+    letters.style.backgroundColor = color;
+    const oldThumb = tile.querySelector('.open-notes-bar-thumb');
+    if (oldThumb) oldThumb.remove();
+    tile.classList.remove('has-thumb');
+    if (file) openNotesBarFetchThumb(tile, file);
+}
+
+/**
+ * Опреснява лентата: кога се вижда, кои плочки са в нея и коя е активна. Вика се от
+ * updateSingleNoteOverlay (всяко вдигане, затваряне и „затвори всички") и в края на всеки
+ * изчертан прозорец, за да не остане разсинхронизирано състояние.
+ */
+function refreshOpenNotesBar() {
+    const layer = document.getElementById('note-windows-layer');
+    if (!layer) return;
+    const open = getOpenNoteWindows();
+    const hiddenCount = open.filter(w => w.hidden).length;
+    // Повече от 2 отворени бележки ИЛИ има скрити: лентата остава, докато има какво да върне.
+    const show = !isSingleNoteMode() && (open.length > OPEN_NOTES_BAR_MIN || hiddenCount > 0);
+    let bar = document.getElementById('open-notes-bar');
+    if (!show) {
+        if (bar) bar.classList.remove('is-visible');
+        // Лентата изчезна: променливата се връща на 0px и плаващите бутони слизат на мястото си.
+        syncOpenNotesBarLift(false);
+        return;
+    }
+    bar = ensureOpenNotesBar();
+    if (!bar) return;
+    // Текстовете се слагат при всяко опресняване: смяна на езика ги обновява без презареждане.
+    const closeLabel = _('closeAllNotes') || 'Close all notes';
+    const closeBtn = bar.querySelector('.open-notes-bar-close');
+    if (closeBtn) {
+        closeBtn.title = closeLabel;
+        closeBtn.setAttribute('aria-label', closeLabel);
+    }
+    // Бутонът за скриване сменя ролята си, когато всички отворени бележки са скрити.
+    const hideBtn = bar.querySelector('.open-notes-bar-hide');
+    if (hideBtn) {
+        const allHidden = open.length > 0 && hiddenCount === open.length;
+        const hideLabel = allHidden
+            ? (_('showAllNotes') || 'Show all notes')
+            : (_('hideAllNotes') || 'Hide all notes');
+        hideBtn.dataset.mode = allHidden ? 'show' : 'hide';
+        hideBtn.innerHTML = allHidden ? showAllNotesIconSvg : hideAllNotesIconSvg;
+        hideBtn.title = hideLabel;
+        hideBtn.setAttribute('aria-label', hideLabel);
+    }
+    bar.setAttribute('aria-label', _('openNotesBar') || 'Open notes');
+    const strip = bar.querySelector('.open-notes-bar-strip');
+    // Плочките се подреждат по getOpenNoteWindows(), а вече наличните се ползват наново - така
+    // картинката не се зарежда наново и скролът на лентата не скача.
+    const existing = new Map();
+    Array.from(strip.children).forEach(el => existing.set(el.dataset.barKey, el));
+    const keep = new Set();
+    open.forEach((win, i) => {
+        const key = openNotesBarKeyFor(win);
+        let tile = existing.get(key);
+        if (!tile) {
+            tile = document.createElement('button');
+            tile.type = 'button';
+            tile.className = 'open-notes-bar-tile';
+            tile.dataset.barKey = key;
+            tile.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Плъзгане по лентата не избира бележка: само истински клик.
+                if (bar._barDragged && bar._barDragged()) return;
+                const target = openNotesBarWindowFor(tile);
+                if (!target) return;
+                // Точно както клик върху прозореца на бележката: идва най-отпред и става активна.
+                activateNoteWindow(target, true);
+                tile.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+            });
+        }
+        keep.add(key);
+        openNotesBarFillTile(tile, win);
+        if (strip.children[i] !== tile) strip.insertBefore(tile, strip.children[i] || null);
+    });
+    Array.from(strip.children).forEach(el => { if (!keep.has(el.dataset.barKey)) el.remove(); });
+    bar.classList.add('is-visible');
+    // Лентата е на екрана: измерва се и плаващите бутони се качват над нея. Меренето е след като
+    // класът е сложен, за да има лентата реална височина (иначе getBoundingClientRect дава 0).
+    syncOpenNotesBarLift(true);
+}
+// Ръчно опресняване (напр. от външен код след смяна на езика или на режима).
+window.refreshOpenNotesBar = refreshOpenNotesBar;
+// Смяна на размера на прозореца (обръщане на телефона): височината на лентата се мери наново, а
+// избутването се прилага пак - смяната на размера може да е върнала бутоните на основното им място.
+window.addEventListener('resize', () => {
+    if (!document.body || !document.body.classList.contains('open-notes-bar-visible')) return;
+    const h = openNotesBarHeight();
+    if (h) setOpenNotesBarHeightVar(h);
+    applyOpenNotesBarLift();
+});
 
 // Runs fn with win as "the" modal (ids and globals), then hands them back. Only the synchronous
 // part of fn sees win.
@@ -11201,7 +11650,17 @@ function getOpenNoteWindows() {
 }
 
 function getTopNoteWindow(list = getOpenNoteWindows()) {
-    return list.reduce((top, w) => (!top || (Number(w.el.style.zIndex) || 0) > (Number(top.el.style.zIndex) || 0)) ? w : top, null);
+    // Скритите бележки не се броят за „най-отпред": вдигането, Escape и single-note overlay-ът работят
+    // само с видимите. Ако всички са скрити, се връща най-горната от всички - затварянето на активна
+    // бележка има нужда от прозорец, който да поеме активността.
+    const visible = list.filter(w => !w.hidden);
+    const pool = visible.length ? visible : list;
+    return pool.reduce((top, w) => (!top || (Number(w.el.style.zIndex) || 0) > (Number(top.el.style.zIndex) || 0)) ? w : top, null);
+}
+
+/** Най-горният ВИДИМ прозорец (скритите не участват) - за single-note overlay-а. */
+function getTopVisibleNoteWindow() {
+    return getTopNoteWindow(getOpenNoteWindows().filter(w => !w.hidden));
 }
 
 function findNoteWindow(id, gdid) {
@@ -11405,6 +11864,10 @@ function createNoteWindow() {
 }
 
 function onNoteWindowClosed(win) {
+    // Затворена бележка вече не е скрита: белегът се маха, за да не остане по прозореца, който
+    // остава в DOM-а като idle, и да се появи отново при следващото му отваряне.
+    win.hidden = false;
+    win.el.classList.remove('note-window-hidden');
     // Затворен viewer не трябва да оставя звук: плочката, която е свирила, вече я няма.
     stopAttachmentAudio();
     // Кадърът от посочване на маркер виси над документа (position: fixed) - със затварянето на
@@ -12967,6 +13430,9 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     }
 
     observeModalFooterDateVisibility(footerToolbar);
+    // Прозорецът е напълнен и поставен: лентата на отворените бележки вече знае за него (заглавие,
+    // снимка, кой е активен) - иначе нов прозорец се появява в лентата чак при следващото вдигане.
+    refreshOpenNotesBar();
 }
 
 // Изрично излагане на window: минифицираният продукционен билд (Beta/mainn.js) преименува
@@ -13187,6 +13653,17 @@ const productTourIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria
 function productTourLabel() {
     return (localStorage.getItem('language') === 'bg') ? 'Пусни демо-тура' : 'Play the demo tour';
 }
+// „Скрий всички бележки" (b2.70): око със зачеркване - прозорците изчезват от екрана, но остават
+// отворени. Двете икони са една рисунка с разменено състояние, за да си личи, че бутонът сменя ролята си.
+const hideAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M2.6 12s3.6-6.2 9.4-6.2S21.4 12 21.4 12s-3.6 6.2-9.4 6.2S2.6 12 2.6 12z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" />
+    <circle cx="12" cy="12" r="2.7" fill="currentColor" stroke="none" />
+    <path d="M4.2 19.8L19.8 4.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+</svg>`;
+const showAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M2.6 12s3.6-6.2 9.4-6.2S21.4 12 21.4 12s-3.6 6.2-9.4 6.2S2.6 12 2.6 12z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" />
+    <circle cx="12" cy="12" r="2.7" fill="currentColor" stroke="none" />
+</svg>`;
 // Close all notes: two overlapping windows of the SAME size, the x in the upper (front) one (CX, 2026-10-07).
 // The front window is drawn last and filled with the button's own colour, so it hides the part of the back
 // window it covers; the x sits in the middle of the front window.
@@ -15030,7 +15507,8 @@ function isTypingTarget(el) {
 
 /** Отворен ли е модал/прозорец — тогава клавишите принадлежат на него, не на дъската. */
 function isAnyOverlayOpen() {
-    return !!document.querySelector('.modal-overlay.visible, #content-modal.visible, #boards-menu-modal.visible, #folderIdPromptPopup.show, #note-edit-textarea');
+    // Скрита бележка (note-window-hidden) не се вижда на екрана, значи не прихваща клавишите.
+    return !!document.querySelector('.modal-overlay.visible:not(.note-window-hidden), #content-modal.visible:not(.note-window-hidden), #boards-menu-modal.visible, #folderIdPromptPopup.show, #note-edit-textarea');
 }
 
 // Ctrl/Cmd+A избира целия борд, Escape изчиства избора.
@@ -18894,6 +19372,22 @@ function nmLineTextParts(line, start, ranges) {
 }
 
 /**
+ * Един ред, изчистен до ТЕКСТ ЗА ЗАГЛАВИЕ: без водещите # на markdown заглавие и без знаците за
+ * удебеляване (символът идва от настройката mdBold). Това е чистенето, с което бордът строи
+ * заглавието на картата; лентата на отворените бележки ползва СЪЩАТА функция, за да не се
+ * разминават двете места.
+ */
+function nmTitleCleanLine(line) {
+    const symBold = (localStorage.getItem('mdBold') || '**').trim();
+    const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return String(line == null ? '' : line)
+        .replace(/^#{1,6}\s+/, '')
+        .replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .trim();
+}
+
+/**
  * Първият ред от текста, който става за ЗАГЛАВИЕ на картата: първият непразен ред, в който има и
  * ДУМИ, а не само снимка.
  *
@@ -21860,11 +22354,8 @@ async function createNoteElement(noteContent) {
     // за да се вижда картинката на картата. Затова редът се избира по офсетите си, а не по знака на
     // маркера в текста.
     const titleLineFor = (text) => nmInlineTitleLine(text, textSpan);
-    const titleOfLine = (line) => {
-        const symBold = (localStorage.getItem('mdBold') || '**').trim();
-        const escBold = symBold.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return line.replace(/^#{1,6}\s+/, '').replace(new RegExp(`${escBold}([^${escBold}]+)${escBold}`, 'g'), '$1').replace(/\*\*([^*]+)\*\*/g, '$1').trim();
-    };
+    // Чистенето е изнесено в nmTitleCleanLine: същата функция ползва и лентата на отворените бележки.
+    const titleOfLine = (line) => nmTitleCleanLine(line);
     // Същото чистене като titleOfLine, но за ЕДНА част от реда и БЕЗ trim: около снимката в
     // заглавието интервалите са смисъл - точно те държат думите и картинката на един ред.
     const cleanTitlePart = (value) => {
@@ -23690,7 +24181,8 @@ document.addEventListener('touchend', e => {
     }
 
     // Check if any modal is open
-    if (document.querySelector('.modal-overlay.visible')) return;
+    // Скрита бележка не се вижда, значи не спира скрола на дъската.
+    if (document.querySelector('.modal-overlay.visible:not(.note-window-hidden)')) return;
 
     // Check if target is scrollable horizontally
     let target = e.target;
@@ -26083,10 +26575,10 @@ document.addEventListener('keydown', (e) => {
 // --- Escape key to close modals ---
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-        let visibleModal = document.querySelector('.modal-overlay.visible');
+        let visibleModal = document.querySelector('.modal-overlay.visible:not(.note-window-hidden)');
         // Several note windows: Escape closes the one in front.
         if (visibleModal && visibleModal.classList.contains('note-window')) {
-            const front = (activeNoteWindow && activeNoteWindow.open) ? activeNoteWindow : getTopNoteWindow();
+            const front = (activeNoteWindow && activeNoteWindow.open && !activeNoteWindow.hidden) ? activeNoteWindow : getTopNoteWindow();
             if (front) visibleModal = front.el;
         }
         if (visibleModal) {
