@@ -7,7 +7,10 @@
 // показалеца, истински thumbnail от (фалшив) Drive:
 //   - при 0, 1 и 2 отворени бележки лентата я няма (display: none);
 //   - при 3 отворени се вижда с точно 3 плочки по 40x40;
-//   - активната бележка е откроена и открояването се мести при клик на друга плочка;
+//   - фонът на всяка плочка е ТОЧНО цветът на бележката (фонът на .modal-content-box на прозореца ѝ);
+//   - буквите се четат: тъмни на светла бележка, бели на тъмна (бележка с цвят #222222);
+//   - активната бележка е оградена с жълт 2px контур, нарисуван ОТВЪТРЕ в плочката (на ::after, над
+//     миниатюрата) и контурът се мести при клик на друга плочка;
 //   - клик на плочка вдига нейния прозорец най-отпред и го прави активен;
 //   - затваряне на една бележка (2 остават) скрива лентата;
 //   - бутонът в дясно затваря всички бележки (същата closeAllNoteWindows);
@@ -124,6 +127,8 @@ const NOTES = [
     { key: 'car', id: '9106', gdid: 'BAR6', raw: 'Ремонт на колата', format: '' },
     { key: 'tax', id: '9107', gdid: 'BAR7', raw: 'Данъци до петък', format: '' },
     { key: 'idea', id: '9108', gdid: 'BAR8', raw: 'Идея за подарък', format: '' },
+    // Бележка с ТЪМЕН потребителски цвят: буквите върху нея трябва да са бели, а не тъмни.
+    { key: 'dark', id: '9109', gdid: 'BAR9', raw: 'Тъмна бележка', format: '', color: '#222222' },
 ];
 
 // Отваря бележка по истинския път на приложението (showModal), както клик на картата на борда.
@@ -133,12 +138,16 @@ const openNote = (key) => page.evaluate((def) => {
     authToken = { access_token: 'tok', issued_at: Date.now(), expires_in: 3600 };
     if (!allNotesData.some(x => String(x.gdid) === def.gdid)) {
         allNotesData.push({
-            alarm_type: -1, calendarDate: 0, color: 0, date: Date.now(), datemod: Date.now(), eventId: 0,
+            alarm_type: -1, calendarDate: 0, color: def.color || 0, date: Date.now(), datemod: Date.now(), eventId: 0,
             gdid: def.gdid, id: def.id, notetxt: def.raw, numord: Number(def.id), sellist: 0, status: 0,
             text_span: def.format, title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, version: 244,
         });
     }
-    showModal({ raw: def.raw, format: def.format, id: def.id, gdid: def.gdid });
+    const opts = { raw: def.raw, format: def.format, id: def.id, gdid: def.gdid };
+    // Цветът се подава по същия път, по който го подава бордът: showModal го превръща във фон на
+    // .modal-content-box, а плочката в лентата трябва да носи точно този фон.
+    if (def.color !== undefined) opts.color = def.color;
+    showModal(opts);
 }, NOTES.find(x => x.key === key));
 
 // Затваря прозореца на бележка през истинския X (същият път като клик на потребителя).
@@ -154,6 +163,13 @@ const closeNoteByX = (gdid) => page.evaluate((gdid) => {
 
 // Две кадъра: подредбата и класовете са приложени, преди да се мери.
 const settle = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+// Контурът се сменя с кратък преход (0.15s). Изчаква се да ДОСТИГНЕ жълтото, вместо да се спи
+// фиксирано време - иначе понякога се мери средата на прехода и проверката лъже.
+const waitActiveRing = () => page.waitForFunction(() => {
+    const t = document.querySelector('#open-notes-bar .open-notes-bar-tile.is-active');
+    return !!t && /255, 212, 0/.test(getComputedStyle(t, '::after').boxShadow);
+}, null, { timeout: 3000 }).then(() => true).catch(() => false);
 
 // Цялото състояние на лентата, с което се сравняват проверките.
 const barState = () => page.evaluate(() => {
@@ -201,6 +217,12 @@ const barState = () => page.evaluate(() => {
             const letters = t.querySelector('.open-notes-bar-letters');
             const img = t.querySelector('.open-notes-bar-thumb');
             const tcs = getComputedStyle(t);
+            // Контурът на плочката се рисува на ::after (не като box-shadow на самата плочка) - иначе
+            // при плочка с миниатюра картинката закрива контура.
+            const tAfter = getComputedStyle(t, '::after');
+            // Фонът на бележката, с който е боядисан НЕЙНИЯТ прозорец: с него се сравнява фонът на плочката.
+            const win = t.dataset.barKey ? openNotesBarWindowFor(t) : null;
+            const winBox = win && win.el ? win.el.querySelector('.modal-content-box') : null;
             return {
                 key: t.dataset.barKey,
                 w: round(r.width),
@@ -208,12 +230,22 @@ const barState = () => page.evaluate(() => {
                 active: t.classList.contains('is-active'),
                 hiddenTile: t.classList.contains('is-hidden'),
                 opacity: Number(getComputedStyle(t).opacity),
-                ring: tcs.boxShadow,
+                bg: tcs.backgroundColor,
+                winBg: winBox ? getComputedStyle(winBox).backgroundColor : null,
+                tileShadow: tcs.boxShadow,
+                ring: tAfter.boxShadow,
+                ringContent: tAfter.content,
+                ringZ: tAfter.zIndex,
                 title: t.getAttribute('title'),
                 letters: letters ? letters.textContent : null,
                 lettersBg: letters ? getComputedStyle(letters).backgroundColor : null,
+                lettersColor: letters ? getComputedStyle(letters).color : null,
                 hasThumb: t.classList.contains('has-thumb'),
                 imgSrc: img ? img.getAttribute('src') : null,
+                imgInTile: !!img && t.contains(img),
+                imgZ: img ? getComputedStyle(img).zIndex : null,
+                // Децата на плочката в дървото: <img> се рисува ПРЕДИ ::after (който е винаги последен).
+                childOrder: [...t.children].map(el => el.className),
             };
         }),
     };
@@ -339,8 +371,50 @@ const ws3 = await windowsState();
 ok(ws3.activeGdid === 'BAR3', `активна е последно отворената бележка (${ws3.activeGdid})`, ws3);
 ok(tileOf(s, 2).active && !tileOf(s, 0).active && !tileOf(s, 1).active,
     `откроена е само плочката на активната бележка (${s.tiles.map(t => t.active ? 'A' : '-').join('')})`, s.tiles);
-ok(/58, 111, 240/.test(tileOf(s, 2).ring) && !/58, 111, 240/.test(tileOf(s, 0).ring),
-    `открояването е 2px в акцентния цвят (${tileOf(s, 2).ring})`, s.tiles);
+// Контурът е на ::after, а не box-shadow на плочката: при плочка с миниатюра картинката закрива
+// сянката на елемента. Жълт 2px, нарисуван ОТВЪТРЕ (inset), за да не се реже от реда.
+const YELLOW = /255, 212, 0/;
+ok(await waitActiveRing(), 'контурът на активната плочка достигна жълтото (преходът завърши)');
+s = await barState();
+ok(tileOf(s, 2).ringContent !== 'none' && YELLOW.test(tileOf(s, 2).ring) && /inset/.test(tileOf(s, 2).ring) && /2px/.test(tileOf(s, 2).ring),
+    `контурът на активната е жълт 2px inset на ::after (${tileOf(s, 2).ring})`, tileOf(s, 2));
+ok(YELLOW.test(tileOf(s, 2).ring) && !YELLOW.test(tileOf(s, 0).ring) && !YELLOW.test(tileOf(s, 1).ring),
+    `само активната плочка има жълт контур (${s.tiles.map(t => YELLOW.test(t.ring) ? 'Y' : '-').join('')})`, s.tiles);
+ok(s.tiles.every(t => t.tileShadow === 'none'),
+    `контурът не е външна сянка на плочката - тя няма box-shadow (${s.tiles.map(t => t.tileShadow).join(' | ')})`, s.tiles.map(t => t.tileShadow));
+
+// --- 3б) Фонът на всяка плочка е ТОЧНО цветът на бележката ----------------------------------
+tick('3б) цветове на плочките');
+ok(s.tiles.length === 3 && s.tiles.every(t => !!t.winBg && t.bg === t.winBg),
+    `фонът на всяка плочка е равен на фона на прозореца ѝ (${s.tiles.map(t => t.bg + ' = ' + t.winBg).join(' | ')})`, s.tiles);
+// Бележките в този тест са с цвят по подразбиране (#FBFF86) - плочките трябва да са точно в него.
+ok(s.tiles.every(t => t.bg === 'rgb(251, 255, 134)'),
+    `плочките носят цвета на бележката по подразбиране (${s.tiles.map(t => t.bg).join(', ')})`, s.tiles);
+// Буквите се четат: на светла бележка са тъмни (#1F2A30), не бели.
+ok(s.tiles.every(t => t.lettersColor === 'rgb(31, 42, 48)'),
+    `буквите на светла бележка са тъмни (${s.tiles.map(t => t.lettersColor).join(', ')})`, s.tiles);
+ok(s.tiles.every(t => t.lettersBg === 'rgba(0, 0, 0, 0)'),
+    `буквите нямат собствен фон - фонът е на плочката (${s.tiles.map(t => t.lettersBg).join(', ')})`, s.tiles);
+
+// Тъмна потребителска бележка: плочката пак е в точния ѝ цвят, а буквите стават бели.
+await openNote('dark');
+await settle();
+s = await barState();
+const darkTile = s.tiles.find(t => String(t.key || '').includes('BAR9')) || {};
+ok(s.tiles.length === 4, `тъмната бележка добавя четвърта плочка (${s.tiles.length})`, s.tiles.length);
+ok(darkTile.bg === 'rgb(34, 34, 34)' && darkTile.bg === darkTile.winBg,
+    `плочката на тъмната бележка е точно в нейния цвят (${darkTile.bg} = ${darkTile.winBg})`, darkTile);
+ok(darkTile.lettersColor === 'rgb(255, 255, 255)',
+    `буквите на тъмна бележка са бели (${darkTile.lettersColor})`, darkTile);
+const lightTiles = s.tiles.filter(t => t !== darkTile);
+ok(lightTiles.every(t => t.lettersColor === 'rgb(31, 42, 48)'),
+    `светлите плочки до нея остават с тъмни букви (${lightTiles.map(t => t.lettersColor).join(', ')})`, lightTiles);
+// Затваря се, за да остане броят бележки същият за следващите части на теста.
+ok(await closeNoteByX('BAR9'), 'тъмната бележка се затваря през своя X');
+await waitOpenCount(3);
+await settle();
+s = await barState();
+ok(s.tiles.length === 3, `след затварянето пак са 3 плочки (${s.tiles.length})`, s.tiles.length);
 
 // --- 4) Клик на плочка активира нейната бележка и я вдига най-отпред -----------------------
 await page.locator('#open-notes-bar .open-notes-bar-tile').nth(0).click();
@@ -405,13 +479,35 @@ ok(/^https:\/\/thumb\.invalid\//.test(tileOf(s, 0).imgSrc || ''),
 const breadTile = s.tiles.find(t => t.key && t.key.includes('BAR2'));
 ok(!!breadTile && breadTile.imgSrc === null && !!breadTile.letters,
     `бележка без снимка показва буквена плочка („${breadTile && breadTile.letters}")`, breadTile);
-// Плочката е в цвят от малката фиксирана палитра на лентата (изчислен rgb, не произволен).
-const PALETTE_RGB = ['#546E7A', '#00897B', '#5E35B1', '#C62828', '#EF6C00', '#2E7D32', '#0277BD', '#6D4C41']
+// Плочката е в ЦВЕТА НА БЕЛЕЖКАТА, а не в цвят от собствена палитра на лентата. Фонът е на самата
+// плочка (буквите нямат свой), затова се гледа tile.bg - и той съвпада с палитрата на бележките.
+const NOTE_PALETTE = ['#FBFF86', '#FF829E', '#68FF97', '#EFEFEF', '#69B7FF', '#FBCB39', '#FBFBCD', '#FFC5D2', '#B6FFCD', '#B2DAFF', '#DDB1FF', '#B1D8FF', '#B1FFF2', '#FFD7B1', '#FFB1E8'];
+const NOTE_PALETTE_RGB = NOTE_PALETTE
     .map(h => `rgb(${parseInt(h.slice(1, 3), 16)}, ${parseInt(h.slice(3, 5), 16)}, ${parseInt(h.slice(5, 7), 16)})`);
-ok(!!breadTile && PALETTE_RGB.includes(breadTile.lettersBg),
-    `буквената плочка е в цвят от палитрата (${breadTile && breadTile.lettersBg} от ${PALETTE_RGB.length})`, breadTile);
+ok(!!breadTile && NOTE_PALETTE_RGB.includes(breadTile.bg),
+    `буквената плочка е в цвят от палитрата на бележките (${breadTile && breadTile.bg} от ${NOTE_PALETTE_RGB.length})`, breadTile);
+ok(!!breadTile && breadTile.bg === breadTile.winBg,
+    `буквената плочка е точно в цвета на своята бележка (${breadTile && breadTile.bg} = ${breadTile && breadTile.winBg})`, breadTile);
+ok(!!breadTile && breadTile.lettersBg === 'rgba(0, 0, 0, 0)',
+    `буквите нямат собствен фон, фонът е на плочката (${breadTile && breadTile.lettersBg})`, breadTile);
 ok(!!breadTile && Array.from(breadTile.letters || '').length >= 1 && Array.from(breadTile.letters || '').length <= 2,
     `буквената плочка носи 1-2 букви от заглавието („${breadTile && breadTile.letters}")`, breadTile);
+
+// Контурът при плочка с миниатюра: рисува се на ::after с z-index НАД картинката, защото <img>
+// покрива цялата плочка - като box-shadow на елемента жълтото остава под снимката и не се вижда.
+await page.locator('#open-notes-bar .open-notes-bar-tile').nth(0).click();
+await settle();
+await waitActiveRing();
+s = await barState();
+const thumbActive = tileOf(s, 0);
+ok(thumbActive.hasThumb && thumbActive.active,
+    `активна е плочката с миниатюрата (${thumbActive.key}, has-thumb ${thumbActive.hasThumb})`, thumbActive);
+ok(thumbActive.ringContent !== 'none' && YELLOW.test(thumbActive.ring) && /inset/.test(thumbActive.ring) && /2px/.test(thumbActive.ring),
+    `плочката с миниатюра има жълт 2px inset контур на ::after (${thumbActive.ring})`, thumbActive);
+ok(Number(thumbActive.ringZ) > 0 && Number(thumbActive.imgZ || 0) < Number(thumbActive.ringZ),
+    `контурът е над картинката (::after z=${thumbActive.ringZ}, img z=${thumbActive.imgZ})`, thumbActive);
+ok(/open-notes-bar-thumb/.test((thumbActive.childOrder || []).join(' ')) && thumbActive.imgInTile,
+    `миниатюрата е в дървото на плочката, преди ::after (${thumbActive.childOrder})`, thumbActive);
 
 tick('до тук: 8) миниатюра');
 // --- 9) 390px при 8 отворени бележки: редът се приплъзва, плочките не се свиват --------------
@@ -476,6 +572,9 @@ ok(s.tiles.length === 8 && s.tiles.every(t => t.hiddenTile),
     `всичките 8 плочки са приглушени (${s.tiles.filter(t => t.hiddenTile).length})`, s.tiles.map(t => t.hiddenTile));
 ok(s.tiles.every(t => t.opacity > 0.4 && t.opacity < 0.7),
     `приглушаването е ~0.55 (${s.tiles.map(t => t.opacity).slice(0, 3).join(', ')})`, s.tiles.map(t => t.opacity));
+// Скрит прозорец (display: none) също дава четим се изчислен фон - плочката пази точния си цвят.
+ok(s.tiles.every(t => !!t.winBg && t.bg === t.winBg),
+    `и при скрити бележки плочките пазят точния им цвят (${s.tiles.slice(0, 3).map(t => t.bg + ' = ' + t.winBg).join(' | ')})`, s.tiles.slice(0, 3));
 ok(s.hideBtn.mode === 'show' && /Покажи всички бележки/.test(s.hideBtn.title || ''),
     `щом всички са скрити, бутонът става „покажи всички" (mode ${s.hideBtn.mode}, „${s.hideBtn.title}")`, s.hideBtn);
 
