@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="bg">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ko-fi harness</title>
+    <!-- Истинският style.css на приложението: тестът мери точно неговите правила за Ko-fi. -->
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <!-- Каквото е долу в ляво под иконката: клик извън плътния контейнер трябва да стига до него. -->
+    <div id="under"
+        style="position:fixed;left:10px;bottom:12px;width:200px;height:48px;background:#cde;z-index:1;"></div>
+    <script>
+        // Същият код, с който index.html тегли widget-а на Ko-fi (демо режимът го пропуска).
+        (function () {
+            if (window.__cxDemoMode) return;
+            var s = document.createElement('script');
+            s.src = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
+            s.async = true;
+            s.onload = function () {
+                try {
+                    kofiWidgetOverlay.draw('multinotes', {
+                        'type': 'floating-chat',
+                        'floating-chat.donateButton.text': '',
+                        'floating-chat.donateButton.background-color': 'transparent',
+                        'floating-chat.donateButton.text-color': '#323842'
+                    });
+                } catch (e) { console.warn('[Ko-fi] overlay not available:', e); }
+            };
+            document.head.appendChild(s);
+        })();
+    </script>
+</body>
+
+</html>

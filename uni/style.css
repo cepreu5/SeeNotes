@@ -1,4 +1,8 @@
 :root {
+    /* Колко е висока лентата на отворените бележки. Стои 0px, докато лентата не се покаже: всичко,
+       закачено за долния ръб на екрана (асистентът, стрелката нагоре, съобщенията), се мести с тази
+       стойност и се връща на мястото си, щом лентата изчезне - без остатък. */
+    --open-notes-bar-h: 0px;
     --note-font-size: 16px;
     /* Default font size for notes */
     --note-bg-0: #FBFF86;
@@ -19,6 +23,44 @@
     --board-bg-4: #00FFFF;
     --board-bg-5: #FF00FF;
     --board-bg-6: #3355FF;
+}
+
+/* --- Избутване на плаващите бутони над лентата (порт от cx-notes b2.70) -------------------------
+   Докато лентата е на екрана, всичко закачено за долния ръб се качва над нея, вместо да остане зад
+   нея. Правилото важи САМО под body.open-notes-bar-visible, значи щом лентата изчезне, елементите
+   се връщат на точното си място (променливата също се връща на 0px). Бутоните с инлайн позиция
+   (от makeElementDraggable) не могат да се вдигнат оттук - тях ги вдига applyOpenNotesBarLift.
+   Преносът е само за елементите, които съществуват в main: #scrollTopBtn, .toast-notification,
+   .board-filter-popup и асистентския бутон .kb-fab. cx-ските #selection-bar, #add-note-fab и
+   #kb-loading-panel тук ги няма, значи и правила за тях няма. */
+body.open-notes-bar-visible .board-filter-popup {
+    bottom: calc(20px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #scrollTopBtn {
+    bottom: calc(20px + var(--open-notes-bar-h) + 8px);
+}
+/* Съобщенията („Прикачено: ...") излизат точно на долния ръб - иначе лентата ги закрива. */
+body.open-notes-bar-visible .toast-notification {
+    bottom: calc(0px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible .kb-fab {
+    bottom: calc(10px + var(--open-notes-bar-h) + 8px);
+}
+/* Разпънатата бележка при видима лента (порт от cx-notes b2.75). Собственикът (24.10.2026):
+   „extended mode на бележката трябва да се съобразява с наличието на лента, защото бутоните на
+   бележката се скриват зад нея (когато я има)".
+   Разпънатият прозорец иначе е висок 100% от екрана (applyExpandedModalSize), а лентата се рисува
+   ВЪРХУ прозорците - значи долната част на бележката (редът с датата във футъра) оставаше зад нея.
+   Тук кутията свършва над лентата, с 8px пролука: височината е екранът минус измерената височина
+   на лентата. !important е нужен, защото инлайн стилът от applyExpandedModalSize носи height: 100%
+   - битката се решава на едно място, тук, а не и в JS.
+   Правилото важи САМО докато лентата е на екрана (body.open-notes-bar-visible) И само за РАЗПЪНАТ
+   прозорец (.note-window.note-window-expanded - main държи режима на прозореца, не на body): щом
+   лентата изчезне (2 или по-малко отворени бележки, „скрий всички"), бележката се връща на цялата
+   височина без остатъчна пролука, защото променливата също се връща на 0px. Свитите прозорци не се
+   пипат - те си имат собствен размер. */
+body.open-notes-bar-visible .note-window.note-window-expanded .modal-content-box {
+    height: calc(100% - var(--open-notes-bar-h) - 8px) !important;
 }
 
 body {
@@ -3339,15 +3381,55 @@ body.selection-locked .note.active-selection-note .note-content {
     transform: scale(1.1);
 }
 
-.floatingchat-container-mobi {
-    width: 60px !important;
+/* ---------------------------------------------------------------------------
+   Ko-fi: плаващата иконка за подкрепа (порт от cx-notes b2.71/b2.73)
+   ---------------------------------------------------------------------------
+   Widget-ът се тегли от overlay-widget.js и сам слага .floatingchat-container-wrap с
+   <iframe class="floatingchat-container"> вътре (и -mobi вариантите за телефон). По подразбиране
+   контейнерът е 180x65, а iframe-ът 195x65, докато видимото лого е само 39x31 - значи голяма
+   прозрачна площ приема кликове и краде натисканията от това, което е под нея. Тук контейнерът се
+   свива до самия бутон, за да не застъпва нищо излишно, а логото остава цяло и кликаемо.
+   Мерено на живо (24.10.2026): бутонът вътре в iframe-а е точно 87x46 (лого 39 шир. + 8px отстъп +
+   20+20 padding). Затова прозорчето е 88x48 - с една идея по-голямо от бутона. При 62 ширина
+   съдържанието излизаше навън: вътре се появяваше хоризонтален скролбар, а отгоре се режеше логото.
+   НЕ свивай прозорчето под 88x48 - Ko-fi не се побира и пак се получава скролбар и отрязан връх.
+   Правилата започват с body, за да бият стиловете на Ko-fi: те се зареждат СЛЕД нашия style.css и
+   иначе при равна специфичност печелят те.
+   Докато лентата с отворените бележки е на екрана, иконката се качва над нея - със същата
+   променлива --open-notes-bar-h, с която се качват и останалите плаващи бутони. */
+body .floatingchat-container-wrap,
+body .floatingchat-container-wrap-mobi {
+    position: fixed;
+    left: 10px;
+    right: auto;
+    bottom: 12px;
+    width: 88px;
+    max-width: 88px;
+    height: 48px;
+    overflow: hidden;
 }
 
-.floatingchat-container-wrap-mobi {
-    width: 60px !important;
-    bottom: -8px !important;
-    left: -15px !important;
-    right: auto !important;
+body iframe.floatingchat-container,
+body iframe.floatingchat-container-mobi {
+    position: absolute;
+    top: auto;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: 88px;
+    height: 48px;
+    border: 0;
+}
+
+body.open-notes-bar-visible .floatingchat-container-wrap,
+body.open-notes-bar-visible .floatingchat-container-wrap-mobi {
+    bottom: calc(12px + var(--open-notes-bar-h) + 8px);
+}
+
+/* Прозорчето на Ko-fi се отваря над иконката: и то се качва, за да не застъпи лентата. */
+body.open-notes-bar-visible .floating-chat-kofi-popup-iframe,
+body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
+    bottom: calc(75px + var(--open-notes-bar-h));
 }
 
 /* --- Няколко отворени бележки (порт от cx-notes b1.82 / b1.83) ---
@@ -3360,6 +3442,12 @@ body.selection-locked .note.active-selection-note .note-content {
     inset: 0;
     z-index: 1000;
     pointer-events: none;
+}
+
+/* Скрита бележка (порт от cx-notes b2.70): прозорецът остава отворен, но не се вижда и не прихваща
+   кликове. Класът 'visible' значи „отворена" и затова скриването НЕ го маха - то не е затваряне. */
+.note-window.note-window-hidden {
+    display: none !important;
 }
 
 #note-windows-layer:empty {
@@ -3526,6 +3614,161 @@ body.selection-locked .note.active-selection-note .note-content {
    вътре. Важи само за разпънатия режим: при свиване кутията пак е content-box, както преди. */
 .note-window.note-window-expanded .modal-content-box {
     box-sizing: border-box;
+}
+
+/* --- Лента на отворените бележки (порт от cx-notes b2.70/b2.72/b2.74) ---------------------------
+   Показва се при повече от 2 отворени бележки, най-отдолу на екрана: плочка 40px на всяка бележка
+   (миниатюра или буквен квадрат в неин цвят) и бутони за скриване и за затваряне на всички, които
+   стоят ИЗВЪН приплъзващия се ред. Редът се приплъзва настрани, когато плочките не се побират;
+   скролбарът е скрит, а плочките не се свиват (flex: 0 0 40px). */
+#open-notes-bar {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    height: 52px;
+    padding: 6px 8px;
+    align-items: center;
+    gap: 8px;
+    /* Полупрозрачен (b2.74, собственикът): лентата е 50% прозрачна, за да не закрива плътно
+       съдържанието под себе си. Плочките и бутоните в нея остават плътни. */
+    background: rgba(55, 71, 79, 0.5);
+    border-top: 2px solid #546E7A;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    /* Слоят на прозорците не приема кликове; лентата приема своите. */
+    pointer-events: auto;
+}
+#open-notes-bar.is-visible {
+    display: flex;
+}
+.open-notes-bar-strip {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.open-notes-bar-strip::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.open-notes-bar-tile {
+    position: relative;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Фонът идва в стойността на елемента - точният цвят на бележката. */
+    background: transparent;
+    box-shadow: none;
+    cursor: pointer;
+}
+/* Кантът и контурът се рисуват на ::after, а НЕ като box-shadow на самата плочка: когато плочката
+   има миниатюра, <img> покрива цялата ѝ площ и сянката на елемента остава ПОД картинката - точно
+   там, където контурът трябва да се вижда, той изчезва. ::after е последната нарисувана кутия в
+   плочката (z-index над картинката), значи контурът винаги е отгоре.
+   Нарисуван е ОТВЪТРЕ (inset), за да е изцяло видим: редът на лентата е висок точно колкото
+   плочката и е с overflow-y: hidden, тоест външен контур се реже отгоре и отдолу. */
+.open-notes-bar-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 2;
+    /* Неактивната плочка: тънък тъмен кант, за да не се слива светла бележка с тъмната лента. */
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+    transition: box-shadow 0.15s ease;
+}
+/* Активната бележка: жълт контур 2px, изцяло върху плочката. Под жълтото има тънка тъмна линия -
+   иначе жълтото изчезва върху бледа жълта бележка (#FBFF86 е цвят по подразбиране). */
+.open-notes-bar-tile.is-active::after {
+    box-shadow: inset 0 0 0 2px #FFD400, inset 0 0 0 3px rgba(0, 0, 0, 0.45);
+}
+.open-notes-bar-letters {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Цветът на текста се слага в стойността на елемента според фона на бележката (тъмен или бял). */
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    line-height: 1;
+    user-select: none;
+}
+.open-notes-bar-thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    /* Картинката е под контура (::after е с по-висок z-index), за да не закрива жълтото. */
+    z-index: 1;
+}
+.open-notes-bar-tile.has-thumb .open-notes-bar-thumb {
+    display: block;
+}
+.open-notes-bar-tile.has-thumb .open-notes-bar-letters {
+    display: none;
+}
+/* Скрита бележка: плочката е приглушена - клик на нея я връща на екрана. */
+.open-notes-bar-tile.is-hidden {
+    opacity: 0.55;
+}
+.open-notes-bar-tile.is-hidden:hover {
+    opacity: 0.8;
+}
+.open-notes-bar-hide,
+.open-notes-bar-close {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #546E7A;
+    color: #fff;
+    cursor: pointer;
+}
+.open-notes-bar-hide {
+    background: #455A64;
+    color: #fff;
+    cursor: pointer;
+}
+.open-notes-bar-hide:hover,
+.open-notes-bar-close:hover {
+    background: #607D8B;
+}
+.open-notes-bar-hide svg,
+.open-notes-bar-close svg {
+    width: 22px;
+    height: 22px;
 }
 
 @media (hover: hover) {
