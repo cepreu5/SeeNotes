@@ -11213,9 +11213,9 @@ const OPEN_NOTES_BAR_Z = NOTE_WINDOW_Z_BASE + 9000;
 const OPEN_NOTES_BAR_THUMB_SIZE = 80;
 // Колко се чака миниатюрата, преди плочката да остане с буквите си: лентата не бива да чака мрежата.
 const OPEN_NOTES_BAR_THUMB_WAIT = 1000;
-// Цветовете на буквените плочки. Цветът се избира по gdid/id на бележката, значи е един и същ при
-// всяко преподреждане - плочката не сменя цвят, докато бележката е отворена.
-const OPEN_NOTES_BAR_COLORS = ['#546E7A', '#00897B', '#5E35B1', '#C62828', '#EF6C00', '#2E7D32', '#0277BD', '#6D4C41'];
+// Тъмният цвят на буквите върху светла плочка. Плочката носи ТОЧНИЯ цвят на бележката си, значи
+// цветът на текста се смята от фона (виж openNotesBarTextColorFor), а не е фиксиран.
+const OPEN_NOTES_BAR_DARK_TEXT = '#1F2A30';
 // Намерен адрес на миниатюра по име на файл: при всяко опресняване плочката се строи наново, а без
 // този кеш всяка смяна на активната бележка връща картинката в началото и тя мига. Помни се за
 // КОЛКОТО и общият кеш на thumbnail-ите (INLINE_IMAGE_THUMB_TTL): подписаният адрес на Drive изтича
@@ -11385,12 +11385,57 @@ function openNotesBarLetters(title) {
     return (first + second).toUpperCase();
 }
 
-/** Цветът на буквената плочка: детерминиран по gdid/id на бележката. */
-function openNotesBarColorFor(note, win) {
-    const seed = String((note && (note.gdid || note.id)) || win.body.dataset.gdid || win.body.dataset.id || '');
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) % 100003;
-    return OPEN_NOTES_BAR_COLORS[hash % OPEN_NOTES_BAR_COLORS.length];
+/**
+ * Цветът на плочката в лентата: ТОЧНО цветът на бележката. Взима се фонът, с който showModal е
+ * боядисал кутията на прозореца (`.modal-content-box`) - така плочката и бележката не могат да се
+ * разминат. Ако прозорецът още не е боядисан или фонът е прозрачен, се пада на цвета от данните на
+ * бележката, а накрая - на цвета по подразбиране за нови бележки.
+ */
+function openNotesBarTileColor(win, note) {
+    try {
+        const box = win && (win.box || (win.el && win.el.querySelector('.modal-content-box')));
+        const bg = box ? String(getComputedStyle(box).backgroundColor || '').trim() : '';
+        if (bg && bg !== 'transparent' && !/^rgba\([^)]*,\s*0\s*\)$/i.test(bg)) return bg;
+    } catch (e) { }
+    const stored = getNoteColorCss(note && note.color, '');
+    if (stored) return stored;
+    return getDefaultNoteBg();
+}
+
+/** Относителната яркост на CSS цвят (0..1) за избор на четящ се текст; null за неразпознат цвят. */
+function openNotesBarRelativeLuminance(css) {
+    const value = String(css || '').trim();
+    let r, g, b;
+    let m = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (m) {
+        let hex = m[1];
+        if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+        r = parseInt(hex.slice(0, 2), 16);
+        g = parseInt(hex.slice(2, 4), 16);
+        b = parseInt(hex.slice(4, 6), 16);
+    } else if ((m = value.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i))) {
+        r = Number(m[1]); g = Number(m[2]); b = Number(m[3]);
+    } else {
+        return null;
+    }
+    const lin = (v) => {
+        const s = Math.min(255, Math.max(0, v)) / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * Цветът на буквите върху плочката: тъмен, когато контрастът му към фона е по-добър, иначе бял.
+ * Палитрата на бележките е пастелна, но потребителските цветове може да са и тъмни - затова се
+ * смята, а не се приема „винаги тъмен текст".
+ */
+function openNotesBarTextColorFor(bgCss) {
+    const bgL = openNotesBarRelativeLuminance(bgCss);
+    if (bgL === null) return '#FFFFFF';
+    const darkL = openNotesBarRelativeLuminance(OPEN_NOTES_BAR_DARK_TEXT);
+    const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    return contrast(bgL, 1) >= contrast(bgL, darkL) ? '#FFFFFF' : OPEN_NOTES_BAR_DARK_TEXT;
 }
 
 /** Първата вградена снимка (type=8) на бележката - тя става миниатюрата в плочката. */
@@ -11511,12 +11556,14 @@ function ensureOpenNotesBar() {
     return bar;
 }
 
-/** Една плочка: миниатюра на бележката или буквен квадрат в неин цвят, с открояване за активната. */
+/** Една плочка: миниатюра на бележката или буквен квадрат в точния ѝ цвят, с жълт контур за активната. */
 function openNotesBarFillTile(tile, win) {
     const note = findNoteForWindow(win);
     const title = openNotesBarTitleFor(note);
     const file = openNotesBarImageName(note);
-    const color = openNotesBarColorFor(note, win);
+    // Фонът е цветът на самата бележка, а буквите върху него се четат - тъмни или бели.
+    const color = openNotesBarTileColor(win, note);
+    const textColor = openNotesBarTextColorFor(color);
     const isActive = win === activeNoteWindow;
     tile.classList.toggle('is-active', isActive);
     // Скритата бележка е приглушена, за да се различава от показана - клик на плочката я връща.
@@ -11527,7 +11574,7 @@ function openNotesBarFillTile(tile, win) {
     if (title) tile.title = title; else tile.removeAttribute('title');
     // Съдържанието се строи само когато се е сменило (бележката е друга, сменило се е заглавието
     // или снимката) - иначе картинката се зарежда отначало при всяко вдигане на прозорец.
-    const sig = `${title}\u0000${file}\u0000${color}`;
+    const sig = `${title}\u0000${file}\u0000${color}\u0000${textColor}`;
     if (tile.dataset.barSig === sig) return;
     tile.dataset.barSig = sig;
     let letters = tile.querySelector('.open-notes-bar-letters');
@@ -11537,7 +11584,10 @@ function openNotesBarFillTile(tile, win) {
         tile.appendChild(letters);
     }
     letters.textContent = openNotesBarLetters(title);
-    letters.style.backgroundColor = color;
+    // Фонът е на САМАТА плочка - точният цвят на бележката; буквите са само текст върху него.
+    tile.style.backgroundColor = color;
+    letters.style.backgroundColor = '';
+    letters.style.color = textColor;
     const oldThumb = tile.querySelector('.open-notes-bar-thumb');
     if (oldThumb) oldThumb.remove();
     tile.classList.remove('has-thumb');

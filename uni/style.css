@@ -4854,15 +4854,32 @@ body.selection-locked .note.active-selection-note .note-content {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Фонът идва в стойността на елемента - точният цвят на бележката. */
     background: transparent;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+    box-shadow: none;
     cursor: pointer;
+}
+/* Кантът и контурът се рисуват на ::after, а НЕ като box-shadow на самата плочка: когато плочката
+   има миниатюра, <img> покрива цялата ѝ площ и сянката на елемента остава ПОД картинката - точно
+   там, където контурът трябва да се вижда, той изчезва. ::after е последната нарисувана кутия в
+   плочката (z-index над картинката), значи контурът винаги е отгоре.
+   Нарисуван е ОТВЪТРЕ (inset), за да е изцяло видим: редът на лентата е висок точно колкото
+   плочката и е с overflow-y: hidden, тоест външен контур се реже отгоре и отдолу. */
+.open-notes-bar-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 2;
+    /* Неактивната плочка: тънък тъмен кант, за да не се слива светла бележка с тъмната лента. */
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
     transition: box-shadow 0.15s ease;
 }
-/* Активната бележка: 2px в акцентния цвят на приложението. Открояването е отвън (box-shadow), за
-   да не се мени размерът и подредбата на плочката. */
-.open-notes-bar-tile.is-active {
-    box-shadow: 0 0 0 2px #3a6ff0;
+/* Активната бележка: жълт контур 2px, изцяло върху плочката. Под жълтото има тънка тъмна линия -
+   иначе жълтото изчезва върху бледа жълта бележка (#FBFF86 е цвят по подразбиране). */
+.open-notes-bar-tile.is-active::after {
+    box-shadow: inset 0 0 0 2px #FFD400, inset 0 0 0 3px rgba(0, 0, 0, 0.45);
 }
 .open-notes-bar-letters {
     position: absolute;
@@ -4870,6 +4887,7 @@ body.selection-locked .note.active-selection-note .note-content {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Цветът на текста се слага в стойността на елемента според фона на бележката (тъмен или бял). */
     color: #fff;
     font-size: 15px;
     font-weight: 700;
@@ -4885,6 +4903,8 @@ body.selection-locked .note.active-selection-note .note-content {
     height: 100%;
     object-fit: cover;
     display: none;
+    /* Картинката е под контура (::after е с по-висок z-index), за да не закрива жълтото. */
+    z-index: 1;
 }
 .open-notes-bar-tile.has-thumb .open-notes-bar-thumb {
     display: block;
