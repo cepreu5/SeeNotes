@@ -4606,26 +4606,41 @@ function noteInlineImageNames(note) {
 }
 
 /**
- * Ползва ли някой ДРУГИ този файл: останал запис в media.txt, останала бележка (включително в
- * кошчето) или фон на борд. Търсенето по име е без значение на регистъра и умишлено широко -
- * по-добре да остане ненужен файл, отколкото да изчезне снимка, която някоя бележка показва.
+ * Ползва ли някой ДРУГИ това ИМЕ: останал запис в media.txt със същия path или фон на борд.
+ * Бележки не се обхождат: вградената снимка винаги е прикачен файл на СЪЩАТА бележка, тоест има
+ * запис в media.txt - ако друга бележка ползва името, записът ѝ е тук. Проверката е САМО по име,
+ * защото локалният файл Images/<име> е един за всички и търсенето по име в Drive връща всички
+ * файлове с това име; затова решава съдбата им, но НЕ и на Drive копие с известно id - всяко
+ * прикачване качва файла наново, така че две бележки с еднакво име имат отделни копия
+ * (виж imageDriveIdIsUsedElsewhere). Без значение на регистъра - по-добре да остане ненужен файл,
+ * отколкото да изчезне снимка, която някоя бележка показва.
  */
-function imageFileIsUsedElsewhere(name, driveIds, noteBeingDeleted) {
+function imageFileIsUsedElsewhere(name) {
     const lower = String(name || '').trim().toLowerCase();
     if (!lower) return true; // без име не знаем какво трием
-    const ids = (driveIds || []).map(String).filter(Boolean);
     for (const media of (Array.isArray(mediaData) ? mediaData : [])) {
-        if (!media) continue;
-        if (String(media.path || '').trim().toLowerCase() === lower) return true;
-        if (media.pathGD && ids.includes(String(media.pathGD))) return true;
-    }
-    for (const other of (Array.isArray(allNotesData) ? allNotesData : [])) {
-        if (!other || other === noteBeingDeleted) continue;
-        const haystack = `${other.notetxt || ''} ${other.text_span || ''} ${other.title_span || ''} ${other.title_text_span || ''}`.toLowerCase();
-        if (haystack.includes(lower)) return true;
+        if (media && String(media.path || '').trim().toLowerCase() === lower) return true;
     }
     for (const board of (Array.isArray(boardsData) ? boardsData : [])) {
         if (board && String(board.backpath || '').trim().toLowerCase() === lower) return true;
+    }
+    return false;
+}
+
+/**
+ * Ползва ли някой ДРУГИ точно ТОВА Drive копие: останал запис в media.txt със същия pathGD или
+ * фон на борд (backpath е id на файл в Drive). Отделно от проверката по име, защото еднаквото име
+ * не значи еднакъв файл: uploadBlobToGDrive качва нов файл при всяко прикачване, и ако копието на
+ * изтритата бележка се пази само защото друга бележка има файл със същото име, то остава завинаги.
+ */
+function imageDriveIdIsUsedElsewhere(driveId) {
+    const id = String(driveId || '').trim();
+    if (!id) return false;
+    for (const media of (Array.isArray(mediaData) ? mediaData : [])) {
+        if (media && media.pathGD && String(media.pathGD) === id) return true;
+    }
+    for (const board of (Array.isArray(boardsData) ? boardsData : [])) {
+        if (board && String(board.backpath || '') === id) return true;
     }
     return false;
 }
@@ -4657,16 +4672,20 @@ function forgetInlineImageCaches(name, driveIds) {
 }
 
 /**
- * Трие ЕДИН файл от папка Images: в Drive (по известното id, а вградена снимка без id - по име)
- * и в локалната папка. Липсващ файл не е грешка; провалът се логва и не спира останалите.
+ * Трие ЕДИН файл от папка Images: в Drive по известните id-та, а при opts.lookupByName (вградена
+ * снимка без запис) - по име; и в локалната папка при opts.deleteLocal. Търсенето по име и
+ * локалният файл са общи за всички с това име, затова викащият ги пуска само когато името вече не
+ * се ползва. Липсващ файл не е грешка; провалът се логва и не спира останалите.
  */
-async function deleteImageFileFromImages(name, driveIds, report) {
+async function deleteImageFileFromImages(name, driveIds, report, opts = {}) {
+    const lookupByName = opts.lookupByName === true;
+    const deleteLocal = opts.deleteLocal !== false;
     const fileName = String(name || '').trim();
     if (!fileName) return;
     let targetIds = [...new Set((driveIds || []).map(id => String(id || '').trim()).filter(Boolean))];
     const updateGDriveNow = useGoogleDb && !isOffline;
     if (updateGDriveNow && typeof deleteGDriveFile === 'function') {
-        if (!targetIds.length) {
+        if (!targetIds.length && lookupByName) {
             // Вградена снимка: запис няма, значи и id няма - файлът се търси по име в папка Images.
             try {
                 const folderId = typeof inlineImageFolderId === 'function' ? await inlineImageFolderId() : null;
@@ -4691,7 +4710,7 @@ async function deleteImageFileFromImages(name, driveIds, report) {
         }
     }
     // Локалната папка: същият файл живее в Images/. Без избран handle няма какво да се трие.
-    try {
+    if (deleteLocal) try {
         let handle = (typeof dirHandle !== 'undefined' && dirHandle) ? dirHandle : null;
         if (!handle && typeof getDirectoryHandle === 'function' && localStorage.getItem('useLocalDb') === 'true') {
             handle = await getDirectoryHandle();
@@ -4706,14 +4725,15 @@ async function deleteImageFileFromImages(name, driveIds, report) {
             console.warn(`[Trash] Images: ${fileName} остана в локалната папка:`, e);
         }
     }
-    forgetInlineImageCaches(fileName, targetIds);
+    // Докато името се ползва, кешовете по име още сочат валиден файл - махат се само id-тата.
+    forgetInlineImageCaches(deleteLocal ? fileName : '', targetIds);
 }
 
 /**
  * Трие прикачените файлове на ОКОНЧАТЕЛНО изтрита бележка: записите ѝ в media.txt, файловете-записи
- * в Drive и самите файлове в папка Images - но само ако не ги ползва никоя друга жива бележка.
- * Вика се СЛЕД като бележката е махната от allNotesData (иначе тя самата би се броила за ползвател),
- * затова текстът ѝ идва подаден в opts.note. Не хвърля: провал тук не бива да превръща успешно
+ * в Drive и самите ѝ копия в папка Images; локалният файл и търсенето по име - само ако никоя
+ * друга бележка не ползва името. Вика се СЛЕД като бележката е махната от allNotesData, затова
+ * текстът ѝ (за вградените снимки) идва подаден в opts.note. Не хвърля: провал тук не бива да превръща успешно
  * изтрита бележка в „не е изтрита".
  * @returns {Promise<{records:number, files:number, kept:number}>} - за логване.
  */
@@ -4768,13 +4788,20 @@ async function deleteNoteAttachmentFiles(noteGdid, noteId, opts = {}) {
         report.records++;
     }
 
-    // 3. Самите файлове в Images - само тези, които никой друг не ползва.
+    // 3. Самите файлове в Images. Drive копията се решават по id, а името (локалният файл и
+    //    търсенето по име в Drive) - отделно: еднакво име при друга бележка значи нейно копие,
+    //    не нашето, а findGDFileByNameDetailed връща ВСИЧКИ файлове с това име.
     for (const entry of files.values()) {
-        if (imageFileIsUsedElsewhere(entry.name, entry.driveIds, note)) {
+        const ownIds = entry.driveIds.filter(id => !imageDriveIdIsUsedElsewhere(id));
+        const nameUsed = imageFileIsUsedElsewhere(entry.name);
+        if (!ownIds.length && nameUsed) {
             report.kept++;
             continue;
         }
-        await deleteImageFileFromImages(entry.name, entry.driveIds, report);
+        await deleteImageFileFromImages(entry.name, ownIds, report, {
+            lookupByName: !ownIds.length && !nameUsed,
+            deleteLocal: !nameUsed,
+        });
     }
     return report;
 }
