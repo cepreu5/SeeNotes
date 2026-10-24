@@ -5451,3 +5451,50 @@ body.selection-locked .note.active-selection-note .note-content {
     outline: 2px dashed rgba(58, 111, 240, .6);
     outline-offset: -4px;
 }
+
+/* ---------------------------------------------------------------------------
+   Ko-fi: плаващата иконка за подкрепа
+   ---------------------------------------------------------------------------
+   Widget-ът се тегли от overlay-widget.js и сам слага .floatingchat-container-wrap с
+   <iframe class="floatingchat-container"> вътре (и -mobi вариантите за телефон). По подразбиране
+   контейнерът е 180x65, а iframe-ът 195x65, докато видимото лого е само 39x31 - значи голяма
+   прозрачна площ приема кликове и краде натисканията от това, което е под нея. Тук контейнерът се
+   свива до самия бутон (62x48), за да не застъпва нищо излишно, а логото остава цяло и кликаемо.
+   Правилата започват с body, за да бият стиловете на Ko-fi: те се зареждат СЛЕД нашия style.css и
+   иначе при равна специфичност печелят те.
+   Докато лентата с отворените бележки е на екрана, иконката се качва над нея - със същата
+   променлива --open-notes-bar-h, с която се качват и останалите плаващи бутони. */
+body .floatingchat-container-wrap,
+body .floatingchat-container-wrap-mobi {
+    position: fixed;
+    left: 10px;
+    right: auto;
+    bottom: 12px;
+    width: 62px;
+    max-width: 62px;
+    height: 48px;
+    overflow: hidden;
+}
+
+body iframe.floatingchat-container,
+body iframe.floatingchat-container-mobi {
+    position: absolute;
+    top: auto;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+body.open-notes-bar-visible .floatingchat-container-wrap,
+body.open-notes-bar-visible .floatingchat-container-wrap-mobi {
+    bottom: calc(12px + var(--open-notes-bar-h) + 8px);
+}
+
+/* Прозорчето на Ko-fi се отваря над иконката: и то се качва, за да не застъпи лентата. */
+body.open-notes-bar-visible .floating-chat-kofi-popup-iframe,
+body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
+    bottom: calc(75px + var(--open-notes-bar-h));
+}
