@@ -4735,6 +4735,79 @@ async function deleteNoteAttachmentFiles(noteGdid, noteId, opts = {}) {
     }
     return report;
 }
+
+/**
+ * Локалната част от бутона в set.html „Изтрий записи и файлове без бележка": Drive вече е изчистен
+ * от самата страница на настройките, тук се махат локалните копия.
+ * Получава { recordGdids: [], imageNames: [] }:
+ *   recordGdids - gdid на записите (media.txt), които вече не принадлежат на никоя бележка;
+ *   imageNames  - имената на файловете в Images, чиито записи са изтрити.
+ * Записът се маха от паметта (mediaData), от IndexedDB и от локалната папка; файловете - от
+ * локалната папка Images. Връща { log: [{ file, where, kind, ok, error }], folderAvailable }:
+ * where е 'local' (текстът се превежда в set.html), kind е 'record' | 'file'. Ред се връща САМО
+ * когато нещо наистина е изтрито или е гръмнало грешка - липсващ локален файл не е „изтрит".
+ * Не хвърля: провалът на едно място не спира останалите.
+ */
+async function orphanMediaLocalCleanup(payload = {}) {
+    const log = [];
+    const toList = (value) => [...new Set((Array.isArray(value) ? value : [])
+        .map(x => String(x === undefined || x === null ? '' : x).trim())
+        .filter(Boolean))];
+    const recordGdids = toList(payload && payload.recordGdids);
+    const imageNames = toList(payload && payload.imageNames);
+    const errorText = (e) => (e && e.message ? e.message : String(e));
+    const row = (file, kind, ok, error) => log.push({ file, where: 'local', kind, ok: !!ok, error: error ? String(error) : '' });
+
+    let handle = (typeof dirHandle !== 'undefined' && dirHandle) ? dirHandle : null;
+    if (!handle && typeof getDirectoryHandle === 'function') {
+        try { handle = await getDirectoryHandle(); } catch (e) { handle = null; }
+    }
+    const folderAvailable = !!handle;
+
+    // 1. Записите: паметта, ключът в IndexedDB и локалният файл-запис.
+    for (const gdid of recordGdids) {
+        const entry = Array.isArray(mediaData) ? mediaData.find(m => m && String(m.gdid || '') === gdid) : null;
+        const label = entry && entry.id !== undefined && entry.id !== null ? `media.txt #${entry.id}` : `media.txt ${gdid}`;
+        let changed = false;
+        let error = '';
+        if (entry) {
+            const index = mediaData.indexOf(entry);
+            if (index !== -1) { mediaData.splice(index, 1); changed = true; }
+        }
+        if (folderAvailable && typeof deleteLocalFile === 'function') {
+            try { if (await deleteLocalFile(gdid)) changed = true; } catch (e) { if (!error) error = errorText(e); }
+        }
+        if (typeof useIndexedDb !== 'undefined' && useIndexedDb && typeof MEDIA_STORE_NAME !== 'undefined' && typeof deleteFromDB === 'function') {
+            try { await deleteFromDB(MEDIA_STORE_NAME, gdid); changed = true; } catch (e) { if (!error) error = errorText(e); }
+        }
+        if (changed || error) row(label, 'record', !error, error);
+    }
+
+    // 2. Файловете в Images - по име, защото локалната папка няма id-та.
+    if (imageNames.length && folderAvailable) {
+        let imagesHandle = null;
+        try {
+            imagesHandle = await handle.getDirectoryHandle(INLINE_IMAGE_FOLDER, { create: false });
+        } catch (e) {
+            imagesHandle = null; // няма папка Images - няма какво да се трие
+        }
+        if (imagesHandle) {
+            for (const name of imageNames) {
+                try {
+                    await imagesHandle.removeEntry(name);
+                    row(`${INLINE_IMAGE_FOLDER}/${name}`, 'file', true, '');
+                } catch (e) {
+                    if (e && e.name === 'NotFoundError') continue; // локално копие няма - нищо не е изтрито
+                    row(`${INLINE_IMAGE_FOLDER}/${name}`, 'file', false, errorText(e));
+                }
+            }
+        }
+    }
+
+    return { log, folderAvailable };
+}
+window.orphanMediaLocalCleanup = orphanMediaLocalCleanup;
+
 /**
  * Изтрива бележка окончателно от БД, GDrive, локална папка и паметта.
  * Връща { ok, gdriveDeleted, localDeleted, error }. ok === false значи, че бележката е още

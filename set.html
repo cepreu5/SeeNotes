@@ -370,6 +370,44 @@
         .board-notes-status.error {
             color: #c0392b;
         }
+
+        /* Записи и файлове без бележка: списъците в прегледа и логът след триенето. */
+        .orphan-media-list {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85em;
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 6px 9px;
+            max-height: 190px;
+            overflow: auto;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .orphan-media-list:empty {
+            display: none;
+        }
+
+        .orphan-media-log {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.82em;
+            background: #1c1c1c;
+            color: #e8e8e8;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin: 0;
+            max-height: 340px;
+            overflow: auto;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .orphan-media-log:empty {
+            display: none;
+        }
         .dup-boards-container {
             margin-top: 22px;
             padding: 20px 24px;
@@ -524,6 +562,9 @@
                 <button id="del-board-notes-btn" class="save-btn"
                     style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий
                     бележки на борд</button>
+                <button id="orphan-media-btn" class="save-btn" data-i18n="orphanBtn"
+                    style="background-color: #c0392b; box-shadow: 0 4px 12px rgba(192, 57, 43, 0.3);">Изтрий записи и
+                    файлове без бележка</button>
                 <button id="del-all-appdata-btn" class="save-btn"
                     style="background-color: #000; color: #ff0000; border: 2px solid #ff0000; box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);">!!!
                     ИЗТРИЙ ВСИЧКО ЗА ЧИСТО СТАРТИРАНЕ !!!</button>
@@ -547,6 +588,36 @@
                     </div>
                 </div>
                 <p id="del-board-notes-status" class="board-notes-status"></p>
+            </div>
+            <div id="orphan-media-panel" class="board-notes-panel" style="display:none;">
+                <p class="board-notes-head" data-i18n="orphanTitle">Записи и файлове без бележка</p>
+                <div id="orphan-media-preview" style="display:none;">
+                    <p><span data-i18n="orphanRecordsLabel">Записи без бележка</span>:
+                        <strong id="orphan-media-records-count">0</strong></p>
+                    <div id="orphan-media-records-list" class="orphan-media-list"></div>
+                    <p><span data-i18n="orphanFilesLabel">Файлове без запис</span>:
+                        <strong id="orphan-media-files-count">0</strong></p>
+                    <div id="orphan-media-files-list" class="orphan-media-list"></div>
+                    <p><span data-i18n="orphanDriveLabel">Файлове за триене в Drive</span>:
+                        <strong id="orphan-media-drive-count">0</strong></p>
+                    <div class="board-notes-actions">
+                        <button id="orphan-media-cancel" type="button" class="board-notes-btn"
+                            data-i18n="orphanCancel">Отказ</button>
+                        <button id="orphan-media-go" type="button" class="board-notes-btn board-notes-danger"
+                            data-i18n="orphanDelete">Изтрий</button>
+                    </div>
+                </div>
+                <div id="orphan-media-logbox" style="display:none;">
+                    <p id="orphan-media-log-summary" class="board-notes-head"></p>
+                    <pre id="orphan-media-log" class="orphan-media-log"></pre>
+                    <div class="board-notes-actions">
+                        <button id="orphan-media-copy" type="button" class="board-notes-btn"
+                            data-i18n="orphanCopyLog">Копирай лога</button>
+                        <button id="orphan-media-close" type="button" class="board-notes-btn"
+                            data-i18n="orphanClose">Затвори</button>
+                    </div>
+                </div>
+                <p id="orphan-media-status" class="board-notes-status"></p>
             </div>
         </div>
         <div id="dup-boards-container" class="dup-boards-container">
@@ -796,6 +867,7 @@
             document.getElementById('del-all-appdata-btn').addEventListener('click', deleteAllAppData);
             initDeleteBoardNotes();
             initDuplicateBoards();
+            initOrphanMediaCleanup();
         });
 
         // --- Изтриване на бележките (note.txt) на един борд по неговия gdid ---
@@ -1122,7 +1194,41 @@
                 dupBoardsReasonNetwork: "мрежова грешка",
                 dupBoardsListError: "Грешка при търсене на board.txt в Drive: {error}",
                 dupBoardsNoAuth: "Липсва оторизация. Отворете Настройки от приложението.",
-                dupBoardsFolderNotFound: "Работната папка „{folder}“ не е намерена в Drive. Проверката не е направена."
+                dupBoardsFolderNotFound: "Работната папка „{folder}“ не е намерена в Drive. Проверката не е направена.",
+                orphanBtn: "Изтрий записи и файлове без бележка",
+                orphanTitle: "Записи и файлове без бележка",
+                orphanRecordsLabel: "Записи без бележка",
+                orphanFilesLabel: "Файлове без запис",
+                orphanDriveLabel: "Файлове за триене в Drive",
+                orphanScanning: "Търсене на записи и файлове в работната папка „{folder}“...",
+                orphanReading: "Прочетени {done} от {total} media.txt...",
+                orphanFound: "Работна папка „{folder}“: {records} записа без бележка и {files} файла за триене в Drive.",
+                orphanNothing: "Няма записи и файлове без бележка. Проверени {records} записа и {files} файла в папката „{folder}“.",
+                orphanRecordRow: "{file} — noteid {noteid} — {type}",
+                orphanFileRow: "{file} — {folder}",
+                orphanNoName: "(без име)",
+                orphanNoNoteid: "(няма noteid)",
+                orphanUnreadableOne: "1 media.txt не можа да се прочете и не се трие.",
+                orphanUnreadable: "{count} media.txt не можаха да се прочетат и не се трият.",
+                orphanUnreadableRisk: "Внимание: файловете на нечетимите записи може да изглеждат без запис - прегледайте списъка, преди да изтриете.",
+                orphanDelete: "Изтрий",
+                orphanDeleteN: "Изтрий {count}",
+                orphanCancel: "Отказ",
+                orphanDeleting: "Изтриване... {done} от {total}",
+                orphanRecordLabel: "media.txt запис #{id} (noteid {noteid})",
+                orphanWhereDrive: "Drive",
+                orphanWhereLocal: "локалната папка",
+                orphanKindRecord: "запис",
+                orphanKindFile: "файл",
+                orphanLogError: "грешка: {error}",
+                orphanLocalSkipped: "локалната папка — не е пипана (страницата не е отворена от приложението)",
+                orphanLocalNoFolder: "локалната папка — не е достъпна (в приложението не е избрана папка)",
+                orphanLogSummary: "Изтрити: {records} записа, {files} файла (Drive: {drive}, локална папка: {local}), {errors} грешки",
+                orphanNothingDeleted: "Няма нищо за триене.",
+                orphanCopyLog: "Копирай лога",
+                orphanCopied: "Логът е копиран в клипборда.",
+                orphanCopyFailed: "Логът не можа да се копира.",
+                orphanClose: "Затвори"
             },
             en: {
                 dupBoardsTitle: "Duplicate boards",
@@ -1147,7 +1253,41 @@
                 dupBoardsReasonNetwork: "network error",
                 dupBoardsListError: "Error searching Drive for board.txt: {error}",
                 dupBoardsNoAuth: "Not authorised. Open Settings from the app.",
-                dupBoardsFolderNotFound: "The working folder \"{folder}\" was not found in Drive. The check was not run."
+                dupBoardsFolderNotFound: "The working folder \"{folder}\" was not found in Drive. The check was not run.",
+                orphanBtn: "Delete records and files with no note",
+                orphanTitle: "Records and files with no note",
+                orphanRecordsLabel: "Records with no note",
+                orphanFilesLabel: "Files with no record",
+                orphanDriveLabel: "Files to delete in Drive",
+                orphanScanning: "Searching the working folder \"{folder}\" for records and files...",
+                orphanReading: "Read {done} of {total} media.txt...",
+                orphanFound: "Working folder \"{folder}\": {records} records with no note and {files} files to delete in Drive.",
+                orphanNothing: "No records or files without a note. Checked {records} records and {files} files in the working folder \"{folder}\".",
+                orphanRecordRow: "{file} — noteid {noteid} — {type}",
+                orphanFileRow: "{file} — {folder}",
+                orphanNoName: "(no name)",
+                orphanNoNoteid: "(no noteid)",
+                orphanUnreadableOne: "1 media.txt could not be read and is not deleted.",
+                orphanUnreadable: "{count} media.txt could not be read and are not deleted.",
+                orphanUnreadableRisk: "Careful: the files of those unreadable records may look like they have no record - check the list before deleting.",
+                orphanDelete: "Delete",
+                orphanDeleteN: "Delete {count}",
+                orphanCancel: "Cancel",
+                orphanDeleting: "Deleting... {done} of {total}",
+                orphanRecordLabel: "media.txt record #{id} (noteid {noteid})",
+                orphanWhereDrive: "Drive",
+                orphanWhereLocal: "the local folder",
+                orphanKindRecord: "record",
+                orphanKindFile: "file",
+                orphanLogError: "error: {error}",
+                orphanLocalSkipped: "the local folder — not touched (the page was not opened from the app)",
+                orphanLocalNoFolder: "the local folder — not available (no folder is selected in the app)",
+                orphanLogSummary: "Deleted: {records} records, {files} files (Drive: {drive}, local folder: {local}), {errors} errors",
+                orphanNothingDeleted: "Nothing to delete.",
+                orphanCopyLog: "Copy the log",
+                orphanCopied: "The log was copied to the clipboard.",
+                orphanCopyFailed: "The log could not be copied.",
+                orphanClose: "Close"
             }
         };
         let setI18n = null;
@@ -1396,6 +1536,398 @@
                     setStatus(e && e.message ? e.message : String(e), 'error');
                 } finally {
                     btn.disabled = false;
+                }
+            });
+        }
+
+        // --- Записи и файлове без бележка ---------------------------------------------------
+        // Записът (един файл media.txt в работната папка) е „без бележка", когато неговата noteid не
+        // съответства на нито един note.txt в папката - нито жив, нито в кошчето (бележка в кошчето се
+        // възстановява заедно с прикачените си, значи тя е собственик). Файл в Images/Sound/Video/Other
+        // е „без запис", когато id-то му не е pathGD на нито един запис и името му не е path на нито
+        // един запис. Други проверки (кой още ползва името, фон на борд) собственикът отказа за този
+        // инструмент - затова ги няма.
+        // Сканирането е САМО ЧЕТЕНЕ; триенето тръгва само след потвърждение и се логва ред по ред.
+        const MEDIA_SUBFOLDERS = ['Images', 'Sound', 'Video', 'Other'];
+        const MEDIA_TYPE_FOLDER = { 1: 'Images', 2: 'Sound', 4: 'Video', 5: 'Other' };
+        const mediaTypeFolder = (type) => MEDIA_TYPE_FOLDER[Number(type)] || 'Other';
+
+        // Един списък в Drive с пагинация: само id/име/кошче, съдържание не се чете.
+        async function driveListAllFiles(DRIVE, query, fields) {
+            const files = [];
+            let pageToken = null;
+            do {
+                const url = `${DRIVE}?q=${encodeURIComponent(query)}&fields=${fields}&pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+                const data = await driveJsonOrThrow(url);
+                (data.files || []).forEach(f => { if (f && f.id) files.push(f); });
+                pageToken = data.nextPageToken;
+            } while (pageToken);
+            return files;
+        }
+
+        // Подпапка на работната папка по име (Images, Sound, Video, Other). Липсваща - null.
+        async function findMediaSubfolderId(DRIVE, parentId, name) {
+            const q = `'${driveQ(parentId)}' in parents and name='${driveQ(name)}' and mimeType='${FOLDER_MIME}' and trashed=false`;
+            try {
+                const data = await driveJsonOrThrow(`${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`);
+                const hit = (data.files || []).find(f => f && f.id && (!f.name || f.name === name));
+                return hit ? hit.id : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        /**
+         * Само ЧЕТЕНЕ: какво в работната папка няма бележка (записи) или няма запис (файлове).
+         * Запис, който не може да се прочете, се брои в unreadable и НЕ се трие.
+         * @returns {Promise<{folder:string, scannedRecords:number, scannedFiles:number, unreadable:number,
+         *   orphanRecords:Array, orphanFiles:Array, fileDeletes:Array}>}
+         */
+        async function scanOrphanMedia(folderName, onProgress) {
+            const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+            // 0) Работната папка - същата, която ползва „Дублирани бордове".
+            const folderId = await findWorkingFolderId(DRIVE, folderName);
+            // 1) Всички note.txt - живи и в кошчето. Бележка в кошчето СЕ БРОИ за съществуваща.
+            const noteIds = new Set();
+            for (const trashed of ['false', 'true']) {
+                const list = await driveListAllFiles(DRIVE,
+                    `'${driveQ(folderId)}' in parents and name='note.txt' and trashed=${trashed}`,
+                    'nextPageToken,files(id,name,trashed)');
+                list.forEach(f => { if (f.id) noteIds.add(String(f.id)); });
+            }
+            // 2) Записите: по един media.txt на запис, направо в работната папка.
+            const mediaFiles = await driveListAllFiles(DRIVE,
+                `'${driveQ(folderId)}' in parents and name='media.txt'`,
+                'nextPageToken,files(id,name)');
+            const records = [];
+            let unreadable = 0;
+            let read = 0;
+            for (let i = 0; i < mediaFiles.length; i += 20) {
+                await Promise.all(mediaFiles.slice(i, i + 20).map(async (f) => {
+                    try {
+                        const res = await driveFetch(`${DRIVE}/${encodeURIComponent(f.id)}?alt=media`);
+                        if (!res.ok) { unreadable++; return; }
+                        const rec = JSON.parse(await res.text());
+                        if (!rec || typeof rec !== 'object' || Array.isArray(rec)) { unreadable++; return; }
+                        records.push({
+                            recordGdid: String(f.id),
+                            id: (rec.id === undefined || rec.id === null) ? '' : String(rec.id),
+                            noteid: (rec.noteid === undefined || rec.noteid === null) ? '' : String(rec.noteid),
+                            path: typeof rec.path === 'string' ? rec.path : '',
+                            pathGD: rec.pathGD ? String(rec.pathGD) : '',
+                            type: rec.type
+                        });
+                    } catch (e) {
+                        unreadable++; // нечетим/невалиден JSON: записът се пропуска, не се трие
+                    } finally {
+                        read++;
+                    }
+                }));
+                if (onProgress) onProgress(read, mediaFiles.length);
+            }
+            // 3) Кой запис има бележка и кой не. По id и по име се помни какво ВСЕКИ запис ползва -
+            //    по това се познава файл без запис.
+            const recordFileIds = new Set();
+            const keptFileIds = new Set();
+            const recordNames = new Set();
+            records.forEach(r => {
+                if (r.pathGD) recordFileIds.add(r.pathGD);
+                if (r.path) recordNames.add(r.path.toLowerCase());
+            });
+            const orphanRecords = records.filter(r => !r.noteid || !noteIds.has(r.noteid));
+            records.filter(r => r.noteid && noteIds.has(r.noteid)).forEach(r => { if (r.pathGD) keptFileIds.add(r.pathGD); });
+            // 4) Файловете в подпапките: без запис е този, чието id не е pathGD и чието име не е path
+            //    на нито един запис.
+            const orphanFiles = [];
+            let scannedFiles = 0;
+            for (const name of MEDIA_SUBFOLDERS) {
+                const subId = await findMediaSubfolderId(DRIVE, folderId, name);
+                if (!subId) continue;
+                const list = await driveListAllFiles(DRIVE,
+                    `'${driveQ(subId)}' in parents and trashed=false`,
+                    'nextPageToken,files(id,name,trashed)');
+                scannedFiles += list.length;
+                list.forEach(f => {
+                    const id = String(f.id);
+                    if (recordFileIds.has(id)) return;
+                    if (f.name && recordNames.has(String(f.name).toLowerCase())) return;
+                    orphanFiles.push({ driveId: id, name: f.name || id, folder: name });
+                });
+            }
+            // 5) Какво точно се трие в Drive: записите без бележка и файловете. Файлът на запис, който
+            //    жив запис още сочи по id, се пази - той има запис.
+            const fileDeletes = [];
+            const seen = new Set();
+            const addFile = (id, folder, name) => {
+                if (!id || seen.has(id)) return;
+                seen.add(id);
+                fileDeletes.push({ id, label: `${folder}/${name}` });
+            };
+            orphanRecords.forEach(r => {
+                if (!r.pathGD || keptFileIds.has(r.pathGD)) return;
+                addFile(r.pathGD, mediaTypeFolder(r.type), r.path || r.pathGD);
+            });
+            orphanFiles.forEach(f => addFile(f.driveId, f.folder, f.name));
+            return {
+                folder: folderName,
+                scannedRecords: mediaFiles.length,
+                scannedFiles,
+                unreadable,
+                orphanRecords,
+                orphanFiles,
+                fileDeletes
+            };
+        }
+
+        /**
+         * Изтрива в Drive това, което scanOrphanMedia намери, после иска от приложението (window.opener)
+         * да изчисти локалните копия. Връща редовете на лога - по един на всяко изтрито нещо.
+         */
+        async function deleteOrphanMedia(plan, onProgress) {
+            const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+            const lines = [];
+            const counts = { records: 0, files: 0, errors: 0, driveRecords: 0, driveFiles: 0, localRecords: 0, localFiles: 0 };
+            const total = plan.orphanRecords.length + plan.fileDeletes.length;
+            let done = 0;
+            const failText = (error) => st('orphanLogError', { error });
+            const run = async (items, make) => {
+                const out = new Array(items.length);
+                for (let i = 0; i < items.length; i += 10) {
+                    await Promise.all(items.slice(i, i + 10).map(async (item, k) => {
+                        out[i + k] = await make(item);
+                    }));
+                    done += Math.min(10, items.length - i);
+                    if (onProgress) onProgress(done, total);
+                }
+                return out.filter(Boolean);
+            };
+            // 1. Записите без бележка - файловете media.txt в Drive.
+            const recordLines = await run(plan.orphanRecords, async (r) => {
+                const label = st('orphanRecordLabel', { id: r.id || r.recordGdid, noteid: r.noteid || st('orphanNoNoteid') });
+                try {
+                    const res = await driveFetch(`${DRIVE}/${encodeURIComponent(r.recordGdid)}`, { method: 'DELETE' });
+                    if (res.ok || res.status === 404) {
+                        counts.driveRecords++;
+                        return `${label} — ${st('orphanWhereDrive')} (${st('orphanKindRecord')})`;
+                    }
+                    counts.errors++;
+                    return `${label} — ${failText(await driveErrorText(res))}`;
+                } catch (e) {
+                    counts.errors++;
+                    return `${label} — ${failText(e && e.message ? e.message : e)}`;
+                }
+            });
+            // 2. Файловете в Drive (на записите без бележка и тези без никакъв запис).
+            const fileLines = await run(plan.fileDeletes, async (f) => {
+                try {
+                    const res = await driveFetch(`${DRIVE}/${encodeURIComponent(f.id)}`, { method: 'DELETE' });
+                    if (res.ok || res.status === 404) {
+                        counts.driveFiles++;
+                        return `${f.label} — ${st('orphanWhereDrive')} (${st('orphanKindFile')})`;
+                    }
+                    counts.errors++;
+                    return `${f.label} — ${failText(await driveErrorText(res))}`;
+                } catch (e) {
+                    counts.errors++;
+                    return `${f.label} — ${failText(e && e.message ? e.message : e)}`;
+                }
+            });
+            lines.push(...recordLines, ...fileLines);
+            // 3. Локалната папка: страницата не я вижда - приложението, което я е отворило, я трие.
+            const openerFn = (window.opener && typeof window.opener.orphanMediaLocalCleanup === 'function')
+                ? window.opener.orphanMediaLocalCleanup : null;
+            if (!openerFn) {
+                lines.push(st('orphanLocalSkipped'));
+            } else {
+                if (onProgress) onProgress(total, total);
+                const imageNames = plan.fileDeletes
+                    .filter(f => String(f.label).startsWith('Images/'))
+                    .map(f => String(f.label).slice('Images/'.length));
+                try {
+                    const res = await openerFn.call(window.opener, {
+                        recordGdids: plan.orphanRecords.map(r => r.recordGdid),
+                        imageNames
+                    });
+                    const rows = (res && Array.isArray(res.log)) ? res.log : [];
+                    rows.forEach(x => {
+                        const file = String((x && x.file) || '');
+                        const where = (x && x.where === 'local') ? st('orphanWhereLocal') : String((x && x.where) || st('orphanWhereLocal'));
+                        if (x && x.ok === false) {
+                            counts.errors++;
+                            lines.push(`${file} — ${failText(x.error || '')}`);
+                            return;
+                        }
+                        const kind = (x && x.kind === 'record') ? 'localRecords' : 'localFiles';
+                        counts[kind]++;
+                        const kindText = (x && x.kind === 'record') ? st('orphanKindRecord') : st('orphanKindFile');
+                        lines.push(`${file} — ${where} (${kindText})`);
+                    });
+                    if (res && res.folderAvailable === false) lines.push(st('orphanLocalNoFolder'));
+                } catch (e) {
+                    counts.errors++;
+                    lines.push(`${st('orphanWhereLocal')} — ${failText(e && e.message ? e.message : e)}`);
+                }
+            }
+            counts.files = counts.driveFiles + counts.localFiles;
+            counts.records = counts.driveRecords + counts.localRecords;
+            return { lines, counts };
+        }
+
+        function initOrphanMediaCleanup() {
+            const $ = (id) => document.getElementById(id);
+            const btn = $('orphan-media-btn');
+            const panel = $('orphan-media-panel');
+            if (!btn || !panel) return;
+            const statusEl = $('orphan-media-status');
+            const preview = $('orphan-media-preview');
+            const logBox = $('orphan-media-logbox');
+            const logEl = $('orphan-media-log');
+            const summaryEl = $('orphan-media-log-summary');
+            const goBtn = $('orphan-media-go');
+            const cancelBtn = $('orphan-media-cancel');
+            let plan = null;
+            let busy = false;
+
+            const setStatus = (text, isError = false) => {
+                statusEl.textContent = text || '';
+                statusEl.classList.toggle('error', !!isError);
+            };
+            const applyI18n = () => {
+                document.querySelectorAll('#orphan-media-panel [data-i18n], #orphan-media-btn[data-i18n]').forEach(e => {
+                    const key = e.dataset.i18n;
+                    const v = setI18n && setI18n[key];
+                    if (typeof v === 'string') e.textContent = v;
+                });
+            };
+            const resetPreview = () => {
+                plan = null;
+                preview.style.display = 'none';
+                $('orphan-media-records-count').textContent = '0';
+                $('orphan-media-files-count').textContent = '0';
+                $('orphan-media-drive-count').textContent = '0';
+                $('orphan-media-records-list').textContent = '';
+                $('orphan-media-files-list').textContent = '';
+                goBtn.disabled = true;
+            };
+            const close = () => {
+                resetPreview();
+                panel.style.display = 'none';
+                setStatus('');
+            };
+
+            loadSetI18n().then(applyI18n).catch(() => { });
+
+            btn.addEventListener('click', async () => {
+                if (busy) return;
+                if (panel.style.display !== 'none') return close();
+                panel.style.display = 'flex';
+                resetPreview();
+                applyI18n();
+                busy = true;
+                btn.disabled = true;
+                try {
+                    await loadSetI18n();
+                    applyI18n();
+                    const stored = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+                    if (!stored) { setStatus(st('dupBoardsNoAuth'), true); return; }
+                    const folder = workingFolderName();
+                    setStatus(st('orphanScanning', { folder }));
+                    const result = await scanOrphanMedia(folder, (done, total) => {
+                        if (total > 0) setStatus(st('orphanReading', { done, total }));
+                    });
+                    plan = result;
+                    $('orphan-media-records-count').textContent = result.orphanRecords.length;
+                    $('orphan-media-files-count').textContent = result.orphanFiles.length;
+                    $('orphan-media-drive-count').textContent = result.fileDeletes.length;
+                    $('orphan-media-records-list').textContent = result.orphanRecords
+                        .map(r => st('orphanRecordRow', {
+                            file: r.path || st('orphanNoName'),
+                            noteid: r.noteid || st('orphanNoNoteid'),
+                            type: mediaTypeFolder(r.type)
+                        })).join('\n');
+                    $('orphan-media-files-list').textContent = result.orphanFiles
+                        .map(f => st('orphanFileRow', { file: f.name, folder: f.folder })).join('\n');
+                    const total = result.orphanRecords.length + result.fileDeletes.length;
+                    goBtn.textContent = st('orphanDeleteN', { count: total });
+                    goBtn.disabled = total === 0;
+                    preview.style.display = 'block';
+                    const unreadableText = result.unreadable
+                        ? ' ' + st(result.unreadable === 1 ? 'orphanUnreadableOne' : 'orphanUnreadable', { count: result.unreadable })
+                        : '';
+                    // Нечетимият запис не казва кои файлове са негови: файлът му може да изглежда без
+                    // запис. Затова прегледът го казва изрично, преди човекът да натисне „Изтрий".
+                    const riskText = (result.unreadable && result.orphanFiles.length) ? ' ' + st('orphanUnreadableRisk') : '';
+                    if (total === 0) {
+                        setStatus(st('orphanNothing', { records: result.scannedRecords, files: result.scannedFiles, folder }) + unreadableText);
+                    } else {
+                        setStatus(st('orphanFound', { records: result.orphanRecords.length, files: result.fileDeletes.length, folder }) + unreadableText + riskText);
+                    }
+                } catch (e) {
+                    console.warn('Orphan media scan failed:', e);
+                    setStatus(e && e.message ? e.message : String(e), true);
+                } finally {
+                    busy = false;
+                    btn.disabled = false;
+                }
+            });
+
+            cancelBtn.addEventListener('click', close);
+            $('orphan-media-close').addEventListener('click', close);
+
+            goBtn.addEventListener('click', async () => {
+                if (busy || !plan) return;
+                const current = plan;
+                busy = true;
+                goBtn.disabled = true;
+                cancelBtn.disabled = true;
+                btn.disabled = true;
+                try {
+                    const result = await deleteOrphanMedia(current, (done, total) => {
+                        setStatus(st('orphanDeleting', { done, total }));
+                    });
+                    const c = result.counts;
+                    summaryEl.textContent = st('orphanLogSummary', {
+                        records: c.records,
+                        files: c.files,
+                        drive: c.driveRecords + c.driveFiles,
+                        local: c.localRecords + c.localFiles,
+                        errors: c.errors
+                    });
+                    logEl.textContent = result.lines.join('\n');
+                    logBox.style.display = 'block';
+                    preview.style.display = 'none';
+                    plan = null;
+                    setStatus(result.lines.length ? '' : st('orphanNothingDeleted'), c.errors > 0);
+                } catch (e) {
+                    console.warn('Orphan media delete failed:', e);
+                    setStatus(e && e.message ? e.message : String(e), true);
+                } finally {
+                    busy = false;
+                    goBtn.disabled = true;
+                    cancelBtn.disabled = false;
+                    btn.disabled = false;
+                }
+            });
+
+            $('orphan-media-copy').addEventListener('click', async () => {
+                const text = logEl.textContent || '';
+                if (!text) return;
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(text);
+                    } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        ta.remove();
+                    }
+                    setStatus(st('orphanCopied'));
+                } catch (e) {
+                    setStatus(st('orphanCopyFailed'), true);
                 }
             });
         }
