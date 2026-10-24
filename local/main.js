@@ -6758,7 +6758,7 @@ function renderCommandsHelpPopup() {
         { cmd: '/7', text: '/7  or  /ex — Enter expanded mode' },
         { cmd: '/%', text: '/%number — Zoom (e.g. /%50)' },
         { cmd: '/0', text: '/0  or  /wipe — Erase data and close tab' },
-        { cmd: '/9', text: '/9  or  /lex — Lexical search (normalised)' }
+        { cmd: '/9', text: '/9  or  /adv — Advanced search (normalised)' }
     ];
     const rawList = (typeof _ === 'function') ? _('searchCommandsList') : null;
     const commandsList = (Array.isArray(rawList) && rawList.length > 0) ? rawList : defaultList;
@@ -6781,7 +6781,7 @@ function renderCommandsHelpPopup() {
             } else if (parseSearchQuery(cmd).lex) {
                 // b2.20: режимът иска текст — оставяме командата в полето и чакаме думата
                 if (sBox) {
-                    sBox.value = '/9 ';
+                    sBox.value = '/adv ';
                     sBox.focus();
                 }
             } else {
@@ -7791,7 +7791,7 @@ function getNormalizedNoteText(el, raw) {
 
 // b2.20: лексикалният режим се вдига само с команда в самото поле — „/9 текст“ или „/lex текст“.
 // Командата остава видима (тя е указателят за режима); търси се само текстът след нея.
-const LEX_SEARCH_COMMAND_RE = /^\s*\/(?:9|lex)(?:\s+|$)/i;
+const LEX_SEARCH_COMMAND_RE = /^\s*\/(?:9|adv|lex)(?:\s+|$)/i;
 function parseSearchQuery(raw) {
     const value = raw || '';
     const m = value.match(LEX_SEARCH_COMMAND_RE);
