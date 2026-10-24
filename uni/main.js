@@ -23853,6 +23853,33 @@ function showNmInlineGhost(state, pct) {
         width = Math.max(28, Math.round(width * scale));
         height = Math.max(28, Math.round(width * aspect));
     }
+    // Докато менюто е отворено (кадърът от маркера), кадърът заема празна ивица на екрана: иначе би
+    // закрил самото меню, а редовете му трябва да се стигат с пръст. Ивицата е откъм другата страна
+    // на маркера, а ако там мястото не стига - отвъд менюто. Височината ѝ е и таванът на кадъра: не се
+    // побира ли реалният размер, кадърът се смалява ЦЕЛИЯТ по пропорция (отрязан кадър не показва
+    // размера, а само част от снимката).
+    const ghostGap = 8;
+    const ghostEdge = 8;
+    const menuRect = state.fullSize ? state.avoidRect : null;
+    let band = null;
+    if (menuRect) {
+        const box = state.anchorRect || column;
+        const up = (y) => ({ y: Math.round(y), dir: 'up', room: Math.round(y) - ghostEdge });
+        const down = (y) => ({ y: Math.round(y), dir: 'down', room: Math.round(window.innerHeight - y) - ghostEdge });
+        // Менюто е под маркера -> кадърът горе; над маркера -> кадърът долу.
+        const menuBelow = Math.round(menuRect.top) >= Math.round(box.bottom);
+        const near = menuBelow ? up(Math.round(box.top) - ghostGap) : down(Math.round(box.bottom) + ghostGap);
+        const far = menuBelow ? down(Math.round(menuRect.bottom) + ghostGap) : up(Math.round(menuRect.top) - ghostGap);
+        // Близката ивица е до маркера, затова се избира, щом в нея се събира поне четвърт от екрана;
+        // иначе - по-голямата от двете. В двата случая кадърът не ляга върху менюто.
+        const wanted = Math.max(28, Math.min(160, Math.round(window.innerHeight / 4)));
+        band = near.room >= wanted ? near : (far.room > near.room ? far : near);
+        if (height > band.room) {
+            const shrink = Math.max(0, band.room) / Math.max(1, height);
+            width = Math.max(28, Math.round(width * shrink));
+            height = Math.max(28, Math.round(width * aspect));
+        }
+    }
     const el = document.createElement('div');
     el.className = 'nm-inline-ghost' + (state.fullSize ? ' is-full' : '');
     const label = document.createElement('span');
@@ -23871,6 +23898,12 @@ function showNmInlineGhost(state, pct) {
     // Кадърът при посочване е висок колкото самата снимка: държи се в екрана и когато мястото над
     // маркера стига само за част от него.
     if (state.fullSize) top = Math.max(8, Math.min(top, Math.max(8, window.innerHeight - height - 8)));
+    // С отворено меню посоката идва от избраната ивица (виж по-горе): тя е от другата страна на
+    // маркера или отвъд менюто, а не там, където би застанал кадърът по подразбиране.
+    if (band) {
+        top = band.dir === 'down' ? band.y : band.y - height;
+        top = Math.max(ghostEdge, Math.min(top, Math.max(ghostEdge, window.innerHeight - height - ghostEdge)));
+    }
     el.style.left = left + 'px';
     el.style.top = top + 'px';
     if (state.ghost) state.ghost.replaceWith(el);
@@ -24582,6 +24615,12 @@ function openNmInlineMenu(opts) {
         base: nmInlineBaseWidth(modalBody, String(options.fileName || '')),
         tileEl: options.tileEl || null,
         anchorRect: (anchorEl && anchorEl.getBoundingClientRect) ? anchorEl.getBoundingClientRect() : modalBody.getBoundingClientRect(),
+        // Ивицата на екрана, която менюто заема: докато то е отворено, кадърът застава извън нея,
+        // за да не закрива редовете му (виж showNmInlineGhost). Пълни се след positionNmInlineMenu.
+        avoidRect: null,
+        // Кадърът от маркера е в РЕАЛНИЯ размер на процента - същият кадър като при посочване, без
+        // тавана от 200 px по височина; този от плочката си остава ориентир до плъзгача.
+        fullSize: options.kind !== 'tile' && options.kind !== 'preview',
         value: Math.max(10, Math.min(100, Math.round(Number(options.value) || 30))),
         // Снимката на състоянието за реда „Отказ" - ширините от мига на отварянето.
         originalSteps: [], originalFrames: [], originalDraftFormats: null, originalPending: null,
@@ -24677,7 +24716,9 @@ function openNmInlineMenu(opts) {
             if (!state.draft) rememberNmInlinePreviewWidth(modalBody, state.fileName, state.value);
             return;
         }
-        showNmInlineGhost(state, null);
+        // Кадърът от плочката е само ориентир до плъзгача и при отпускане се маха. От маркера кадърът
+        // остава: той стои, докато менюто е отворено (виж openNmInlineMenu).
+        if (state.kind !== 'marker') showNmInlineGhost(state, null);
         // Едно стъпало за отмяна на всяка смяна на ширината - и при пускане на плъзгача, и при
         // стъпка с клавиш (двете идват като change). Отмяната се вдига и ако стойността вече е
         // приложена по време на плъзгането.
@@ -24754,17 +24795,27 @@ function openNmInlineMenu(opts) {
     nmInlineMenuState = state;
     positionNmInlineMenu(state);
     // От плочката менюто се отваря с ширината на файла (30%, ако още не е в текста) и с НЕГОВАТА
-    // снимка - иначе собственикът вижда празна рамка, докато не мръдне плъзгача. От маркера кадърът
-    // се показва едва при плъзгане, защото там редът под менюто е текстът на бележката.
+    // снимка - иначе собственикът вижда празна рамка, докато не мръдне плъзгача.
+    // От маркера кадърът излиза ВЕДНАГА щом менюто се покаже, в реалния размер и от другата страна на
+    // менюто. Досега той се виждаше само докато пръстът е на маркера и изчезваше точно когато менюто
+    // излезе (оплакване на собственика, 24.10.2026: „снимката се скрива"). Кадърът от докосването се
+    // маха, за да не стоят два един върху друг.
+    if (state.kind === 'marker') {
+        hideNmInlineHoverGhost(true);
+        state.avoidRect = el.getBoundingClientRect();
+        showNmInlineGhost(state, state.value);
+    }
     if (state.kind === 'tile') showNmInlineGhost(state, state.value);
     if (state.fileName) {
         const wanted = state.fileName;
         nmInlineNaturalSize(wanted).then(size => {
             if (!size || !nmInlineMenuState || nmInlineMenuState.fileName !== wanted) return;
             nmInlineMenuState.natural = size;
-            // Кадърът от плочката вече стои на екрана: щом естествената ширина дойде, той застава в
-            // ТОЧНИЯ размер, с който снимката ще влезе в бележката (иначе първият кадър е по колоната).
-            if (nmInlineMenuState.kind === 'tile' && nmInlineMenuState.ghost) {
+            // Кадърът (от плочката или от маркера) вече стои на екрана: щом естествената ширина дойде,
+            // той застава в ТОЧНИЯ размер, с който снимката ще влезе в бележката (иначе първият кадър е
+            // по колоната). При маркера това е и поводът кадърът да се строи наново - при реалния размер
+            // височината е точно пропорцията на снимката.
+            if (nmInlineMenuState.kind !== 'preview' && nmInlineMenuState.ghost) {
                 showNmInlineGhost(nmInlineMenuState, nmInlineMenuState.value);
             }
         });
@@ -24786,7 +24837,15 @@ function openNmInlineMenu(opts) {
         event.stopPropagation();
         closeNmInlineMenu();
     };
-    state.onResize = () => positionNmInlineMenu(state);
+    state.onResize = () => {
+        positionNmInlineMenu(state);
+        // Кадърът от маркера лежи извън менюто: при нов размер на прозореца се мести и той, инак би
+        // останал върху менюто или извън екрана.
+        if (state.kind === 'marker' && state.ghost) {
+            state.avoidRect = el.getBoundingClientRect();
+            showNmInlineGhost(state, state.value);
+        }
+    };
     state.onScroll = () => closeNmInlineMenu();
     // Писането мести маркера и менюто вече не сочи него.
     state.onFieldInput = () => closeNmInlineMenu();
