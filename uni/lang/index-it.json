@@ -27,5 +27,7 @@
     "cta_btn": "Continua con Google",
     "popup_info_title": "Informazione",
     "popup_info_msg": "Puoi migliorare la traduzione dell'interfaccia con un comodo strumento interattivo avviando l'applicazione all'indirizzo:",
-    "popup_info_btn": "Ho capito"
+    "popup_info_btn": "Ho capito",
+    "gallery_title": "Dalla galleria.",
+    "gallery_subtitle": "Schermate da vere raccolte di note. Scorri o usa le frecce."
 }

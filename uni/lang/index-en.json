@@ -28,5 +28,7 @@
     "popup_info_title": "Information",
     "popup_info_msg": "You can improve the user interface translation with a convenient interactive tool by starting the application at:",
     "popup_info_btn": "Got it",
-    "s_btn": "Sign-in"
+    "s_btn": "Sign-in",
+    "gallery_title": "From the gallery.",
+    "gallery_subtitle": "Screens from real note collections. Swipe through them or use the arrows."
 }

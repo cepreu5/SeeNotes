@@ -635,6 +635,221 @@
             opacity: 1;
             pointer-events: auto;
         }
+
+        /* Gallery carousel */
+        .gallery-section {
+            padding: 8vh 8vw 14vh;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: center;
+        }
+
+        .gallery-head {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 4vh;
+        }
+
+        .gallery-title {
+            font-size: clamp(32px, 4.2vw, 56px);
+        }
+
+        .gallery-subtitle {
+            color: var(--text-secondary);
+            font-size: clamp(15px, 1.5vw, 18px);
+            max-width: 48ch;
+        }
+
+        .gallery-outer {
+            position: relative;
+            width: 100%;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .gallery-track {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            scroll-behavior: smooth;
+            padding: 4px 0 8px;
+            outline: none;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .gallery-track::-webkit-scrollbar {
+            display: none;
+        }
+
+        .gallery-slide {
+            flex: 0 0 min(72vw, 500px);
+            scroll-snap-align: center;
+            border-radius: var(--image-radius);
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 18px 50px rgba(17, 17, 17, 0.08);
+            cursor: zoom-in;
+        }
+
+        .gallery-slide img {
+            display: block;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+
+        .gallery-slide:hover img {
+            transform: scale(1.03);
+        }
+
+        .gallery-nav {
+            flex: 0 0 auto;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: 1px solid rgba(17, 17, 17, 0.12);
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s, transform 0.2s, opacity 0.2s;
+        }
+
+        .gallery-nav:hover:not(:disabled) {
+            background: var(--accent);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+
+        .gallery-nav:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        .gallery-meta {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-top: 20px;
+            padding: 0 60px;
+        }
+
+        .gallery-counter {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .gallery-progress {
+            flex: 1;
+            height: 3px;
+            border-radius: 3px;
+            background: rgba(17, 17, 17, 0.1);
+            overflow: hidden;
+        }
+
+        .gallery-progress span {
+            display: block;
+            height: 100%;
+            width: 0;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 0.25s ease;
+        }
+
+        /* Gallery lightbox */
+        .gallery-lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            background: rgba(17, 17, 17, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4vh 4vw;
+            cursor: zoom-out;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.26s ease, visibility 0.26s ease;
+        }
+
+        .gallery-lightbox.open {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .gallery-lightbox img {
+            max-width: 100%;
+            max-height: 92vh;
+            border-radius: 18px;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+            transform: scale(0.92);
+            transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .gallery-lightbox.open img {
+            transform: scale(1);
+        }
+
+        .gallery-lightbox-close {
+            position: absolute;
+            top: 2.4vh;
+            right: 2.4vw;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(17, 17, 17, 0.4);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .gallery-lightbox-close:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        @media (max-width: 720px) {
+            .gallery-section {
+                padding: 6vh 6vw 10vh;
+            }
+
+            .gallery-slide {
+                flex: 0 0 84vw;
+            }
+
+            .gallery-nav {
+                width: 38px;
+                height: 38px;
+            }
+
+            .gallery-outer {
+                gap: 8px;
+            }
+
+            .gallery-meta {
+                padding: 0 46px;
+            }
+        }
     </style>
 </head>
 
@@ -779,6 +994,24 @@
         </div>
         <div class="cta-image scroll-animate">
             <img src="images/closing_phone.jpg" alt="Ready to start">
+        </div>
+    </section>
+
+    <!-- Section: Gallery carousel -->
+    <section class="gallery-section" id="gallery">
+        <div class="gallery-head">
+            <h2 class="gallery-title scroll-animate" data-key="gallery_title">From the gallery.</h2>
+            <p class="gallery-subtitle scroll-animate" data-key="gallery_subtitle">Screens from real note collections. Swipe through them or use the arrows.</p>
+        </div>
+        <div class="gallery-outer">
+            <button class="gallery-nav gallery-prev" type="button" aria-label="Previous image"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="gallery-track scroll-animate" id="galleryTrack" tabindex="0" role="group"
+                aria-roledescription="carousel" aria-label="Image gallery"></div>
+            <button class="gallery-nav gallery-next" type="button" aria-label="Next image"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+        <div class="gallery-meta scroll-animate">
+            <span class="gallery-counter" id="galleryCounter">0 / 0</span>
+            <div class="gallery-progress"><span id="galleryProgress"></span></div>
         </div>
     </section>
 
@@ -943,6 +1176,268 @@
             // Попъпът за превод на интерфейса се показва още при отваряне на страницата
             showI18nPopup();
         });
+    </script>
+
+    <script>
+        // ── Gallery carousel ────────────────────────────────
+        // The same photos live in two sets under msm-ex: land/ for a wide
+        // screen (desktop, tablet turned sideways) and port/ for a phone held
+        // upright. Each folder holds a list.json with its file names, and the
+        // carousel takes the set that fits the screen and swaps it when the
+        // screen changes. A folder without a usable list.json falls back to
+        // the other one; GALLERY_FALLBACK covers a page opened without a server.
+        (function () {
+            const GALLERY_ROOT = 'msm-ex';
+            const UPRIGHT = '(max-width: 720px) and (orientation: portrait)';
+            const GALLERY_FALLBACK = [
+                '1764551652828.jpg',
+                '1764551676242.jpg',
+                '1764551691209.jpg',
+                '1764551755697.jpg',
+                '1764553894822.jpg',
+                '1764553917946.jpg',
+                '1764553933512.jpg',
+                '1764553941918.jpg',
+                '1764553952897.jpg',
+                '1764553963870.jpg',
+                '1764553974033.jpg',
+                '1764553984943.jpg',
+                '1764553993077.jpg',
+                '1764554001197.jpg',
+                '1764554007494.jpg',
+                '1764554013461.jpg',
+                '1764554019417.jpg',
+                '1764554055674.jpg',
+                '1764554064490.jpg',
+                '1764554083159.jpg',
+                '1764554091671.jpg',
+                '1764554098238.jpg',
+                '1764554106965.jpg',
+                '1764554137382.jpg',
+                '1764554248286.jpg',
+                '1764554317449.jpg',
+                '1764554407319.jpg',
+                '1764554540104.jpg'
+            ];
+            const CLOSE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+            const track = document.getElementById('galleryTrack');
+            const counter = document.getElementById('galleryCounter');
+            const progress = document.getElementById('galleryProgress');
+            const prevBtn = document.querySelector('.gallery-prev');
+            const nextBtn = document.querySelector('.gallery-next');
+            if (!track || !prevBtn || !nextBtn) return;
+
+            // Full screen view: a click on a slide opens the image, a click on
+            // that image folds it back into the carousel.
+            const lightbox = document.createElement('div');
+            lightbox.className = 'gallery-lightbox';
+            lightbox.setAttribute('role', 'dialog');
+            lightbox.setAttribute('aria-label', 'Image preview');
+            const lightboxImg = document.createElement('img');
+            lightboxImg.alt = '';
+            const lightboxClose = document.createElement('button');
+            lightboxClose.type = 'button';
+            lightboxClose.className = 'gallery-lightbox-close';
+            lightboxClose.setAttribute('aria-label', 'Back to the carousel');
+            lightboxClose.innerHTML = CLOSE_ICON;
+            lightbox.appendChild(lightboxImg);
+            lightbox.appendChild(lightboxClose);
+            document.body.appendChild(lightbox);
+
+            let openIndex = -1;
+
+            function slideAt(index) {
+                return track.children[index] || null;
+            }
+
+            function showInLightbox(index) {
+                const slide = slideAt(index);
+                const img = slide && slide.querySelector('img');
+                if (!img) return;
+                lightboxImg.src = img.currentSrc || img.src;
+                lightboxImg.alt = img.alt;
+                openIndex = index;
+            }
+
+            function openLightbox(index) {
+                showInLightbox(index);
+                lightbox.classList.add('open');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeLightbox() {
+                lightbox.classList.remove('open');
+                document.body.style.overflow = '';
+                openIndex = -1;
+            }
+
+            function isOpen() {
+                return openIndex !== -1;
+            }
+
+            // Scroll position that puts each slide in the middle of the strip,
+            // clamped to what the strip can actually scroll to. Comparing the
+            // real scroll position against these (instead of guessing which
+            // slide is nearest the middle) keeps the counter exact at both
+            // ends: the first slide reads 1, the last reads the total.
+            function slideTargets() {
+                const slides = track.children;
+                const max = Math.max(track.scrollWidth - track.clientWidth, 0);
+                const stripLeft = track.getBoundingClientRect().left;
+                const targets = [];
+                for (let i = 0; i < slides.length; i++) {
+                    const box = slides[i].getBoundingClientRect();
+                    const start = box.left - stripLeft + track.scrollLeft;
+                    const centred = start - (track.clientWidth - box.width) / 2;
+                    targets.push(Math.min(Math.max(centred, 0), max));
+                }
+                return targets;
+            }
+
+            function currentIndex() {
+                const targets = slideTargets();
+                if (!targets.length) return 0;
+                let best = 0;
+                let bestDistance = Infinity;
+                for (let i = 0; i < targets.length; i++) {
+                    const distance = Math.abs(targets[i] - track.scrollLeft);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        best = i;
+                    }
+                }
+                return best;
+            }
+
+            function sync() {
+                const total = track.children.length;
+                const index = Math.min(currentIndex(), Math.max(total - 1, 0));
+                counter.textContent = total ? (index + 1) + ' / ' + total : '0 / 0';
+                progress.style.width = total ? ((index + 1) / total * 100) + '%' : '0%';
+                prevBtn.disabled = index <= 0;
+                nextBtn.disabled = index >= total - 1;
+            }
+
+            function centerSlide(index, smooth) {
+                const target = slideTargets()[index];
+                if (target === undefined) return;
+                track.scrollTo({ left: target, behavior: smooth === false ? 'auto' : 'smooth' });
+            }
+
+            function go(direction) {
+                const total = track.children.length;
+                if (!total) return;
+                const next = Math.min(Math.max(currentIndex() + direction, 0), total - 1);
+                centerSlide(next);
+                if (isOpen() && next !== openIndex) showInLightbox(next);
+            }
+
+            function build(files, keepIndex) {
+                track.textContent = '';
+                files.forEach((name, i) => {
+                    const slide = document.createElement('div');
+                    slide.className = 'gallery-slide';
+                    const img = document.createElement('img');
+                    img.src = GALLERY_ROOT + '/' + currentFolder + '/' + encodeURIComponent(name);
+                    img.alt = 'Gallery image ' + (i + 1);
+                    img.decoding = 'async';
+                    img.loading = i < 3 ? 'eager' : 'lazy';
+                    slide.appendChild(img);
+                    slide.addEventListener('click', () => openLightbox(i));
+                    track.appendChild(slide);
+                });
+                track.scrollLeft = 0;
+                sync();
+                const start = keepIndex == null ? 0 : Math.min(keepIndex, files.length - 1);
+                if (start > 0) requestAnimationFrame(() => centerSlide(start, false));
+            }
+
+            prevBtn.addEventListener('click', () => go(-1));
+            nextBtn.addEventListener('click', () => go(1));
+
+            track.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+                if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+            });
+
+            // Any click inside the full screen view (on the image itself, on the
+            // dark area or on the close button) folds it back into the carousel.
+            lightbox.addEventListener('click', closeLightbox);
+            lightboxClose.addEventListener('click', (e) => { e.stopPropagation(); closeLightbox(); });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && isOpen()) closeLightbox();
+                if (!isOpen()) return;
+                if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+                if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+            });
+
+            let frame = 0;
+            track.addEventListener('scroll', () => {
+                cancelAnimationFrame(frame);
+                frame = requestAnimationFrame(sync);
+            }, { passive: true });
+            window.addEventListener('resize', sync);
+
+            // Which set this screen wants, and the one it would fall back to.
+            function wantedSet() {
+                return window.matchMedia(UPRIGHT).matches ? 'port' : 'land';
+            }
+
+            function otherSet(name) {
+                return name === 'port' ? 'land' : 'port';
+            }
+
+            function readList(name) {
+                return fetch(GALLERY_ROOT + '/' + name + '/list.json', { cache: 'no-cache' })
+                    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no manifest'))))
+                    .then((list) => {
+                        const files = (Array.isArray(list) ? list : (list && list.files) || [])
+                            .filter((file) => typeof file === 'string' && file);
+                        if (!files.length) throw new Error('empty manifest');
+                        return { folder: name, files: files };
+                    });
+            }
+
+            let currentFolder = '';
+            let loadedSet = '';
+            let loadToken = 0;
+
+            function loadSet(name, keepIndex) {
+                loadToken += 1;
+                const token = loadToken;
+                readList(name)
+                    .catch(() => readList(otherSet(name)))
+                    .catch(() => ({ folder: name, files: GALLERY_FALLBACK }))
+                    .then((result) => {
+                        if (token !== loadToken) return;
+                        currentFolder = result.folder;
+                        loadedSet = name;
+                        build(result.files, keepIndex);
+                    });
+            }
+
+            // Swap sets when the screen turns or changes width, keeping the
+            // reader roughly where they were in the strip.
+            function syncSet() {
+                const want = wantedSet();
+                if (!loadedSet) { loadSet(want, null); return; }
+                if (want === loadedSet) return;
+                loadSet(want, currentIndex());
+            }
+
+            const uprightQuery = window.matchMedia(UPRIGHT);
+            if (uprightQuery.addEventListener) uprightQuery.addEventListener('change', syncSet);
+            else if (uprightQuery.addListener) uprightQuery.addListener(syncSet);
+            let resizeTimer = 0;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(syncSet, 150);
+            });
+
+            syncSet();
+        })();
     </script>
 </body>
 
