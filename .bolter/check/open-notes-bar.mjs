@@ -17,7 +17,10 @@
 //   - на 390px при 8 бележки редът се приплъзва (scrollWidth > clientWidth) и плочките не се свиват;
 //   - лентата е над всеки прозорец (z-index), не приема кликове през слоя и стои извън скрола;
 //   - в режим „единична бележка" лентата е скрита;
-//   - бележка със снимка показва <img> в плочката си, бележка без снимка - буквена плочка.
+//   - бележка със снимка показва <img> в плочката си, бележка без снимка - буквена плочка;
+//   - разпъната бележка при видима лента (extended mode, b2.75): долният ред с бутоните и редът с
+//     датата под него свършват НАД лентата, всеки бутон се натиска (elementFromPoint), а щом лентата
+//     изчезне, бележката се връща на цялата височина - на 1280x900 и на 390x844.
 // Пуска се от корена на хранилището:
 //   node .bolter/check/open-notes-bar.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -129,6 +132,12 @@ const NOTES = [
     { key: 'idea', id: '9108', gdid: 'BAR8', raw: 'Идея за подарък', format: '' },
     // Бележка с ТЪМЕН потребителски цвят: буквите върху нея трябва да са бели, а не тъмни.
     { key: 'dark', id: '9109', gdid: 'BAR9', raw: 'Тъмна бележка', format: '', color: '#222222' },
+    // Бележка със ЗАДАДЕНА ДАТА и час: под долната лента има и ред с датата (.note-cal-row), който
+    // също трябва да свършва над лентата на бележките, когато бележката е разпъната (b2.75).
+    {
+        key: 'dated', id: '9110', gdid: 'BAR10', raw: 'Среща с Иван\nв 9:30', format: '',
+        calendarDate: Date.now(), uiState: { cTime: '09:30' },
+    },
 ];
 
 // Отваря бележка по истинския път на приложението (showModal), както клик на картата на борда.
@@ -138,12 +147,15 @@ const openNote = (key) => page.evaluate((def) => {
     authToken = { access_token: 'tok', issued_at: Date.now(), expires_in: 3600 };
     if (!allNotesData.some(x => String(x.gdid) === def.gdid)) {
         allNotesData.push({
-            alarm_type: -1, calendarDate: 0, color: def.color || 0, date: Date.now(), datemod: Date.now(), eventId: 0,
+            alarm_type: -1, calendarDate: def.calendarDate || 0, color: def.color || 0, date: Date.now(), datemod: Date.now(), eventId: 0,
             gdid: def.gdid, id: def.id, notetxt: def.raw, numord: Number(def.id), sellist: 0, status: 0,
             text_span: def.format, title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, version: 244,
+            // Състоянието идва от бележката, както при истинско отваряне (тук: час за реда с датата).
+            uiState: def.uiState,
         });
     }
     const opts = { raw: def.raw, format: def.format, id: def.id, gdid: def.gdid };
+    if (def.uiState) opts.uiState = def.uiState;
     // Цветът се подава по същия път, по който го подава бордът: showModal го превръща във фон на
     // .modal-content-box, а плочката в лентата трябва да носи точно този фон.
     if (def.color !== undefined) opts.color = def.color;
@@ -929,6 +941,188 @@ ok(!!icon && icon.mode === 'hide' && icon.paths.every(d => /l6 5\.6/.test(d)),
     `връщането в „скрий" връща стрелките надолу (${icon && icon.mode})`, icon);
 
 tick('до тук: 17) прозрачен фон, отстъп на иконата и стрелки');
+
+// --- 19) Разпъната бележка при видима лента: долният ѝ ред свършва НАД лентата (b2.75) ------
+// Собственикът (24.10.2026): „extended mode на бележката трябва да се съобразява с наличието на
+// лента, защото бутоните на бележката се скриват зад нея (когато я има)“.
+// Лентата е position: fixed в дъното и се рисува НАД прозорците, а разпънатата бележка беше висока
+// 100% от екрана - значи редът с кръглите бутони (.modal-footer-toolbar) и редът с датата
+// (.note-cal-row) под него оставаха зад лентата. Сега кутията свършва 8px над лентата.
+// Мерките тук са от истинския екран: getBoundingClientRect + document.elementFromPoint, тоест
+// проверява се какво ВСЪЩНОСТ стои под пръста, а не само числа от стилове.
+const expandedBottomState = () => page.evaluate(() => {
+    const list = getOpenNoteWindows();
+    // Мерките са за РАЗПЪНАТИЯ прозорец, а не за активния: активен може да стане друг (затваряне на
+    // съседна бележка го прави активна) и тогава проверката щеше да мери свит прозорец.
+    const win = list.find(w => w.body.dataset.isExpanded === 'true')
+        || list.find(w => w.el.classList.contains('note-window-active')) || list[0];
+    const bar = document.getElementById('open-notes-bar');
+    const round = v => Math.round(v * 10) / 10;
+    if (!win) return { win: false, openCount: list.length };
+    const box = win.box;
+    const br = box.getBoundingClientRect();
+    const barR = bar ? bar.getBoundingClientRect() : null;
+    const toolbar = box.querySelector('.modal-footer-toolbar');
+    const calRow = box.querySelector('.note-cal-row');
+    const calVisible = !!calRow && !calRow.hidden
+        && getComputedStyle(calRow).display !== 'none' && calRow.getBoundingClientRect().height > 0;
+    const at = (el) => {
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return {
+            which: el.id || el.className,
+            x: round(x), y: round(y), w: round(r.width), h: round(r.height),
+            top: round(r.top), bottom: round(r.bottom),
+            // Елемент на лентата под пръста значи, че бутонът е ЗАД лентата - точно оплакването.
+            inBar: !!hit && !!hit.closest && !!hit.closest('#open-notes-bar'),
+            // Иначе точката трябва да е върху самия елемент (или нещо в същата бележка).
+            hitsSelf: !!hit && (hit === el || el.contains(hit) || (!!hit.closest && !!hit.closest('.note-window'))),
+            hitDesc: hit ? (hit.id || hit.className || hit.tagName) : null,
+        };
+    };
+    const buttons = toolbar ? [...toolbar.querySelectorAll('.modal-footer-btn')].map(at) : [];
+    return {
+        win: true,
+        openCount: list.length,
+        gdid: win.body.dataset.gdid || '',
+        expanded: win.body.dataset.isExpanded === 'true',
+        bodyExpanded: document.body.classList.contains('modal-note-expanded'),
+        bodyBar: document.body.classList.contains('open-notes-bar-visible'),
+        boxTop: round(br.top), boxBottom: round(br.bottom), boxH: round(br.height),
+        barVisible: !!bar && bar.classList.contains('is-visible') && getComputedStyle(bar).display !== 'none',
+        barTop: barR ? round(barR.top) : null,
+        barH: barR ? round(barR.height) : 0,
+        varH: getComputedStyle(document.documentElement).getPropertyValue('--open-notes-bar-h').trim(),
+        viewH: window.innerHeight, viewW: window.innerWidth,
+        toolbar: toolbar ? at(toolbar) : null,
+        calRow: calVisible ? at(calRow) : null,
+        buttons,
+    };
+});
+
+// Трите проверки на разпънатата бележка при видима лента - едни и същи на широк и на тесен екран.
+const checkExpandedClearance = async (label) => {
+    const st = await expandedBottomState();
+    ok(st.win && st.expanded && st.bodyExpanded,
+        `${label}: бележката е разпъната (${st.gdid}, isExpanded ${st.expanded}, клас на body ${st.bodyExpanded})`, st);
+    ok(st.barVisible && st.bodyBar,
+        `${label}: лентата е на екрана (${st.barTop}..${st.boxBottom})`, st);
+    ok(!!st.toolbar && st.barTop !== null && st.toolbar.bottom <= st.barTop - 4,
+        `${label}: редът с бутоните свършва НАД лентата (${st.toolbar && st.toolbar.bottom} <= ${st.barTop} - 4)`, st.toolbar);
+    // Всеки кръгъл бутон се натиска: под центъра му НЕ стои елемент на лентата.
+    const blocked = st.buttons.filter(b => b.inBar || !b.hitsSelf);
+    ok(st.buttons.length >= 2 && blocked.length === 0,
+        `${label}: всеки от ${st.buttons.length} бутона в долния ред е над лентата (${blocked.map(b => b.which + '@' + b.x + ',' + b.y + '→' + b.hitDesc).join(' | ') || 'нито един закрит'})`,
+        { blocked, buttons: st.buttons });
+    // Редът с датата е последният елемент в кутията - той е първият, който лентата закриваше.
+    ok(!!st.calRow, `${label}: редът с датата е видим в разпънатата бележка (има какво да се закрие)`, st);
+    if (st.calRow) {
+        ok(st.calRow.bottom <= st.barTop - 4 && !st.calRow.inBar && st.calRow.hitsSelf,
+            `${label}: редът с датата е изцяло над лентата (${st.calRow.bottom} <= ${st.barTop} - 4, под центъра: ${st.calRow.hitDesc})`,
+            st.calRow);
+    }
+    return st;
+};
+
+// Три отворени бележки, последната със зададена дата - тя е активна, значи нея разпъваме.
+const openThreeForClearance = async () => {
+    const closed = await closeAllOpenNotes();
+    await settle();
+    for (const key of ['photo', 'bread', 'dated']) await openNote(key);
+    await settle();
+    return closed;
+};
+
+// Разпъването/свиването става през истинския бутон (стрелката в хедъра на активната бележка).
+const waitExpandedClass = (want) => page.waitForFunction(
+    (w) => document.body.classList.contains('modal-note-expanded') === w, want, { timeout: 3000 }).catch(() => { });
+
+// Кутията на бележката влиза с „поп“ (transform: scale(0.7) → scale(1), 0.4s) - докато трае, мярката
+// ѝ е по-малка и по-навътре от истинската, тоест проверката за пролука лъже. Затова се чака
+// ИЗЧИСЛЕНИЯТ transform да е точно единичен (или none), вместо да се спи фиксирано време.
+const waitBoxSettled = () => page.waitForFunction(() => {
+    const list = getOpenNoteWindows();
+    const win = list.find(w => w.body.dataset.isExpanded === 'true')
+        || list.find(w => w.el.classList.contains('note-window-active')) || list[0];
+    if (!win || !win.box) return true;
+    const t = getComputedStyle(win.box).transform;
+    if (!t || t === 'none') return true;
+    const m = /^matrix\(([^)]+)\)$/.exec(t);
+    if (!m) return true;
+    const p = m[1].split(',').map(Number);
+    return Math.abs(p[0] - 1) < 0.002 && Math.abs(p[3] - 1) < 0.002 && Math.abs(p[5]) < 0.5;
+}, null, { timeout: 3000 }).catch(() => { });
+const settleAll = async () => { await settle(); await waitBoxSettled(); await settle(); };
+
+// Един пълен кръг на един екран: разпъване при видима лента, свиване, пак разпъване и изчезване на
+// лентата, когато бележките станат 2.
+const clearanceScenario = async (label, view) => {
+    await page.setViewportSize(view);
+    await settle();
+    ok(await openThreeForClearance(), `${label}: затворено е старото и са отворени 3 бележки`);
+    await settleAll();
+    let st = await expandedBottomState();
+    ok(st.openCount === 3 && st.barVisible && !st.expanded,
+        `${label}: изходно 3 бележки, лентата е видима, бележката е свита (${st.openCount}, ${st.barTop})`, st);
+    ok(Math.abs(st.viewW - view.width) <= 1 && Math.abs(st.viewH - view.height) <= 1,
+        `${label}: екранът е ${view.width}x${view.height} (${st.viewW}x${st.viewH})`, st);
+    const collapsedBottom = st.boxBottom;
+
+    // а) Разпъване при ВИДИМА лента: цялата кутия свършва над нея.
+    ok(await clickExpand(), `${label}: разпъването минава през бутона в хедъра при видима лента`);
+    await waitExpandedClass(true);
+    await settleAll();
+    st = await checkExpandedClearance(label);
+    ok(Math.abs(st.boxBottom - (st.barTop - 8)) <= 2,
+        `${label}: кутията свършва с 8px пролука над лентата (${st.boxBottom} срещу ${st.barTop - 8})`, st);
+
+    // б) Свиване при ВИДИМА лента: долният ръб се връща точно на мястото си - без остатъчна пролука.
+    ok(await clickExpand(), `${label}: свиването минава през същия бутон`);
+    await waitExpandedClass(false);
+    await settleAll();
+    st = await expandedBottomState();
+    ok(!st.expanded && !st.bodyExpanded, `${label}: бележката е свита (isExpanded ${st.expanded})`, st);
+    ok(Math.abs(st.boxBottom - collapsedBottom) <= 4,
+        `${label}: долният ръб на кутията се върна на мястото отпреди разпъването (${st.boxBottom} срещу ${collapsedBottom})`,
+        { st, collapsedBottom });
+
+    // в) Пак разпъване и сваляне на бележките на 2: лентата изчезва, бележката пак е цял екран.
+    ok(await clickExpand(), `${label}: разпъването минава втори път`);
+    await waitExpandedClass(true);
+    await settleAll();
+    st = await checkExpandedClearance(label + ' (второ разпъване)');
+    const expandedGdid = st.gdid;
+    // Затваря се ДРУГА бележка - разпънатата остава отворена и разпъната.
+    const other = ['BAR1', 'BAR2'].find(g => g !== expandedGdid) || 'BAR1';
+    await closeNoteByX(other);
+    await waitOpenCount(2);
+    await settleAll();
+    st = await expandedBottomState();
+    ok(st.openCount === 2 && !st.barVisible && !st.bodyBar,
+        `${label}: при 2 бележки лентата изчезва (${st.openCount}, клас на body ${st.bodyBar})`, st);
+    ok(numPx(st.varH) === 0, `${label}: променливата с височината на лентата се върна на 0px (${st.varH})`, st);
+    ok(st.expanded && Math.abs(st.boxBottom - st.viewH) <= 1.5,
+        `${label}: разпънатата бележка пак стига до долния ръб на екрана (${st.boxBottom} срещу ${st.viewH})`, st);
+    ok(Math.abs(st.boxH - st.viewH) <= 1.5,
+        `${label}: височината ѝ е пак цялата (${st.boxH} срещу ${st.viewH})`, st);
+    // И долният ред вече не е ограничен от нищо: стига до дъното на кутията.
+    ok(!!st.toolbar && st.toolbar.bottom <= st.viewH + 0.5,
+        `${label}: редът с бутоните е на дъното на екрана, без остатъчна пролука (${st.toolbar && st.toolbar.bottom} <= ${st.viewH})`, st.toolbar);
+    ok(await clickExpand(), `${label}: свиването след изчезването на лентата минава`);
+    await waitExpandedClass(false);
+    await settle();
+};
+
+tick('19a) подготовка');
+await clearanceScenario('широк екран', { width: 1280, height: 900 });
+tick('19b) 1280x900');
+await clearanceScenario('телефон', { width: 390, height: 844 });
+tick('19c) 390x844');
+await page.setViewportSize({ width: 1280, height: 900 });
+await settle();
+tick('до тук: 19) разпъната бележка над лентата');
+
 // --- 18) Никакви грешки в конзолата / страницата -------------------------------------------
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
 
