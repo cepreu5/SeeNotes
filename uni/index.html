@@ -1180,7 +1180,7 @@
 
     <script>
         // ── Gallery carousel ────────────────────────────────
-        // The same photos live in two sets under msm-ex: land/ for a wide
+        // The same photos live in two sets under screens: land/ for a wide
         // screen (desktop, tablet turned sideways) and port/ for a phone held
         // upright. Each folder carries its own list.json: a plain array of the
         // file names in it, in the order they should be shown. The carousel
@@ -1189,7 +1189,7 @@
         // photo and add its name to the same folder's list.json. A folder whose
         // list cannot be read falls back to the other one.
         (function () {
-            const GALLERY_ROOT = 'msm-ex';
+            const GALLERY_ROOT = 'screens';
             const UPRIGHT = '(max-width: 720px) and (orientation: portrait)';
             const LIST_FILE = 'list.json';
             const IMAGE_FILE = /\.(jpe?g|png|webp|avif|gif)$/i;
