@@ -84,8 +84,11 @@ body:has(#login-page:not([hidden])) #kb-fab {
     display: none !important;
 }
 
-/* Keep the Assistant clear of an expanded note's bottom toolbar. */
-body.modal-note-expanded #kb-fab {
+/* Keep the Assistant clear of an expanded note's bottom toolbar — but only while nothing else has
+   already lifted it. The open-notes bar lifts the same button by exactly the same 60px, so adding this
+   on top moved it twice as high (b2.74). The class is set by syncExpandedFabLift, which checks that the
+   button still stands on the bottom edge. */
+body.modal-note-expanded-fab-lift #kb-fab {
     translate: 0 -60px;
 }
 
@@ -4813,7 +4816,9 @@ body.selection-locked .note.active-selection-note .note-content {
     padding: 6px 8px;
     align-items: center;
     gap: 8px;
-    background: #37474F;
+    /* Полупрозрачен (b2.74, собственикът): лентата е 50% прозрачна, за да не закрива плътно
+       съдържанието под себе си. Плочките и бутоните в нея остават плътни. */
+    background: rgba(55, 71, 79, 0.5);
     border-top: 2px solid #546E7A;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
     /* Слоят на прозорците не приема кликове; лентата приема своите. */
