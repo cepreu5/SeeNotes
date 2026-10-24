@@ -7050,7 +7050,7 @@ function initApp() {
 
     // This function will be the single point for applying search and UI updates
     const triggerSearch = () => {
-        // b2.20: „/9“ без текст не е търсене — бордът не превключва, докато няма дума след командата
+        // b2.20: „/9“/„/adv“ без текст не е търсене — бордът не превключва, докато няма дума след командата
         const parsedSearch = parseSearchQuery(searchBox.value);
         const hasTextTrimmed = parsedSearch.query.trim().length > 0;
         const searchBoardBtn = document.getElementById('search-results-board-btn');
@@ -7135,7 +7135,7 @@ function initApp() {
                 clearTimeout(searchDebounceTimeout);
                 return;
             }
-            // b2.20: „/9 …“ и „/lex …“ продължават към търсенето в реално време
+            // b2.20: „/9 …“, „/adv …“ и „/lex …“ продължават към търсенето в реално време
         }
         if (!event.isTrusted) return;
         clearTimeout(searchDebounceTimeout);
@@ -13884,7 +13884,7 @@ function renderCommandsHelpPopup() {
         { cmd: '/7', text: '/7  or  /ex — Enter expanded mode' },
         { cmd: '/%', text: '/%number — Zoom (e.g. /%50)' },
         { cmd: '/0', text: '/0  or  /wipe — Erase data and close tab' },
-        { cmd: '/9', text: '/9  or  /lex — Lexical search (normalised)' }
+        { cmd: '/9', text: '/9  or  /adv — Advanced search (normalised)' }
     ];
     const rawList = (typeof _ === 'function') ? _('searchCommandsList') : null;
     const commandsList = (Array.isArray(rawList) && rawList.length > 0) ? rawList : defaultList;
@@ -13907,7 +13907,7 @@ function renderCommandsHelpPopup() {
             } else if (parseSearchQuery(cmd).lex) {
                 // b2.20: режимът иска текст — оставяме командата в полето и чакаме думата
                 if (sBox) {
-                    sBox.value = '/9 ';
+                    sBox.value = '/adv ';
                     sBox.focus();
                 }
             } else {
@@ -13928,7 +13928,7 @@ async function handleSearchCommand(commandText) {
         renderCommandsHelpPopup();
         return true;
     }
-    // b2.20: /9 и /lex не са еднократно действие, а режим на търсенето — връщаме false, за да остане
+    // b2.20: /9, /adv и /lex не са еднократно действие, а режим на търсенето — връщаме false, за да остане
     // командата в полето и извикващият да пусне обикновеното търсене (applyFilters разпознава командата).
     if (parseSearchQuery(trimmed).lex) return false;
     if (cmd === '/set' || cmd === '/settings' || cmd === '/1') {
@@ -14931,9 +14931,9 @@ function orderBoardEntriesByVisibleMenu(entries) {
     ];
 }
 
-// b2.19: лексикален крак на търсенето — българска нормализация, прилагана и на заявката, и на текста на бележката.
+// b2.19: разширен крак на търсенето — българска нормализация, прилагана и на заявката, и на текста на бележката.
 // Семантиката остава подниз: нормализират се само двата сравнявани низа.
-// b2.21: „и“ и „й“ се приравняват — и двете стават „и“, точно както ѝ→и. Важи само в лексикалния режим (/9, /lex).
+// b2.21: „и“ и „й“ се приравняват — и двете стават „и“, точно както ѝ→и. Важи само в разширения режим (/9, /adv, /lex).
 const SEARCH_HOMOGLYPHS = {
     a: 'а', e: 'е', o: 'о', c: 'с', p: 'р', x: 'х', y: 'у', k: 'к',
     A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М', O: 'О', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
@@ -14995,9 +14995,9 @@ function getNormalizedNoteText(el, raw) {
     return norm;
 }
 
-// b2.20: лексикалният режим се вдига само с команда в самото поле — „/9 текст“ или „/lex текст“.
+// b2.20: разширеният режим се вдига само с команда в самото поле — „/9 текст“, „/adv текст“ или „/lex текст“.
 // Командата остава видима (тя е указателят за режима); търси се само текстът след нея.
-const LEX_SEARCH_COMMAND_RE = /^\s*\/(?:9|lex)(?:\s+|$)/i;
+const LEX_SEARCH_COMMAND_RE = /^\s*\/(?:9|adv|lex)(?:\s+|$)/i;
 function parseSearchQuery(raw) {
     const value = raw || '';
     const m = value.match(LEX_SEARCH_COMMAND_RE);
@@ -15009,9 +15009,9 @@ function applyFilters() {
     const searchBox = document.getElementById('search-box');
     const parsedSearch = parseSearchQuery(searchBox ? searchBox.value : '');
     const isLexSearch = parsedSearch.lex;
-    // b2.20: ефективната заявка е без командата — празно „/9“ не е търсене; голата заявка е както преди b2.19
+    // b2.20: ефективната заявка е без командата — празно „/9“/„/adv“ не е търсене; голата заявка е както преди b2.19
     const searchTerm = (!isLexSearch || parsedSearch.query.trim() !== '') ? parsedSearch.query.toLowerCase() : '';
-    // b2.19: заявката се нормализира веднъж на извикване — b2.20: само в лексикален режим
+    // b2.19: заявката се нормализира веднъж на извикване — b2.20: само в разширен режим
     const normalizedSearchTerm = (isLexSearch && searchTerm !== '') ? normalizeSearchText(parsedSearch.query) : '';
     const notes = Array.from(notesContainer.getElementsByClassName('note'));
     let visibleCount = 0;

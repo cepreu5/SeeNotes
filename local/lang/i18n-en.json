@@ -505,7 +505,7 @@
         },
         {
             "cmd": "/9",
-            "text": "/9  or  /lex — Lexical search (normalised)"
+            "text": "/9  or  /adv — Advanced search (normalised)"
         }
     ],
     "wipeConfirmationPrompt": "Enter confirmation code {code} to wipe all data:",
