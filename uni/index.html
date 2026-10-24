@@ -1182,23 +1182,17 @@
         // ── Gallery carousel ────────────────────────────────
         // The same photos live in two sets under msm-ex: land/ for a wide
         // screen (desktop, tablet turned sideways) and port/ for a phone held
-        // upright. There is no index file to keep in step with them: the
-        // carousel asks GitHub for the contents of the folder, so it shows
-        // whatever is in there, however many files and whatever they are
-        // called. The listing is cached for a few minutes, so a visit costs at
-        // most one request. A folder that cannot be listed falls back to the
-        // other one.
+        // upright. Each folder carries its own list.json: a plain array of the
+        // file names in it, in the order they should be shown. The carousel
+        // reads that file from the site itself, so it needs nothing but the
+        // web server — no API, no account, nothing outside the site. Add a
+        // photo and add its name to the same folder's list.json. A folder whose
+        // list cannot be read falls back to the other one.
         (function () {
             const GALLERY_ROOT = 'msm-ex';
             const UPRIGHT = '(max-width: 720px) and (orientation: portrait)';
-            // Where the folders live, so the page can ask for their contents.
-            // These three lines are the only thing to change if the site (or
-            // the photos) ever moves to another repository, folder or branch.
-            const GALLERY_REPO = 'cepreu5/SeeNotes';
-            const GALLERY_BRANCH = 'main';
-            const GALLERY_PAGE_DIR = 'uni';
+            const LIST_FILE = 'list.json';
             const IMAGE_FILE = /\.(jpe?g|png|webp|avif|gif)$/i;
-            const LIST_TTL = 5 * 60 * 1000;
             const CLOSE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
             const track = document.getElementById('galleryTrack');
@@ -1369,50 +1363,22 @@
                 return name === 'port' ? 'land' : 'port';
             }
 
-            // The folder's own contents, newest listing cached in the browser.
-            function cacheKey(name) {
-                return 'gallery-list:' + GALLERY_REPO + '@' + GALLERY_BRANCH + ':'
-                    + GALLERY_PAGE_DIR + '/' + GALLERY_ROOT + '/' + name;
-            }
-
-            function readCache(name) {
-                try {
-                    const saved = JSON.parse(localStorage.getItem(cacheKey(name)) || 'null');
-                    if (!saved || !Array.isArray(saved.files) || !saved.files.length) return null;
-                    if (Date.now() - saved.at > LIST_TTL) return null;
-                    return saved.files;
-                } catch (e) {
-                    return null;
-                }
-            }
-
-            function writeCache(name, files) {
-                try {
-                    localStorage.setItem(cacheKey(name), JSON.stringify({ at: Date.now(), files: files }));
-                } catch (e) {
-                    /* private mode or full storage: just skip the cache */
-                }
-            }
-
+            // The folder's own list.json, read from the site itself.
             function readFolder(name) {
-                const url = 'https://api.github.com/repos/' + GALLERY_REPO + '/contents/'
-                    + GALLERY_PAGE_DIR + '/' + GALLERY_ROOT + '/' + name + '?ref=' + GALLERY_BRANCH;
-                return fetch(url, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-cache' })
-                    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no listing: ' + r.status))))
+                const url = GALLERY_ROOT + '/' + name + '/' + LIST_FILE;
+                return fetch(url, { cache: 'no-cache' })
+                    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no list: ' + r.status))))
                     .then((entries) => {
-                        const files = (Array.isArray(entries) ? entries : [])
-                            .filter((entry) => entry && entry.type === 'file' && IMAGE_FILE.test(entry.name || ''))
-                            .map((entry) => entry.name)
-                            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-                        if (!files.length) throw new Error('empty folder');
-                        writeCache(name, files);
+                        const files = (Array.isArray(entries) ? entries : (entries && entries.files) || [])
+                            .filter((entry) => typeof entry === 'string' && IMAGE_FILE.test(entry))
+                            .map((entry) => entry.trim())
+                            .filter((entry) => entry && entry.indexOf('/') === -1 && entry.indexOf('..') === -1);
+                        if (!files.length) throw new Error('empty list');
                         return files;
                     });
             }
 
             function readList(name) {
-                const cached = readCache(name);
-                if (cached) return Promise.resolve({ folder: name, files: cached });
                 return readFolder(name).then((files) => ({ folder: name, files: files }));
             }
 
