@@ -20411,6 +20411,25 @@ function hydrateInlineImages(rootEl) {
  */
 async function fillAttachmentThumb(photoEl, tile, fileName, attachment) {
     if (!photoEl || !fileName) return;
+    // Файл, прикачен от този екран, но още несвързан със записа: снимката е в паметта (blob адрес),
+    // значи плочката я показва направо - Drive още не я познава по id, а търсенето по име изостава.
+    const pendingSrc = (attachment && attachment._pending) ? String(attachment._blobUrl || '') : '';
+    if (pendingSrc) {
+        const pendingImg = document.createElement('img');
+        pendingImg.alt = ''; // името е в title/aria-label на плочката
+        pendingImg.decoding = 'async';
+        pendingImg.addEventListener('load', () => {
+            photoEl.classList.remove('is-loading');
+            photoEl.classList.add('is-ready');
+            tile.dataset.state = 'ready';
+        });
+        // Адресът е от паметта, значи грешка е невъзможна на практика; ако все пак се случи,
+        // плочката пада на иконата на типа, вместо да остане празна дупка.
+        pendingImg.addEventListener('error', () => dropAttachmentThumb(photoEl, tile, 'unavailable'));
+        pendingImg.src = pendingSrc;
+        photoEl.appendChild(pendingImg);
+        return;
+    }
     // Запис с id в Drive не се търси по име (търсенето изостава след качване), а снимка от тази
     // сесия идва направо от паметта - без Drive изобщо.
     const fileId = attachment && attachment.pathGD ? String(attachment.pathGD) : '';
@@ -20862,7 +20881,9 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
     }
     // Вторият ред (дата, час, размер) се дописва, когато метаданните пристигнат - плочката не чака.
     // type=5 е място, не файл: там подсказката си остава един ред.
-    if (hint && attachment.type !== 5) fillAttachmentTileMeta(tile, attachment, fileName, hint);
+    // Чакащ файл (още несвързан със записа) не се пита за метаданни: той още няма нито id в Drive,
+    // нито дата - питане тук би върнало „няма такъв файл" и би оставило празен ред.
+    if (hint && attachment.type !== 5 && !attachment._pending) fillAttachmentTileMeta(tile, attachment, fileName, hint);
 
     // Името е и на самата плочка: по него менюто на снимката намира кои места в текста са на
     // този файл, а „Преглед" - истинския <a> в обвивката.
@@ -24213,6 +24234,12 @@ function previewNmInlineFile(state) {
     for (const slot of slots) {
         const tile = slot.querySelector('.nm-attach-tile');
         if (!tile || tile.dataset.nmFileName !== fileName) continue;
+        // Чакащ файл: линк в Drive още няма (id-то идва с качването), затова прегледът отваря
+        // снимката от паметта - същият blob адрес, който плочката показва.
+        if (tile.dataset.nmPending === '1') {
+            const blob = tile.dataset.nmBlob;
+            if (blob) { window.open(blob, '_blank'); return true; }
+        }
         const link = slot.querySelector('.nm-attach-source a');
         if (!link) continue;
         link.click();
@@ -24698,6 +24725,52 @@ function bindNoteEditFileDrop(modalBodyElem) {
 
 // ------------------------------- Лентата с прикачените файлове -------------------------------
 
+// --- Прикачени файлове, които още не са свързани с бележката -------------------------------------
+// Собственикът (24.10.2026): плочката да излиза в лентата ВЕДНАГА при прикачване, а не чак след като
+// се запише бележката. Досега качването чакаше бележката да получи gdid, а той при нова бележка идва
+// само при запис - затова и плочката, и съобщението „Attached" излизаха след „бележката е записана".
+// Затова файлът влиза тук още преди качването: обект със СЪЩАТА форма като записа в mediaData (за да
+// го строи същият код на плочката), с _pending: true и с blob адрес от паметта за миниатюрата.
+// Живее колкото сесията: щом записът в media.txt мине, записът се маха оттук и нататък плочката идва
+// от mediaData.
+const pendingNoteAttachments = new Map();
+
+/** Ключът на чакащите файлове: локалното id на бележката, защото gdid още няма. */
+function pendingAttachmentsKey(noteId) {
+    return (noteId === undefined || noteId === null) ? '' : String(noteId);
+}
+
+/** Чакащите файлове на една бележка, в реда на прикачването им. */
+function pendingAttachmentsOf(noteId) {
+    const key = pendingAttachmentsKey(noteId);
+    if (!key) return [];
+    const list = pendingNoteAttachments.get(key);
+    return list ? list.slice() : [];
+}
+
+/** Прикачен файл, който още не е свързан с бележката - влиза в лентата от първия миг. */
+function addPendingAttachment(noteId, entry) {
+    const key = pendingAttachmentsKey(noteId);
+    if (!key || !entry) return null;
+    const list = pendingNoteAttachments.get(key) || [];
+    list.push(entry);
+    pendingNoteAttachments.set(key, list);
+    return entry;
+}
+
+/** Маха чакащия файл: свързан е със записа, или качването му е паднало. */
+function removePendingAttachment(noteId, entry) {
+    const key = pendingAttachmentsKey(noteId);
+    if (!key || !entry) return false;
+    const list = pendingNoteAttachments.get(key);
+    if (!list) return false;
+    const idx = list.indexOf(entry);
+    if (idx === -1) return false;
+    list.splice(idx, 1);
+    if (!list.length) pendingNoteAttachments.delete(key);
+    return true;
+}
+
 /** Прикачените файлове на бележката по същото правило, по което ги търсеше showModal. */
 function noteAttachmentItems(noteId, noteGdid) {
     let attachments = [];
@@ -24712,7 +24785,27 @@ function noteAttachmentItems(noteId, noteGdid) {
         if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
         else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
     }
+    // Файловете, прикачени от този екран, но още несвързани със записа (бележката още не е записана):
+    // те стоят в лентата от първия миг. Запис, който вече е в mediaData, се пропуска - иначе по
+    // време на предаването (записът е готов, чакащият още не е махнат) плочката щеше да е две.
+    const known = new Set(attachments.map(m => String(m.pathGD || '')).filter(Boolean));
+    pendingAttachmentsOf(noteId).forEach(entry => {
+        if (entry.pathGD && known.has(String(entry.pathGD))) return;
+        attachments.push(entry);
+    });
     return attachments;
+}
+
+/**
+ * Плочка на чакащ файл: изглежда приглушена (клас is-pending), за да личи, че записът още върви.
+ * Blob адресът остава на плочката - оттам „Преглед" отваря файла, докато още няма линк в Drive.
+ */
+function markPendingAttachmentTile(tile, attachment) {
+    if (!tile || !attachment || !attachment._pending) return tile;
+    tile.classList.add('is-pending');
+    tile.dataset.nmPending = '1';
+    if (attachment._blobUrl) tile.dataset.nmBlob = String(attachment._blobUrl);
+    return tile;
 }
 
 /**
@@ -24775,6 +24868,7 @@ function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
                 return;
             }
             buildAttachmentTile(attachment, attachmentWrapper, iconData, slot);
+            markPendingAttachmentTile(slot.querySelector('.nm-attach-tile'), attachment);
         })();
     });
     if (editMode) {
@@ -24798,6 +24892,26 @@ function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
         stripEl.appendChild(addSlot);
     }
     return stripEl;
+}
+
+/**
+ * Преизгражда лентата в прозореца, който е отворен в момента - в режима, в който е.
+ * Ползва се, когато плочките се сменят, докато бележката е на екрана (прикачване, свързване със
+ * записа). Пипа САМО лентата: текстовата кутия не се докосва, значи текстът и каретата остават, а
+ * прозорецът не се затваря.
+ * Режимът се взима от тялото, а не се налага: записът оставя бележката в режим четене и там лентата
+ * пак трябва да се опресни, иначе в нея остава чакащата плочка и не отстъпва на свързания запис.
+ * @returns {HTMLElement|null} новата лента.
+ */
+function rebuildEditAttachmentStrip() {
+    const host = document.getElementById('modal-body');
+    if (!host) return null;
+    if (host.classList.contains('nm-edit-with-strip')) {
+        return buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid, { editMode: true });
+    }
+    // В режим четене лентата съществува само ако има какво да показва - иначе не се строи празна.
+    if (!noteAttachmentItems(host.dataset.id, host.dataset.gdid).length) return null;
+    return buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid);
 }
 
 /**
@@ -24831,11 +24945,33 @@ async function attachFilesToModal(files) {
         return;
     }
 
-    // Process files sequentially in the background
+    // Файловете вървят един по един: всеки влиза в лентата още преди качването, а свързването със
+    // записа (media.txt) върви на свой ред след него - то не бави плочката.
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const fileType = file.type.startsWith('video') ? 'Video' : (file.type.startsWith('audio') ? 'Sound' : 'Images');
+        const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
+        // Плочката се появява ВЕДНАГА: записът има същата форма като запис в mediaData, за да го
+        // строи същият код на плочката. Blob адресът е снимката от паметта - тя се вижда, докато
+        // файлът още се качва.
+        let pendingEntry = null;
         try {
-            const fileType = file.type.startsWith('video') ? 'Video' : (file.type.startsWith('audio') ? 'Sound' : 'Images');
+            pendingEntry = {
+                path: file.name,
+                pathGD: '',
+                type: mediaTypeNum,
+                description: '',
+                _pending: true,
+                _blobUrl: URL.createObjectURL(file)
+            };
+        } catch (e) {
+            // Адресът не се получи: файлът пак влиза в лентата, само без снимка в плочката.
+            pendingEntry = { path: file.name, pathGD: '', type: mediaTypeNum, description: '', _pending: true, _blobUrl: '' };
+        }
+        addPendingAttachment(targetNoteId, pendingEntry);
+        rebuildEditAttachmentStrip();
+
+        try {
             let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
             if (!targetFolderId) {
                 targetFolderId = await createNewGDriveFolder(fileType, folderId);
@@ -24850,69 +24986,107 @@ async function attachFilesToModal(files) {
             if (!imageGdid) throw new Error(`File upload failed: ${file.name}`);
             // Снимката е още в паметта: плочката и прегледът я показват веднага, вместо да
             // чакат Drive да даде thumbnail за току-що качения файл.
+            pendingEntry.pathGD = String(imageGdid);
             if (fileType === 'Images') rememberFreshAttachmentBlob(imageGdid, file);
+            rebuildEditAttachmentStrip();
+            // Качването е станало - това е съобщението, което собственикът чакаше. Досега то излизаше
+            // чак след като бележката се запише (чакаше се gdid), затова изглеждаше, че нищо не се е
+            // случило. Свързването със записа продължава нататък, без да бави съобщението.
+            if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name) : `✅ Attached ${file.name}`), 3000);
 
-            const waitForNoteGdid = () => {
-                return new Promise(resolve => {
-                    const check = (attempts = 0) => {
-                        const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
-                        if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                            resolve(noteInData.gdid);
-                        } else if (attempts < 3600) { // Up to 30 mins
-                            setTimeout(() => check(attempts + 1), 500);
-                        } else {
-                            resolve(null);
-                        }
-                    };
-                    check();
-                });
-            };
-            const noteGdid = await waitForNoteGdid();
-            if (!noteGdid) {
-                console.warn(`[Attachment] Note gdid not available after timeout for ${file.name}. Media entry NOT created.`);
-                if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', file.name) : `⚠️ Uploaded ${file.name}, but link failed.`), 7000);
-                continue;
-            }
-
-            const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-            const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
-            const now = Date.now();
-            const mediaEntry = {
-                datemod: now,
-                description: '',
-                gdid: '',
-                id: maxMediaId + 1,
-                noteid: noteGdid,
-                path: file.name,
-                pathGD: imageGdid,
-                type: mediaTypeNum
-            };
-
-            const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-            if (mediaFileGdid) {
-                mediaEntry.gdid = mediaFileGdid;
-                await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                mediaData.push(mediaEntry);
-                if (useIndexedDb) {
-                    await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                }
-                if (typeof refreshNoteUI === 'function') {
-                    await refreshNoteUI(noteGdid);
-                } else {
-                    renderNotes();
-                }
-                if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name) : `✅ Attached ${file.name}`), 3000);
-            }
+            // Свързване със записа: чака се бележката да получи gdid (при нова бележка това става при
+            // запис), после се създава записът в media.txt и файлът влиза в mediaData.
+            linkPendingAttachmentInBackground(targetNoteId, file, fileType, imageGdid, pendingEntry, folderId)
+                .catch(e => console.error(`[Attachment] Linking ${file.name} failed:`, e));
         } catch (e) {
             console.error(`[Attachment] Error processing file ${file.name}:`, e);
+            removePendingAttachment(targetNoteId, pendingEntry);
+            rebuildEditAttachmentStrip();
             if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message) : `❌ Error: ${e.message}`), 5000);
         }
     }
+}
 
-    // В редакция лентата се строи наново, за да покаже новата плочка веднага.
-    const host = document.getElementById('modal-body');
-    if (host && host.classList.contains('nm-edit-with-strip')) {
-        buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid, { editMode: true });
+/**
+ * Свързва вече качения файл със записа на бележката - вторият етап от прикачването, който върви във
+ * фонов режим, за да не чака плочката. Чака бележката да получи gdid (нова бележка го получава при
+ * запис), после създава записа в media.txt, слага го в mediaData и в IndexedDB, маха чакащата плочка
+ * и опреснява бележката на борда.
+ * Чакащата плочка се маха на ВСЕКИ изход - и при успех, и при провал, и при изтичане на чакането -
+ * иначе при следващо преизграждане на лентата тя щеше да излезе втори път.
+ * @param {number|string} targetNoteId - Локалното id на бележката.
+ * @param {File} file - Каченият файл (име и описание идват от него).
+ * @param {string} fileType - Images/Sound/Video - папката, в която е качен.
+ * @param {string} imageGdid - Id на качения файл в Drive.
+ * @param {object} pendingEntry - Записът в списъка с чакащи, който се маха накрая.
+ * @param {string} folderId - Папката с данните, в която живее media.txt.
+ */
+async function linkPendingAttachmentInBackground(targetNoteId, file, fileType, imageGdid, pendingEntry, folderId) {
+    // Маха се веднъж, дори когато пътят мине и през успеха, и през finally - иначе лентата се
+    // строи два пъти за един файл.
+    let finished = false;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        removePendingAttachment(targetNoteId, pendingEntry);
+        rebuildEditAttachmentStrip();
+    };
+    try {
+        const waitForNoteGdid = () => {
+            return new Promise(resolve => {
+                const check = (attempts = 0) => {
+                    const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
+                    if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
+                        resolve(noteInData.gdid);
+                    } else if (attempts < 3600) { // Up to 30 mins
+                        setTimeout(() => check(attempts + 1), 500);
+                    } else {
+                        resolve(null);
+                    }
+                };
+                check();
+            });
+        };
+        const noteGdid = await waitForNoteGdid();
+        if (!noteGdid) {
+            console.warn(`[Attachment] Note gdid not available after timeout for ${file.name}. Media entry NOT created.`);
+            if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', file.name) : `⚠️ Uploaded ${file.name}, but link failed.`), 7000);
+            return;
+        }
+
+        const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
+        const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
+        const mediaEntry = {
+            datemod: Date.now(),
+            description: '',
+            gdid: '',
+            id: maxMediaId + 1,
+            noteid: noteGdid,
+            path: file.name,
+            pathGD: imageGdid,
+            type: mediaTypeNum
+        };
+
+        const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
+        if (mediaFileGdid) {
+            mediaEntry.gdid = mediaFileGdid;
+            await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
+            mediaData.push(mediaEntry);
+            if (useIndexedDb) {
+                await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
+            }
+            // Записът вече е в mediaData: чакащата плочка отстъпва мястото си на него.
+            finish();
+            if (typeof refreshNoteUI === 'function') {
+                await refreshNoteUI(noteGdid);
+            } else {
+                renderNotes();
+            }
+        }
+    } catch (e) {
+        console.error(`[Attachment] Error linking ${file.name} to the note:`, e);
+    } finally {
+        finish();
     }
 }
 
