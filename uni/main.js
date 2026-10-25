@@ -5659,6 +5659,12 @@ function activateNoteWindow(win, front = true) {
         refreshOpenNotesBar();
     }
     if (front) raiseNoteWindow(win);
+    // Лентата следва прозорците и когато активната НЕ се сменя: щом бележката се върне от скрита
+    // през плочката си, приглушаването ѝ трябва да падне веднага. Без това (активната бележка е
+    // скрита, значи activateNoteWindow не влиза в горния клон, а raiseNoteWindow излиза още в
+    // началото, защото прозорецът вече е най-отпред) плочката остава is-hidden до следващото
+    // опресняване - стига се при една отворена бележка или когато всички са скрити.
+    refreshOpenNotesBar();
 }
 
 function raiseNoteWindow(win) {
