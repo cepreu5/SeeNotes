@@ -6458,7 +6458,8 @@ window.addEventListener('resize', () => {
 // o е номерът на записа (по-голямо значи по-скоро пипан) и по него се вижда кой е най-старият, когато
 // се стигне таванът от 300. Стои в самата кутия, вместо в отделен масив с ключове: ключът и без това е
 // име на кутията и втори списък само го повтаряше.
-// seq е броячът, от който всеки нов запис взима номера си - така не се преномерират чуждите записи.
+// seq е последният раздаден номер: всеки нов запис взима seq + 1 и го пази като o. Така не се
+// преномерират чуждите записи, а броячът расте точно с 1 на истинска промяна (вж. writeNoteGeometryEntry).
 // Чете се само този формат: речник с друг v значи „няма записи", тоест бележките сядат на
 // подразбиращото се място, вместо да се гадае какво е имал предвид някой стар запис.
 // Ключът е бележката (gdid, иначе id), не прозорецът: същата бележка си идва на същото място.
@@ -6496,17 +6497,22 @@ function readNoteWindowGeometry() {
             if (o !== null) box.o = o;
             boxes[k] = box;
         });
-        // Колкото по-голям е номерът, толкова по-скоро е пипан записът. Най-големият номер + 1 е и
-        // броячът seq, от който тръгва следващият запис.
-        let next = 0;
-        Object.keys(boxes).forEach(k => { if (boxes[k].o !== undefined && boxes[k].o >= next) next = boxes[k].o + 1; });
+        // Колкото по-голям е номерът, толкова по-скоро е пипан записът. seq е ПОСЛЕДНИЯТ раздаден номер
+        // (същият смисъл, в който го пази writeNoteGeometryEntry), значи следващият запис взима seq + 1.
+        // Затова тук seq е най-малко най-големият номер в речника: иначе нов запис може да вземе номер,
+        // който вече е зает. Без това „+1" на две места (при четене и при запис) броячът скачаше с две
+        // на всяко истинско пипане (b1.46).
+        let highest = 0;
+        Object.keys(boxes).forEach(k => { if (boxes[k].o !== undefined && boxes[k].o > highest) highest = boxes[k].o; });
         // Защита срещу счупен запис: кутия без номер на реда получава номера след най-големия, за да
         // не изпревари запис, който току-що е местен (за нея не се знае кога е пипана).
-        Object.keys(boxes).forEach(k => { if (boxes[k].o === undefined) boxes[k].o = next++; });
+        let next = highest + 1;
+        Object.keys(boxes).forEach(k => {
+            if (boxes[k].o === undefined) { boxes[k].o = next++; highest = boxes[k].o; }
+        });
         // Броячът се пази и когато е по-голям от номерата: иначе изхвърлените записи връщат стари
         // номера обратно в играта.
-        const seq = num_or_zero(raw.seq);
-        return { v: 2, seq: Math.max(next, seq), boxes };
+        return { v: 2, seq: Math.max(highest, num_or_zero(raw.seq)), boxes };
     } catch (e) {
         return empty;
     }
@@ -6528,13 +6534,19 @@ function writeNoteWindowGeometry(store) {
 
 // Един запис за една бележка, с поддръжка на реда (най-старият се изхвърля на 300-ия). Кутията е
 // {x, y, w, h} или {x, y, w, h, e: true} за разпъната (вж. readNoteWindowGeometry).
-function writeNoteGeometryEntry(key, box) {
-    if (!key || !box) return;
+// Пише се само по флаг (b1.46): win.geomDirty се вдига, когато собственикът наистина е пипал бележката -
+// в края на местене или преоразмеряване, и при смяна на режима с натискане на стрелката. Отваряне,
+// показване, поставяне от приложението, разпъване по запис и затваряне флага не вдигат, значи не пишат
+// нищо и не вдигат seq - дори когато измерената кутия се разминава с миналата с пиксел. Затова тук не се
+// сравняват нито размери, нито координати: единственият въпрос е „пипал ли я е някой".
+function writeNoteGeometryEntry(win, box) {
+    if (!win || !win.key || !box) return;
+    if (!win.geomDirty) return;
     const store = readNoteWindowGeometry();
     // Новият номер е броячът + 1: така тази бележка става последна (най-скоро пипана), без да се
     // пипат номерата на останалите записи.
     store.seq = (store.seq || 0) + 1;
-    store.boxes[key] = { ...box, o: store.seq };
+    store.boxes[win.key] = { ...box, o: store.seq };
     while (Object.keys(store.boxes).length > NOTE_WINDOW_GEOM_MAX) {
         // Най-старият е с най-малкия номер.
         let oldest = null, oldestO = Infinity;
@@ -6546,6 +6558,8 @@ function writeNoteGeometryEntry(key, box) {
         delete store.boxes[oldest];
     }
     writeNoteWindowGeometry(store);
+    // Пипането е записано: следващото затваряне без местене няма да пише нищо.
+    win.geomDirty = false;
 }
 
 // Размерът се мери по computed style, не по offsetWidth: кутията има padding, а записаното се
@@ -6562,43 +6576,23 @@ function measureNoteWindowBox(win) {
     };
 }
 
-// Запис се създава само при истинска промяна: win.geom0 е кутията, както приложението я е поставило
-// (при отваряне или при последния запис). Отваряне и затваряне на непреместена бележка не пипат
-// нито записа, нито номера на реда му; разлика до 1px е закръгляне, не местене.
-const NOTE_WINDOW_GEOM_TOL = 1;
-function noteWindowGeometryUnchanged(now, base) {
-    return !!base
-        && Math.abs(now.x - base.x) <= NOTE_WINDOW_GEOM_TOL
-        && Math.abs(now.y - base.y) <= NOTE_WINDOW_GEOM_TOL
-        && Math.abs(now.w - base.w) <= NOTE_WINDOW_GEOM_TOL
-        && Math.abs(now.h - base.h) <= NOTE_WINDOW_GEOM_TOL;
-}
-
+// Затваряне, пре-рисуване и показване минават оттук, но пишат само ако бележката е била пипана: флагът
+// win.geomDirty вдигат местенето и преоразмеряването в края на жеста (вж. wireNoteWindowMove и
+// wireNoteWindowResize), а пазачът е в writeNoteGeometryEntry.
 function rememberNoteWindowGeometry(win) {
     if (!win || !win.key || !win.box || !win.box.offsetWidth) return;
-    // Разпъната бележка: записа се прави от кутията за връщане (разпънатата не се мести и не се
-    // преоразмерява, значи измерената сега кутия е целият екран - тя не е за записа).
-    if (win.expanded) {
-        const back = win.restoreBox;
-        if (!back) return;
-        const existing = savedNoteWindowGeometry(win.key);
-        if (existing && existing.e === true && noteWindowGeometryUnchanged(back, existing)) return;
-        writeNoteGeometryEntry(win.key, { x: back.x, y: back.y, w: back.w, h: back.h, e: true });
-        return;
-    }
-    const now = measureNoteWindowBox(win);
-    if (noteWindowGeometryUnchanged(now, win.geom0)) return;
-    writeNoteGeometryEntry(win.key, now);
-    // Записаното е новата базова кутия: следващото затваряне без промяна няма да пише.
-    win.geom0 = now;
+    // Разпъната бележка не се мести и не се преоразмерява, значи тук няма какво да се запише.
+    if (win.expanded) return;
+    writeNoteGeometryEntry(win, measureNoteWindowBox(win));
 }
 
 // „Ресет на позиции/размери" от Настройки: трие всичко запомнено за бележките. Отворените прозорци
-// не се местят - базовата им кутия става текущата, за да не си създадат запис при затваряне.
+// не се местят - само им се маха флагът „пипана", за да не си създадат запис при затваряне.
 // Дефолтният размер (modalWidth/modalHeight) остава: той е настройка за новите бележки, не запис.
 function resetNoteWindowGeometry() {
     // „Ресет" трие целия запис, а режимът на разпъване живее в него: затова разпънатите бележки се
-    // свиват, преди записът да бъде изтрит (иначе при затваряне пак щяха да си създадат запис с e:true).
+    // свиват, преди записът да бъде изтрит. Свиването тук не се записва (без флаг „пипана"), защото
+    // записът и без това изчезва на следващия ред.
     noteWindows.forEach(win => { if (win && win.expanded) setNoteWindowExpanded(win, false); });
     try {
         // Ключът се маха целият, а не се оставя празен речник: липсващ ключ и празен речник значат
@@ -6609,7 +6603,7 @@ function resetNoteWindowGeometry() {
         console.warn('noteWindowGeometry: reset failed', e);
     }
     noteWindows.forEach(win => {
-        if (win && win.box && win.box.offsetWidth) win.geom0 = measureNoteWindowBox(win);
+        if (win) win.geomDirty = false;
     });
 }
 
@@ -6675,6 +6669,11 @@ function applyNoteWindowGeometry(win, options, fresh) {
         if (win.expanded) setNoteWindowExpanded(win, true);
         return;
     }
+    // Нова бележка в този прозорец: режимът на предишната не се наследява. Без това бележка без запис,
+    // отворена в прозореца на разпъната, наследява кутията ѝ за връщане и си създава запис - тоест seq
+    // расте, без никой да е пипал нищо (b1.46). Маха се направо, без запис: новият ключ още няма
+    // запис, който да се пази, а и режимът се решава по-долу от записа на самата бележка.
+    dropNoteWindowModeForNewNote(win);
     const vw = window.innerWidth, vh = window.innerHeight;
     const bw = box.offsetWidth || 400, bh = box.offsetHeight || 300;
     if (saved && windowPositionFits(saved, bw, bh, vw, vh)) {
@@ -6685,10 +6684,6 @@ function applyNoteWindowGeometry(win, options, fresh) {
         placeNoteWindowInCascade(win, bw, bh, vw, vh);
     }
     win.placed = true;
-    // Базовата кутия: поставеното от приложението. С нея се сравнява при затваряне, за да не се
-    // създава запис за бележка, която никой не е местил и не е преоразмерявал. Отнася се и за
-    // пре-рисуване (смяна на бележката в същия прозорец): то също е решение на приложението.
-    win.geom0 = measureNoteWindowBox(win);
     // Бележка, записана като разпъната, се отваря направо разпъната. Кутията, която току-що се приложи
     // (от записа), е и тази, към която се връща при свиване.
     if (saved && saved.e === true) setNoteWindowExpanded(win, true);
@@ -6734,16 +6729,35 @@ function syncAnyNoteExpanded() {
 }
 
 // Само една разпъната в даден момент: разпъването на друга свива предишната, която си връща мястото.
-function collapseOtherExpandedNotes(keep) {
+// opts се предава нататък, за да не се запише нещо, което е следствие от отваряне на бележка.
+function collapseOtherExpandedNotes(keep, opts) {
     getOpenNoteWindows().forEach(w => {
-        if (w && w !== keep && w.expanded) setNoteWindowExpanded(w, false);
+        if (w && w !== keep && w.expanded) setNoteWindowExpanded(w, false, opts);
     });
 }
 
-// Разпъва / свива един прозорец и записва режима в noteWindowGeometry. Докато е разпъната, бележката
-// не се мести и не се преоразмерява (вж. wireNoteWindowMove / wireNoteWindowResize): само излизането
-// от режима връща старата кутия.
-function setNoteWindowExpanded(win, expanded) {
+// Прозорецът показва друга бележка: разпъването и кутията за връщане на предишната се махат. Прави се
+// без запис - режимът ще се постави наново от записа на новата бележка (applyNoteWindowGeometry), а ако
+// тя няма запис, просто остава в нормален размер. Флагът „пипана" на предишната също не се наследява:
+// местенето ѝ вече е записано, а новата бележка не е пипана.
+function dropNoteWindowModeForNewNote(win) {
+    if (!win || !win.box) return;
+    win.geomDirty = false;
+    win.restoreBox = null;
+    if (!win.expanded) return;
+    win.expanded = false;
+    win.el.classList.remove('note-window-expanded');
+    applyExpandedModalSize(win.box, false);
+    updateModalExpandButton(win);
+    syncAnyNoteExpanded();
+}
+
+// Разпъва / свива един прозорец. Докато е разпъната, бележката не се мести и не се преоразмерява (вж.
+// wireNoteWindowMove / wireNoteWindowResize): само излизането от режима връща старата кутия.
+// Режимът се записва в noteWindowGeometry само когато смяната идва от собственика (opts.save, тоест
+// натискане на стрелката). Разпъването, което приложението прилага при отваряне по запис, не е пипане:
+// то не вдига флага и не пипа брояча seq (b1.46).
+function setNoteWindowExpanded(win, expanded, opts) {
     if (!win || !win.box) return;
     const box = win.box;
     const want = !!expanded;
@@ -6755,7 +6769,7 @@ function setNoteWindowExpanded(win, expanded) {
         return;
     }
     if (want) {
-        collapseOtherExpandedNotes(win);
+        collapseOtherExpandedNotes(win, opts);
         // Старата кутия се пази, за да има какво да се върне при свиване.
         win.restoreBox = measureNoteWindowBox(win);
         win.expanded = true;
@@ -6775,14 +6789,15 @@ function setNoteWindowExpanded(win, expanded) {
             placeNoteWindowInCascade(win, box.offsetWidth || 400, box.offsetHeight || 300, window.innerWidth, window.innerHeight);
         }
         win.restoreBox = null;
-        win.geom0 = measureNoteWindowBox(win);
     }
     win.el.classList.toggle('note-window-expanded', !!win.expanded);
-    // Записът: разпъната - кутията за връщане с флаг; свита - обикновената кутия, без флаг.
-    if (win.key) {
+    // Записът: разпъната - кутията за връщане с флаг; свита - обикновената кутия, без флаг. Само при
+    // смяна по натискане на стрелката (opts.save): това е истинската промяна на режима.
+    if (opts && opts.save) {
+        win.geomDirty = true;
         const back = win.restoreBox;
-        if (win.expanded && back) writeNoteGeometryEntry(win.key, { x: back.x, y: back.y, w: back.w, h: back.h, e: true });
-        else writeNoteGeometryEntry(win.key, measureNoteWindowBox(win));
+        if (win.expanded && back) writeNoteGeometryEntry(win, { x: back.x, y: back.y, w: back.w, h: back.h, e: true });
+        else writeNoteGeometryEntry(win, measureNoteWindowBox(win));
     }
     updateModalExpandButton(win);
     syncAnyNoteExpanded();
@@ -6791,7 +6806,8 @@ function setNoteWindowExpanded(win, expanded) {
 function toggleNoteWindowExpanded(win) {
     if (!win) return;
     activateNoteWindow(win, true);
-    setNoteWindowExpanded(win, !win.expanded);
+    // Натискане на стрелката: оттук насетне режимът се помни (вж. setNoteWindowExpanded).
+    setNoteWindowExpanded(win, !win.expanded, { save: true });
 }
 
 // --- Живот на прозореца -------------------------------------------------------------------------
@@ -6816,7 +6832,9 @@ function createNoteWindow() {
         open: false,
         placed: false,
         slot: -1,
-        geom0: null,
+        // Флагът „пипана": вдига се само от истинско местене/преоразмеряване (и от смяна на режима с
+        // натискане на стрелката) и е единственото, което позволява запис в noteWindowGeometry (b1.46).
+        geomDirty: false,
         key: '',
         // Разпъване: флагът е на бележката (в noteWindowGeometry), а това е състоянието на екрана.
         expanded: false,
@@ -7112,7 +7130,9 @@ function wireNoteWindow(win) {
 function wireNoteWindowResize(win, resizeHandle) {
     if (!resizeHandle) return;
     const box = win.box;
-    let startX, startY, startWidth, startHeight;
+    // resized: жегът наистина е сменил размера. Само тогава бележката е „пипана" (b1.46) - натискане
+    // по дръжката без местене не е преоразмеряване и не бива да пише запис.
+    let startX, startY, startWidth, startHeight, resized = false;
     function doDrag(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -7124,6 +7144,7 @@ function wireNoteWindowResize(win, resizeHandle) {
         box.style.height = Math.max(100, newHeight) + 'px';
         box.style.maxWidth = '100vw';
         box.style.maxHeight = 'none';
+        resized = newWidth !== startWidth || newHeight !== startHeight;
     }
     function stopDrag(e) {
         e.preventDefault();
@@ -7132,6 +7153,7 @@ function wireNoteWindowResize(win, resizeHandle) {
         document.documentElement.removeEventListener('mouseup', stopDrag, false);
         document.documentElement.removeEventListener('touchmove', doDrag, false);
         document.documentElement.removeEventListener('touchend', stopDrag, false);
+        if (!resized) return;
         // Дефолтният размер за новите бележки (modalWidth/modalHeight) се пипа само в режим
         // „Единична бележка". Извън него преоразмеряването не е настройка: то се помни само за
         // самата бележка (noteWindowGeometry долу).
@@ -7139,7 +7161,10 @@ function wireNoteWindowResize(win, resizeHandle) {
             localStorage.setItem('modalWidth', box.style.width);
             localStorage.setItem('modalHeight', box.style.height);
         }
+        // Истинско преоразмеряване: чак сега бележката е „пипана" и записът се прави.
+        win.geomDirty = true;
         rememberNoteWindowGeometry(win);
+        resized = false;
     }
     function startDrag(e) {
         // Разпънатата бележка не се преоразмерява: излиза се от режима, за да се пипне размерът.
@@ -7150,6 +7175,7 @@ function wireNoteWindowResize(win, resizeHandle) {
         startY = e.touches ? e.touches[0].clientY : e.clientY;
         startWidth = parseInt(document.defaultView.getComputedStyle(box).width, 10);
         startHeight = parseInt(document.defaultView.getComputedStyle(box).height, 10);
+        resized = false;
         document.documentElement.addEventListener('mousemove', doDrag, false);
         document.documentElement.addEventListener('mouseup', stopDrag, false);
         document.documentElement.addEventListener('touchmove', doDrag, false);
@@ -7211,6 +7237,8 @@ function wireNoteWindowMove(win) {
             setTimeout(() => { win.suppressClick = false; }, 0);
             win.slot = -1;
             win.placed = true;
+            // Истинско местене: чак сега бележката е „пипана" и записът се прави (b1.46).
+            win.geomDirty = true;
             rememberNoteWindowGeometry(win);
         }
         start = null;
@@ -7255,7 +7283,9 @@ function initNoteWindows() {
         open: false,
         placed: false,
         slot: -1,
-        geom0: null,
+        // Флагът „пипана": вдига се само от истинско местене/преоразмеряване (и от смяна на режима с
+        // натискане на стрелката) и е единственото, което позволява запис в noteWindowGeometry (b1.46).
+        geomDirty: false,
         key: '',
         // Разпъване: флагът е на бележката (в noteWindowGeometry), а това е състоянието на екрана.
         expanded: false,
