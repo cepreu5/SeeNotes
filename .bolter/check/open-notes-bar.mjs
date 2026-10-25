@@ -18,8 +18,9 @@
 //   - на 390px при 8 бележки редът се приплъзва (scrollWidth > clientWidth) и плочките не се свиват;
 //   - лентата е над всеки прозорец (z-index), не приема кликове през слоя и стои извън скрола;
 //   - в режим „единична бележка" лентата НЕ се показва - изключването на режима я връща веднага,
-//     без презареждане, а скрита бележка се връща на екрана още при включването на режима
-//     (собственикът, 25.10.2026: „при включена настройка Single note лентата е излишно да се показва");
+//     без презареждане, а скрита бележка се ЗАТВАРЯ още при включването на режима (собственикът,
+//     25.10.2026: „при включена настройка Single note лентата е излишно да се показва" и „в този
+//     режим не може да има много бележки, така че да не ги връща, а да ги затваря");
 //   - бележка със снимка показва <img> в плочката си, бележка без снимка - буквена плочка;
 //   - разпъната бележка при видима лента (extended mode на бележката): долната ѝ част (редът с
 //     датата във футъра) свършва НАД лентата, всеки бутон в бележката се натиска (elementFromPoint),
@@ -662,9 +663,11 @@ ok(rectBack.bodyClass && parseFloat(rectBack.varH || '0') > 0,
     `и плаващите бутони се качват пак над нея (клас ${rectBack.bodyClass}, --open-notes-bar-h ${rectBack.varH})`, rectBack);
 
 tick('7б) връщане при изключване');
-// --- 7в) Скрита бележка се връща на екрана при включване на режима ---------------------------
+// --- 7в) Включването на режима ЗАТВАРЯ скритите бележки ---------------------------------------
 // Лентата е ЕДИНСТВЕНИЯТ път да върнеш скрита бележка, а в режима тя я няма - затова включването
-// връща на екрана всичко скрито (applySingleNoteModeSetting), вместо да го остави недостъпно.
+// затваря скритите (closeHiddenNoteWindows), вместо да ги върне на екрана. Собственикът
+// (25.10.2026): „Включването на режима връща скритите бележки на екрана - не, в този режим не може
+// да има много бележки, така че да не ги връща, а да ги затваря".
 await page.locator('#open-notes-bar .open-notes-bar-hide').click();
 await settle();
 const wsHid = await windowsState();
@@ -673,27 +676,37 @@ ok(wsHid.open.length === 1 && wsHid.open.every(w => w.hidden),
 ok(!hidden(await barState()), 'и лентата остава - тя е пътят да я върнеш');
 
 await setSingleNote(true);
+await waitOpenCount(0);
 await settle();
-const wsBackIn = await windowsState();
+const wsClosedByMode = await windowsState();
 s = await barState();
-ok(wsBackIn.open.length >= 1 && wsBackIn.open.every(w => w.hidden === false),
-    `включването на режима върна скритите бележки на екрана (hidden: ${wsBackIn.open.map(w => w.hidden).join(', ')})`, wsBackIn.open);
-ok(wsBackIn.open.every(w => w.display !== 'none' && w.boxW > 0 && w.boxH > 0),
-    `върнатите прозорци се виждат наистина, не са с нулева мярка (${wsBackIn.open.map(w => w.display + ' ' + w.boxW + 'x' + w.boxH).join(', ')})`, wsBackIn.open);
+ok(wsClosedByMode.open.length === 0,
+    `включването на режима затвори скритата бележка, вместо да я върне (отворени ${wsClosedByMode.open.length})`, wsClosedByMode);
+const leftOpen = await page.evaluate(() => ({
+    visible: document.querySelectorAll('.note-window.visible').length,
+    hiddenOnes: document.querySelectorAll('.note-window.note-window-hidden').length,
+}));
+ok(leftOpen.visible === 0 && leftOpen.hiddenOnes === 0,
+    `нито един прозорец не остана отворен или скрит (видими ${leftOpen.visible}, скрити ${leftOpen.hiddenOnes})`, leftOpen);
 ok(hidden(s), `и лентата остава скрита в режима (display ${s.display})`, s);
 
 await setSingleNote(false);
 await settle();
 s = await barState();
-ok(!hidden(s) && s.tiles.length === wsBackIn.open.length,
-    `след изключване на режима бележките пак стоят в лентата (display ${s.display}, ${s.tiles.length} плочки)`, s.tiles.length);
+// Плочка има само за ОТВОРЕНА бележка: затворената не получава жива плочка, тоест не се връща и
+// през лентата.
+const liveTiles = s.tiles.filter(t => t.winBg !== null);
+ok(liveTiles.length === 0,
+    `след изключване на режима няма плочка за затворената бележка (живи ${liveTiles.length} от ${s.tiles.length})`, s.tiles);
+ok(hidden(s), `и лентата не се показва, щом няма отворена бележка (display ${s.display})`, s);
 
-// От чисто: затваря се останалата и се отварят пак трите, за да продължи тестът от същото състояние.
-ok(await closeAllOpenNotes(), 'останалата бележка се затваря, преди да се отворят трите наново');
+// От чисто: отварят се трите бележки, за да продължи тестът от същото състояние.
 for (const key of ['photo', 'bread', 'plan']) await openNote(key);
+await waitOpenCount(3);
 await settle();
 s = await barState();
-ok(!hidden(s) && s.tiles.length === 3, `след изключване на режима лентата е с 3 плочки (display ${s.display})`, s.tiles.length);
+ok(!hidden(s) && s.tiles.length === 3 && s.tiles.every(t => t.winBg !== null),
+    `след ново отваряне на трите бележки лентата пак е видима с 3 плочки (display ${s.display}, ${s.tiles.length})`, s);
 
 tick('до тук: 7) единична бележка');
 // --- 8) Миниатюра на бележка със снимка и буквена плочка за бележка без снимка --------------
