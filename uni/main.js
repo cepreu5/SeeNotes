@@ -5005,6 +5005,127 @@ async function handleNoteDelete(noteGdid, noteId, fromModal = false) {
     }
 }
 
+/* --- БОРДОВЕ В КОШЧЕТО ---
+ * Платформата (Windows версията) маркира изтрит борд със status 1 и менюто го рисува червено
+ * (boardFontColorValue), но изпразването на кошчето трие само бележки - такъв борд остава
+ * завинаги и се маха само ръчно от диалога за редактиране на борд. Затова тук живее
+ * изтриването на борд по същия път: бележките му, файла в Drive, локалните записи и менюто.
+ */
+
+/** Кошче ли е бордът? Точно 1: status >= 10 значи "individual order", не кошче. */
+function isTrashedBoard(board) {
+    return !!board && Number(board.status) === 1;
+}
+
+/** Всички бордове, маркирани за изтрити (червените в менюто). */
+function getTrashedBoards() {
+    return (boardsData || []).filter(isTrashedBoard);
+}
+
+/**
+ * Бележките на борда. Съпоставянето е същото като в delBtn.onclick (диалога за редактиране на
+ * борд), иначе бордът се трие частично: бележките, вързани за gdid, остават в кошчето.
+ */
+function notesOfBoard(board, notes) {
+    if (!board) return [];
+    const list = notes || [];
+    if (board.gdid) {
+        return list.filter(n => n && (n.boardid == board.gdid || (n.boardid == board.id && !n.gdid)));
+    }
+    return list.filter(n => n && n.boardid == board.id);
+}
+
+/**
+ * Кои бордове от кошчето да паднат и кой остава. Ако след махане на всички бордове със status 1
+ * не остане нито един борд, последният от тях остава: приложението не бива да остава без меню
+ * (същият предпазен принцип като cannotDeleteLastBoard при чистенето на празни бордове).
+ * Връща { boards: [...за триене], kept: борд | null }.
+ */
+function getBoardsToDeleteFromTrash() {
+    const all = boardsData || [];
+    const trashed = all.filter(isTrashedBoard);
+    if (trashed.length === 0) return { boards: [], kept: null };
+    const kept = trashed.length >= all.length ? trashed[trashed.length - 1] : null;
+    return {
+        boards: kept ? trashed.filter(b => b !== kept) : trashed.slice(),
+        kept: kept
+    };
+}
+
+/**
+ * Трие борд окончателно: бележките му, файла в Drive, локалните записи и менюто.
+ * Модел: delBtn.onclick + чистенето на празни бордове.
+ * Връща { ok, notes } - при ok: false локалните записи НЕ са пипани, за да не изчезне бордът
+ * от екрана и да се върне при следващата синхронизация.
+ * Фонът (board.backpath) не се трие - ръчното триене на борд също не го пипа.
+ */
+async function permanentlyDeleteBoard(board, opts = {}) {
+    if (!board) return { ok: false, notes: 0 };
+    const updateGDriveNow = useGoogleDb && !isOffline;
+
+    // 1. Бележките на борда. Провал на една бележка не спира борда: тя остава в кошчето и ще
+    //    бъде опитана отново при следващо изпразване.
+    const boardNotes = notesOfBoard(board, allNotesData);
+    let deletedNotes = 0;
+    for (const note of boardNotes) {
+        try {
+            const result = await permanentlyDeleteNote(note.gdid, note.id, true, opts.db ? { db: opts.db } : {});
+            if (result && result.ok) {
+                deletedNotes++;
+            } else {
+                console.warn("[Trash] Board note kept for retry:", note.gdid || note.id);
+            }
+        } catch (e) {
+            console.warn("[Trash] Board note delete failed:", e);
+        }
+    }
+
+    // 2. Drive е източникът, от който бордът се връща при следваща синхронизация.
+    if (updateGDriveNow && board.gdid) {
+        try {
+            await deleteGDriveFileWithRetry(board.gdid);
+        } catch (e) {
+            console.warn("[Trash] Board file delete on Drive failed, board kept:", e);
+            return { ok: false, notes: deletedNotes, error: e };
+        }
+    }
+
+    // 3. Памет и екран: бордът изчезва от менюто.
+    const boardKey = String(board.gdid || board.id);
+    boardsData = (boardsData || []).filter(b => String(b.gdid || b.id) !== boardKey);
+
+    // 4. Локална база.
+    if (useIndexedDb) {
+        try {
+            await deleteFromDB(BOARD_STORE_NAME, board.gdid || board.id);
+        } catch (e) {
+            console.warn("[Trash] Board delete in local DB failed:", e);
+        }
+    }
+
+    // 5. Подредбата на менюто (масив от заглавия) и огледалните данни на папката.
+    try {
+        const raw = localStorage.getItem('boardMenuOrder');
+        if (raw) {
+            let order = JSON.parse(raw);
+            if (Array.isArray(order)) {
+                order = order.filter(title => title !== board.title);
+                localStorage.setItem('boardMenuOrder', JSON.stringify(order));
+            }
+            syncFolderDataAsync();
+        }
+    } catch (e) {
+        console.warn("[Trash] Menu order cleanup failed:", e);
+    }
+
+    // 6. Ако изтритият борд е бил начален, приложението не бива да го търси при старт.
+    if (localStorage.getItem('startBoard') === boardKey) {
+        localStorage.removeItem('startBoard');
+    }
+
+    return { ok: true, notes: deletedNotes };
+}
+
 async function emptyTrash() {
     const trashBtn = document.getElementById('empty-trash-fab');
     if (!trashBtn) return;
@@ -5014,12 +5135,27 @@ async function emptyTrash() {
     const trashNotes = () => allNotesData.filter(n => n && n.status === 1
         && !n.guideDemo && n.id !== 'promo' && n.gdid !== 'promo');
 
-    if (trashNotes().length === 0) {
+    // Бордовете със status 1 (червените в менюто) също са в кошчето - иначе бутонът казва
+    // "вече е празно", докато в него има борд.
+    const boardsToDelete = getBoardsToDeleteFromTrash();
+
+    if (trashNotes().length === 0 && boardsToDelete.boards.length === 0) {
         showToast(_('trashAlreadyEmpty') || "Кошчето е вече празно.", 3000);
         return;
     }
 
-    const confirmed = await showConfirmation(_('confirmEmptyTrash') || "Сигурни ли сте, че искате да изпразните кошчето окончателно? Това действие е необратимо.");
+    let confirmMsg;
+    if (boardsToDelete.boards.length > 0) {
+        // Заглавията се изреждат, за да се види кой борд пада - те са по-скъпи за възстановяване
+        // от бележка, защото заедно с тях падат и всички бележки в тях.
+        const boardTitles = boardsToDelete.boards.map(b => '„' + (b.title || '') + '“').join(', ');
+        confirmMsg = (_('confirmEmptyTrashWithBoards') || "Сигурни ли сте, че искате да изпразните кошчето окончателно? Ще бъдат изтрити {count} бележки и бордовете: {boards}. Тази операция е необратима.")
+            .replace('{count}', String(trashNotes().length))
+            .replace('{boards}', boardTitles);
+    } else {
+        confirmMsg = _('confirmEmptyTrash') || "Сигурни ли сте, че искате да изпразните кошчето окончателно? Това действие е необратимо.";
+    }
+    const confirmed = await showConfirmation(confirmMsg);
     if (!confirmed) return;
 
     const originalContent = trashBtn.innerHTML;
@@ -5076,17 +5212,76 @@ async function emptyTrash() {
             if (!deletedThisRound) break;
         }
 
+        // --- Бордовете от кошчето: един по един, за да не спре един неуспял останалите ---
+        let deletedBoards = 0;
+        const deletedBoardKeys = new Set(); // key/gdid/id на падналите бордове, за проверка на филтъра
+        const boardErrors = [];
+        for (const board of boardsToDelete.boards) {
+            try {
+                const result = await permanentlyDeleteBoard(board, { db });
+                if (result && result.ok) {
+                    deletedBoards++;
+                    deletedBoardKeys.add(String(board.gdid || board.id));
+                    if (board.id !== undefined && board.id !== null) deletedBoardKeys.add(String(board.id));
+                    if (board.gdid) deletedBoardKeys.add(String(board.gdid));
+                } else {
+                    boardErrors.push({ key: board.gdid || board.id, error: 'not deleted' });
+                }
+            } catch (e) {
+                boardErrors.push({ key: board.gdid || board.id, error: (e && e.message) || String(e) });
+                console.warn("[Trash] Board delete failed:", e);
+            }
+        }
+
+        // Активният филтър може да сочи вече изтрит борд: превключваме преди пре-рисуването на
+        // менюто, иначе менюто се маркира върху борд, който вече го няма.
+        if (deletedBoards > 0 && deletedBoardKeys.has(String(currentBoardFilter))) {
+            currentBoardFilter = boardsData.length > 0
+                ? String(boardsData[0].gdid || boardsData[0].id)
+                : 'all';
+            boardBeforeSearch = currentBoardFilter;
+        }
+
         updateBoardCounterUI('trash');
         applyFilters();
+        if (deletedBoards > 0) {
+            // Менюто пази своя копие на бордовете - пре-рисуваме го, за да изчезнат от него.
+            await renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        }
         const remaining = trashNotes().length;
-        if (remaining === 0) {
-            showToast((_('trashEmptiedSuccessCount') || "Кошчето е празно. Изтрити: {count}.")
-                .replace('{count}', String(deletedCount)), 3000);
+        const boardsLeft = boardsToDelete.boards.length - deletedBoards;
+        // Старите съобщения остават, когато в кошчето не е имало борд. Ако борд е имало, но не е
+        // паднал (например няма връзка с Drive), се показва частичното съобщение за бордове:
+        // иначе екранът казва "кошчето е празно", докато бордът си стои в менюто.
+        if (deletedBoards === 0 && boardsLeft === 0) {
+            if (remaining === 0) {
+                showToast((_('trashEmptiedSuccessCount') || "Кошчето е празно. Изтрити: {count}.")
+                    .replace('{count}', String(deletedCount)), 3000);
+            } else {
+                console.warn("[Trash] Notes left in trash after emptying:", lastErrors);
+                showToast((_('trashEmptiedPartial') || "Изтрити: {deleted}. Останали: {failed} - натиснете отново.")
+                    .replace('{deleted}', String(deletedCount))
+                    .replace('{failed}', String(remaining)), 6000);
+            }
+        } else if (remaining === 0 && boardsLeft === 0) {
+            showToast((_('trashEmptiedSuccessBoards') || "Кошчето е празно. Изтрити: {count} бележки, {boards} борда.")
+                .replace('{count}', String(deletedCount))
+                .replace('{boards}', String(deletedBoards)), 4000);
         } else {
-            console.warn("[Trash] Notes left in trash after emptying:", lastErrors);
-            showToast((_('trashEmptiedPartial') || "Изтрити: {deleted}. Останали: {failed} - натиснете отново.")
-                .replace('{deleted}', String(deletedCount))
-                .replace('{failed}', String(remaining)), 6000);
+            console.warn("[Trash] Left after emptying:", lastErrors, boardErrors);
+            showToast((_('trashEmptiedPartialBoards') || "Изтрити: {count} бележки, {boards} борда. Останали: {failed} бележки, {boardsLeft} борда - натиснете отново.")
+                .replace('{count}', String(deletedCount))
+                .replace('{boards}', String(deletedBoards))
+                .replace('{failed}', String(remaining))
+                .replace('{boardsLeft}', String(boardsLeft)), 6000);
+        }
+
+        // Последният борд не се трие (приложението не може без борд) - казваме го отделно и
+        // след основното съобщение, защото showToast заменя предишното.
+        if (boardsToDelete.kept) {
+            const keptMsg = (_('trashBoardLastKept') || "Последният борд „{boardName}“ остава - приложението не може без борд.")
+                .replace('{boardName}', boardsToDelete.kept.title || '');
+            setTimeout(() => showToast(keptMsg, 5000), 4200);
         }
     } catch (error) {
         console.error("Error emptying trash:", error);
@@ -5114,7 +5309,9 @@ function updateBoardCounterUI(boardIdOrGdid) {
     if (boardIdOrGdid === 'trash') {
         const trashLink = document.querySelector('.board-filter-link[data-boardid="trash"]');
         if (trashLink) {
-            const trashCount = allNotesData.filter(n => n.status === 1).length;
+            // Бордовете със status 1 са част от кошчето, затова влизат в брояча - иначе връзката
+            // „Кошче" се крие, когато кошчето съдържа само борд.
+            const trashCount = allNotesData.filter(n => n.status === 1).length + getTrashedBoards().length;
             trashLink.textContent = (showCount && trashCount > 0) ? `${_('trashBoardTitle') || "Кошче"} (${trashCount})` : (_('trashBoardTitle') || "Кошче");
             if (trashCount > 0) {
                 trashLink.style.display = '';
@@ -16167,7 +16364,10 @@ function applyFilters() {
     const emptyTrashFab = document.getElementById('empty-trash-fab');
     if (emptyTrashFab) {
         const isTrash = currentBoardFilter === 'trash';
-        emptyTrashFab.style.display = (isTrash && visibleCount > 0) ? 'flex' : 'none';
+        // Борд със status 1 също е в кошчето и няма карта на екрана, затова се брои отделно:
+        // иначе при кошче само с борд бутонът за изпразване изчезва и бордът остава завинаги.
+        const trashedBoardsCount = (typeof getTrashedBoards === 'function') ? getTrashedBoards().length : 0;
+        emptyTrashFab.style.display = (isTrash && (visibleCount > 0 || trashedBoardsCount > 0)) ? 'flex' : 'none';
     }
 
     // --- Масов избор (b2.36): връщаме отметките след всяко пре-рисуване ---
@@ -24384,6 +24584,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             if (note.timer && note.timer > 0) extraCounts.reminderCount++;
             if (note.calendarDate) extraCounts.calendarCount++;
         });
+        // Бордовете със status 1 са в кошчето: броят им вдига брояча и показва връзката „Кошче"
+        // в менюто, дори когато в кошчето няма нито една бележка.
+        extraCounts.trashCount += getTrashedBoards().length;
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError, extraCounts);
     }
     // Винаги премахваме старото меню, за да го заменим с новото
