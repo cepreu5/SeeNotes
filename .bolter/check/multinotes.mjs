@@ -1349,6 +1349,12 @@ ok(!!moveAfter && moveAfter.seq === 13,
 ok(!!movedTo && Math.abs(movedTo.x - (moveBox0.left + 70)) <= 2 && Math.abs(movedTo.y - (moveBox0.top + 50)) <= 2,
   `seq 3: записът е новата кутия (${JSON.stringify(recBrief(movedTo))} срещу ${moveBox0.left + 70},${moveBox0.top + 50})`,
   { movedTo, moveBox0 });
+// Пре-рисуване на същата бележка в същия прозорец: не е пипане, нищо не се пише.
+await openNote({ id: 'MOVE', gdid: 'GMOVE', boardId: 'B1', raw: 'за местене' }, 1);
+const afterRedraw = await geomRead();
+ok(!!afterRedraw && afterRedraw.seq === 13,
+  `seq 3: пре-рисуването на бележката не вдига брояча (seq ${afterRedraw && afterRedraw.seq})`,
+  afterRedraw && afterRedraw.dict);
 await closeActive();
 const moveAfterClose = await geomRead();
 ok(!!moveAfterClose && moveAfterClose.seq === 13 && recIs(moveAfterClose.raw['g:GMOVE'], movedTo),
@@ -1372,6 +1378,12 @@ ok(!!expRec && expRec.e === true && recIs(expRec, quadRec),
 ok(!!afterExpand && afterExpand.seq === 13,
   `seq 4: разпъването е истинска смяна и вдига брояча с 1 (seq ${beforeExpSeq && beforeExpSeq.seq} -> ${afterExpand && afterExpand.seq})`,
   { before: beforeExpSeq && beforeExpSeq.dict, after: afterExpand && afterExpand.dict });
+// Пре-рисуване, докато бележката е разпъната: режимът се подсигурява, но нищо не се записва.
+await openNote({ id: 'MOVE', gdid: 'GMOVE', boardId: 'B1', raw: 'за местене' }, 1);
+const redrawExpanded = await geomRead();
+ok(!!redrawExpanded && redrawExpanded.seq === 13,
+  `seq 4: пре-рисуването на разпъната бележка не вдига брояча (seq ${redrawExpanded && redrawExpanded.seq})`,
+  redrawExpanded && redrawExpanded.dict);
 await clickSel('#modal-expand-btn');
 const afterCollapse = await geomRead();
 const backRec = afterCollapse && afterCollapse.raw['g:GMOVE'];
