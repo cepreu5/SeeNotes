@@ -26,6 +26,10 @@
 //   - клик на плочката на АКТИВНАТА бележка я скрива (плочката става is-hidden), втори клик върху
 //     същата плочка я показва пак и я прави активна - плочката е превключвател, а клик на плочка на
 //     друга/скрита бележка работи както досега;
+//   - ЕДНА отворена бележка, скрита през „Скрий всички", се връща с клик на плочката си и плочката
+//     губи приглушаването ВЕДНАГА, без да чака друго опресняване на лентата (b1.41 - активната
+//     бележка не се сменя, значи activateNoteWindow не влиза в клона за смяна на активната, а
+//     raiseNoteWindow излиза още в началото);
 //   - лентата избутва нагоре плаващите бутони на долния ръб (#scrollTopBtn и .kb-fab с инлайн позиция
 //     от местенето, .toast-notification и .board-filter-popup от stylesheet-а) и ги връща на място;
 //   - фонът на лентата е 50% прозрачен (#37474F), бутоните „скрий/покажи всички" са с двойни стрелки;
@@ -1437,6 +1441,61 @@ ok(ws18.open.filter(w => !w.hidden).length === 1 && (await winProbe(lastHiddenG)
     `18б) връща се само тя и става активна (${ws18.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).join(' ')})`, ws18.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')));
 
 tick('до тук: 18) превключване от плочка');
+
+// --- 18в) Връщане на ЕДИНСТВЕНАТА скрита бележка през плочката: приглушаването пада ВЕДНАГА ------
+// Дефектът, потвърден от собственика на живо в main (b1.40): при ЕДНА отворена бележка „Скрий всички"
+// я скрива, клик на плочката я връща на екрана, но плочката остава приглушена (is-hidden) до
+// следващото опресняване на лентата. Причината: активната бележка не се сменя, значи activateNoteWindow
+// не влиза в клона за смяна на активната, а raiseNoteWindow излиза още в началото (прозорецът вече е
+// най-отпред) - затова от b1.41 activateNoteWindow опреснява лентата и след вдигането на прозореца.
+ok(await closeAllOpenNotes(), '18в) изходно: няма отворени бележки');
+await openNote('bread');
+await settle();
+s = await barState();
+ws18 = await windowsState();
+ok(ws18.open.length === 1 && !hidden(s) && s.tiles.length === 1,
+    `18в) една отворена бележка: лентата е видима с една плочка (отворени ${ws18.open.length}, плочки ${s.tiles.length})`, s.tiles.map(t => t.key));
+const t18vStart = tileOf(s, 0);
+ok(!!t18vStart && t18vStart.hiddenTile === false,
+    `18в) изходно плочката не е приглушена (is-hidden ${t18vStart && t18vStart.hiddenTile})`, t18vStart);
+
+// „Скрий всички" от лентата: бележката изчезва от екрана, плочката се приглушава.
+await page.locator('#open-notes-bar .open-notes-bar-hide').click();
+await settle();
+ws18 = await windowsState();
+s = await barState();
+ok(ws18.open.length === 1 && ws18.open[0].hidden === true && !hidden(s) && s.tiles.length === 1,
+    `18в) „скрий всички" скрива единствената бележка, а лентата остава (hidden ${ws18.open[0].hidden}, display ${s.display}, плочки ${s.tiles.length})`, ws18.open);
+const t18vHidden = tileOf(s, 0);
+ok(!!t18vHidden && t18vHidden.hiddenTile === true,
+    `18в) плочката на скритата бележка е приглушена (is-hidden ${t18vHidden && t18vHidden.hiddenTile})`, t18vHidden);
+
+// Клик на плочката: бележката се връща на екрана И плочката вече не е приглушена - в същия кадър,
+// без никакво друго опресняване на лентата.
+await page.locator('#open-notes-bar .open-notes-bar-tile').nth(0).click();
+await settle();
+ws18 = await windowsState();
+s = await barState();
+const p18v = await winProbe(ws18.open[0].gdid);
+ok(p18v.hidden === false && p18v.hidClass === false && p18v.display !== 'none' && p18v.boxH > 0,
+    `18в) клик на плочката връща бележката на екрана (hidden ${p18v.hidden}, display ${p18v.display}, височина ${p18v.boxH})`, p18v);
+const t18vBack = tileOf(s, 0);
+ok(!!t18vBack && t18vBack.hiddenTile === false,
+    `18в) плочката вече НЕ е приглушена веднага след клика (is-hidden ${t18vBack && t18vBack.hiddenTile})`, t18vBack);
+ok(!!t18vBack && t18vBack.active === true && ws18.activeGdid === ws18.open[0].gdid,
+    `18в) върнатата бележка е активна и плочката е откроена (${ws18.activeGdid})`, ws18.open);
+// Приглушаването е с преход (opacity 0.55 -> 1): непрозрачността се чака да стигне 1, вместо да се
+// спи фиксирано време - иначе понякога се мери средата на прехода.
+const op18v = await page.waitForFunction(() => {
+    const t = document.querySelector('#open-notes-bar .open-notes-bar-tile');
+    return !!t && Number(getComputedStyle(t).opacity) === 1;
+}, null, { timeout: 3000 }).then(() => true).catch(() => false);
+const t18vOpacity = tileOf(s, 0);
+ok(op18v, `18в) непрозрачността на плочката се връща на 1 (${t18vOpacity && t18vOpacity.opacity})`, t18vOpacity);
+ok(s.tiles.length === 1 && !hidden(s) && s.hideBtn.mode === 'hide',
+    `18в) лентата остава с една плочка и бутон „скрий всички" (плочки ${s.tiles.length}, mode ${s.hideBtn.mode})`, s.tiles.map(t => t.key));
+
+tick('до тук: 18в) връщане на единствената скрита бележка');
 
 // --- 19) Лентата работи и в пълноекранен режим на приложението („extended") ------------------
 // Пълноекранният режим скрива хедъра и разпъва търсенето (localStorage['extendedMode']); лентата е
