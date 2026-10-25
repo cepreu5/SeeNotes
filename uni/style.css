@@ -3700,11 +3700,11 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
-    /* Плъзгането на плочката преподрежда лентата (b1.50): хоризонталният жест стига до нас, а
-       вертикалният остава скрол на страницата. Затова е pan-y, а НЕ pan-x като на самата лента -
-       иначе браузърът би откраднал хоризонталното плъзгане за скрол на лентата.
-       Жестът не бива да тегли картинката на плочката вместо да мести плочката. */
-    touch-action: pan-y;
+    /* Плъзгането с пръст върху плочка СКРОЛВА лентата, а не мести плочките (собственикът, 25.10.2026:
+       „Плъзгането на лентата при препълване не се получава, местят се плочките"). Затова е pan-x като на
+       самата лента, а местенето с пръст тръгва само след задържане (wireOpenNotesBarTileLongPress).
+       Жестът не бива нито да тегли картинката на плочката, нито да маркира буквите ѝ. */
+    touch-action: pan-x;
     -webkit-user-drag: none;
     /* Сивото подсветване при докосване оставаше върху плочката след вдигането (b1.55) - местенето
        започва с дълго натискане, а то не е клик. */
@@ -3824,6 +3824,37 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
 .open-notes-bar-close svg {
     width: 22px;
     height: 22px;
+}
+
+/* Тесни стрелки за скрол в двата края на лентата. Показват се само при препълване (иначе ги няма) и
+   стоят ИЗВЪН приплъзващия се ред, за да не се скролват с плочките. Тъмни са като останалите бутони на
+   лентата, но по-тесни - 18px, за да отнемат възможно най-малко от мястото на плочките. */
+.open-notes-bar-scroll {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.28);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+/* В края на лентата стрелката нататък е неактивна, но остава на мястото си - иначе плочките подскачат. */
+.open-notes-bar-scroll:disabled {
+    opacity: .35;
+    cursor: default;
+}
+.open-notes-bar-scroll[hidden] {
+    display: none;
+}
+.open-notes-bar-scroll svg {
+    width: 10px;
+    height: 10px;
 }
 
 @media (hover: hover) {
