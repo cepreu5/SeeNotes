@@ -14,6 +14,10 @@
 //   6) плъзгане, започнало на ФОНА на лентата, още скролва (scrollLeft се мени) и не мести плочки;
 //   7) на 390px при 8 бележки редът се приплъзва и пак се преподрежда с плъзгане;
 //   8) плъзганата плочка носи клас is-dragging, а на плочките има touch-action: pan-y.
+//   9) истински ПРЪСТ (CDP Input.dispatchTouchEvent, не показалец на мишка): задържане 500ms и
+//      плъзгане МЕСТИ плочката - и върху плочка със снимка (has-thumb), и когато родният жест за дълго
+//      натискане поеме пръста, както е на Android (тук: истински pointercancel след вдигането). Върху
+//      плочките няма родно меню и маркиране: contextmenu/selectstart са отменени (b1.55).
 // Пуска се от корена на хранилището:
 //   node .bolter/check/open-notes-bar-drag.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -69,7 +73,9 @@ async function mockExternal(ctx) {
     });
 }
 
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
+// hasTouch е включен, за да може истинският пръст (CDP Input.dispatchTouchEvent) да провери местенето
+// след задържане - на телефон точно там то се чупеше (b1.55).
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block', hasTouch: true });
 await mockExternal(ctx);
 await ctx.addInitScript(() => {
     // main пита Drive през gapi: празни отговори, за да не тръгва истинско теглене.
@@ -510,6 +516,181 @@ if (gapPoint) {
         `на 390px плъзгането пак преподрежда: ${firstG} слиза назад в реда (${before.join(' ')} -> ${after.join(' ')})`, { before, after });
     ok(same(await storedOrder(), after), `и новият ред е записан (${((await storedOrder()) || []).join(' ')})`, await storedOrder());
 }
+
+// --- 10б) Истински ПРЪСТ: задържане и местене (b1.55) -----------------------------------------
+// Собственикът (25.10.2026): „Местенето на плочките не работи - продължителното натискане води до
+// кратка вибрация, но само толкова." Задържането вдигаше плочката, но при touch браузърът дава неявно
+// прихващане на плочката, setPointerCapture на лентата го отнемаше и lostpointercapture, изплувало от
+// плочката, приключваше жеста още с първото движение. Затова жестът тук е ИСТИНСКИ пръст през CDP
+// (Input.dispatchTouchEvent), а не показалец на мишка:
+//   а) задържане и плъзгане на обикновена плочка пред първата;
+//   б) същото върху плочка СЪС СНИМКА - точно оплакването (там изскачаше родното меню на картинката);
+//   в) същото, но с истински pointercancel след вдигането - така поемането на пръста от родния жест,
+//      което убива местенето на телефона, е възпроизведено точно.
+await page.setViewportSize({ width: 1280, height: 900 });
+await settle();
+const cdp = await ctx.newCDPSession(page);
+const touchPoints = (x, y) => [{ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 }];
+// Задържане върху плочка, докато тя се ВДИГНЕ (въоръжи), после серия движения и пускане.
+// Изчакването е по СЪСТОЯНИЕТО (waitForFunction), не по часовник: 500ms се изчакват сами.
+const touchDragTile = async (gdid, targetX, opts = {}) => {
+    const p = await tileCentre(gdid);
+    if (!p) return { armed: false, started: false };
+    const armed = await (async () => {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchPoints(p.x, p.y) });
+        return page.waitForFunction((g) => {
+            const t = [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')]
+                .find(x => (x.dataset.barKey || '').includes(g));
+            return !!(t && t._longPressArmed);
+        }, gdid, { timeout: 4000 }).then(() => true).catch(() => false);
+    })();
+    if (!armed) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        return { armed: false, started: false };
+    }
+    if (opts.cancelPointer) {
+        // Родният жест пое пръста: Android праща pointercancel веднага след вибрацията. Събитието се
+        // праща ИСТИНСКО (през dispatchEvent), със същия pointerId, който браузърът даде на докосването.
+        await page.evaluate(() => {
+            const strip = document.querySelector('#open-notes-bar .open-notes-bar-strip');
+            const d = strip && strip._barDrag;
+            strip.dispatchEvent(new PointerEvent('pointercancel', {
+                pointerId: d ? d.pointerId : 1, pointerType: 'touch', bubbles: true, cancelable: true,
+            }));
+        });
+    }
+    const step = (targetX - p.x) / 8;
+    for (let i = 1; i <= 8; i++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove', touchPoints: touchPoints(Math.round(p.x + step * i), p.y),
+        });
+    }
+    const during = await page.evaluate((g) => {
+        const s = document.querySelector('#open-notes-bar .open-notes-bar-strip');
+        const d = s && s._barDrag;
+        const t = [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')]
+            .find(x => (x.dataset.barKey || '').includes(g));
+        return { started: !!(d && d.started), dead: !!(d && d.pointerDead), lifted: !!(t && t.classList.contains('is-dragging')) };
+    }, gdid);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await settle();
+    return { armed: true, started: true, during };
+};
+
+{
+    const before = await tileOrder();
+    const moved = before[2];
+    const firstCentre = await tileCentre(before[0]);
+    const wsBefore = await windowsState();
+    const res = await touchDragTile(moved, firstCentre.x - 12);
+    ok(res.armed, `пръст: задържане върху плочка я вдига (${moved})`, res);
+    ok(res.during && res.during.started,
+        `пръст: местенето тръгва след задържането (започнал жест ${res.during && res.during.started})`, res);
+    ok(res.during && res.during.lifted,
+        `пръст: местената плочка е вдигната по време на жеста (is-dragging ${res.during && res.during.lifted})`, res);
+    const after = await tileOrder();
+    ok(after.length === before.length && after[0] === moved
+        && same(after.filter(g => g !== moved), before.filter(g => g !== moved)),
+        `пръст: задържане и плъзгане мести ${moved} пред първата (${before.join(' ')} -> ${after.join(' ')})`, { before, after });
+    const storedTouch = await storedOrder();
+    ok(same(storedTouch, after), `пръст: новият ред е записан в localStorage (${(storedTouch || []).join(' ')})`, storedTouch);
+    ok(!(await page.evaluate(() => !!document.querySelector('#open-notes-bar .open-notes-bar-tile.is-dragging'))),
+        'пръст: след пускането класът is-dragging е махнат');
+    const wsAfter = await windowsState();
+    ok(wsAfter.open.length === wsBefore.open.length
+        && same(wsAfter.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).sort(), wsBefore.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).sort()),
+        `пръст: жестът не затваря, не скрива и не показва бележка (отворени ${wsBefore.open.length} -> ${wsAfter.open.length})`, { wsBefore, wsAfter });
+}
+
+// б) Плочка СЪС СНИМКА: точно оплакването на собственика (b1.55) - „ако на плочката има снимка ...
+// се показва стандартното меню ... на снимката".
+{
+    const before = await tileOrder();
+    const target = before[before.length - 1];
+    // Миниатюрата се слага по СЪЩИЯ път, по който идва истинската (openNotesBarPutThumb): плочката
+    // получава has-thumb чак когато картинката се зареди.
+    const thumbInfo = await page.evaluate(async (g) => {
+        const tile = [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')]
+            .find(x => (x.dataset.barKey || '').includes(g));
+        if (!tile || typeof openNotesBarPutThumb !== 'function') return { put: false };
+        const c = document.createElement('canvas');
+        c.width = 8; c.height = 8;
+        const cx = c.getContext('2d');
+        cx.fillStyle = '#3366cc';
+        cx.fillRect(0, 0, 8, 8);
+        openNotesBarPutThumb(tile, c.toDataURL('image/png'), 'snimka.png');
+        const has = await new Promise(r => {
+            const hit = () => (tile.classList.contains('has-thumb') ? r(true) : setTimeout(hit, 20));
+            hit();
+            setTimeout(() => r(false), 2000);
+        });
+        const img = tile.querySelector('.open-notes-bar-thumb');
+        const r = tile.getBoundingClientRect();
+        const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const cs = img ? getComputedStyle(img) : null;
+        return {
+            put: true, has, imgShow: !!img && cs.display !== 'none',
+            // Под пръста (в средата на плочката) стои САМАТА плочка, не <img>: родното меню на
+            // картинката няма как да изскочи, защото картинката не приема показалеца.
+            hitTag: el ? el.tagName : null, hitIsTile: !!el && el === tile,
+            imgPointerEvents: cs ? cs.pointerEvents : null,
+            imgUserSelect: cs ? cs.userSelect : null,
+        };
+    }, target);
+    ok(thumbInfo.has && thumbInfo.imgShow,
+        `снимката в плочката се вижда и слага has-thumb (${target})`, thumbInfo);
+    ok(thumbInfo.hitIsTile && thumbInfo.hitTag !== 'IMG',
+        `в средата на плочка със снимка стои плочката, не картинката (под точката: ${thumbInfo.hitTag})`, thumbInfo);
+    ok(thumbInfo.imgPointerEvents === 'none',
+        `миниатюрата не приема показалеца (pointer-events ${thumbInfo.imgPointerEvents})`, thumbInfo);
+    ok(thumbInfo.imgUserSelect === 'none',
+        `миниатюрата не се маркира (user-select ${thumbInfo.imgUserSelect})`, thumbInfo);
+
+    // Родното меню и маркирането: събитието се праща КЪМ плочката и към картинката в нея, а пазачът е
+    // на лентата - тоест покрива и двете.
+    const guards = await page.evaluate((g) => {
+        const tile = [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')]
+            .find(x => (x.dataset.barKey || '').includes(g));
+        const img = tile ? tile.querySelector('.open-notes-bar-thumb') : null;
+        const fire = (el, type) => {
+            if (!el) return null;
+            const ev = new Event(type, { bubbles: true, cancelable: true });
+            el.dispatchEvent(ev);
+            return ev.defaultPrevented;
+        };
+        return {
+            tileCtx: fire(tile, 'contextmenu'),
+            imgCtx: fire(img, 'contextmenu'),
+            tileSelect: fire(tile, 'selectstart'),
+            imgSelect: fire(img, 'selectstart'),
+            imgDrag: fire(img, 'dragstart'),
+        };
+    }, target);
+    ok(guards.tileCtx === true, `contextmenu върху плочка е отменен (defaultPrevented ${guards.tileCtx})`, guards);
+    ok(guards.imgCtx === true, `contextmenu върху снимката в плочката е отменен (defaultPrevented ${guards.imgCtx})`, guards);
+    ok(guards.tileSelect === true, `selectstart върху плочка е отменен (defaultPrevented ${guards.tileSelect})`, guards);
+    ok(guards.imgSelect === true, `selectstart върху снимката е отменен (defaultPrevented ${guards.imgSelect})`, guards);
+    ok(guards.imgDrag === true, `dragstart върху снимката е отменен (defaultPrevented ${guards.imgDrag})`, guards);
+
+    // в) Задържане и местене на ТАЗИ плочка, когато родният жест поеме пръста (pointercancel).
+    const firstCentre = await tileCentre(before[0]);
+    const res = await touchDragTile(target, firstCentre.x - 12, { cancelPointer: true });
+    ok(res.armed, `пръст върху плочка със снимка: задържането я вдига (${target})`, res);
+    ok(res.during && res.during.dead,
+        `pointercancel след вдигането не хвърля жеста, а минава на touch пътя (pointerDead ${res.during && res.during.dead})`, res);
+    ok(res.during && res.during.started,
+        `пръст върху плочка със снимка: местенето тръгва и след pointercancel (започнал жест ${res.during && res.during.started})`, res);
+    const after = await tileOrder();
+    ok(after.length === before.length && after[0] === target
+        && same(after.filter(g => g !== target), before.filter(g => g !== target)),
+        `пръст върху плочка със снимка: ${target} стига до началото (${before.join(' ')} -> ${after.join(' ')})`, { before, after });
+    ok(same(await storedOrder(), after),
+        `и новият ред е записан в localStorage (${((await storedOrder()) || []).join(' ')})`, await storedOrder());
+}
+
+// Обратно на 390x844 - там беше точка 10 и там продължава проверката след презареждане.
+await page.setViewportSize({ width: 390, height: 844 });
+await settle();
 
 // --- 11) Редът оцелява след ПРЕЗАРЕЖДАНЕ на страницата ---------------------------------------
 const savedBeforeReload = await storedOrder();
