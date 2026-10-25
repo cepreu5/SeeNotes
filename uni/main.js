@@ -5882,6 +5882,8 @@ function updateSingleNoteOverlay() {
 // pointer-events: auto и z-index над всеки прозорец: иначе вдигнат с клик прозорец би я закрил.
 // Показва се още при ЕДНА отворена и видима бележка (собственикът, 25.10.2026 - преди беше при
 // повече от две) ИЛИ когато има скрити бележки - иначе няма как да ги върнеш обратно.
+// В режим „единична бележка" лентата не се показва изобщо (собственикът, 25.10.2026: тя е
+// излишна, когато режимът държи една бележка) - виж refreshOpenNotesBar.
 const OPEN_NOTES_BAR_MIN = 1;
 const OPEN_NOTES_BAR_Z = NOTE_WINDOW_Z_BASE + 9000;
 // Размерът на миниатюрата: плочката е 40px, значи 80px стигат за плътна картинка на екран с
@@ -6335,9 +6337,11 @@ function refreshOpenNotesBar() {
     // тяхната лента е точно пътят, по който се връщат - затова те я държат на екрана отделно.
     const visibleOpen = open.length - hiddenCount;
     // Една (и повече) видима отворена бележка ИЛИ има скрити: лентата остава, докато има какво да
-    // покаже или да върне. В режим „единична бележка" лентата СЪЩО се показва: той оставя една
-    // бележка, а лентата е единственият път да я скриеш и върнеш, без да я затваряш.
-    const show = visibleOpen >= OPEN_NOTES_BAR_MIN || hiddenCount > 0;
+    // покаже или да върне. В режим „единична бележка" лентата НЕ се показва (собственикът,
+    // 25.10.2026: „при включена настройка Single note лентата е излишно да се показва") - режимът
+    // държи една бележка, значи лентата няма какво да показва. Затова скритите бележки се връщат
+    // на екрана още при включването на режима (виж applySingleNoteModeSetting), а не през лентата.
+    const show = !isSingleNoteMode() && (visibleOpen >= OPEN_NOTES_BAR_MIN || hiddenCount > 0);
     let bar = document.getElementById('open-notes-bar');
     if (!show) {
         if (bar) bar.classList.remove('is-visible');
@@ -8773,6 +8777,10 @@ async function createSettingsUI(boardsData, boardParseError) {
         if (singleNoteModeCheckbox) {
             singleNoteModeCheckbox.addEventListener('change', () => {
                 localStorage.setItem('singleNoteMode', singleNoteModeCheckbox.checked ? 'true' : 'false');
+                // Не само updateSingleNoteOverlay: в режима лентата изчезва (собственикът, 25.10.2026),
+                // а тя е единственият път да върнеш скрита бележка - затова смяната минава през
+                // applySingleNoteModeSetting, което връща на екрана всичко скрито, слага чекбокса и
+                // опреснява.
                 applySingleNoteModeSetting();
                 showToast(_('settingSaved'), 2000);
             });
