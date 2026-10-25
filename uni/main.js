@@ -5744,6 +5744,10 @@ async function handleShareTarget(externalData = null) {
                     if (!folderId) throw new Error('Folder ID not available');
                     for (let i = 0; i < sharedFiles.length; i++) {
                         const { blob, filename, mimeType } = sharedFiles[i];
+                        // Същото правило като при пейста: името, което влиза в Drive, е и името в
+                        // media.txt, и то не бива да повтаря вече заето - иначе текстът търси по него
+                        // и намира чужд файл.
+                        const attachName = nmUniqueAttachmentName(filename);
                         try {
                             const fileType = mimeType.startsWith('video') ? 'Video' : (mimeType.startsWith('audio') ? 'Sound' : 'Images');
                             let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
@@ -5755,8 +5759,8 @@ async function handleShareTarget(externalData = null) {
                                 }
                             }
                             if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
-                            const fileGdid = await uploadBlobToGDrive(targetFolderId, filename, blob, mimeType);
-                            if (!fileGdid) throw new Error(`Upload failed: ${filename}`);
+                            const fileGdid = await uploadBlobToGDrive(targetFolderId, attachName, blob, mimeType);
+                            if (!fileGdid) throw new Error(`Upload failed: ${attachName}`);
                             if (fileType === 'Images') rememberFreshAttachmentBlob(fileGdid, blob);
                             // Изчакваме бележката да получи gdid (до 30 мин)
                             const noteGdid = await new Promise(resolve => {
@@ -5773,8 +5777,8 @@ async function handleShareTarget(externalData = null) {
                                 check();
                             });
                             if (!noteGdid) {
-                                console.warn(`[ShareTarget] Note gdid timeout for ${filename}`);
-                                showToast((_('attachLinkFailedMsg') || '⚠️ {name} uploaded, but link to note failed.').replace('{name}', filename), 7000);
+                                console.warn(`[ShareTarget] Note gdid timeout for ${attachName}`);
+                                showToast((_('attachLinkFailedMsg') || '⚠️ {name} uploaded, but link to note failed.').replace('{name}', attachName), 7000);
                                 continue;
                             }
                             const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
@@ -5785,7 +5789,7 @@ async function handleShareTarget(externalData = null) {
                                 gdid: '',
                                 id: maxMediaId + 1,
                                 noteid: noteGdid,
-                                path: filename,
+                                path: attachName,
                                 pathGD: fileGdid,
                                 type: mediaTypeNum
                             };
@@ -5797,7 +5801,7 @@ async function handleShareTarget(externalData = null) {
                                 if (useIndexedDb) {
                                     await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
                                 }
-                                showToast((_('attachSuccessMsg') || '✅ Attached: {name}').replace('{name}', filename), 3000);
+                                showToast((_('attachSuccessMsg') || '✅ Attached: {name}').replace('{name}', attachName), 3000);
                                 if (typeof refreshNoteUI === 'function') {
                                     await refreshNoteUI(noteGdid);
                                 } else {
@@ -5805,7 +5809,7 @@ async function handleShareTarget(externalData = null) {
                                 }
                             }
                         } catch (fileErr) {
-                            console.error(`[ShareTarget] Error processing file ${filename}:`, fileErr);
+                            console.error(`[ShareTarget] Error processing file ${attachName}:`, fileErr);
                             showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', fileErr.message), 5000);
                         }
                     }
@@ -26611,6 +26615,110 @@ function toggleNmInlineMenuForTile(tile, fileName) {
 
 // ------------------------------- Пейст и влачене на файл -------------------------------
 
+// --- Името, под което файлът влиза в Drive и в media.txt ------------------------------------
+// Клипбордът дава на копирана от страница снимка име като `image.png` - едно и също при всяко
+// пействане. А текстът търси картинката точно по това име, значи вторият пейст може да върне
+// първата снимка. Затова името се взима от адреса на самата снимка (там то е смислено) и се пази
+// уникално - за сесията и спрямо вече записаното в media.txt.
+const nmReservedAttachmentNames = new Set();
+
+/** Име на файл от адрес: последният сегмент от пътя, изчистен от забранените за име знаци. */
+function nmAttachmentNameFromAddress(address) {
+    const raw = String(address || '').trim();
+    if (!raw) return '';
+    let path = '';
+    try {
+        // Протокол-относителен адрес (//host/a.jpg) не минава през URL без база.
+        const withBase = raw.startsWith('//') ? `${location.protocol}${raw}` : raw;
+        path = new URL(withBase, location.href).pathname || '';
+    } catch (e) {
+        path = raw.split('?')[0].split('#')[0];
+    }
+    const segments = path.split('/').filter(s => s.length > 0);
+    let last = segments.length ? segments[segments.length - 1] : '';
+    if (!last) return '';
+    try { last = decodeURIComponent(last); } catch (e) { /* остава както е */ }
+    last = last.replace(/[\\/:*?"<>|\s]+/g, '-');
+    const dot = last.lastIndexOf('.');
+    // Без разширение това е страница, не файл - такова име не върши работа за картинка.
+    if (dot <= 0) return '';
+    const ext = last.slice(dot + 1).toLowerCase();
+    let base = last.slice(0, dot);
+    if (!base || !ext) return '';
+    if (base.length > 100) base = base.slice(0, 100);
+    return `${base}.${ext}`;
+}
+
+/**
+ * Имената за файловете от клипборда, по едно на файл и в същия ред.
+ * Собственото име на файла се пази, освен когато липсва или е общо (`image.png`, `blob`,
+ * `download`...) - тогава се взима името от адреса на снимката в клипборда. Никога не хвърля:
+ * пейстът не бива да пада заради име.
+ */
+function nmClipboardAttachmentNames(clipboard, files) {
+    const list = files ? Array.from(files) : [];
+    const names = list.map(f => (f && f.name) ? String(f.name) : '');
+    if (!clipboard || !list.length) return names;
+    const read = (kind) => {
+        try { return String(clipboard.getData(kind) || ''); } catch (e) { return ''; }
+    };
+    const html = read('text/html');
+    const uriList = read('text/uri-list');
+    const plain = read('text/plain');
+    // Редът е по сила на подсказката: самата снимка в HTML, после адресът, после текстът.
+    const addresses = [];
+    try {
+        const imgRe = /<img\b[^>]*?\bsrc\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+        let m;
+        while ((m = imgRe.exec(html)) !== null) {
+            const src = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]);
+            if (src) addresses.push(src);
+        }
+    } catch (e) { /* HTML не се разпозна - минаваме към адресите */ }
+    const httpRe = /https?:\/\/[^\s"'<>]+/i;
+    [uriList, plain].forEach(text => {
+        if (!text) return;
+        text.split(/\r?\n/).forEach(line => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return;
+            const hit = trimmed.match(httpRe);
+            if (hit) addresses.push(hit[0]);
+        });
+    });
+    const derived = addresses.map(nmAttachmentNameFromAddress).filter(n => n.length > 0);
+    const genericRe = /^(image|img|blob|clipboard|untitled|download|photo|screenshot)[-_ ]?\d*\.(png|jpe?g|gif|webp|bmp|avif|heic)$/i;
+    return names.map((name, i) => {
+        if (name && !genericRe.test(name)) return name;
+        return derived[i] || name;
+    });
+}
+
+/**
+ * Свободно име за прикачване: `base.ext`, а при заето - `base-2.ext`, `base-3.ext`...
+ * Заето е и това, което вече е в media.txt, и това, което е заето в тази сесия - иначе два файла
+ * от един жест щяха да получат едно и също име.
+ */
+function nmUniqueAttachmentName(name) {
+    const raw = String(name || '').trim() || 'file';
+    const dot = raw.lastIndexOf('.');
+    const base = dot > 0 ? raw.slice(0, dot) : raw;
+    const ext = dot > 0 ? raw.slice(dot) : '';
+    const isTaken = (candidate) => {
+        const low = candidate.toLowerCase();
+        if (nmReservedAttachmentNames.has(low)) return true;
+        if (!Array.isArray(mediaData)) return false;
+        return mediaData.some(m => m && typeof m.path === 'string' && m.path.toLowerCase() === low);
+    };
+    let candidate = `${base}${ext}`;
+    let n = 2;
+    while (isTaken(candidate)) {
+        candidate = `${base}-${n}${ext}`;
+        n++;
+    }
+    nmReservedAttachmentNames.add(candidate.toLowerCase());
+    return candidate;
+}
+
 /**
  * Файл, пуснат или пейстнат върху редактора, се качва в Images и влиза САМО в лентата - без type=8.
  * Ако снимката трябва и в текста, това става с менюто от плочката („Сложи в текста"), за да не
@@ -26627,7 +26735,9 @@ function bindNoteEditFileDrop(modalBodyElem) {
         const files = filesFrom(event.clipboardData);
         if (!files.length) return; // текстът се пейства както досега
         event.preventDefault();
-        Promise.resolve(attachFilesToModal(files)).catch(() => { });
+        // Имената се четат тук, докато клипбордът е още под ръка - после браузърът вече го е затворил.
+        const names = nmClipboardAttachmentNames(event.clipboardData, files);
+        Promise.resolve(attachFilesToModal(files, names)).catch(() => { });
     });
     modalBodyElem.addEventListener('dragover', (event) => {
         const types = event.dataTransfer ? Array.from(event.dataTransfer.types || []) : [];
@@ -26842,8 +26952,9 @@ function rebuildEditAttachmentStrip() {
  * което прави бутонът за прикачване и полето за избор на файл. Ползва се и от пейста, и от влаченето:
  * файл, занесен върху редактора, влиза САМО в лентата, без type=8 (за текста има ред „Сложи в текста").
  * @param {File[]|FileList} files - Файловете от clipboard/drop/input.
+ * @param {string[]} [preferredNames] - Имената от клипборда, по едно на файл (пейстът ги дава).
  */
-async function attachFilesToModal(files) {
+async function attachFilesToModal(files, preferredNames) {
     if (!files || files.length === 0) return;
 
     const mBodyEl = document.getElementById('modal-body');
@@ -26872,6 +26983,9 @@ async function attachFilesToModal(files) {
     // записа (media.txt) върви на свой ред след него - то не бави плочката.
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        // Едно име за трите места - Drive, media.txt и после маркерът в текста, който се взима
+        // от записа в media.txt.
+        const attachName = nmUniqueAttachmentName((preferredNames && preferredNames[i]) || (file && file.name) || '');
         const fileType = file.type.startsWith('video') ? 'Video' : (file.type.startsWith('audio') ? 'Sound' : 'Images');
         const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
         // Плочката се появява ВЕДНАГА: записът има същата форма като запис в mediaData, за да го
@@ -26880,7 +26994,7 @@ async function attachFilesToModal(files) {
         let pendingEntry = null;
         try {
             pendingEntry = {
-                path: file.name,
+                path: attachName,
                 pathGD: '',
                 type: mediaTypeNum,
                 description: '',
@@ -26889,7 +27003,7 @@ async function attachFilesToModal(files) {
             };
         } catch (e) {
             // Адресът не се получи: файлът пак влиза в лентата, само без снимка в плочката.
-            pendingEntry = { path: file.name, pathGD: '', type: mediaTypeNum, description: '', _pending: true, _blobUrl: '' };
+            pendingEntry = { path: attachName, pathGD: '', type: mediaTypeNum, description: '', _pending: true, _blobUrl: '' };
         }
         addPendingAttachment(targetNoteId, pendingEntry);
         rebuildEditAttachmentStrip();
@@ -26905,8 +27019,8 @@ async function attachFilesToModal(files) {
             }
             if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
 
-            const imageGdid = await uploadBlobToGDrive(targetFolderId, file.name, file, file.type);
-            if (!imageGdid) throw new Error(`File upload failed: ${file.name}`);
+            const imageGdid = await uploadBlobToGDrive(targetFolderId, attachName, file, file.type);
+            if (!imageGdid) throw new Error(`File upload failed: ${attachName}`);
             // Снимката е още в паметта: плочката и прегледът я показват веднага, вместо да
             // чакат Drive да даде thumbnail за току-що качения файл.
             pendingEntry.pathGD = String(imageGdid);
@@ -26915,14 +27029,14 @@ async function attachFilesToModal(files) {
             // Качването е станало - това е съобщението, което собственикът чакаше. Досега то излизаше
             // чак след като бележката се запише (чакаше се gdid), затова изглеждаше, че нищо не се е
             // случило. Свързването със записа продължава нататък, без да бави съобщението.
-            if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', file.name) : `✅ Attached ${file.name}`), 3000);
+            if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachSuccessMsg') || '✅ Attached {name}').replace('{name}', attachName) : `✅ Attached ${attachName}`), 3000);
 
             // Свързване със записа: чака се бележката да получи gdid (при нова бележка това става при
             // запис), после се създава записът в media.txt и файлът влиза в mediaData.
-            linkPendingAttachmentInBackground(targetNoteId, file, fileType, imageGdid, pendingEntry, folderId)
-                .catch(e => console.error(`[Attachment] Linking ${file.name} failed:`, e));
+            linkPendingAttachmentInBackground(targetNoteId, file, fileType, imageGdid, pendingEntry, folderId, attachName)
+                .catch(e => console.error(`[Attachment] Linking ${attachName} failed:`, e));
         } catch (e) {
-            console.error(`[Attachment] Error processing file ${file.name}:`, e);
+            console.error(`[Attachment] Error processing file ${attachName}:`, e);
             removePendingAttachment(targetNoteId, pendingEntry);
             rebuildEditAttachmentStrip();
             if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message) : `❌ Error: ${e.message}`), 5000);
@@ -26943,8 +27057,11 @@ async function attachFilesToModal(files) {
  * @param {string} imageGdid - Id на качения файл в Drive.
  * @param {object} pendingEntry - Записът в списъка с чакащи, който се маха накрая.
  * @param {string} folderId - Папката с данните, в която живее media.txt.
+ * @param {string} [attachName] - Името, с което файлът е качен в Drive; то влиза и в media.txt.
  */
-async function linkPendingAttachmentInBackground(targetNoteId, file, fileType, imageGdid, pendingEntry, folderId) {
+async function linkPendingAttachmentInBackground(targetNoteId, file, fileType, imageGdid, pendingEntry, folderId, attachName) {
+    // Записът в media.txt носи същото име като файла в Drive - по него текстът търси картинката.
+    const fileName = attachName || (file && file.name) || '';
     // Маха се веднъж, дори когато пътят мине и през успеха, и през finally - иначе лентата се
     // строи два пъти за един файл.
     let finished = false;
@@ -26972,8 +27089,8 @@ async function linkPendingAttachmentInBackground(targetNoteId, file, fileType, i
         };
         const noteGdid = await waitForNoteGdid();
         if (!noteGdid) {
-            console.warn(`[Attachment] Note gdid not available after timeout for ${file.name}. Media entry NOT created.`);
-            if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', file.name) : `⚠️ Uploaded ${file.name}, but link failed.`), 7000);
+            console.warn(`[Attachment] Note gdid not available after timeout for ${fileName}. Media entry NOT created.`);
+            if (typeof showToast === 'function') showToast((typeof _ === 'function' ? (_('attachLinkFailedMsg') || '⚠️ Uploaded {name}, but link failed.').replace('{name}', fileName) : `⚠️ Uploaded ${fileName}, but link failed.`), 7000);
             return;
         }
 
@@ -26985,7 +27102,7 @@ async function linkPendingAttachmentInBackground(targetNoteId, file, fileType, i
             gdid: '',
             id: maxMediaId + 1,
             noteid: noteGdid,
-            path: file.name,
+            path: fileName,
             pathGD: imageGdid,
             type: mediaTypeNum
         };
@@ -27007,7 +27124,7 @@ async function linkPendingAttachmentInBackground(targetNoteId, file, fileType, i
             }
         }
     } catch (e) {
-        console.error(`[Attachment] Error linking ${file.name} to the note:`, e);
+        console.error(`[Attachment] Error linking ${fileName} to the note:`, e);
     } finally {
         finish();
     }
