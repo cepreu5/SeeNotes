@@ -21585,8 +21585,65 @@ function inlineImageFolderId() {
 }
 
 /**
- * Файлът по име от папка Images. При две еднакви имена се взима най-новият - findGDFileByName
- * връща files в ред по modifiedTime desc, тоест [0].
+ * Id на файла от прикачените файлове на бележката (media.txt) за име, което стои в текста.
+ * В text_span се пази САМО името - така е записът на Android и той не се променя (решение на
+ * собственика, 25.10.2026: структурата на записа и ключът text_span остават както са). Затова
+ * id-то се взима от записа в media.txt: това е същият файл, който плочката на прикачения файл
+ * отваря по id. Дотук картинката в текста се търсеше само по име в папка Images и при друга
+ * папка "Images" или различен регистър на името оставаше празна, докато плочката работеше.
+ * При няколко записа с едно и също име се взима последният: mediaData се дописва в края, значи
+ * последният запис е най-новият.
+ */
+function inlineImageMediaFileId(fileName) {
+    const name = inlineImageName(fileName).toLowerCase();
+    if (!name) return '';
+    const records = Array.isArray(mediaData) ? mediaData : [];
+    let found = '';
+    for (const m of records) {
+        if (!m || !looksLikeDriveFileId(m.pathGD)) continue;
+        if (inlineImageName(m.path).toLowerCase() !== name) continue;
+        found = String(m.pathGD);
+    }
+    return found;
+}
+
+/**
+ * Дали файлът с това id още е в Drive. Запис в media.txt може да сочи вече изтрит файл - тогава
+ * картинката трябва да падне към търсене по име, а не да остане празна. Положителният отговор се
+ * помни за сесията, отрицателният - кратко (като липсващ файл), за да не пита всяка карта пак.
+ */
+const inlineImageFileAliveCache = new Map();
+
+function inlineImageFileAlive(fileId) {
+    const key = String(fileId || '');
+    if (!key) return Promise.resolve(false);
+    const cached = inlineImageFileAliveCache.get(key);
+    if (cached) {
+        if (cached.alive) return Promise.resolve(true);
+        if (Date.now() - cached.at < INLINE_IMAGE_MISSING_TTL) return Promise.resolve(false);
+        inlineImageFileAliveCache.delete(key);
+    }
+    return (async () => {
+        const token = await inlineDriveToken();
+        if (!token) return false;
+        try {
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(key)}?fields=id,trashed`,
+                { headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) return false;
+            const info = await res.json();
+            return !!info && info.id && info.trashed !== true;
+        } catch (e) {
+            return false;
+        }
+    })().then(alive => {
+        inlineImageFileAliveCache.set(key, { at: Date.now(), alive: alive === true });
+        return alive === true;
+    }, () => false);
+}
+
+/**
+ * Файлът за картинка в текста: ПЪРВО по id от media.txt, после по име от папка Images.
+ * По име се взима най-новият - findGDFileByName връща files в ред по modifiedTime desc, тоест [0].
  * Отговорът: { status: 'ok', fileId } | { status: 'missing' } (Drive отговори и няма такъв файл)
  * | { status: 'unavailable' } (офлайн, без токен или без папка Images - не знаем дали го има).
  * Търсенето се помни за името, за да не пита всяка карта на борда Drive поотделно.
@@ -21607,6 +21664,13 @@ function resolveInlineImageFile(fileName) {
         at: Date.now(),
         promise: (async () => {
             if (typeof isOffline !== 'undefined' && isOffline) return { status: 'unavailable' };
+            // 1) По id от прикачените файлове - същият файл, който плочката отваря. Записът в
+            //    text_span пази само името, затова id-то се взима от media.txt.
+            const mediaFileId = inlineImageMediaFileId(fileName);
+            if (mediaFileId && await inlineImageFileAlive(mediaFileId)) {
+                return { status: 'ok', fileId: mediaFileId };
+            }
+            // 2) Старото търсене по име в папка Images - резерва за записи без media.txt.
             const folderId = await inlineImageFolderId();
             if (!folderId) return { status: 'unavailable' };
             const found = await findGDFileByNameDetailed(folderId, fileName);
