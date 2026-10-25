@@ -3827,6 +3827,25 @@ body.selection-locked .note.active-selection-note .note-content {
     min-height: 40px;
 }
 
+/* Лентата на бележката НЕ се маркира (b2.81): нито с плъзгане с мишката, нито с двоен клик, нито
+   със задържане на пръст (на телефон тогава излиза менюто за копиране на iOS/Android). Правилото
+   важи за цялата лента и за всяко нейно дете - името на борда, кръгчетата, хиксчето, така че и
+   текст, добавен в лентата по-късно, е покрит. Същото и за реда с датата/часа в долната лента
+   (.modal-note-footer): оттам идва втората половина на оплакването, а той е един текстов ред без
+   нищо за писане в него. Селектируемостта на тялото НЕ се пипа: текстът в бележката
+   (.modal-content-box, редакторът) се маркира както досега, а полетата за писане в долната лента
+   (търсачката) остават извън правилото. Затова тук няма pointer-events (лентата е и дръжка за
+   местене на прозореца) и няма touch-action: none - то би спряло и плъзгането на реда с бутоните. */
+.modal-header-toolbar,
+.modal-header-toolbar *,
+.modal-note-footer,
+.modal-note-footer * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
 .modal-header-buttons {
     display: flex;
     gap: 8px;
@@ -3957,6 +3976,20 @@ body.selection-locked .note.active-selection-note .note-content {
     scrollbar-width: none;
     -ms-overflow-style: none;
     -webkit-overflow-scrolling: touch;
+}
+
+/* Лентата с инструменти за форматиране НЕ се маркира (b2.81): глифовете в нея са текстови знаци
+   (↶ ↷ ← → B I U S ▦), тоест плъзгане, двоен клик или задържане на пръст върху бутон
+   маркираше самия глиф като текст - синя селекция върху стрелката. Правилото важи за лентата и за
+   всяко нейно дете (и кръгчетата, дошли от хедъра - списъците - също). Кликането и дългото
+   натискане не се пипат: те работят с mousedown/mouseup/click и със собствени таймери, а
+   маркирането само пречи. Селекцията в редактора остава както досега - тя е в тялото на бележката. */
+.modal-edit-toolbar,
+.modal-edit-toolbar * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
 
 .modal-edit-toolbar::-webkit-scrollbar {
