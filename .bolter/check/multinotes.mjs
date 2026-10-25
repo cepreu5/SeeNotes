@@ -5,8 +5,8 @@
 //     пазят като data-mwid + .nw-modal-body - смяната на активния ги разменя;
 //   - плъзгането мести прозореца и мястото/размерът остават в localStorage за следващото отваряне;
 //   - записът на геометрията е един речник с таван 300 записа, най-старият се изхвърля;
-//   - „Затвори всички" се показва в дясната група на лентата от три отворени бележки, едно до друго
-//     с хиксчето, извън плъзгащия се ред, и затваря всички;
+//   - в хедъра на прозореца на бележката НЯМА бутон „Затвори всички" (b1.47): при 1, 2 и 3 отворени
+//     бележки там стои само хиксчето, редът е с петте си бутона, а затварянето на всички е в лентата;
 //   - името на борда стои най-ляво в лентата на отворена бележка ВИНАГИ (и при съвпадащ филтър) и се
 //     реже с многоточие, когато няма място (b1.11);
 //   - стрелките < / > обхождат отворените прозорци от ДВА нагоре и зациклят в краищата (b1.11); при
@@ -122,15 +122,6 @@ const READ = `(() => {
     contentWidth: Math.round(parseFloat(getComputedStyle(win.box).width)),
     contentHeight: Math.round(parseFloat(getComputedStyle(win.box).height)),
     z: Number(win.el.style.zIndex) || 0,
-    closeAllShown: !!(win.closeAllBtn && !win.closeAllBtn.hidden),
-    closeAllTitle: win.closeAllBtn ? win.closeAllBtn.title : null,
-    closeAllAria: win.closeAllBtn ? win.closeAllBtn.getAttribute('aria-label') : null,
-    closeAllText: win.closeAllBtn ? win.closeAllBtn.textContent.trim() : null,
-    closeAllIcon: !!(win.closeAllBtn && win.closeAllBtn.querySelector('svg')),
-    closeAllDisplay: win.closeAllBtn ? getComputedStyle(win.closeAllBtn).display : null,
-    closeAllParent: win.closeAllBtn && win.closeAllBtn.parentElement ? win.closeAllBtn.parentElement.className : null,
-    closeAllRect: win.closeAllBtn ? (() => { const r = win.closeAllBtn.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), cy: Math.round(r.top + r.height / 2) }; })() : null,
-    closeRect: (() => { const x = win.box.querySelector('.modal-close'); if (!x) return null; const r = x.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), cy: Math.round(r.top + r.height / 2) }; })(),
     outline: (() => { const cs = getComputedStyle(win.box); return cs.outlineStyle + ' ' + cs.outlineWidth; })(),
   }));
   const overlay = document.getElementById('single-note-overlay');
@@ -370,52 +361,77 @@ ok(!!afterOldMove && afterOldMove.v === 2 && !('order' in afterOldMove.dict) && 
   && Number.isInteger(afterOldRec.x) && Number.isInteger(afterOldRec.y) && Number.isInteger(afterOldRec.w) && Number.isInteger(afterOldRec.h),
   `стар речник -> първо местене: нов речник v2 с един запис, брояч 1 и номер на реда 1 (${JSON.stringify(afterOldMove && afterOldMove.dict)})`,
   afterOldMove);
-// ======================= 5. „Затвори всички" от три отворени бележки =======================
-// Първо се прибира всичко, за да се види как се появява бутонът: един -> два -> три.
+// ======================= 5. Хедърът на бележката: без „Затвори всички" (b1.47) =======================
+// Бутонът „Затвори всички" е МАХНАТ от хедъра на прозореца - не се крие, а го няма в кода. Затварянето
+// на всички остава в долната лента (#open-notes-bar): там е неговото място и там се проверява.
 await page.evaluate(() => { getOpenNoteWindows().forEach(closeNoteWindow); });
 await page.evaluate(() => localStorage.removeItem('noteWindowGeometry'));
+// Един -> два -> три отворени прозореца: във всеки хедърът е само хиксчето, без бутон „Затвори всички".
+const headerState = () => page.evaluate(() => getOpenNoteWindows().map(w => ({
+  text: (w.body.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 20),
+  inBox: !!w.box.querySelector('.close-all-notes-btn'),
+  inPage: document.querySelectorAll('.close-all-notes-btn').length,
+  group: [...(w.box.querySelector('.note-header-close-group') || w.box).children].map(b => String(b.className)),
+  rowButtons: w.box.querySelectorAll('.note-header-buttons button').length,
+})));
+// Редът .note-header-buttons е непокътнат: <, >, калкулатор, копиране, изтриване и стрелката за
+// разпъване (b1.91) - шест бутона, нито един повече („Затвори всички" никога не е бил в реда).
+const ROW_BUTTONS = 6;
+const headerOk = list => list.length >= 1 && list.every(w => !w.inBox && w.inPage === 0
+  && w.group.length === 1 && /modal-close/.test(w.group[0]) && w.rowButtons === ROW_BUTTONS);
+const groupsOk = list => list.every(w => w.group.length === 1 && /modal-close/.test(w.group[0]));
 await openNote({ id: 'C1', gdid: 'GC1', boardId: 'B1', raw: 'първа' }, 1);
-const atOne = await read();
+const hdrOne = await headerState();
+ok(hdrOne.length === 1 && headerOk(hdrOne) && groupsOk(hdrOne),
+  `един прозорец: в хедъра няма .close-all-notes-btn (в кутията ${JSON.stringify(hdrOne.map(w => w.inBox))}, в страницата ${JSON.stringify(hdrOne.map(w => w.inPage))}), дясната група е само хиксчето, редът е с шестте си бутона`,
+  hdrOne);
 await openNote({ id: 'C2', gdid: 'GC2', boardId: 'B1', raw: 'втора' }, 2);
-const atTwo = await read();
-ok(!atOne.windows[0].closeAllShown && atTwo.windows.every(w => !w.closeAllShown),
-  `„Затвори всички": при един и два отворени прозореца бутонът не се вижда (${atOne.windows[0].closeAllDisplay}, ${atTwo.windows[0].closeAllDisplay})`,
-  { one: atOne.windows[0].closeAllDisplay, two: atTwo.windows.map(w => w.closeAllDisplay) });
+const hdrTwo = await headerState();
+ok(hdrTwo.length === 2 && headerOk(hdrTwo) && groupsOk(hdrTwo),
+  `два прозореца: нито един няма .close-all-notes-btn (${JSON.stringify(hdrTwo.map(w => [w.inBox, w.inPage]))}), дясната група е само хиксчето`,
+  hdrTwo);
 await openNote({ id: 'C3', gdid: 'GC3', boardId: 'B1', raw: 'трета' }, 3);
-const atThree = await read();
-ok(atThree.windows.every(w => w.closeAllShown && w.closeAllDisplay === 'flex'),
-  `„Затвори всички": при три отворени се вижда във всеки отворен прозорец (${atThree.windows.map(w => w.closeAllDisplay)})`,
-  atThree.windows.map(w => ({ shown: w.closeAllShown, d: w.closeAllDisplay })));
-// Мястото: „Затвори всички" е в дясната група на лентата, точно вляво от хиксчето и на същата
-// вертикала — не в реда с бутоните и не някъде извън лентата (това се чупеше, когато обвивките
-// .note-header-toolbar/.note-header-close-group липсват в HTML и main.js пада в резервния път).
-const place = atThree.windows.filter(w => w.closeAllShown && w.closeAllRect && w.closeRect);
-ok(place.length > 0 && place.every(w => /note-header-close-group/.test(w.closeAllParent || '')
-    && w.closeAllRect.right <= w.closeRect.left + 1 && Math.abs(w.closeAllRect.cy - w.closeRect.cy) <= 2),
-  `„Затвори всички": стои в дясната група, веднага вляво от хиксчето, на същата вертикала (${JSON.stringify(place.map(w => ({ p: w.closeAllParent, a: w.closeAllRect, x: w.closeRect })))})`,
-  place.map(w => ({ parent: w.closeAllParent, all: w.closeAllRect, x: w.closeRect })));
-const closeAllLabel = await page.evaluate(() => ({ i18n: _('closeAllNotes'), lang: currentLang, keyPresent: _('closeAllNotes') !== 'closeAllNotes' }));
-ok(atThree.windows.every(w => w.closeAllTitle === closeAllLabel.i18n && w.closeAllAria === closeAllLabel.i18n)
-  && atThree.windows.every(w => w.closeAllIcon && w.closeAllText === '') && closeAllLabel.keyPresent,
-  `„Затвори всички": кръгъл бутон с икона, името идва от превода в title и aria-label, не като текст (${JSON.stringify(atThree.windows.map(w => w.closeAllTitle))}, език ${closeAllLabel.lang})`,
-  { ...closeAllLabel, windows: atThree.windows.map(w => ({ t: w.closeAllTitle, a: w.closeAllAria, icon: w.closeAllIcon, text: w.closeAllText })) });
-await shot('close-all');
-
-const closeAllRect = await page.evaluate(() => {
-  const btn = activeNoteWindow.closeAllBtn;
+const hdrThree = await headerState();
+ok(hdrThree.length === 3 && headerOk(hdrThree),
+  `три прозореца: пак няма .close-all-notes-btn - и в трите (в кутията ${JSON.stringify(hdrThree.map(w => w.inBox))}, в страницата ${JSON.stringify(hdrThree.map(w => w.inPage))})`,
+  hdrThree);
+ok(groupsOk(hdrThree) && hdrThree.every(w => w.rowButtons === ROW_BUTTONS),
+  `три прозореца: дясната група .note-header-close-group съдържа само хиксчето, а редът .note-header-buttons е с шестте си бутона (${JSON.stringify(hdrThree.map(w => [w.group.length, w.rowButtons]))})`,
+  { groups: hdrThree.map(w => ({ group: w.group, rowButtons: w.rowButtons })) });
+await shot('header-no-close-all');
+// Затварянето на всички минава през лентата: три отворени бележки и натиск върху .open-notes-bar-close.
+const barClose = await page.evaluate(() => {
+  const bar = document.getElementById('open-notes-bar');
+  const btn = bar && bar.querySelector('.open-notes-bar-close');
+  if (!btn) return { exists: false };
   const r = btn.getBoundingClientRect();
-  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  return {
+    exists: true, open: getOpenNoteWindows().length,
+    visible: bar.classList.contains('is-visible') && getComputedStyle(bar).display !== 'none',
+    label: _('closeAllNotes'), title: btn.title, aria: btn.getAttribute('aria-label'),
+    x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2),
+  };
 });
-await page.mouse.click(closeAllRect.x, closeAllRect.y);
+ok(barClose.exists && barClose.open === 3 && barClose.visible
+  && barClose.title === barClose.label && barClose.aria === barClose.label,
+  `лентата: при три отворени бележки бутонът за затваряне на всички е видим и носи името от превода (${JSON.stringify(barClose)})`,
+  barClose);
+await page.mouse.click(barClose.x, barClose.y);
 await page.waitForFunction(() => getOpenNoteWindows().length === 0, null, { timeout: 5000 }).catch(() => { });
 const closed = await read();
 ok(closed.open === 0 && closed.windows.filter(w => w.visible).length === 0,
-  `„Затвори всички": затвори всичките (отворени ${closed.open}, видими ${closed.windows.filter(w => w.visible).length})`, closed);
-ok(closed.total === 1 && closed.windows[0].closeAllDisplay === 'none',
-  `„Затвори всички": остава един празен прозорец и бутонът се скрива (в DOM ${closed.total}, бутон ${closed.windows[0].closeAllDisplay})`, closed);
+  `лентата: затвори всичките бележки (отворени ${closed.open}, видими ${closed.windows.filter(w => w.visible).length})`, closed);
+ok(closed.total === 1,
+  `лентата: остава един празен прозорец в DOM (в DOM ${closed.total})`, closed);
+const barAfter = await page.evaluate(() => {
+  const bar = document.getElementById('open-notes-bar');
+  return { hasVisible: !!bar && bar.classList.contains('is-visible'), display: bar ? getComputedStyle(bar).display : null };
+});
+ok(!barAfter.hasVisible,
+  `лентата: след затварянето на всички се скрива (клас is-visible ${barAfter.hasVisible}, display ${barAfter.display})`, barAfter);
 const afterCloseAll = await openNote({ id: 'C4', gdid: 'GC4', boardId: 'B1', raw: 'след затварянето' }, 1);
-ok(afterCloseAll.windows[afterCloseAll.activeIndex].text === 'след затварянето',
-  `„Затвори всички": след това нова бележка се отваря нормално (${afterCloseAll.windows[afterCloseAll.activeIndex].text})`, afterCloseAll);
+ok(afterCloseAll.open === 1 && afterCloseAll.windows[afterCloseAll.activeIndex].text === 'след затварянето',
+  `лентата: след това нова бележка се отваря нормално (отворени ${afterCloseAll.open}, „${afterCloseAll.windows[afterCloseAll.activeIndex].text}")`, afterCloseAll);
 
 // ======================= 6. „Единична бележка" =======================
 // Чекбоксът е в Настройки: строи се от createSettingsUI, точно както го прави приложението.
@@ -538,7 +554,8 @@ ok(afterMenuSwitch.filter === 'B2' && afterMenuSwitch.open === beforeBoard.open,
   `смяна на борда от менюто: прозорците пак остават (борд ${afterMenuSwitch.filter}, отворени ${afterMenuSwitch.open})`, afterMenuSwitch);
 
 // ======================= 9. Поправките след сливането (b1.09) =======================
-// (а) активният прозорец няма рамка; (б) „Затвори всички" е кръгъл бутон с икона вляво от хиксчето;
+// (а) активният прозорец няма рамка; (б) в дясната клетка на лентата е САМО хиксчето - бутонът
+// „Затвори всички" в хедъра го няма (b1.47);
 // (в) при повече от два прозореца стрелките обхождат прозорците, при два - бележките на борда;
 // (г) при тясна бележка нищо в лентата не излиза извън кутията и хиксчето се вижда изцяло.
 const closeAllWindows = async () => {
@@ -578,66 +595,40 @@ ok(three.windows[three.activeIndex].active && three.windows[three.activeIndex].z
   `рамка: активният прозорец е най-отгоре, без рамка (z ${three.windows[three.activeIndex].z})`,
   three.windows.map(w => ({ z: w.z, a: w.active })));
 
-// (б) „Затвори всички" - в ДЯСНАТА клетка на лентата, едно до друго с хиксчето, извън реда с бутоните.
-const closeAllGeom = await page.evaluate(() => {
-  const win = activeNoteWindow;
-  const btn = win.closeAllBtn;
-  if (!btn) return { exists: false };
-  const cs = getComputedStyle(btn);
-  const r = btn.getBoundingClientRect();
+// (б) Дясната клетка на лентата: там вече е САМО хиксчето - „Затвори всички" в хедъра го няма (b1.47).
+const headerGeom = await page.evaluate(() => getOpenNoteWindows().map(win => {
   const xBtn = win.box.querySelector('.modal-close');
   const xr = xBtn.getBoundingClientRect();
   const br = win.box.getBoundingClientRect();
-  const row = win.box.querySelector('.note-header-buttons');
-  const rr = row.getBoundingClientRect();
+  const row = win.box.querySelector('.note-header-buttons').getBoundingClientRect();
   const group = win.box.querySelector('.note-header-close-group');
   const gr = group ? group.getBoundingClientRect() : null;
+  const round = r => ({ left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom) });
   return {
-    exists: true, hidden: btn.hidden, display: cs.display, radius: cs.borderRadius,
-    w: Math.round(r.width), h: Math.round(r.height), icon: !!btn.querySelector('svg'),
-    classes: btn.className,
-    inRow: !!(btn.parentElement && btn.parentElement.classList.contains('note-header-buttons')),
-    inGroup: !!(group && btn.parentElement === group),
-    groupChildren: group ? group.children.length : 0,
-    sameParentAsX: !!(xBtn.parentElement && xBtn.parentElement === btn.parentElement),
-    gapToX: Math.round(xr.left - r.right),
-    sameLineAsX: Math.abs((r.top + r.height / 2) - (xr.top + xr.height / 2)) <= 1,
-    rowHasOthers: row.querySelectorAll('button').length,
-    btn: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
-    x: { left: xr.left, right: xr.right, top: xr.top, bottom: xr.bottom },
-    box: { left: br.left, right: br.right, top: br.top, bottom: br.bottom },
-    row: { left: rr.left, right: rr.right },
-    group: gr ? { left: gr.left, right: gr.right, top: gr.top, bottom: gr.bottom } : null,
+    text: (win.body.textContent || '').trim(),
+    closeAllInBox: !!win.box.querySelector('.close-all-notes-btn'),
+    closeAllInPage: document.querySelectorAll('.close-all-notes-btn').length,
+    groupChildren: group ? [...group.children].map(b => String(b.className)) : [],
+    rowButtons: win.box.querySelectorAll('.note-header-buttons button').length,
+    x: round(xr), box: round(br),
+    row: { left: row.left, right: row.right },
+    group: gr ? round(gr) : null,
   };
-});
-ok(closeAllGeom.exists && !closeAllGeom.hidden && closeAllGeom.display === 'flex' && closeAllGeom.icon
-  && closeAllGeom.inGroup && !closeAllGeom.inRow && closeAllGeom.groupChildren === 2
-  && closeAllGeom.sameParentAsX && /note-window-bar-btn/.test(closeAllGeom.classes),
-  `„Затвори всички": бутонът е в дясната група до хиксчето, извън реда с бутоните (група от ${closeAllGeom.groupChildren}, в реда ${closeAllGeom.inRow})`,
-  closeAllGeom);
-ok(closeAllGeom.radius === '50%' && closeAllGeom.w === 32 && closeAllGeom.h === 32,
-  `„Затвори всички": същият 32px кръгъл бутон като останалите в лентата (${closeAllGeom.w}x${closeAllGeom.h}, radius ${closeAllGeom.radius})`,
-  closeAllGeom);
-ok(closeAllGeom.rowHasOthers === 5,
-  `„Затвори всички": редът с бутоните остава с петте си бутона, без „Затвори всички" (${closeAllGeom.rowHasOthers})`,
-  closeAllGeom);
-ok(closeAllGeom.btn.left >= closeAllGeom.box.left - 0.5 && closeAllGeom.btn.right <= closeAllGeom.box.right + 0.5
-  && closeAllGeom.btn.top >= closeAllGeom.box.top - 0.5 && closeAllGeom.btn.bottom <= closeAllGeom.box.bottom + 0.5,
-  `„Затвори всички": бутонът е изцяло в кутията (${Math.round(closeAllGeom.btn.left)}..${Math.round(closeAllGeom.btn.right)} в ${Math.round(closeAllGeom.box.left)}..${Math.round(closeAllGeom.box.right)})`,
-  closeAllGeom);
-ok(closeAllGeom.btn.right <= closeAllGeom.x.left + 0.5 && closeAllGeom.sameLineAsX
-  && closeAllGeom.gapToX >= 4 && closeAllGeom.gapToX <= 12,
-  `„Затвори всички": бутонът е точно вляво от хиксчето, на същата вертикала (${Math.round(closeAllGeom.btn.right)} <= ${Math.round(closeAllGeom.x.left)}, отстояние ${closeAllGeom.gapToX})`,
-  closeAllGeom);
-ok(closeAllGeom.x.left >= closeAllGeom.box.left && closeAllGeom.x.right <= closeAllGeom.box.right
-  && closeAllGeom.x.top >= closeAllGeom.box.top && closeAllGeom.x.bottom <= closeAllGeom.box.bottom,
-  `„Затвори всички": хиксчето също е изцяло в кутията (${Math.round(closeAllGeom.x.left)}..${Math.round(closeAllGeom.x.right)})`,
-  closeAllGeom);
-ok(!!closeAllGeom.group && closeAllGeom.group.right <= closeAllGeom.box.right + 0.5
-  && closeAllGeom.group.left >= closeAllGeom.row.right - 0.5,
-  `„Затвори всички": дясната група е изцяло вдясно от реда с бутоните (група ${closeAllGeom.group && Math.round(closeAllGeom.group.left)}..${closeAllGeom.group && Math.round(closeAllGeom.group.right)}, ред до ${Math.round(closeAllGeom.row.right)})`,
-  closeAllGeom);
-await shot('close-all-icon');
+}));
+const insideBox = (b, box) => b.left >= box.left - 0.5 && b.right <= box.right + 0.5
+  && b.top >= box.top - 0.5 && b.bottom <= box.bottom + 0.5;
+ok(headerGeom.length === 3 && headerGeom.every(w => !w.closeAllInBox && w.closeAllInPage === 0),
+  `хедър: .close-all-notes-btn липсва и в трите прозореца (в кутията ${JSON.stringify(headerGeom.map(w => w.closeAllInBox))}, в страницата ${JSON.stringify(headerGeom.map(w => w.closeAllInPage))})`,
+  headerGeom);
+ok(headerGeom.every(w => insideBox(w.x, w.box)),
+  `хедър: хиксчето е изцяло в кутията (${JSON.stringify(headerGeom.map(w => [Math.round(w.x.left), Math.round(w.x.right), Math.round(w.box.right)]))})`,
+  headerGeom);
+ok(headerGeom.every(w => w.group && insideBox(w.group, w.box) && w.group.left >= w.row.right - 0.5
+  && w.groupChildren.length === 1 && /modal-close/.test(w.groupChildren[0]) && w.rowButtons === ROW_BUTTONS),
+  `хедър: дясната група е само хиксчето, изцяло в кутията и вдясно от реда с бутоните (${JSON.stringify(headerGeom.map(w => [w.group && Math.round(w.group.left), Math.round(w.row.right), w.rowButtons]))})`,
+  headerGeom);
+await shot('header-x-in-box');
+
 
 // (в) Стрелките при ЧЕТИРИ отворени прозоръци: всеки натиск - следващият прозорец, после се завърта.
 await closeAllWindows();
@@ -808,7 +799,7 @@ const narrow = await page.evaluate(async () => {
       row: { left: rr.left, right: rr.right, scrollWidth: row.scrollWidth, clientWidth: row.clientWidth },
       name: nr ? { left: nr.left, right: nr.right, width: Math.round(nr.width), shown: getComputedStyle(name).display !== 'none' } : null,
       btns,
-      // Редът с бутоните и дясната група (b1.11): „Затвори всички" и хиксчето са в групата, извън реда.
+      // Редът с бутоните и дясната група (b1.11): в групата е само хиксчето, извън реда (b1.47).
       rowButtons: [...row.querySelectorAll('button')].filter(b => {
         const r = b.getBoundingClientRect();
         return r.width > 0 && r.height > 0 && !b.hidden && getComputedStyle(b).display !== 'none';
@@ -831,25 +822,25 @@ const visibleInRow = visible.filter(b => !/\bmodal-close\b/.test(b.cls));
 ok(narrow.length === 3 && narrow.every(w => w.contentWidth === 320) && visibleInRow.length === 6 && visible.length === 7,
   `тясна бележка: и трите прозореца са 320px, в лентата се виждат шестте кръгчета плюс хиксчето (${JSON.stringify(narrow.map(w => w.contentWidth))}, ред ${visibleInRow.length}, всичко ${visible.length})`,
   narrow);
-// b1.11: в реда с бутоните остават пет, а „Затвори всички" и хиксчето са в дясната група - и двете
-// видими и изцяло в кутията дори при 320px.
-const narrowRow = narrow.filter(w => w.rowButtons !== 5);
+// b1.11: в реда с бутоните са петте кръгчета, а в дясната група е само хиксчето - видимо и изцяло в
+// кутията дори при 320px. Бутонът „Затвори всички" вече го няма в хедъра (b1.47).
+const narrowRow = narrow.filter(w => w.rowButtons !== 6);
 ok(narrowRow.length === 0,
-  `тясна бележка: редът с бутоните е с пет бутона, „Затвори всички" вече не е в него (${JSON.stringify(narrow.map(w => w.rowButtons))})`,
+  `тясна бележка: редът с бутоните е точно шест бутона (шестте си кръгчета), нищо повече (${JSON.stringify(narrow.map(w => w.rowButtons))})`,
   { narrowRow });
 const narrowGroup = narrow.map(w => ({
   text: w.text,
-  ok: w.groupButtons.length === 2 && w.groupButtons.every(b => b.visible
+  ok: w.groupButtons.length === 1 && w.groupButtons.every(b => b.visible
     && b.left >= w.box.left - 0.5 && b.right <= w.box.right + 0.5
     && b.top >= w.box.top - 0.5 && b.bottom <= w.box.bottom + 0.5)
-    && /close-all-notes-btn/.test(w.groupButtons[0].cls) && /modal-close/.test(w.groupButtons[1].cls)
-    && w.groupButtons[0].right <= w.groupButtons[1].left + 0.5,
-  group: w.groupButtons.map(b => [Math.round(b.left), Math.round(b.right), b.visible]),
+    && /modal-close/.test(w.groupButtons[0].cls),
+  group: w.groupButtons.map(b => [Math.round(b.left), Math.round(b.right), b.visible, b.cls]),
   box: [Math.round(w.box.left), Math.round(w.box.right)],
 }));
 ok(narrowGroup.every(g => g.ok),
-  `тясна бележка: „Затвори всички" и хиксчето стоят едно до друго в дясната група, видими и изцяло в кутията (${JSON.stringify(narrowGroup.map(g => g.group))})`,
+  `тясна бележка: в дясната група стои само хиксчето, видимо и изцяло в кутията (${JSON.stringify(narrowGroup.map(g => g.group))})`,
   { narrowGroup });
+
 const outside = [];
 narrow.forEach(w => w.btns.filter(b => b.visible).forEach(b => {
   if (b.left < w.box.left - 0.5 || b.right > w.box.right + 0.5 || b.top < w.box.top - 0.5 || b.bottom > w.box.bottom + 0.5) {
@@ -1449,7 +1440,7 @@ ok(afterResetClose === null,
   afterResetClose);
 
 // ======================= 11. Петте поправки от собственика (b1.11) =======================
-// (а) „Затвори всички" и хиксчето са една дясна група, едно до друго, и двете извън плъзгащия се ред;
+// (а) в дясната група на лентата е САМО хиксчето - „Затвори всички" в хедъра го няма (b1.47);
 // (б) името на борда се вижда ВИНАГИ (и при съвпадащ филтър), най-ляво, с многоточие;
 // (в) стрелките обхождат прозорците от два нагоре със зацикляне - проверено в раздел 9;
 // (г) ресет бутончето е квадратно, без надпис, с цвета на (+) и (−);
@@ -1471,26 +1462,25 @@ const settleWindows = () => page.evaluate(async () => {
 await closeAllWindows();
 await page.evaluate(() => { window.scrollTo(0, 0); filterNotesByBoard('B1'); });
 
-// --- (а) Дясната група: три отворени прозореца, 460px всеки ---
+// --- (а) Дясната група: три отворени прозореца, 460px всеки - в нея е само хиксчето ---
 for (const i of [1, 2, 3]) await openNote({ id: 'H' + i, gdid: 'GH' + i, boardId: 'B1', raw: 'хедър ' + i }, i);
 await page.evaluate(() => { getOpenNoteWindows().forEach(w => { w.box.style.width = '460px'; }); });
 await settleWindows();
 const hdr = await page.evaluate(() => getOpenNoteWindows().map(w => {
-  const btn = w.closeAllBtn;
   const xBtn = w.box.querySelector('.modal-close');
   const group = w.box.querySelector('.note-header-close-group');
   const nameEl = w.box.querySelector('#modal-board-name, .nw-modal-board-name');
   const br = w.box.getBoundingClientRect();
-  const r = btn.getBoundingClientRect();
   const xr = xBtn.getBoundingClientRect();
   const gr = group ? group.getBoundingClientRect() : null;
   const nr = nameEl ? nameEl.getBoundingClientRect() : null;
   const rr = w.box.querySelector('.note-header-buttons').getBoundingClientRect();
   return {
     text: (w.body.textContent || '').trim(),
-    closeAllShown: !btn.hidden && getComputedStyle(btn).display === 'flex',
-    inGroup: !!(group && btn.parentElement === group),
-    closeAll: { l: r.left, r: r.right, t: r.top, b: r.bottom },
+    closeAllInBox: !!w.box.querySelector('.close-all-notes-btn'),
+    closeAllInPage: document.querySelectorAll('.close-all-notes-btn').length,
+    groupChildren: group ? [...group.children].map(b => String(b.className)) : [],
+    rowButtons: w.box.querySelectorAll('.note-header-buttons button').length,
     x: { l: xr.left, r: xr.right, t: xr.top, b: xr.bottom },
     group: gr ? { l: gr.left, r: gr.right, t: gr.top, b: gr.bottom } : null,
     name: nr ? { l: nr.left, r: nr.right, text: nameEl.textContent.trim(), display: getComputedStyle(nameEl).display } : null,
@@ -1499,11 +1489,11 @@ const hdr = await page.evaluate(() => getOpenNoteWindows().map(w => {
   };
 }));
 const inBox = (b, box) => b.l >= box.l - 0.5 && b.r <= box.r + 0.5 && b.t >= box.t - 0.5 && b.b <= box.b + 0.5;
-const hdrOk = hdr.filter(w => w.closeAllShown && w.inGroup && inBox(w.closeAll, w.box) && inBox(w.x, w.box)
-  && w.closeAll.r <= w.x.l + 0.5 && Math.abs((w.closeAll.t + w.closeAll.b) / 2 - (w.x.t + w.x.b) / 2) <= 1
-  && w.group && w.group.r <= w.box.r + 0.5 && w.group.l >= w.row.r - 0.5);
+const hdrOk = hdr.filter(w => !w.closeAllInBox && w.closeAllInPage === 0 && inBox(w.x, w.box)
+  && w.group && inBox(w.group, w.box) && w.group.l >= w.row.r - 0.5
+  && w.groupChildren.length === 1 && /modal-close/.test(w.groupChildren[0]) && w.rowButtons === 6);
 ok(hdr.length === 3 && hdrOk.length === 3,
-  `хедър при 3 прозоръца: „Затвори всички" и хиксчето са в една дясна група, едно до друго, изцяло в кутията (${JSON.stringify(hdr.map(w => [Math.round(w.closeAll.r), Math.round(w.x.l), Math.round(w.box.r)]))})`,
+  `хедър при 3 прозоръца: дясната група е само хиксчето, изцяло в кутията и вдясно от реда с бутоните, а .close-all-notes-btn го няма (${JSON.stringify(hdr.map(w => [w.group && Math.round(w.group.l), Math.round(w.row.r), Math.round(w.box.r)]))})`,
   { hdr });
 
 // Снимки на хедъра в светла и тъмна тема (приложението няма тъмна тема, затова тук фонът на прозорците
