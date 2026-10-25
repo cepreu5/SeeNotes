@@ -11893,7 +11893,7 @@ function wireOpenNotesBarStripDrag(bar) {
     const strip = bar && bar.querySelector('.open-notes-bar-strip');
     if (!strip || strip._dragWired) return;
     strip._dragWired = true;
-    const state = { tile: null, pointerId: null, startX: 0, startY: 0, started: false, restore: null, pointerDead: false };
+    const state = { tile: null, pointerId: null, pointerType: null, startX: 0, startY: 0, started: false, restore: null, pointerDead: false };
     strip._barDrag = state;
     const tiles = () => Array.from(strip.querySelectorAll('.open-notes-bar-tile'));
 
@@ -11916,14 +11916,20 @@ function wireOpenNotesBarStripDrag(bar) {
     };
 
     // Тръгва ли местенето от това движение? След задържане плочката вече е вдигната: местенето тръгва от
-    // първото движение напред, без праг и без значение на посоката (включително вертикална). Без
-    // задържане правилата са старите: плъзгането е ХОРИЗОНТАЛНО над 10px, защото вертикалният жест по
-    // плочката е скрол на страницата (touch-action: pan-y), а под прага си остава клик.
+    // първото движение напред, без праг и без значение на посоката (включително вертикална).
+    // БЕЗ задържане местенето е САМО за мишка (хоризонтално над 10px). С пръст или писалка хоризонталният
+    // жест върху плочка е скрол на лентата - иначе всяко плъзгане разместваше плочките вместо да скролира
+    // (собственикът, 25.10.2026: „Плъзгането на лентата при препълване не се получава, местят се
+    // плочките"). Затова единственият вход за местене с пръст е задържането
+    // (wireOpenNotesBarTileLongPress), а под прага жестът си остава клик.
     const shouldStart = (clientX, clientY) => {
         if (state.started) return true;
         const dx = Math.abs(clientX - state.startX);
         const dy = Math.abs(clientY - state.startY);
-        if (!state.tile._longPressArmed && (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy)) return false;
+        if (!state.tile._longPressArmed) {
+            if (state.pointerType !== 'mouse') return false;
+            if (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy) return false;
+        }
         return true;
     };
 
@@ -11960,6 +11966,7 @@ function wireOpenNotesBarStripDrag(bar) {
         if (tile) tile._longPressArmed = false;
         state.tile = null;
         state.pointerId = null;
+        state.pointerType = null;
         state.started = false;
         state.restore = null;
         state.pointerDead = false;
@@ -11983,6 +11990,9 @@ function wireOpenNotesBarStripDrag(bar) {
         });
         state.tile = tile;
         state.pointerId = e.pointerId;
+        // Видът вход решава дали едно хоризонтално плъзгане мести плочката (мишка) или скролва лентата
+        // (пръст/писалка) - виж shouldStart.
+        state.pointerType = e.pointerType || '';
         state.startX = e.clientX;
         state.startY = e.clientY;
         state.started = false;
@@ -12060,6 +12070,68 @@ function wireOpenNotesBarStripDrag(bar) {
     strip.addEventListener('touchcancel', touchEnd);
 }
 
+/**
+ * Скрол на лентата с една стъпка. Стъпката е 80% от видимата част, но не по-малко от 80px: остава
+ * застъпване, по което окото хваща посоката, и се вижда, че лентата е мръднала и когато е много тясна.
+ */
+function openNotesBarScrollBy(strip, dir) {
+    if (!strip) return;
+    const step = Math.max(80, Math.round(strip.clientWidth * 0.8));
+    strip.scrollBy({ left: dir * step, behavior: 'smooth' });
+}
+
+/**
+ * Стрелките се показват само когато плочките не се побират (иначе няма какво да се скролира), а онази,
+ * накъдето няма накъде, е НЕАКТИВНА, не скрита: мястото ѝ не мърда, значи плочките не подскачат,
+ * когато стигнеш до края. След плавния скрол състоянието се обновява от събитието scroll.
+ */
+function updateOpenNotesBarScrollButtons(bar) {
+    if (!bar) return;
+    const strip = bar.querySelector('.open-notes-bar-strip');
+    const prev = bar.querySelector('.open-notes-bar-scroll-prev');
+    const next = bar.querySelector('.open-notes-bar-scroll-next');
+    if (!strip || !prev || !next) return;
+    const overflow = strip.scrollWidth - strip.clientWidth;
+    if (overflow <= 1) {
+        prev.hidden = true;
+        next.hidden = true;
+        return;
+    }
+    prev.hidden = false;
+    next.hidden = false;
+    prev.disabled = strip.scrollLeft <= 1;
+    next.disabled = strip.scrollLeft >= overflow - 1;
+}
+
+/**
+ * Следенето на състоянието на стрелките: скролът на самата лента (включително плавния, който бутоните
+ * пускат), смяната на размера на прозореца и смяната на ширината на лентата, когато плочки се добавят
+ * или махат (ResizeObserver, ако го има). Обновяването от ResizeObserver е в следващия кадър: то самото
+ * сменя ширината на лентата (скритата стрелка освобождава място), а пряката промяна в обратната връзка
+ * на наблюдателя дава „ResizeObserver loop" в конзолата.
+ */
+function wireOpenNotesBarScrollButtons(bar) {
+    const strip = bar && bar.querySelector('.open-notes-bar-strip');
+    if (!strip || strip._scrollArrowsWired) return;
+    strip._scrollArrowsWired = true;
+    strip.addEventListener('scroll', () => updateOpenNotesBarScrollButtons(bar), { passive: true });
+    window.addEventListener('resize', () => {
+        if (bar.classList.contains('is-visible')) updateOpenNotesBarScrollButtons(bar);
+    });
+    if (typeof ResizeObserver === 'function') {
+        let scheduled = false;
+        bar._scrollArrowsObserver = new ResizeObserver(() => {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(() => {
+                scheduled = false;
+                updateOpenNotesBarScrollButtons(bar);
+            });
+        });
+        bar._scrollArrowsObserver.observe(strip);
+    }
+}
+
 /** Лентата се строи при първата нужда и остава в слоя; скрита е с клас, не се маха. */
 function ensureOpenNotesBar() {
     const layer = document.getElementById('note-windows-layer');
@@ -12073,7 +12145,32 @@ function ensureOpenNotesBar() {
         bar.style.zIndex = String(OPEN_NOTES_BAR_Z);
         const strip = document.createElement('div');
         strip.className = 'open-notes-bar-strip';
+        // Тесен бутон със стрелка в ДВАТА края на лентата. Стоят ИЗВЪН приплъзващия се ред, значи не се
+        // скролват заедно с плочките, и се показват само когато плочките не се побират на екрана.
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'open-notes-bar-scroll open-notes-bar-scroll-prev';
+        prevBtn.innerHTML = openNotesBarPrevIconSvg;
+        // Скрити, докато лентата не се измери (refreshOpenNotesBar ги показва, ако има препълване).
+        prevBtn.hidden = true;
+        prevBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openNotesBarScrollBy(strip, -1);
+        });
+        bar.appendChild(prevBtn);
         bar.appendChild(strip);
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.className = 'open-notes-bar-scroll open-notes-bar-scroll-next';
+        nextBtn.innerHTML = openNotesBarNextIconSvg;
+        nextBtn.hidden = true;
+        nextBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openNotesBarScrollBy(strip, 1);
+        });
+        bar.appendChild(nextBtn);
         // „Скрий всички бележки" / „Покажи всички бележки": един бутон, който сменя ролята си, когато
         // всички са скрити (иначе няма как да ги върнеш). Стои ВДЯСНО, до бутона за затваряне.
         const hideBtn = document.createElement('button');
@@ -12111,6 +12208,8 @@ function ensureOpenNotesBar() {
         bar.addEventListener('dragstart', (e) => e.preventDefault());
         wireOpenNotesBarDragGuard(bar);
         wireOpenNotesBarStripDrag(bar);
+        // Състоянието на стрелките се следи веднъж - лентата се строи един път.
+        wireOpenNotesBarScrollButtons(bar);
     }
     // Лентата е ПОСЛЕДНОТО дете на слоя: над всички прозорци и извън подредбата им.
     if (bar.parentNode !== layer || layer.lastElementChild !== bar) layer.appendChild(bar);
@@ -12204,6 +12303,21 @@ function refreshOpenNotesBar() {
         closeBtn.title = closeLabel;
         closeBtn.setAttribute('aria-label', closeLabel);
     }
+    // Достъпните имена на стрелките се слагат при всяко опресняване, за да следват езика (както при
+    // бутона за затваряне). Ключовете са съществуващите - същите, с които се именуват предишна и
+    // следваща бележка в менюто, значи имат превод на всички езици.
+    const prevArrow = bar.querySelector('.open-notes-bar-scroll-prev');
+    if (prevArrow) {
+        const prevLabel = _('prevNoteTooltip') || 'Previous note';
+        prevArrow.title = prevLabel;
+        prevArrow.setAttribute('aria-label', prevLabel);
+    }
+    const nextArrow = bar.querySelector('.open-notes-bar-scroll-next');
+    if (nextArrow) {
+        const nextLabel = _('nextNoteTooltip') || 'Next note';
+        nextArrow.title = nextLabel;
+        nextArrow.setAttribute('aria-label', nextLabel);
+    }
     // Бутонът за скриване сменя ролята си, когато всички отворени бележки са скрити.
     const hideBtn = bar.querySelector('.open-notes-bar-hide');
     if (hideBtn) {
@@ -12286,6 +12400,9 @@ function refreshOpenNotesBar() {
     // Лентата е на екрана: измерва се и плаващите бутони се качват над нея. Меренето е след като
     // класът е сложен, за да има лентата реална височина (иначе getBoundingClientRect дава 0).
     syncOpenNotesBarLift(true);
+    // Стрелките се показват/скриват според това дали плочките се побират. Меренето е в следващия кадър:
+    // току-що построените плочки още не са в layout-а, значи scrollWidth е от предишното съдържание.
+    requestAnimationFrame(() => updateOpenNotesBarScrollButtons(bar));
 }
 // Ръчно опресняване (напр. от външен код след смяна на езика или на режима).
 window.refreshOpenNotesBar = refreshOpenNotesBar;
@@ -14405,6 +14522,15 @@ const hideAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" ari
 const showAllNotesIconSvg = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
     <path d="M6 17.6l6-5.6 6 5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
     <path d="M6 10.6l6-5.6 6 5.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>`;
+// Стрелките за скрол на лентата с отворените бележки (собственикът, 25.10.2026: „Плъзгането на лентата
+// при препълване не се получава, местят се плочките - ще трябва да сложим тесни бутони с стрелки в
+// двата края в този случай"). Малък chevron 10x10 в цвета на текста, като останалите икони в лентата.
+const openNotesBarPrevIconSvg = `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+    <path d="M6.4 1.6L3 5l3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+</svg>`;
+const openNotesBarNextIconSvg = `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+    <path d="M3.6 1.6L7 5l-3.4 3.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 </svg>`;
 // Close all notes: two overlapping windows of the SAME size, the x in the upper (front) one (CX, 2026-10-07).
 // The front window is drawn last and filled with the button's own colour, so it hides the part of the back
