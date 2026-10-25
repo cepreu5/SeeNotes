@@ -11252,6 +11252,12 @@ const OPEN_NOTES_BAR_Z = NOTE_WINDOW_Z_BASE + 9000;
 const OPEN_NOTES_BAR_THUMB_SIZE = 80;
 // Колко се чака миниатюрата, преди плочката да остане с буквите си: лентата не бива да чака мрежата.
 const OPEN_NOTES_BAR_THUMB_WAIT = 1000;
+// Повторни опити след изтеклото чакане. Търсенето на файла по име в Drive може да е по-бавно от
+// OPEN_NOTES_BAR_THUMB_WAIT, а опресняването излиза по подписа на плочката - значи без повторен опит
+// една бавна заявка оставяше плочката с букви до края на сесията (собственикът, 25.10.2026).
+// Времената са от началото на първия опит: ~1.5s и ~4s, тоест три опита за около четири секунди.
+const OPEN_NOTES_BAR_THUMB_TRIES = 3;
+const OPEN_NOTES_BAR_THUMB_RETRY_MS = [500, 1500];
 // Тъмният цвят на буквите върху светла плочка. Плочката носи ТОЧНИЯ цвят на бележката си, значи
 // цветът на текста се смята от фона (виж openNotesBarTextColorFor), а не е фиксиран.
 const OPEN_NOTES_BAR_DARK_TEXT = '#1F2A30';
@@ -11589,38 +11595,85 @@ function openNotesBarImageName(note) {
 }
 
 /**
- * Миниатюрата идва по СЪЩИЯ път като снимките в бележката (resolveNoteImageSrc): Drive - thumbnail на
- * файла, локална папка/архив - файлът от диска. Чака се ~1 секунда; ако не дойде или се провали,
- * плочката остава с буквите си - лентата не чака мрежата и не се строи наново заради това.
+ * Първата вградена снимка, която бележката вече е нарисувала в ТЯЛОТО си. hydrateInlineImages слага
+ * в рамката истински <img> с готов адрес, значи това е точно картинката, която потребителят вижда в
+ * бележката, и се взима без нито една заявка. Гледа се ПРЕДИ търсенето по име в Drive: то може да не
+ * намери файла (име, сменено при качване) и тогава плочката показваше първите две букви от текста,
+ * докато снимката си стоеше в самата бележка (собственикът, 25.10.2026).
+ * src може да е празен - рамката още се тегли.
  */
-function openNotesBarFetchThumb(tile, fileName) {
+function openNotesBarBodyImage(win) {
+    const el = win && win.el;
+    if (!el || typeof el.querySelector !== 'function') return { name: '', src: '' };
+    const boxes = Array.from(el.querySelectorAll('.nm-inline-img[data-nm-file]'));
+    let firstName = '';
+    for (const box of boxes) {
+        const name = String(box.dataset.nmFile || '');
+        if (!firstName) firstName = name;
+        const img = box.querySelector('img');
+        const src = (img && img.getAttribute('src')) || '';
+        // Търси се първата ГОТОВА картинка, не просто първата рамка: рамката на първата снимка може
+        // още да се тегли (или да е останала празна), а по-нататъшна вече да е на екрана.
+        if (src) return { name, src };
+    }
+    return { name: firstName, src: '' };
+}
+
+/**
+ * Слага готов адрес на миниатюра в плочката - една логика и за адрес от кеша, и от Drive, и направо
+ * от тялото на бележката. has-thumb се вдига чак когато картинката се зареди, иначе буквите изчезват
+ * под празна рамка.
+ */
+function openNotesBarPutThumb(tile, src, fileName) {
+    if (!src || !tile || !tile.isConnected) return;
+    const name = String(fileName || '');
+    let img = tile.querySelector('.open-notes-bar-thumb');
+    if (!img) {
+        img = document.createElement('img');
+        img.className = 'open-notes-bar-thumb';
+        img.alt = '';
+        img.decoding = 'async';
+        // Плъзгането на плочката е наше (b2.83): родният drag на картинката би го откраднал.
+        img.draggable = false;
+        img.addEventListener('load', () => tile.classList.add('has-thumb'));
+        img.addEventListener('error', () => {
+            // Мъртъв адрес (изтекъл подпис): плочката се връща на буквите, а адресът се забравя,
+            // за да не се показва празно при следващото опресняване.
+            img.remove();
+            tile.classList.remove('has-thumb');
+            if (name) openNotesBarThumbSrc.delete(name);
+        });
+        tile.appendChild(img);
+    }
+    if (img.getAttribute('src') !== src) img.src = src;
+}
+
+/**
+ * Взима адреса направо от тялото на бележката, ако там вече има готова картинка. Връща true, когато
+ * плочката е получила адрес - така повторният опит не пита мрежата за нещо, което е на екрана.
+ */
+function openNotesBarAdoptBodyThumb(tile) {
+    if (!tile || !tile.isConnected) return false;
+    const body = openNotesBarBodyImage(openNotesBarWindowFor(tile));
+    if (!body.src) return false;
+    openNotesBarPutThumb(tile, body.src, body.name);
+    return true;
+}
+
+/**
+ * Миниатюрата идва по СЪЩИЯ път като снимките в бележката (resolveNoteImageSrc): Drive - thumbnail на
+ * файла, локална папка/архив - файлът от диска. Чака се ~1 секунда; ако не дойде, плочката остава с
+ * буквите си, но опитва отново (до OPEN_NOTES_BAR_THUMB_TRIES общо), защото търсенето по име в Drive
+ * може да е по-бавно от чакането. Всеки повторен опит първо гледа тялото на бележката: там адресът
+ * вече може да е готов и не се чака мрежа.
+ */
+function openNotesBarFetchThumb(tile, fileName, attempt) {
     const name = String(fileName || '');
     if (!name || !tile) return;
-    const put = (src) => {
-        if (!src || !tile.isConnected) return;
-        let img = tile.querySelector('.open-notes-bar-thumb');
-        if (!img) {
-            img = document.createElement('img');
-            img.className = 'open-notes-bar-thumb';
-            img.alt = '';
-            img.decoding = 'async';
-            // Плъзгането на плочката е наше (b2.83): родният drag на картинката би го откраднал.
-            img.draggable = false;
-            img.addEventListener('load', () => tile.classList.add('has-thumb'));
-            img.addEventListener('error', () => {
-                // Мъртъв адрес (изтекъл подпис): плочката се връща на буквите, а адресът се забравя,
-                // за да не се показва празно при следващото опресняване.
-                img.remove();
-                tile.classList.remove('has-thumb');
-                openNotesBarThumbSrc.delete(name);
-            });
-            tile.appendChild(img);
-        }
-        if (img.getAttribute('src') !== src) img.src = src;
-    };
+    const tries = Number(attempt) || 0;
     const cached = openNotesBarThumbSrc.get(name);
     // Стар адрес не се ползва: подписаният линк на Drive изтича и <img> остава празен.
-    if (cached && Date.now() - cached.at < INLINE_IMAGE_THUMB_TTL) { put(cached.src); return; }
+    if (cached && Date.now() - cached.at < INLINE_IMAGE_THUMB_TTL) { openNotesBarPutThumb(tile, cached.src, name); return; }
     const work = (async () => {
         try {
             const mode = await inlineImageSourceMode();
@@ -11630,9 +11683,20 @@ function openNotesBarFetchThumb(tile, fileName) {
     })();
     const waited = new Promise(resolve => setTimeout(() => resolve(null), OPEN_NOTES_BAR_THUMB_WAIT));
     Promise.race([work, waited]).then(src => {
-        if (!src) return;
-        openNotesBarThumbSrc.set(name, { at: Date.now(), src });
-        put(src);
+        if (src) {
+            openNotesBarThumbSrc.set(name, { at: Date.now(), src });
+            openNotesBarPutThumb(tile, src, name);
+            return;
+        }
+        // Чакането изтече без адрес. Плочката се проверява пак: тя може вече да е получила картинка
+        // от тялото на бележката или да е изчезнала от лентата (тогава не се оставя таймер за нея).
+        if (tries + 1 >= OPEN_NOTES_BAR_THUMB_TRIES) return;
+        const delay = OPEN_NOTES_BAR_THUMB_RETRY_MS[tries] || OPEN_NOTES_BAR_THUMB_RETRY_MS[0];
+        setTimeout(() => {
+            if (!tile.isConnected || tile.querySelector('.open-notes-bar-thumb')) return;
+            if (openNotesBarAdoptBodyThumb(tile)) return;
+            openNotesBarFetchThumb(tile, name, tries + 1);
+        }, delay);
     }).catch(() => { });
 }
 
@@ -11881,7 +11945,11 @@ function ensureOpenNotesBar() {
 function openNotesBarFillTile(tile, win) {
     const note = findNoteForWindow(win);
     const title = openNotesBarTitleFor(note);
-    const file = openNotesBarImageName(note);
+    // Снимката се търси първо в ТЯЛОТО на бележката: там тя вече е нарисувана и адресът е точно
+    // този, който потребителят вижда. Записът в text_span е само резерва - името в него може да не
+    // се намери в Drive и тогава плочката оставаше с букви (собственикът, 25.10.2026).
+    const fromBody = openNotesBarBodyImage(win);
+    const file = fromBody.name || openNotesBarImageName(note);
     // Фонът е цветът на самата бележка, а буквите върху него се четат - тъмни или бели.
     const color = openNotesBarTileColor(win, note);
     const textColor = openNotesBarTextColorFor(color);
@@ -11894,9 +11962,17 @@ function openNotesBarFillTile(tile, win) {
     tile.setAttribute('aria-label', title || (_('openNotesBar') || 'Open notes'));
     if (title) tile.title = title; else tile.removeAttribute('title');
     // Съдържанието се строи само когато се е сменило (бележката е друга, сменило се е заглавието
-    // или снимката) - иначе картинката се зарежда отначало при всяко вдигане на прозорец.
-    const sig = `${title}\u0000${file}\u0000${color}\u0000${textColor}`;
-    if (tile.dataset.barSig === sig) return;
+    // или снимката) - иначе картинката се зарежда отначало при всяко вдигане на прозорец. Адресът,
+    // дошъл от тялото на бележката, влиза в подписа: той се появява СЛЕД построяването на плочката
+    // (hydrateInlineImages) и без него опресняването не виждаше, че има какво да се покаже.
+    const sig = `${title}\u0000${file}\u0000${fromBody.src}\u0000${color}\u0000${textColor}`;
+    if (tile.dataset.barSig === sig) {
+        // Подписът съвпада, значи друго не се е сменило - но плочка БЕЗ картинка се довършва, ако
+        // тялото вече има готов адрес. Иначе една бавна или неуспешна заявка заключваше буквите до
+        // края на сесията.
+        if (fromBody.src && !tile.querySelector('.open-notes-bar-thumb')) openNotesBarPutThumb(tile, fromBody.src, file);
+        return;
+    }
     tile.dataset.barSig = sig;
     let letters = tile.querySelector('.open-notes-bar-letters');
     if (!letters) {
@@ -11912,7 +11988,9 @@ function openNotesBarFillTile(tile, win) {
     const oldThumb = tile.querySelector('.open-notes-bar-thumb');
     if (oldThumb) oldThumb.remove();
     tile.classList.remove('has-thumb');
-    if (file) openNotesBarFetchThumb(tile, file);
+    // Готовият адрес от тялото се слага веднага, без мрежа; иначе се търси файла по име.
+    if (fromBody.src) openNotesBarPutThumb(tile, fromBody.src, file);
+    else if (file) openNotesBarFetchThumb(tile, file);
 }
 
 /**
