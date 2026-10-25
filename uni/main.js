@@ -5544,7 +5544,6 @@ const NOTE_WINDOW_NARROW = 768; // px: под това стълбицата сл
 const NOTE_WINDOW_MARGIN = 10; // px около прозорец, по-голям от екрана
 const NOTE_WINDOW_GEOM_KEY = 'noteWindowGeometry';
 const NOTE_WINDOW_GEOM_MAX = 300; // до 300 записа; най-старият се изхвърля
-const NOTE_WINDOW_CLOSE_ALL_FROM = 3; // „Затвори всички" се показва от три отворени бележки
 const NOTE_WINDOW_WALK_IDLE = 1200; // мс без натиск на стрелка: обхождането на прозорците се строи наново
 const NOTE_WINDOW_NAV_IN_PLACE_MS = 1500; // мс: < / > сменя бележката в СЪЩИЯ прозорец (бележките на борда)
 let noteWindows = []; // всички прозорци в DOM: отворените плюс най-много един празен (затворен)
@@ -5843,7 +5842,6 @@ function enforceSingleNoteWindow() {
 
 function updateSingleNoteOverlay() {
     enforceSingleNoteWindow();
-    updateCloseAllNotesBar();
     // Лентата на отворените бележки върви заедно с прозорците: тук минава всяко вдигане, всяко
     // затваряне и „затвори всички", значи състоянието ѝ никога не изостава от прозорците.
     refreshOpenNotesBar();
@@ -6840,7 +6838,6 @@ function createNoteWindow() {
         expanded: false,
         restoreBox: null,
         expandBtn: null,
-        closeAllBtn: null,
         // Скрита (но отворена) бележка: прозорецът е display: none, а бележката не е затворена.
         hidden: false,
         barKey: ''
@@ -6908,22 +6905,6 @@ function closeAllNoteWindows() {
     noteWindows = noteWindows.filter(w => w === keep);
     if (activeNoteWindow !== keep) activateNoteWindow(keep, false);
     updateSingleNoteOverlay();
-}
-
-// „Затвори всички" в лентата: показва се само при три и повече отворени бележки. Бутонът е кръгъл,
-// с икона - името му (от превода) живее в title и aria-label, защото текст няма.
-function updateCloseAllNotesBar() {
-    const openCount = getOpenNoteWindows().length;
-    const label = _('closeAllNotes') || 'Close all';
-    noteWindows.forEach(win => {
-        const btn = win.closeAllBtn;
-        if (!btn) return;
-        if (btn.title !== label) btn.title = label;
-        if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
-        const show = win.open && openCount >= NOTE_WINDOW_CLOSE_ALL_FROM;
-        btn.hidden = !show;
-        btn.style.display = show ? 'flex' : 'none';
-    });
 }
 
 // Разрешено ли е отваряне на нова бележка при „Единична бележка": не - затъмнението поема
@@ -7093,35 +7074,10 @@ function wireNoteWindow(win) {
         updateModalExpandButton(win);
     }
 
-    // --- „Затвори всички" в лентата (при три и повече отворени бележки) ---
-    // Кръгъл бутон с иконата от cx-notes, в ДЯСНАТА клетка на лентата, веднага вляво от хиксчето
-    // (.note-header-close-group) - извън плъзгащия се ред с бутоните, за да се вижда винаги.
-    const closeAllBtn = document.createElement('button');
-    closeAllBtn.type = 'button';
-    closeAllBtn.className = 'note-window-bar-btn close-all-notes-btn modal-header-btn';
-    closeAllBtn.innerHTML = closeAllNotesIconSvg;
-    closeAllBtn.hidden = true;
-    closeAllBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        closeAllNoteWindows();
-    });
-    const closeGroup = box.querySelector('.note-header-close-group');
-    const closeAnchor = closeGroup ? closeGroup.querySelector('.modal-close') : null;
-    if (closeAnchor && closeAnchor.parentNode) {
-        // Вляво от хиксчето, на същата вертикала.
-        closeAnchor.parentNode.insertBefore(closeAllBtn, closeAnchor);
-    } else {
-        const headerButtons = box.querySelector('.note-header-buttons');
-        (headerButtons || box).appendChild(closeAllBtn);
-    }
-    win.closeAllBtn = closeAllBtn;
-
     body.style.fontSize = `${localStorage.getItem('modalFontSize') || 16}px`;
 
     wireNoteWindowResize(win, el.querySelector('.modal-resize-handle'));
     wireNoteWindowMove(win);
-    updateCloseAllNotesBar();
 }
 
 // Дръжката за размер: обикновеното плъзгане сменя размера, с който се отварят новите бележки
@@ -7291,7 +7247,6 @@ function initNoteWindows() {
         expanded: false,
         restoreBox: null,
         expandBtn: null,
-        closeAllBtn: null,
         // Скрита (но отворена) бележка: прозорецът е display: none, а бележката не е затворена.
         hidden: false,
         barKey: ''
@@ -12163,8 +12118,6 @@ async function setLanguage(lang) {
         const key = element.getAttribute('data-key-aria-label');
         element.setAttribute('aria-label', _(key));
     });
-    // „Затвори всички" носи името си от превода в title и aria-label (текст в бутона няма): сменя се тук.
-    if (typeof updateCloseAllNotesBar === 'function') updateCloseAllNotesBar();
     // Update all language switchers in the UI
     renderLanguageSwitchers();
     // Check if updateSignoutTooltip exists before calling it
