@@ -12534,6 +12534,9 @@ function onNoteWindowClosed(win) {
     // остава в DOM-а като idle, и да се появи отново при следващото му отваряне.
     win.hidden = false;
     win.el.classList.remove('note-window-hidden');
+    // Затварянето маха и белега за мобилна клавиатура: следващото отваряне на прозореца започва от
+    // запомненото му място, а не от горния ръб (b2.89).
+    win.el.classList.remove('note-window-kb-top');
     // Затворен viewer не трябва да оставя звук: плочката, която е свирила, вече я няма.
     stopAttachmentAudio();
     // Кадърът от посочване на маркер виси над документа (position: fixed) - със затварянето на
@@ -12721,6 +12724,50 @@ function showNoteWindowChangedElsewhere(win, note) {
 }
 
 // Every listener a window needs, on its own elements (cloneNode copies none).
+// --- Мобилна клавиатура (b2.89) ------------------------------------------------------------------
+// Собственикът (25.10.2026): „на мобилни, при отваряне на редактора и показване на клавиатурата,
+// бележката да се измества най-горе на екрана, за да не я закрива клавиатурата. засичането да е по
+// фокус в полето за текст, не по measured височина на изгледа."
+// Затова клавиатурата се хваща по ФОКУСА в полето, не по височината на изгледа: на телефон
+// клавиатурата се показва, без да е сигурно, че прозорецът е станал по-нисък (Android и iOS мерят
+// различно), значи меренето лъже, а фокусът е точният признак, че клавиатурата е тук.
+const NOTE_KB_INPUT_TYPES = new Set(['', 'text', 'search', 'url', 'email', 'tel', 'password', 'number']);
+
+// Полетата, които вдигат клавиатурата: тялото на бележката, разбитият ред на таблица, полетата на
+// таблицата, заглавието - всичко, което е textarea, текстов input или contenteditable.
+function isNoteKeyboardField(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    if (el.tagName === 'INPUT') return NOTE_KB_INPUT_TYPES.has((el.getAttribute('type') || '').toLowerCase());
+    return el.isContentEditable === true;
+}
+
+// Само на телефон: фин показалец (мишка) и широк екран остават както досега - там клавиатура не
+// закрива бележката и местенето ѝ при писане би било изненада.
+function noteKeyboardDockApplies() {
+    try {
+        return window.matchMedia('(pointer: coarse)').matches && window.innerWidth < NOTE_WINDOW_NARROW;
+    } catch (_) {
+        return false;
+    }
+}
+
+// Класът (виж style.css) отменя само инлайн top и слага таван на височината, значи запомненото
+// място на бележката не се пипа: щом фокусът излезе, бележката се връща точно там, където е била.
+function setNoteKeyboardDock(win, on) {
+    const el = win && win.el;
+    if (!el) return;
+    if (on && !noteKeyboardDockApplies()) on = false;
+    el.classList.toggle('note-window-kb-top', !!on);
+}
+
+// Завъртане на телефона или разширяване на прозореца, докато полето е на фокус: ако мястото вече не
+// е мобилно, бележката слиза от горния ръб веднага.
+window.addEventListener('resize', () => {
+    if (noteKeyboardDockApplies()) return;
+    noteWindows.forEach(w => setNoteKeyboardDock(w, false));
+});
+
 function wireNoteWindow(win) {
     const { el, box, body } = win;
     const pick = (mwid) => el.querySelector(`[data-mwid="${mwid}"]`);
@@ -12730,6 +12777,19 @@ function wireNoteWindow(win) {
     el.addEventListener('mousedown', activate, true);
     el.addEventListener('touchstart', activate, { capture: true, passive: true });
     el.addEventListener('focusin', activate, true);
+    // Фокус в поле за текст на телефон вдига бележката най-горе, за да не я закрива клавиатурата
+    // (b2.89). Фокусът, който остава в същата бележка (бутон в лентата ѝ, друго поле), не сваля
+    // бележката - иначе тя би подскочила надолу по средата на писане.
+    el.addEventListener('focusin', (e) => {
+        if (!isNoteKeyboardField(e.target)) return;
+        setNoteKeyboardDock(win, true);
+    });
+    el.addEventListener('focusout', (e) => {
+        if (!isNoteKeyboardField(e.target)) return;
+        const to = e.relatedTarget;
+        if (to && el.contains(to)) return;
+        setNoteKeyboardDock(win, false);
+    });
     el.addEventListener('click', (e) => {
         if (win.suppressClick) {
             win.suppressClick = false;
