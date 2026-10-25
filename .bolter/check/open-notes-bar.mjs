@@ -23,6 +23,9 @@
 //     25.10.2026: „при включена настройка Single note лентата е излишно да се показва" и „в този
 //     режим не може да има много бележки, така че да не ги връща, а да ги затваря");
 //   - бележка със снимка показва <img> в плочката си, бележка без снимка - буквена плочка;
+//   - плочката стига до снимката и когато първият ред ЗАПОЧВА със снимката, и когато търсенето по име
+//     в Drive е по-бавно от чакането ѝ (до три опита), и когато адресът е готов само в тялото на
+//     бележката (b2.84);
 //   - разпъната бележка при видима лента (extended mode, b2.75): долният ред с бутоните и редът с
 //     датата под него свършват НАД лентата, всеки бутон се натиска (elementFromPoint), а щом лентата
 //     изчезне, бележката се връща на цялата височина - на 1280x900 и на 390x844;
@@ -68,16 +71,34 @@ const PHOTO_ID = 'BARPHOTO0001';
 const FOLDER_IMAGES = 'FOLDER_IMAGES';
 const FOLDER_DATA = 'FOLDER_DATA';
 const IMG_PATH = '/storage/emulated/0/Pictures/Images/' + PHOTO;
+// Още три файла за проверките на плочката (b2.84) - всеки със СВОЕ име, защото кешът на вече
+// намерен адрес помни по име и обща снимка би скрила проверката.
+const FIRST_PHOTO = 'bar_first_photo.png';
+const FIRST_PHOTO_ID = 'BARPHOTO0002';
+const SLOW_PHOTO = 'bar_slow_photo.png';
+const SLOW_PHOTO_ID = 'BARPHOTO0003';
+// Този файл НЕ съществува в Drive: търсенето по име връща празен списък.
+const BODY_FILE = 'bar_body_only.png';
+const IMG_FIRST_PATH = '/storage/emulated/0/Pictures/Images/' + FIRST_PHOTO;
+const IMG_SLOW_PATH = '/storage/emulated/0/Pictures/Images/' + SLOW_PHOTO;
+const IMG_BODY_PATH = '/storage/emulated/0/Pictures/Images/' + BODY_FILE;
+// Адресът, който бележката вече е нарисувала в тялото си (проверка В).
+const BODY_SRC = 'https://thumb.invalid/BODY1=s80';
+const DRIVE_NAMES = { [PHOTO]: PHOTO_ID, [FIRST_PHOTO]: FIRST_PHOTO_ID, [SLOW_PHOTO]: SLOW_PHOTO_ID };
+const PHOTO_IDS = new Set(Object.values(DRIVE_NAMES));
+// Забавяне на търсенето по име за едно име: така се проверява, че плочката опитва пак, когато
+// Drive отговаря по-бавно от чакането ѝ (проверка Б). Продуктовият код не знае за това.
+let driveSearchDelay = { name: '', ms: 0 };
 
 const browser = await chromium.launch({ args: ['--num-raster-threads=4'] });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
 // Всичко извън localhost: Drive отговаря като истински за една снимка, останалото - празно.
-await ctx.route(/^https?:\/\/(?!localhost)/, route => {
+await ctx.route(/^https?:\/\/(?!localhost)/, async route => {
     const url = route.request().url();
     const meta = url.match(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\/([^?]+)\?fields=thumbnailLink/);
     if (meta) {
         const fileId = decodeURIComponent(meta[1]);
-        if (fileId !== PHOTO_ID) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+        if (!PHOTO_IDS.has(fileId)) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ thumbnailLink: `https://thumb.invalid/${fileId}=s800` }) });
     }
     if (url.startsWith('https://www.googleapis.com/drive/v3/files')) {
@@ -87,8 +108,13 @@ await ctx.route(/^https?:\/\/(?!localhost)/, route => {
             if (name === 'Images') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id: FOLDER_IMAGES, name: 'Images' }] }) });
             return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id: 'F_' + name, name }] }) });
         }
-        if (name === PHOTO) {
-            return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id: PHOTO_ID, name: PHOTO, modifiedTime: '2026-10-19T09:00:00Z' }] }) });
+        if (DRIVE_NAMES[name]) {
+            // Бавно търсене за избраното име: отговорът закъснява, за да се провери, че плочката
+            // опитва пак, вместо да остане с буквите до края на сесията.
+            if (driveSearchDelay.name === name && driveSearchDelay.ms) {
+                await new Promise(r => setTimeout(r, driveSearchDelay.ms));
+            }
+            return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [{ id: DRIVE_NAMES[name], name, modifiedTime: '2026-10-19T09:00:00Z' }] }) });
         }
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [] }) });
     }
@@ -150,6 +176,23 @@ const NOTES = [
     {
         key: 'dated', id: '9110', gdid: 'BAR10', raw: 'Среща с Иван\nв 9:30', format: '',
         calendarDate: Date.now(), uiState: { cTime: '09:30' },
+    },
+    // Трите бележки за плочката с миниатюра (b2.84). Първият ред ЗАПОЧВА със снимката - точно
+    // случаят на собственика (25.10.2026: „в първия ред има в началото вложена картинка ... се
+    // показват първите две букви от текста и картинката си игнорира").
+    {
+        key: 'firstimg', id: '9111', gdid: 'BAR11', raw: '* Снимка на плажа',
+        format: fmt({ start: 0, end: 1, type: 8, paramstring: IMG_FIRST_PATH, paramint: 5 }),
+    },
+    // Същата бележка, но файлът ѝ се намира в Drive след 2.5s - по-късно от чакането на плочката.
+    {
+        key: 'slowimg', id: '9112', gdid: 'BAR12', raw: '* Бавна снимка',
+        format: fmt({ start: 0, end: 1, type: 8, paramstring: IMG_SLOW_PATH, paramint: 5 }),
+    },
+    // Бележка, чийто файл по име НЕ се намира в Drive, а снимката вече е в тялото ѝ.
+    {
+        key: 'bodyimg', id: '9113', gdid: 'BAR13', raw: '* Снимка само в тялото',
+        format: fmt({ start: 0, end: 1, type: 8, paramstring: IMG_BODY_PATH, paramint: 5 }),
     },
 ];
 
@@ -1663,6 +1706,88 @@ const windowsSeen = () => page.evaluate(() => {
     s = await barState();
     ok(hidden(s), `21) след затварянето на всички лентата е скрита (display ${s.display})`, s);
 }
+
+// --- 22) Плочката стига до снимката и когато първият ред ЗАПОЧВА със снимка, когато търсенето в
+// Drive е бавно и когато адресът е готов само в тялото на бележката (b2.84) ---------------------
+// Собственикът (25.10.2026): „в бележка, в която в първия ред има в началото вложена картинка ...
+// се показват първите две букви от текста и картинката си игнорира - върни и предното състояние на
+// бутона". Затова тук се проверява САМО картинката в плочката; видът ѝ (40px, цвят на бележката,
+// жълт контур на активната) се пази от предишните части.
+const waitTileThumb = (gdid, timeout) => page.waitForFunction((g) => {
+    const tile = [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')]
+        .find(t => (t.dataset.barKey || '').includes(g));
+    return !!tile && tile.classList.contains('has-thumb') && !!tile.querySelector('.open-notes-bar-thumb');
+}, gdid, { timeout }).then(() => true).catch(() => false);
+const lettersShown = (gdid) => page.evaluate((g) => {
+    const tile = [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')]
+        .find(t => (t.dataset.barKey || '').includes(g));
+    if (!tile) return null;
+    const letters = tile.querySelector('.open-notes-bar-letters');
+    return letters ? getComputedStyle(letters).display : null;
+}, gdid);
+
+// А) Бележка, чийто ПЪРВИ РЕД ЗАПОЧВА със снимката (type=8 със start=0) - точно случаят на
+// собственика. Плочката трябва да покаже снимката, а не първите две букви от текста.
+await openNote('firstimg');
+await settle();
+const firstReady = await waitTileThumb('BAR11', 8000);
+const firstTile = await tileStateOf('BAR11');
+const firstLetters = await lettersShown('BAR11');
+ok(firstReady && /^https:\/\/thumb\.invalid\//.test((firstTile && firstTile.imgSrc) || ''),
+    `22а) бележка, чийто първи ред започва със снимка, показва снимката в плочката (${firstTile && firstTile.imgSrc})`, firstTile);
+ok(firstLetters === 'none',
+    `22а) буквите отстъпват на снимката, вместо да стоят върху нея (display ${firstLetters})`, firstTile);
+ok(!!firstTile && /Снимка/.test(firstTile.title || ''),
+    `22а) заглавието на бележката пак се чете - снимката не маха текста (${firstTile && firstTile.title})`, firstTile);
+
+// Б) Търсенето на файла по име в Drive е по-бавно от чакането на плочката (1s): повторните опити
+// трябва да я довършат, вместо тя да остане с буквите до края на сесията.
+const BAR_THUMB_WAIT = 1000; // същото като OPEN_NOTES_BAR_THUMB_WAIT в main.js
+driveSearchDelay = { name: SLOW_PHOTO, ms: 2500 };
+const slowStart = Date.now();
+await openNote('slowimg');
+await settle();
+const slowReady = await waitTileThumb('BAR12', 6000);
+const slowElapsed = Date.now() - slowStart;
+driveSearchDelay = { name: '', ms: 0 };
+const slowTile = await tileStateOf('BAR12');
+ok(slowReady && /^https:\/\/thumb\.invalid\//.test((slowTile && slowTile.imgSrc) || ''),
+    `22б) при бавно търсене в Drive (2.5s) плочката пак получава снимка (${slowTile && slowTile.imgSrc})`, slowTile);
+ok(slowElapsed > BAR_THUMB_WAIT,
+    `22б) снимката е дошла след първото чакане (${slowElapsed}ms), тоест повторният опит работи`, { slowElapsed });
+
+// В) Тялото на бележката вече има готова картинка, а търсенето по име не намира нищо (празен
+// списък): плочката трябва да вземе адреса от тялото, без да чака мрежа.
+await openNote('bodyimg');
+await settle();
+const injected = await page.evaluate(({ gdid, file, src }) => {
+    const win = getOpenNoteWindows().find(w => w.body.dataset.gdid === gdid);
+    if (!win) return { ok: false };
+    // Същата рамка, която hydrateInlineImages пълни в бележката, само че вече готова.
+    const box = document.createElement('span');
+    box.className = 'nm-inline-img is-ready';
+    box.dataset.nmFile = file;
+    box.dataset.nmView = 'note';
+    box.dataset.nmState = 'ready';
+    const img = document.createElement('img');
+    img.alt = file;
+    img.src = src;
+    box.appendChild(img);
+    win.body.appendChild(box);
+    // Лентата се опреснява по същия път, по който го прави приложението при всяко вдигане и
+    // затваряне: плочката трябва да види новия адрес, вместо да излезе по подписа си.
+    refreshOpenNotesBar();
+    return { ok: true, bodySrc: box.querySelector('img').getAttribute('src') };
+}, { gdid: 'BAR13', file: BODY_FILE, src: BODY_SRC });
+ok(injected.ok, '22в) снимката е сложена в тялото на бележката (както я рисува hydrateInlineImages)', injected);
+const bodyReady = await waitTileThumb('BAR13', 3000);
+const bodyTile = await tileStateOf('BAR13');
+ok(bodyReady && (bodyTile && bodyTile.imgSrc) === BODY_SRC,
+    `22в) плочката взима адреса от ТЯЛОТО на бележката, вместо да остане с букви (${bodyTile && bodyTile.imgSrc})`, bodyTile);
+
+// Трите бележки се затварят през своя X: не остават таймери на повторните опити за края на теста.
+for (const g of ['BAR11', 'BAR12', 'BAR13']) await closeNoteByX(g);
+await settle();
 
 // --- 18) Никакви грешки в конзолата / страницата -------------------------------------------
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
