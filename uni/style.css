@@ -4922,6 +4922,25 @@ body.selection-locked .note.active-selection-note .note-content {
     background: transparent;
     box-shadow: none;
     cursor: pointer;
+    /* Плъзгането на плочката преподрежда лентата (b2.83): хоризонталният жест стига до нас, а
+       вертикалният остава скрол на страницата. Затова е pan-y, а НЕ pan-x като на самата лента -
+       иначе браузърът би откраднал хоризонталното плъзгане за скрол на лентата. */
+    touch-action: pan-y;
+    /* Жестът не бива да маркира буквите на плочката или да тегли картинката ѝ. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    transition: transform 0.15s ease;
+}
+/* Плъзганата плочка: леко повдигната над останалите, за да се вижда коя се мести. Сянката е през
+   filter, а не през box-shadow: плочката е с overflow: hidden (миниатюрата се реже по ъглите), значи
+   външна сянка на самата кутия не се вижда. */
+.open-notes-bar-tile.is-dragging {
+    opacity: 0.9;
+    transform: scale(1.06);
+    z-index: 3;
+    cursor: grabbing;
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
 }
 /* Кантът и контурът се рисуват на ::after, а НЕ като box-shadow на самата плочка: когато плочката
    има миниатюра, <img> покрива цялата ѝ площ и сянката на елемента остава ПОД картинката - точно

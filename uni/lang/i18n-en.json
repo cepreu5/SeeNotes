@@ -459,6 +459,8 @@
     "strikeTooltip": "Strikethrough text",
     "lineStartTooltip": "One character left · Ctrl/hold: line start",
     "lineEndTooltip": "One character right · Ctrl/hold: line end",
+    "lineStartAllTooltip": "Hold again: start of the whole text",
+    "lineEndAllTooltip": "Hold again: end of the whole text",
     "tableAlignTooltip": "Align the table under the caret and show it in its place in a field you can type in (no wrapping, scrolls sideways) · press again: close the field and compact the table · Ctrl/⌘+click or hold: all tables",
     "assistantName": "Noto",
     "assistantTitle": "Assistant",
