@@ -105,9 +105,20 @@
         (adsbygoogle = window.adsbygoogle || []).push({});
     </script -->
 
+    <!-- Едноредов хедър (23.10.2026): лого+заглавие, поле за търсене и бутони са преки деца на
+         <header>. Хедърът е size container (container-type: inline-size), така че стъпките в
+         style.css (@container app-header) се засичат по НЕГОВАТА ширина, не по ширината на
+         екрана. Текстът на заглавието никога не се реже. Хедърът има ДВЕ състояния: един ред
+         (лого+заглавие | търсене | бутони) или три реда (лого+заглавие / бутони / търсене) —
+         никога два. -->
     <header>
+        <!-- Редът на хедъра: #header-content е ЕДИН ред (flex, nowrap) на широка ширина и три
+             реда (grid) под прага по ширината на хедъра — виж @container app-header в
+             style.css. Контейнерът е самият <header>, затова превключва ТОЗИ вътрешен ред:
+             container query не може да стилизира собствения си контейнер. -->
+        <div id="header-content">
         <div style="display: flex; align-items: center;">
-            <img src="MNVLogo.png" alt="Logo" class="header-logo" style="height: 60px; margin-right: 10px;">
+            <img src="MNVLogo.png" alt="Logo" class="header-logo">
             <h1 ID="app-title" data-key="appTitle">CX Notes</h1>
         </div>
         <div id="search-wrapper">
@@ -171,6 +182,7 @@
                 </svg>
             </button>
             <div id="boards-menu-container"></div>
+        </div>
         </div>
     </header>
 

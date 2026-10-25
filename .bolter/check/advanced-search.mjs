@@ -12,7 +12,7 @@
 //   - обикновеното „моливите“ (без команда) не намира нищо — тоест разширеният режим още е единственият,
 //     който нормализира (а „молив“ без команда се намира, за да се види, че търсенето изобщо работи).
 // Статично: и шестте i18n файла носят новото име и нито един — старото; main.js разпознава /adv и слага
-// „/adv “ при клик; sw.js е вдигнат (сега b2.78); node --check на двата main.js и на sw.js.
+// „/adv “ при клик; sw.js е вдигнат (сега b2.91); node --check на двата main.js и на sw.js.
 // Пуска се от корена на хранилището:
 //   node .bolter/check/advanced-search.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.4/lib/node_modules/playwright/index.mjs';
@@ -56,8 +56,10 @@ const clickHandler = mainSrc.match(/else if \(parseSearchQuery\(cmd\)\.lex\) \{[
 ok(!!clickHandler && /sBox\.value = '\/adv ';/.test(clickHandler[0]),
     'static: клик по реда в списъка слага „/adv “ в полето', clickHandler ? clickHandler[0] : null);
 ok(!/sBox\.value = '\/9 '/.test(mainSrc), 'static: никъде не остана „/9 “ като сложена команда');
-// Кешът се вдига с всяка промяна по приложението (тук: b2.78 - лентата при една отворена бележка).
-ok(/const CACHE_NAME = 'cx-notes-b2\.78';/.test(swSrc), 'static: sw.js е на cx-notes-b2.78');
+// Кешът се вдига с всяка промяна по приложението (тук: b2.91 - едноредовият хедър; преди: b2.78
+// - лентата при една отворена бележка). Числото тук е само текущата версия на кеша, не проверка
+// на самото поведение.
+ok(/const CACHE_NAME = 'cx-notes-b2\.91';/.test(swSrc), 'static: sw.js е на cx-notes-b2.91');
 for (const p of ['uni/main.js', 'uni/sw.js']) {
     let checked = true;
     try { execFileSync(process.execPath, ['--check', path.resolve(p)], { stdio: ['ignore', 'ignore', 'pipe'] }); } catch { checked = false; }
