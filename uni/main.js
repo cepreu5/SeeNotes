@@ -121,41 +121,103 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
 }
 
 // --- Unified Share Event Handler ---
-const handleShareEvent = (eventData, source) => {
-    if (eventData && eventData.type === 'SHARE_TARGET_EVENT') {
-        const now = Date.now();
-        const isDuplicate = window.lastShareEventTime && (now - window.lastShareEventTime < 1000);
+// Service worker-ът вече е записал споделеното в кеша и чака потвърждение.
+// Затова тук взимаме данните от кеша (който пръв ги вземе, той ги обработва) и
+// връщаме потвърждение по port-а - само тогава прозорецът на споделянето се затваря.
+const SHARE_PAYLOAD_CACHE = 'share-target-image';
+const SHARE_PAYLOAD_KEY = 'share-payload';
+const SHARE_PAYLOAD_MAX_AGE_MS = 10 * 60 * 1000;
+let shareHandlingInProgress = false;
 
-        console.log(`[Main] Received SHARE_TARGET_EVENT from ${source}. ${isDuplicate ? '(Duplicate ignored)' : ''}`, eventData.data);
+async function takePendingShare(expectedSid = null) {
+    try {
+        const cache = await caches.open(SHARE_PAYLOAD_CACHE);
+        const res = await cache.match(SHARE_PAYLOAD_KEY);
+        if (!res) return null;
+        const payload = await res.json();
+        if (!payload || !payload.sid) return null;
+        if (expectedSid && payload.sid !== expectedSid) return null;
+        if (payload.ts && (Date.now() - payload.ts) > SHARE_PAYLOAD_MAX_AGE_MS) return null;
+        // Изтриваме веднага: ако два прозореца се събудят, само един обработва споделеното.
+        await cache.delete(SHARE_PAYLOAD_KEY);
+        const files = Array.isArray(payload.files) ? payload.files : [];
+        return {
+            sid: payload.sid,
+            shared_title: payload.title || '',
+            shared_text: payload.text || '',
+            shared_url: payload.url || '',
+            shared_image: files.length > 0 ? String(files.length) : '0',
+            files: files
+        };
+    } catch (e) {
+        console.warn('[Main] Could not read pending share:', e);
+        return null;
+    }
+}
 
-        if (isDuplicate) return;
-        window.lastShareEventTime = now;
+async function restorePendingShare(payload) {
+    if (!payload || !payload.sid) return;
+    try {
+        const cache = await caches.open(SHARE_PAYLOAD_CACHE);
+        const res = await cache.match(SHARE_PAYLOAD_KEY);
+        if (res) return; // вече има по-ново споделяне
+        await cache.put(SHARE_PAYLOAD_KEY, new Response(JSON.stringify({
+            sid: payload.sid,
+            title: payload.shared_title || '',
+            text: payload.shared_text || '',
+            url: payload.shared_url || '',
+            files: payload.files || [],
+            ts: Date.now()
+        }), { headers: { 'Content-Type': 'application/json' } }));
+    } catch (e) {
+        console.warn('[Main] Could not restore pending share:', e);
+    }
+}
 
-        // 1. Изчистваме всички отворени модали
+const handleShareEvent = async (eventData, source, ackPort) => {
+    if (!eventData || eventData.type !== 'SHARE_TARGET_EVENT') return;
+    const sid = eventData.data && eventData.data.sid ? eventData.data.sid : null;
+    if (shareHandlingInProgress) {
+        console.log(`[Main] Share ${sid || ''}: already handling another one, leaving it for the next window.`);
+        return;
+    }
+    shareHandlingInProgress = true;
+    let payload = null;
+    try {
+        payload = await takePendingShare(sid);
+        if (!payload) {
+            console.log(`[Main] Share ${sid || ''} from ${source}: not in cache (already taken or stale).`);
+            if (ackPort) { try { ackPort.postMessage({ type: 'SHARE_TARGET_ACK', sid: sid }); } catch (e) {} }
+            return;
+        }
+        console.log(`[Main] Handling share ${payload.sid} from ${source}`);
         document.querySelectorAll('.modal.visible, .settings-modal.visible, .modal-overlay.visible').forEach(m => {
             m.classList.remove('visible');
         });
-
-        // 2. Фокусираме и изчистваме активни елементи
         if (document.activeElement) document.activeElement.blur();
-
-        // 3. Изчакваме анимациите и отваряме Share Target
-        setTimeout(() => {
-            console.log(`[Main] Invoking handleShareTarget (triggered by ${source})...`);
-            handleShareTarget(eventData.data);
-        }, 300);
+        await handleShareTarget(payload);
+        // Даваме време на модала да се покаже, преди да кажем на SW, че е прието
+        await new Promise(r => setTimeout(r, 900));
+        if (ackPort) { try { ackPort.postMessage({ type: 'SHARE_TARGET_ACK', sid: payload.sid }); } catch (e) {} }
+    } catch (e) {
+        console.error('[Main] Share handling failed:', e);
+        await restorePendingShare(payload); // остава за следващия прозорец
+    } finally {
+        shareHandlingInProgress = false;
     }
 };
 
-// Listen via BroadcastChannel
-// const shareChannel = new BroadcastChannel('share_target_channel');
-// shareChannel.onmessage = (event) => handleShareEvent(event.data, 'BroadcastChannel');
-
-// Listen via direct SW postMessage
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => handleShareEvent(event.data, 'ServiceWorker.postMessage'));
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        const ackPort = (event.ports && event.ports[0]) ? event.ports[0] : null;
+        handleShareEvent(event.data, 'ServiceWorker.postMessage', ackPort);
+    });
 }
 
+// Връщане към приложението след замразяване: ако е останало неприето споделяне, взимаме го.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') handleShareTarget();
+});
 // --- Debug Listener for Service Worker logs ---
 // const swDebugChannel = new BroadcastChannel('sw_debug_channel');
 // swDebugChannel.onmessage = (event) => {
@@ -5600,10 +5662,19 @@ async function deleteFromDB(storeName, key) {
 // --- Web Share Target API Handler ---
 async function handleShareTarget(externalData = null) {
     const url = new URL(window.location.href);
-    const sharedTitle = externalData ? externalData.shared_title : url.searchParams.get('shared_title');
-    const sharedText = externalData ? externalData.shared_text : url.searchParams.get('shared_text');
-    const sharedUrl = externalData ? externalData.shared_url : url.searchParams.get('shared_url');
-    const _rawSharedImage = externalData ? externalData.shared_image : url.searchParams.get('shared_image');
+    let data = externalData;
+    if (!data) {
+        const hasUrlShare = url.searchParams.has('shared_title') || url.searchParams.has('shared_text') ||
+            url.searchParams.has('shared_url') || url.searchParams.has('shared_image');
+        if (!hasUrlShare) {
+            // Данните не са в адреса - service worker-ът може да е оставил чакащо споделяне.
+            data = await takePendingShare(url.searchParams.get('share_id'));
+        }
+    }
+    const sharedTitle = data ? data.shared_title : url.searchParams.get('shared_title');
+    const sharedText = data ? data.shared_text : url.searchParams.get('shared_text');
+    const sharedUrl = data ? data.shared_url : url.searchParams.get('shared_url');
+    const _rawSharedImage = data ? data.shared_image : url.searchParams.get('shared_image');
     const hasSharedImage = (_rawSharedImage && parseInt(_rawSharedImage, 10) > 0) ? _rawSharedImage : null;
     if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
     // Съставяме съдържанието на бележката от споделените данни
@@ -5639,6 +5710,7 @@ async function handleShareTarget(externalData = null) {
     url.searchParams.delete('shared_text');
     url.searchParams.delete('shared_url');
     url.searchParams.delete('shared_image');
+    url.searchParams.delete('share_id');
     window.history.replaceState({}, document.title, url.pathname + url.search);
     // copilot version
     // const url = new URL(window.location.href);
@@ -5698,7 +5770,28 @@ async function handleShareTarget(externalData = null) {
     // --- Обработка на споделени файлове (може да са повече от един) ---
     const fileCount = hasSharedImage ? parseInt(hasSharedImage, 10) : 0;
     const sharedFiles = []; // { blob, filename, mimeType }
-    if (fileCount > 0) {
+    const sharedFileList = (data && Array.isArray(data.files)) ? data.files : null;
+    if (sharedFileList && sharedFileList.length > 0) {
+        // Нов път: service worker-ът е записал всеки файл с ключ и име
+        try {
+            const cache = await caches.open('share-target-image');
+            for (const meta of sharedFileList) {
+                const response = await cache.match(meta.key);
+                if (!response) continue;
+                const blob = await response.blob();
+                let filename = meta.name || response.headers.get('X-Filename') || `shared_${now}_${sharedFiles.length}.bin`;
+                try { filename = decodeURIComponent(filename); } catch (decodeErr) { /* остава както е */ }
+                sharedFiles.push({
+                    blob: blob,
+                    filename: filename,
+                    mimeType: meta.type || response.headers.get('Content-Type') || 'application/octet-stream'
+                });
+                await cache.delete(meta.key);
+            }
+        } catch (e) {
+            console.error('Error retrieving shared files from cache:', e);
+        }
+    } else if (fileCount > 0) {
         try {
             const cache = await caches.open('share-target-image');
             for (let i = 0; i < fileCount; i++) {
@@ -5833,7 +5926,7 @@ if ('launchQueue' in window) {
             shared_url: url.searchParams.get('shared_url'),
             shared_image: url.searchParams.get('shared_image')
         };
-        if (params.shared_title || params.shared_text || params.shared_url || params.shared_image === '1') {
+        if (params.shared_title || params.shared_text || params.shared_url || (params.shared_image && parseInt(params.shared_image, 10) > 0)) {
             handleShareTarget(params);
         }
     });
