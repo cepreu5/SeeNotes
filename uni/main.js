@@ -11285,6 +11285,11 @@ function openNotesBarWindowFor(tile) {
 // и оцелява след презареждане на страницата; ако localStorage не е достъпен, работи само в паметта.
 const OPEN_NOTES_BAR_ORDER_STORE = 'cx_open_notes_bar_order';
 let openNotesBarOrder = readOpenNotesBarOrder();
+// Ключовете, които ТАЗИ сесия е виждала отворени. По тях се разбира кое е „затворена бележка" (била е
+// отворена, сега я няма) и кое е „бележка, която още не е отваряна" (идва от записа на предишното
+// зареждане): иначе първото отваряне след презареждане би изтрило целия записан ред, защото в него
+// всички останали ключове изглеждат „затворени".
+const openNotesBarSeen = new Set();
 
 function readOpenNotesBarOrder() {
     try {
@@ -11305,8 +11310,14 @@ function saveOpenNotesBarOrder() {
  * зависи от това кога за последно е бил отворен някой стар.
  */
 function orderOpenNoteWindows(open) {
+    // Без отворена бележка редът НЕ се пипа: първото опресняване при старт на приложението идва точно
+    // така (лентата се строи, когато няма отворена бележка) и иначе би изтрило запомнения ред, тоест
+    // редът не би оцелял след презареждане на страницата.
+    if (!open.length) return open.slice();
     const keys = open.map(w => openNotesBarKeyFor(w));
-    const kept = openNotesBarOrder.filter(k => keys.includes(k));
+    keys.forEach(k => openNotesBarSeen.add(k));
+    // Ключ се маха само ако бележката е била отворена в тази сесия и вече я няма - виж openNotesBarSeen.
+    const kept = openNotesBarOrder.filter(k => keys.includes(k) || !openNotesBarSeen.has(k));
     let changed = kept.length !== openNotesBarOrder.length;
     keys.forEach((k) => {
         if (!kept.includes(k)) { kept.push(k); changed = true; }
@@ -11795,8 +11806,11 @@ function wireOpenNotesBarStripDrag(bar) {
     strip.addEventListener('pointermove', (e) => {
         if (!state.tile || e.pointerId !== state.pointerId) return;
         if (!state.started) {
-            if (Math.abs(e.clientX - state.startX) < OPEN_NOTES_BAR_DRAG_PX
-                && Math.abs(e.clientY - state.startY) < OPEN_NOTES_BAR_DRAG_PX) return;
+            // Плъзгането е ХОРИЗОНТАЛНО: вертикален жест по плочката не мести нищо (на телефон той е
+            // скрол на страницата - touch-action: pan-y - и дори не стига дотук).
+            const dx = Math.abs(e.clientX - state.startX);
+            const dy = Math.abs(e.clientY - state.startY);
+            if (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy) return;
             begin();
         }
         if (e.cancelable) e.preventDefault();

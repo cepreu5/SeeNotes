@@ -707,16 +707,36 @@ ok(s.tiles.every(t => t.w === 40 && t.h === 40),
     `плочките не се свиват - всички са 40x40 (${s.tiles.map(t => t.w + 'x' + t.h).join(', ')})`, s.tiles);
 
 // Плъзгането на реда не „избира" бележка: показалецът минава по лентата, а активната не се мени.
+// От b2.83 плъзгане, започнало ВЪРХУ плочка, преподрежда лентата (виж open-notes-bar-drag.mjs) -
+// затова това плъзгане тръгва от ФОНА между две плочки: то е само минаване по лентата и не бива нито
+// да избира бележка, нито да мести плочки.
 const beforeDrag = await windowsState();
+const beforeOrder = await page.evaluate(() => [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')].map(t => t.dataset.barKey));
 const box = await page.locator('#open-notes-bar .open-notes-bar-strip').boundingBox();
-await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2);
-await page.mouse.down();
-await page.mouse.move(box.x + 30, box.y + box.height / 2, { steps: 12 });
-await page.mouse.up();
-await settle();
+const stripMidY = box.y + box.height / 2;
+const gapX = await page.evaluate(([x0, x1, y]) => {
+    for (let x = Math.round(x0) + 2; x < Math.round(x1) - 2; x++) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.classList && el.classList.contains('open-notes-bar-strip')) return x;
+        // Първият фон между две плочки е достатъчен.
+        if (el && el.classList && el.classList.contains('open-notes-bar-tile')) continue;
+    }
+    return null;
+}, [box.x, box.x + box.width, stripMidY]);
+ok(gapX !== null, `има фон между плочките, от който да тръгне плъзгане по лентата (x ${gapX})`, { box, gapX });
+if (gapX !== null) {
+    await page.mouse.move(gapX, stripMidY);
+    await page.mouse.down();
+    await page.mouse.move(Math.max(4, gapX - 60), stripMidY, { steps: 12 });
+    await page.mouse.up();
+    await settle();
+}
 const afterDrag = await windowsState();
 ok(afterDrag.activeGdid === beforeDrag.activeGdid,
     `плъзгане по лентата не сменя активната бележка (${beforeDrag.activeGdid} -> ${afterDrag.activeGdid})`, afterDrag);
+const afterOrder = await page.evaluate(() => [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')].map(t => t.dataset.barKey));
+ok(JSON.stringify(afterOrder) === JSON.stringify(beforeOrder),
+    'плъзгане, започнало на фона на лентата, не мести плочките', { beforeOrder, afterOrder });
 
 tick('до тук: 9) 390px/8 бележки');
 // --- 10) „Скрий всички бележки": прозорците изчезват, но НЕ се затварят -----------------------
