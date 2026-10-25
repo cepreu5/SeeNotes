@@ -273,25 +273,18 @@ ok(Math.abs(reopened.contentWidth - saved.w) <= 2 && Math.abs(reopened.contentHe
   { reopened: [reopened.contentWidth, reopened.contentHeight], saved, offset: [reopened.width, reopened.height] });
 await shot('moved-after-reload');
 
-// ======================= 4. Таванът (300 записа) и миграцията от стария формат =======================
-// Речникът се зарежда във СТАРИЯ формат (v1): номерата на реда са в отделния масив order, от най-
-// стария (g:K0) към най-скоро местения (g:K299). Точно такъв е записът на човек, който е ползвал
-// предишната версия, тоест тук се проверява и миграцията, и таванът наведнъж.
+// ======================= 4. Таванът: 300 записа, най-старият се изхвърля =======================
+// Речникът се зарежда чист v2: номерът на реда е в кутията (o) - 1 за най-стария (g:K0) до 300 за
+// най-скоро местения (g:K299), а seq е броячът, който вече е стигнал до 300.
 const seeded = await page.evaluate(() => {
-  const boxes = {}, order = [];
-  for (let i = 0; i < 300; i++) { const k = 'g:K' + i; order.push(k); boxes[k] = { x: 10 + i, y: 20 + i, w: 300, h: 200 }; }
-  const raw = JSON.stringify({ v: 1, order, boxes });
+  const boxes = {};
+  for (let i = 0; i < 300; i++) boxes['g:K' + i] = { x: 10 + i, y: 20 + i, w: 300, h: 200, o: i + 1 };
+  const raw = JSON.stringify({ v: 2, seq: 300, boxes });
   localStorage.setItem('noteWindowGeometry', raw);
   return { boxes: Object.keys(boxes).length, raw };
 });
-ok(seeded.boxes === 300, `таван: проверката зареди 300 записа в стария формат (${seeded.boxes})`, { boxes: seeded.boxes });
+ok(seeded.boxes === 300, `таван: проверката зареди 300 записа (${seeded.boxes})`, { boxes: seeded.boxes });
 await openNote({ id: 'N301', gdid: 'GN301', boardId: 'B2', raw: 'триста и първа' }, 1);
-// Четенето на стар речник не бива да го презаписва: миграцията е само в паметта, докато някой не
-// премести бележка. Иначе отварянето на приложението пише в localStorage, без човек да е пипал нищо.
-const stillOld = await page.evaluate(() => localStorage.getItem('noteWindowGeometry'));
-ok(stillOld === seeded.raw,
-  `миграция: отварянето на бележка не презаписва стария речник (остава v1 с order)`,
-  { before: seeded.raw.slice(0, 60), after: String(stillOld).slice(0, 60) });
 const capGrab = await page.evaluate(() => {
   const w = getOpenNoteWindows().find(x => x.key === 'g:GN301') || activeNoteWindow;
   const r = w.box.getBoundingClientRect();
@@ -311,47 +304,69 @@ const capBox = capped.geomRaw && capped.geomRaw.boxes['g:GN301'];
 ok(capped.geom.boxes === 300,
   `таван: след 301-вия запис пак са точно 300 кутии (${capped.geom.boxes})`, capped.geom);
 ok(!!capped.geomRaw && capped.geomRaw.v === 2 && !('order' in capped.geomRaw),
-  `миграция: записаният речник е във втория формат и без order (v ${capped.geomRaw && capped.geomRaw.v}, order ${capped.geomRaw && JSON.stringify(capped.geomRaw.order)})`,
+  `таван: речникът остава v2, само с кутии (v ${capped.geomRaw && capped.geomRaw.v})`,
   { v: capped.geomRaw && capped.geomRaw.v, order: capped.geomRaw && capped.geomRaw.order });
 ok(!!capped.geomRaw && !capped.geomRaw.boxes['g:K0'] && capped.geom.first === 'g:K1' && capped.geom.last === 'g:GN301',
-  `таван: изхвърлен е най-старият (g:K0), новият е с най-голям номер (${capped.geom.first} ... ${capped.geom.last})`, capped.geom);
+  `таван: изхвърлен е записът с най-малък номер (g:K0), новият е с най-голям (${capped.geom.first} ... ${capped.geom.last})`, capped.geom);
 ok(!!capBox && Number.isInteger(capBox.x) && Number.isInteger(capBox.y) && capBox.w > 0 && capBox.h > 0,
   `таван: новият запис е с истински числа (${JSON.stringify(capBox)})`, capBox);
-// Номерата са истински цели числа и броячът е по-голям от всеки номер - иначе изхвърлените записи
-// връщат стари номера обратно в играта и „най-старият" спира да е най-старият.
+// Номерата са цели числа и броячът е стигнал до новия запис - иначе изхвърлените записи връщат стари
+// номера обратно в играта и „най-старият" спира да е най-старият. (Броячът може да е и повече от 301:
+// всяко истинско местене взима нов номер, а едно плъзгане може да запише и два пъти.)
 const capSeq = capped.geomRaw && capped.geomRaw.seq;
 const capOs = capped.geomRaw ? Object.keys(capped.geomRaw.boxes).map(k => capped.geomRaw.boxes[k].o) : [];
-ok(Number.isInteger(capSeq) && capOs.length === 300 && capOs.every(o => Number.isInteger(o) && o <= capSeq) && capBox && capBox.o === capSeq,
-  `миграция: всеки запис има цял номер на реда, броячът е след последния (seq ${capSeq}, новият ${capBox && capBox.o}, най-малък ${Math.min(...capOs)})`,
+ok(Number.isInteger(capSeq) && capSeq >= 301 && capOs.length === 300 && capOs.every(o => Number.isInteger(o) && o <= capSeq) && capBox && capBox.o === capSeq,
+  `таван: всеки запис има цял номер на реда, броячът е стигнал до новия (seq ${capSeq}, новият ${capBox && capBox.o}, най-малък ${Math.min(...capOs)})`,
   { seq: capSeq, o: capBox && capBox.o, min: Math.min(...capOs) });
 
-// Миграция на непълен стар речник: ключ, който го няма в order (ръчно добавен или от счупен запис),
-// взима номер след най-големия, а ключ в order, за който няма кутия, просто се прескача.
-await page.evaluate(() => {
-  localStorage.setItem('noteWindowGeometry', JSON.stringify({
-    v: 1,
-    order: ['g:GM1', 'g:GONE', 'g:GM2'],
-    boxes: {
-      'g:GM1': { x: 100, y: 100, w: 400, h: 300 },
-      'g:GM2': { x: 140, y: 140, w: 400, h: 300 },
-      'g:GM3': { x: 180, y: 180, w: 400, h: 300 }
-    }
-  }));
+// ======================= 4б. Стар речник (v1 с order) се изхвърля, не се чете =======================
+// Нарочно се зарежда речникът от предишната версия: приложението не го разбира и се държи все едно
+// няма записи - бележката сяда на подразбиращото се място, а не на онова, което старият речник казва.
+await page.evaluate(() => { getOpenNoteWindows().forEach(closeNoteWindow); });
+const oldSeed = await page.evaluate(() => {
+  const raw = JSON.stringify({
+    v: 1, order: ['g:GOLD1', 'g:GOLD2'],
+    boxes: { 'g:GOLD1': { x: 120, y: 90, w: 480, h: 340 }, 'g:GOLD2': { x: 640, y: 400, w: 400, h: 300 } }
+  });
+  localStorage.setItem('noteWindowGeometry', raw);
+  return raw;
 });
-const mig = await page.evaluate(() => {
-  const s = readNoteWindowGeometry();
-  return {
-    v: s.v, seq: s.seq, hasOrder: 'order' in s,
-    o: ['g:GM1', 'g:GM2', 'g:GM3'].map(k => s.boxes[k] && s.boxes[k].o),
-    raw: localStorage.getItem('noteWindowGeometry'),
-  };
+await openNote({ id: 'OLD1', gdid: 'GOLD1', boardId: 'B1', raw: 'стара бележка' }, 1);
+const oldSeen = await page.evaluate(() => {
+  const r = activeNoteWindow.box.getBoundingClientRect();
+  return { left: Math.round(r.left), top: Math.round(r.top), key: activeNoteWindow.key, raw: localStorage.getItem('noteWindowGeometry') };
 });
-ok(mig.v === 2 && !mig.hasOrder && mig.o[0] === 0 && mig.o[1] === 2 && mig.o[2] === 3 && mig.seq === 4,
-  `миграция: непълен стар речник - номерът идва от order, а ключът извън него след най-големия (o ${JSON.stringify(mig.o)}, seq ${mig.seq})`,
-  mig);
-ok(String(mig.raw).startsWith('{"v":1') && String(mig.raw).includes('"order"'),
-  `миграция: четенето не е презаписало нищо в localStorage (${String(mig.raw).slice(0, 50)})`);
-
+ok((oldSeen.left !== 120 || oldSeen.top !== 90),
+  `стар речник: мястото от v1 не се помни, бележката е на подразбиращото се място (${oldSeen.left},${oldSeen.top}, а не 120,90)`,
+  oldSeen);
+ok(oldSeen.raw === oldSeed,
+  `стар речник: четенето не го е презаписало - просто го подминава (${String(oldSeen.raw).slice(0, 40)})`,
+  { before: oldSeed.slice(0, 40), after: String(oldSeen.raw).slice(0, 40) });
+// Местене с истинска мишка по лентата горе (moveActive е дефиниран по-долу в проверката, затова тук
+// е на ръка - същата точка и същата стъпка).
+const oldGrab = await page.evaluate(() => {
+  const r = activeNoteWindow.box.getBoundingClientRect();
+  return { x: Math.round(r.left + r.width - 40), y: Math.round(r.top + 4) };
+});
+await page.mouse.move(oldGrab.x, oldGrab.y);
+await page.mouse.down();
+await page.mouse.move(oldGrab.x + 30, oldGrab.y + 20, { steps: 2 });
+await page.mouse.move(oldGrab.x + 60, oldGrab.y + 40, { steps: 2 });
+await page.mouse.up();
+await page.waitForFunction(() => {
+  const g = JSON.parse(localStorage.getItem('noteWindowGeometry') || 'null');
+  return !!(g && g.boxes && g.boxes['g:GOLD1']);
+}, null, { timeout: 5000 }).catch(() => { });
+const afterOldMove = await page.evaluate(() => {
+  const g = JSON.parse(localStorage.getItem('noteWindowGeometry') || 'null');
+  return g ? { v: g.v, seq: g.seq, boxes: Object.keys(g.boxes).length, dict: g, raw: g.boxes } : null;
+});
+const afterOldRec = afterOldMove && afterOldMove.raw['g:GOLD1'];
+ok(!!afterOldMove && afterOldMove.v === 2 && !('order' in afterOldMove.dict) && afterOldMove.boxes === 1
+  && afterOldMove.seq === 1 && !!afterOldRec && afterOldRec.o === 1
+  && Number.isInteger(afterOldRec.x) && Number.isInteger(afterOldRec.y) && Number.isInteger(afterOldRec.w) && Number.isInteger(afterOldRec.h),
+  `стар речник -> първо местене: нов речник v2 с един запис, брояч 1 и номер на реда 1 (${JSON.stringify(afterOldMove && afterOldMove.dict)})`,
+  afterOldMove);
 // ======================= 5. „Затвори всички" от три отворени бележки =======================
 // Първо се прибира всичко, за да се види как се появява бутонът: един -> два -> три.
 await page.evaluate(() => { getOpenNoteWindows().forEach(closeNoteWindow); });
@@ -1013,16 +1028,19 @@ ok(!!g6 && g6.v === 2 && !('order' in g6.dict) && g6.boxes === 1 && g6.seq === 1
   `геометрия 6: записът е във втория формат, с номер на реда в кутията и брояч 1 (${JSON.stringify(g6 && g6.dict)})`, g6);
 
 // (7) „Ресет на позиции/размери": редът в Настройки и самото натискане.
-// Речникът тук е СТАРИЯТ формат (v1 с order) - точно какъвто е при човек, който е ползвал предишната
-// версия, за да се види и че ресетът не оставя следа от него.
+// Речникът тук е v2 с два записа (единият е на бележката, която ще се отвори), за да се види, че
+// ресетът го маха целия, а не оставя парче от него.
 // Прозорецът се слага в ъгъла горе вляво, за да не покрива модала: Настройки се отваря от хедъра, а
 // модалът и слоят на прозорците са на една и съща височина (1000), тоест кутия на прозорец върху
 // модала би поела клика.
 await closeActive();
 await page.evaluate(() => {
   localStorage.setItem('noteWindowGeometry', JSON.stringify({
-    v: 1, order: ['g:GR1', 'g:GR2'],
-    boxes: { 'g:GR1': { x: 20, y: 20, w: 380, h: 260 }, 'g:GR2': { x: 40, y: 40, w: 300, h: 200 } }
+    v: 2, seq: 5,
+    boxes: {
+      'g:GR1': { x: 20, y: 20, w: 380, h: 260, o: 2 },
+      'g:GR2': { x: 40, y: 40, w: 300, h: 200, o: 5 }
+    }
   }));
   localStorage.setItem('modalWidth', '555px');
   localStorage.setItem('modalHeight', '355px');
@@ -1165,18 +1183,17 @@ ok(finalGeom === null,
 // Настройки се затварят, за да не остане отворен модал за следните проверки.
 await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
 
-// (7б) Ресет при СТАРИЯ (v1) речник - горе речникът беше точно такъв. След натискането не бива да
-// остане нищо от стария формат (нито order, нито v: 1): иначе след някое бъдещо четене той пак би
-// се прочел като ред. Липсващ ключ и празен речник значат едно и също - „няма записи", тоест
-// бележките сядат на подразбиращото се място.
-const afterOldReset = await page.evaluate(() => {
+// (7б) След ресета на v2 речник (горе): не бива да остане нито ключ, нито празен речник. Липсващ
+// ключ и празен речник значат едно и също - „няма записи", тоест бележките сядат на подразбиращото
+// се място.
+const afterResetKey = await page.evaluate(() => {
   const raw = localStorage.getItem('noteWindowGeometry');
   let parsed = null;
   try { parsed = JSON.parse(raw); } catch (e) { }
   return { raw, parsed };
 });
-ok(afterOldReset.raw === null && (!afterOldReset.parsed || (!('order' in afterOldReset.parsed) && afterOldReset.parsed.v !== 1)),
-  `ресет при стар (v1) речник: ключът изчезва целият, без order и без v: 1 (${String(afterOldReset.raw)})`, afterOldReset);
+ok(afterResetKey.raw === null && !afterResetKey.parsed,
+  `ресет при v2 речник: ключът изчезва целият (${String(afterResetKey.raw)})`, afterResetKey);
 await openNote({ id: 'AFTER1', gdid: 'GAFTER1', boardId: 'B1', raw: 'след ресета' }, 1);
 const freshAfterReset = await page.evaluate(() => {
   const r = activeNoteWindow.box.getBoundingClientRect();
@@ -1186,15 +1203,16 @@ ok((freshAfterReset.left !== 20 || freshAfterReset.top !== 20) && freshAfterRese
   `ресет: бележка се отваря на подразбиращото се място, не на стария запис (20,20), и не си създава запис (${freshAfterReset.left},${freshAfterReset.top})`,
   freshAfterReset);
 await moveActive(60, 40);
-const afterOldMove = await geomRead();
-const afterOldRec = afterOldMove && afterOldMove.raw['g:GAFTER1'];
-ok(!!afterOldMove && afterOldMove.v === 2 && !('order' in afterOldMove.dict) && afterOldMove.seq === 1
-  && !!afterOldRec && afterOldRec.o === 1 && Number.isInteger(afterOldRec.x) && Number.isInteger(afterOldRec.y)
-  && Number.isInteger(afterOldRec.w) && Number.isInteger(afterOldRec.h),
-  `ресет при стар (v1) -> първо местене: нов речник v2 с номер на реда и брояч 1 (${JSON.stringify(afterOldMove && afterOldMove.dict)})`,
-  afterOldMove);
+const afterResetMove = await geomRead();
+const afterResetRec = afterResetMove && afterResetMove.raw['g:GAFTER1'];
+ok(!!afterResetMove && afterResetMove.v === 2 && !('order' in afterResetMove.dict) && afterResetMove.seq === 1
+  && !!afterResetRec && afterResetRec.o === 1 && Number.isInteger(afterResetRec.x) && Number.isInteger(afterResetRec.y)
+  && Number.isInteger(afterResetRec.w) && Number.isInteger(afterResetRec.h),
+  `ресет при v2 -> първо местене: нов речник v2 с номер на реда и брояч 1 (${JSON.stringify(afterResetMove && afterResetMove.dict)})`,
+  afterResetMove);
 
-// (7в) Същото при ВЕЧЕ нов (v2) речник: ресетът не бива да оставя половин речник.
+// (7в) Същото с втори v2 речник: този път бележките от него не са отворени, тоест ресетът не бива да
+// оставя половин речник и когато няма отворен прозорец, който да го оправдае.
 await closeActive();
 await page.evaluate(() => {
   localStorage.setItem('noteWindowGeometry', JSON.stringify({
@@ -1215,8 +1233,8 @@ const afterNewReset = await page.evaluate(() => {
   try { parsed = JSON.parse(raw); } catch (e) { }
   return { raw, parsed };
 });
-ok(afterNewReset.raw === null && (!afterNewReset.parsed || (!('order' in afterNewReset.parsed) && afterNewReset.parsed.v !== 1)),
-  `ресет при v2 речник: ключът изчезва целият (${String(afterNewReset.raw)})`, afterNewReset);
+ok(afterNewReset.raw === null && !afterNewReset.parsed,
+  `ресет при втори v2 речник: ключът изчезва целият (${String(afterNewReset.raw)})`, afterNewReset);
 await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
 await openNote({ id: 'AFTER2', gdid: 'GAFTER2', boardId: 'B1', raw: 'след ресета 2' }, 1);
 await moveActive(40, 30);
