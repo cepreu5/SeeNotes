@@ -11521,8 +11521,54 @@ function openNotesBarTitleFor(note) {
     return nmTitleCleanLine(first.replace(LINK_MARKER_REGEX, ''));
 }
 
-/** Първите 1-2 букви на заглавието - за буквената плочка. */
+// Колко емоджита от началото се показват в плочката: буквите също са до две, а повече не се побират
+// в 40px плочката при 15px шрифт.
+const OPEN_NOTES_BAR_EMOJI_MAX = 2;
+// Емоджи ли е един графемен клъстър: pictographic, регионален индикатор (флаг) или keycap (\u20E3).
+const OPEN_NOTES_BAR_EMOJI_RE = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3]/u;
+// Резервен път, ако Intl.Segmenter липсва: водещата емоджи последователност се взима с регулярен
+// израз - целият ZWJ състав, модификаторът на тона, вариационният селектор, флагът и keycap-ът.
+const OPEN_NOTES_BAR_EMOJI_CLUSTER_RE = /^(?:\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3|\p{Extended_Pictographic}\uFE0F?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}\uFE0F?(?:\p{Emoji_Modifier})?)*)/u;
+
+/**
+ * Водещата емоджи последователност на низа, или '' ако низът не започва с емоджи.
+ * Собственикът (25.10.2026): „Ако първият ред започва с емотикон като този: 📷 ASCII - в бутона да
+ * се появява само емотикона". Взима се ЦЯЛ графемен клъстър (Intl.Segmenter), а не един знак, за да
+ * не се разкъсат: ZWJ семейство (👨‍👩‍👧), модификатор на тона (👍🏽), вариационен селектор (❤️),
+ * флаг от два регионални индикатора (🇧🇬) и keycap (1️⃣). Няколко емоджита в началото се показват
+ * заедно, но не повече от OPEN_NOTES_BAR_EMOJI_MAX.
+ */
+function openNotesBarLeadingEmoji(text) {
+    const value = String(text || '').trim();
+    if (!value) return '';
+    const found = [];
+    if (typeof Intl === 'object' && Intl && typeof Intl.Segmenter === 'function') {
+        const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+        for (const part of segmenter.segment(value)) {
+            // Редът на емоджитата свършва при първия клъстър, който не е емоджи - той вече е текст.
+            if (!OPEN_NOTES_BAR_EMOJI_RE.test(part.segment)) break;
+            found.push(part.segment);
+            if (found.length >= OPEN_NOTES_BAR_EMOJI_MAX) break;
+        }
+    } else {
+        let rest = value;
+        while (rest && found.length < OPEN_NOTES_BAR_EMOJI_MAX) {
+            const match = rest.match(OPEN_NOTES_BAR_EMOJI_CLUSTER_RE);
+            if (!match) break;
+            found.push(match[0]);
+            rest = rest.slice(match[0].length);
+        }
+    }
+    return found.join('');
+}
+
+/**
+ * Надписът на буквената плочка: ако заглавието ЗАПОЧВА с емоджи - само емоджито, иначе първите 1-2
+ * букви. Емоджито се връща както е (без .toUpperCase()), буквите - главни.
+ */
 function openNotesBarLetters(title) {
+    const emoji = openNotesBarLeadingEmoji(title);
+    if (emoji) return emoji;
     const words = String(title || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
     if (!words.length) return '\u00b7';
     const first = Array.from(words[0])[0] || '';

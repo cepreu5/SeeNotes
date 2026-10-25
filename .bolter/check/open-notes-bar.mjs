@@ -195,6 +195,25 @@ const NOTES = [
         key: 'bodyimg', id: '9113', gdid: 'BAR13', raw: '* Снимка само в тялото',
         format: fmt({ start: 0, end: 1, type: 8, paramstring: IMG_BODY_PATH, paramint: 5 }),
     },
+    // Бележки за емоджито в плочката (b2.86): първият ред ЗАПОЧВА с емоджи, значи в плочката трябва да
+    // стои САМО емоджито, а не първите две букви (досега „📷 ASCII" даваше „📷A").
+    // Случаят на собственика.
+    { key: 'emojiCam', id: '9117', gdid: 'BAR17', raw: '📷 ASCII', format: '' },
+    // Цялото ZWJ семейство: разкъсването му би оставило само 👨 в плочката.
+    { key: 'emojiFamily', id: '9118', gdid: 'BAR18', raw: '👨‍👩‍👧 разговор', format: '' },
+    // Модификатор на тона: 👍🏽 е един клъстър.
+    { key: 'emojiTone', id: '9119', gdid: 'BAR19', raw: '👍🏽 добре', format: '' },
+    // Флаг от два регионални индикатора: 🇧🇬 е един клъстър.
+    { key: 'emojiFlag', id: '9120', gdid: 'BAR20', raw: '🇧🇬 България', format: '' },
+    // Вариационен селектор: ❤️ (U+2764 U+FE0F) не бива да се разкъса до ❤.
+    { key: 'emojiHeart', id: '9121', gdid: 'BAR21', raw: '❤️ любов', format: '' },
+    // Няколко емоджита в началото се показват заедно.
+    { key: 'emojiMany', id: '9122', gdid: 'BAR22', raw: '📷🎬 ASCII', format: '' },
+    // Контроли: обикновеният текст си остава с първите 1-2 главни букви, както досега. Старите правила
+    // взимат първата буква на ПЪРВИТЕ ДВЕ ДУМИ ("Обикновен ред" -> "ОР"), а при една дума - втората
+    // буква на същата дума ("Обикновено" -> "ОБ").
+    { key: 'emojiPlain', id: '9123', gdid: 'BAR23', raw: 'Обикновен ред', format: '' },
+    { key: 'emojiWord', id: '9124', gdid: 'BAR24', raw: 'Обикновено', format: '' },
 ];
 
 // Отваря бележка по истинския път на приложението (showModal), както клик на картата на борда.
@@ -1848,6 +1867,54 @@ ok(bodyReady && (bodyTile && bodyTile.imgSrc) === BODY_SRC,
 
 // Трите бележки се затварят през своя X: не остават таймери на повторните опити за края на теста.
 for (const g of ['BAR11', 'BAR12', 'BAR13']) await closeNoteByX(g);
+await settle();
+
+// --- 23) Плочката показва САМО емоджито, когато първият ред започва с емоджи (b2.86) ----------
+// Собственикът (25.10.2026): „Ако първият ред започва с емотикон като този: 📷 ASCII - в бутона да
+// се появява само емотикона". Досега плочката показваше първите 1-2 БУКВИ на заглавието, значи при
+// „📷 ASCII" показваше „📷A". Заглавието (title и aria-label) си остава ЦЯЛОТО - то е подсказката при
+// посочване и за екранните четци, значи емоджито не бива да го изяжда.
+const emojiLetters = (gdid) => page.evaluate((g) => {
+    const tile = document.querySelector(`#open-notes-bar .open-notes-bar-tile[data-bar-key*="${g}"]`);
+    const letters = tile ? tile.querySelector('.open-notes-bar-letters') : null;
+    return letters ? letters.textContent : null;
+}, gdid);
+
+const EMOJI_CASES = [
+    // Случаят на собственика.
+    { key: 'emojiCam', gdid: 'BAR17', line: '📷 ASCII', expect: '📷' },
+    // Цялото ZWJ семейство, а не само първият му знак.
+    { key: 'emojiFamily', gdid: 'BAR18', line: '👨‍👩‍👧 разговор', expect: '👨‍👩‍👧' },
+    // Модификаторът на тона върви с емоджито.
+    { key: 'emojiTone', gdid: 'BAR19', line: '👍🏽 добре', expect: '👍🏽' },
+    // Флаг от два регионални индикатора.
+    { key: 'emojiFlag', gdid: 'BAR20', line: '🇧🇬 България', expect: '🇧🇬' },
+    // Вариационният селектор не се губи.
+    { key: 'emojiHeart', gdid: 'BAR21', line: '❤️ любов', expect: '❤️' },
+    // Няколко емоджита в началото се показват заедно (толкова, колкото се побират в 40px плочката).
+    { key: 'emojiMany', gdid: 'BAR22', line: '📷🎬 ASCII', expect: '📷🎬' },
+    // Контрола: обикновеният ред си остава както досега - първата буква на първите две думи.
+    { key: 'emojiPlain', gdid: 'BAR23', line: 'Обикновен ред', expect: 'ОР' },
+    // Втора контрола: една дума - първите ѝ две букви (същото старо правило, другият му клон).
+    { key: 'emojiWord', gdid: 'BAR24', line: 'Обикновено', expect: 'ОБ' },
+];
+for (const c of EMOJI_CASES) {
+    await openNote(c.key);
+    await settle();
+    const got = await emojiLetters(c.gdid);
+    ok(got === c.expect,
+        `23) първи ред „${c.line}" дава в плочката „${c.expect}" (получено „${got}")`, { gdid: c.gdid, got });
+}
+// Подсказката не се скъсява до емоджито: целият първи ред остава в title и в aria-label.
+const emojiTitle = await page.evaluate((g) => {
+    const tile = document.querySelector(`#open-notes-bar .open-notes-bar-tile[data-bar-key*="${g}"]`);
+    return tile ? { title: tile.getAttribute('title'), ariaLabel: tile.getAttribute('aria-label') } : null;
+}, 'BAR17');
+ok(!!emojiTitle && /ASCII/.test(emojiTitle.title || '') && /ASCII/.test(emojiTitle.ariaLabel || ''),
+    `23) заглавието на плочката си остава цялото, не само емоджито (title „${emojiTitle && emojiTitle.title}", aria-label „${emojiTitle && emojiTitle.ariaLabel}")`, emojiTitle);
+
+// Бележките се затварят през своя X: тестът свършва от същото състояние, от което е тръгнал.
+for (const c of EMOJI_CASES) await closeNoteByX(c.gdid);
 await settle();
 
 // --- 18) Никакви грешки в конзолата / страницата -------------------------------------------
