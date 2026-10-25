@@ -3695,6 +3695,12 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     background: transparent;
     box-shadow: none;
     cursor: pointer;
+    /* Задържане на плочка затваря бележката (b1.49): без това задържането маркира текста на плочката
+       или вади менюто на iOS, вместо да стигне до приложението. touch-action и скролът на лентата
+       НЕ се пипат - плъзгането по реда остава както досега. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
 /* Кантът и контурът се рисуват на ::after, а НЕ като box-shadow на самата плочка: когато плочката
    има миниатюра, <img> покрива цялата ѝ площ и сянката на елемента остава ПОД картинката - точно

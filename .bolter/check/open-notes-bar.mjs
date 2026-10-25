@@ -36,6 +36,9 @@
 //     от местенето, .toast-notification и .board-filter-popup от stylesheet-а) и ги връща на място;
 //   - фонът на лентата е 50% прозрачен (#37474F), бутоните „скрий/покажи всички" са с двойни стрелки;
 //   - лентата работи и в пълноекранен режим на приложението (header-fullscreen, „extended").
+//   - задържане (500ms) на плочка ЗАТВАРЯ точно тази бележка - същият път като хиксчето в прозореца ѝ
+//     (и за скрита бележка); обикновеният клик продължава да е превключвател, а движение на показалеца
+//     над 6px преди 500ms отменя задържането (b1.49);
 // Пуска се от корена на хранилището:
 //   node .bolter/check/open-notes-bar.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -1621,7 +1624,103 @@ ok(restored === false, '19) пълноекранният режим се изк�
 
 tick('до тук: 19) пълноекранен режим');
 
-// --- 20) Никакви грешки в конзолата / страницата -------------------------------------------
+// --- 20) Задържане (500ms) на плочка в лентата ЗАТВАРЯ точно тази бележка ----------------------
+// Собственикът (25.10.2026): „дълго натискане на мини бутон в лентата долу с отворените бележки да
+// затваря съответната бележка". Задържането минава по същия път като хиксчето в прозореца, значи
+// бележката не се скрива, а се ЗАТВАРЯ: изчезва и от getOpenNoteWindows(), и плочката ѝ от реда.
+// Пуска се с истинския вход на браузъра (показалец надолу - изчакване - нагоре), не с изкуствено
+// събитие; изчакването е до самото затваряне, а не фиксирано време.
+const tileBoxFor = async (gdid) => {
+    const idx = await tileIndexFor(gdid);
+    if (idx < 0) return null;
+    return page.locator('#open-notes-bar .open-notes-bar-tile').nth(idx).boundingBox();
+};
+// Задържане върху плочката на бележка: чака САМОТО затваряне (до 3s), после пуска показалеца.
+const longPressTile = async (gdid) => {
+    const box = await tileBoxFor(gdid);
+    if (!box) return { pressed: false, closed: false };
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    const closed = await page.waitForFunction(
+        g => !getOpenNoteWindows().some(w => (w.body.dataset.gdid || '') === g),
+        gdid, { timeout: 3000 }
+    ).then(() => true).catch(() => false);
+    await page.mouse.up();
+    await settle();
+    return { pressed: true, closed };
+};
+
+ok(await closeAllOpenNotes(), '20) изходно: няма отворени бележки');
+for (const key of ['bread', 'plan', 'call']) await openNote(key);
+await settle();
+s = await barState();
+let ws20 = await windowsState();
+ok(ws20.open.length === 3 && !hidden(s) && s.tiles.length === 3,
+    `20) три бележки са отворени, лентата е видима с 3 плочки (${ws20.open.length}, display ${s.display})`, s.tiles.map(t => t.key));
+const active20 = ws20.activeGdid;
+const order20 = s.tiles.map(t => String(t.key || ''));
+
+// а) Контрола: обикновеният клик НЕ затваря - плочката на активната бележка я скрива, както досега.
+ok(await clickTile(active20), `20а) клик на плочката на активната ${active20} минава`);
+ws20 = await windowsState();
+let p20 = await winProbe(active20);
+s = await barState();
+ok(ws20.open.length === 3 && p20.present && p20.hidden === true && p20.display === 'none',
+    `20а) обикновеният клик СКРИВА бележката, но не я затваря (отворени ${ws20.open.length}, hidden ${p20.hidden}, display ${p20.display})`, p20);
+ok(s.tiles.length === 3 && !hidden(s),
+    `20а) лентата остава с трите плочки (${s.tiles.length}, display ${s.display})`, s.tiles.map(t => t.key));
+
+// б) Задържане върху плочката на СКРИТАТА бележка: тя се ЗАТВАРЯ (не само скрива).
+const lp20hidden = await longPressTile(active20);
+ws20 = await windowsState();
+s = await barState();
+ok(lp20hidden.pressed && lp20hidden.closed,
+    `20б) задържане на плочката затваря бележката ${active20} (затвори се: ${lp20hidden.closed})`, lp20hidden);
+ok(!ws20.open.some(w => w.gdid === active20) && ws20.open.length === 2,
+    `20б) затворената бележка изчезва от отворените (отворени ${ws20.open.map(w => w.gdid).join(',')})`, ws20.open);
+ok(s.tiles.length === 2 && !s.tiles.some(t => String(t.key || '').includes(active20)),
+    `20б) и плочката ѝ изчезва от реда (плочки ${s.tiles.length})`, s.tiles.map(t => t.key));
+ok(JSON.stringify(s.tiles.map(t => String(t.key || ''))) === JSON.stringify(order20.filter(k => !k.includes(active20))),
+    '20б) останалите плочки са в същия ред', { before: order20, after: s.tiles.map(t => t.key) });
+
+// в) Задържане върху плочката на ВИДИМА бележка: затваря се точно тя, другите остават.
+const visible20 = (ws20.open.find(w => !w.hidden) || {}).gdid;
+const orderBefore20 = (await barState()).tiles.map(t => String(t.key || ''));
+const lp20 = await longPressTile(visible20);
+ws20 = await windowsState();
+s = await barState();
+ok(lp20.pressed && lp20.closed && !ws20.open.some(w => w.gdid === visible20),
+    `20в) задържане на плочката затваря видимата бележка ${visible20} (отворени ${ws20.open.map(w => w.gdid).join(',')})`, lp20);
+const expected20 = orderBefore20.filter(k => !k.includes(visible20));
+ok(s.tiles.length === 1 && JSON.stringify(s.tiles.map(t => String(t.key || ''))) === JSON.stringify(expected20),
+    `20в) в реда остава само другата плочка, на същото място (${s.tiles.map(t => t.key).join(',')})`, { expected20, after: s.tiles.map(t => t.key) });
+ok(ws20.open.length === 1 && ws20.open[0].hidden === false && !hidden(s),
+    `20в) другата бележка остава отворена и видима, лентата остава (${ws20.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).join(' ')})`, { ws: ws20.open, display: s.display });
+
+// г) Контрола: движение на показалеца над 6px преди 500ms ОТМЕНЯ задържането - бележката остава
+// отворена (иначе плъзгане по лентата щеше да затваря бележки).
+const keep20 = ws20.open[0].gdid;
+const keepBox20 = await tileBoxFor(keep20);
+ok(!!keepBox20, `20г) плочката на ${keep20} е на екрана`, keepBox20);
+if (keepBox20) {
+    await page.mouse.move(keepBox20.x + keepBox20.width / 2, keepBox20.y + keepBox20.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(keepBox20.x + keepBox20.width / 2 + 22, keepBox20.y + keepBox20.height / 2, { steps: 6 });
+    // Задържането е 500ms, значи тук се чака повече от него: ако движението не отменяше, бележката
+    // щеше да е затворена вече.
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+    await settle();
+}
+ws20 = await windowsState();
+p20 = await winProbe(keep20);
+s = await barState();
+ok(ws20.open.length === 1 && p20.present && p20.hidden === false && p20.display !== 'none',
+    `20г) движение над 6px отменя задържането - бележката остава отворена и видима (отворени ${ws20.open.length}, hidden ${p20.hidden}, display ${p20.display})`, p20);
+ok(s.tiles.length === 1 && !hidden(s),
+    `20г) плочката ѝ остава в лентата (плочки ${s.tiles.length}, display ${s.display})`, s.tiles.map(t => t.key));
+
+// --- 21) Никакви грешки в конзолата / страницата -------------------------------------------
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
 
 await browser.close();
