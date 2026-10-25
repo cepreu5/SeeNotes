@@ -12232,6 +12232,22 @@ function wireNoteWindow(win) {
     // Clicks inside a window must not reach the notes underneath.
     el.addEventListener('click', (e) => e.stopPropagation());
 
+    // --- Лентата на бележката и лентата с инструменти не се маркират (b2.81) ---
+    // CSS сваля селекцията на двете ленти, но плъзгане, започнало в тях, може да продължи надолу и
+    // да маркира текста в тялото на бележката (или да маркира глифа на стрелката при задържане).
+    // selectstart се спира още в началото за всичко в двете ленти: така нито плъзгането от лентата,
+    // нито двойният клик върху датата/кръгчето, нито задържането на пръст маркират нещо. Полетата
+    // за писане са изключение - в тях маркирането е нужно. Местенето на прозореца не се пипа: то
+    // работи с mousedown/mousemove върху кутията (wireNoteWindowMove) и не разчита на селекция, а
+    // дългото натискане на стрелките също минава през собствени таймери, не през селекция.
+    el.addEventListener('selectstart', (e) => {
+        const t = e.target;
+        if (!t || !t.closest) return;
+        if (!t.closest('.modal-header-toolbar, .modal-edit-toolbar')) return;
+        if (t.closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+        e.preventDefault();
+    }, true);
+
     // Closed = 'visible' taken away (by the X, Escape, a save that closes, any old code path).
     let wasVisible = false;
     new MutationObserver(() => {
