@@ -6975,6 +6975,19 @@ function wireNoteWindow(win) {
     // Натисканията в прозореца не стигат до бележките отдолу.
     el.addEventListener('click', (e) => e.stopPropagation());
 
+    // --- Лентата на прозореца не се маркира (b1.48) ---
+    // CSS сваля селекцията на лентата, но плъзгане, започнало в нея, може да продължи надолу и да
+    // маркира текста в тялото на бележката. selectstart се спира още в началото за всичко в лентата:
+    // така нито плъзгането от хедъра, нито двойният клик върху часа/датата маркират нещо. Полетата
+    // за писане са изключение - в тях маркирането е нужно. Местенето на прозореца не се пипа: то
+    // работи с mousedown/mousemove върху кутията (wireNoteWindowMove) и не разчита на селекция.
+    el.addEventListener('selectstart', (e) => {
+        const t = e.target;
+        if (!t || !t.closest || !t.closest('.note-header-toolbar')) return;
+        if (t.closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+        e.preventDefault();
+    }, true);
+
     // Затворен = свален 'visible'. Така хващаме и старите пътища, които свалят класа направо.
     let wasVisible = false;
     new MutationObserver(() => {

@@ -20,7 +20,9 @@
 //   - записът за място/размер (noteWindowGeometry) се създава само при истинска промяна след отваряне,
 //     дефолтният размер (modalWidth/modalHeight) се пипа само в режим „Единична бележка", а редът
 //     „Ресет на позиции/размери" в Настройки трие записите;
-//   - смяна на борда НЕ затваря отворените прозорци.
+//   - смяна на борда НЕ затваря отворените прозорци;
+//   - в лентата (хедъра) на прозореца на бележката НЕ може да се маркира текст (b1.48): нито с
+//     плъзгане от нея, нито с двоен клик, а тялото на бележката остава селектируемо.
 // Пуска се от корена на хранилището (seeNotes-main):
 //   node .bolter/check/multinotes.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -1631,6 +1633,124 @@ await page.locator('#reset-window-geometry').screenshot({ path: FIXED_SHOT('mult
 await darkResetSheet.evaluate(el => el.remove());
 await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
 await closeAllWindows();
+
+// ======================= 10. Лентата на бележката не се маркира (b1.48) =======================
+// В хедъра на прозореца на бележката не може да се маркира текст: нито с плъзгане с мишката, нито с
+// двоен клик (на мобилен там излиза менюто за копиране на iOS/Android). Правилото важи за цялата
+// лента и за всяко нейно дете (името на борда, датата, часа, кръглите бутони), а тялото на бележката
+// остава селектируемо - текстът в бележката се маркира както досега.
+await closeAllWindows();
+await clearGeometryStorage();
+await openNote({ id: 'S1', gdid: 'GS1', boardId: 'B1', raw: 'маркирай този текст в тялото на бележката' }, 1);
+// (а) Пресметнатите стилове: лентата и всичко в нея дава user-select: none.
+// В модала датата и часът не стоят в лентата, а във футъра на бележката (.modal-note-footer), тоест
+// в тялото и там остават селектируеми. Затова класовете, които собственикът посочи, се проверяват в
+// самата лента: временно сложен там .note-header-info с .note-header-date-text и .note-header-time-text
+// (същата разметка като в хедъра на бележка на борда) и веднага махнат - така се вижда, че правилото
+// за децата на лентата покрива и тях, а не само познатите днес бутони.
+const bandStyles = await page.evaluate(() => {
+  const w = activeNoteWindow;
+  const band = w.box.querySelector('.note-header-toolbar');
+  const childSelect = [...band.querySelectorAll('*')].map(el => getComputedStyle(el).userSelect);
+  const probe = document.createElement('div');
+  probe.className = 'note-header-info';
+  probe.innerHTML = '<span class="note-header-date-text">21.10.2026</span>'
+    + '<span class="note-header-time-text">10:30</span>';
+  band.appendChild(probe);
+  const probeSelect = [probe, ...probe.querySelectorAll('.note-header-date-text, .note-header-time-text')]
+    .map(el => getComputedStyle(el).userSelect);
+  probe.remove();
+  return {
+    band: getComputedStyle(band).userSelect,
+    dateInBand: !!w.box.querySelector('.note-header-toolbar .note-header-date-text'),
+    probeSelect,
+    children: childSelect.length,
+    childrenAllNone: childSelect.every(v => v === 'none'),
+    body: getComputedStyle(w.body).userSelect,
+    box: getComputedStyle(w.box).userSelect,
+  };
+});
+ok(bandStyles.band === 'none' && bandStyles.children >= 6 && bandStyles.childrenAllNone,
+  `хедър: лентата и всичките ѝ ${bandStyles.children} деца дават user-select: none (лента "${bandStyles.band}")`,
+  bandStyles);
+ok(bandStyles.probeSelect.length === 3 && bandStyles.probeSelect.every(v => v === 'none'),
+  `хедър: .note-header-info, .note-header-date-text и .note-header-time-text в лентата също дават user-select: none (${JSON.stringify(bandStyles.probeSelect)})`,
+  bandStyles);
+ok(bandStyles.body !== 'none' && bandStyles.box !== 'none',
+  `хедър: тялото на бележката остава селектируемо (тяло "${bandStyles.body}", кутия "${bandStyles.box}")`,
+  bandStyles);
+// Точка върху текста на името на борда - то е и дръжката, за която се мести прозорецът.
+const bandPoint = () => page.evaluate(() => {
+  const w = activeNoteWindow;
+  const el = w.box.querySelector('.note-header-toolbar #modal-board-name, .note-header-toolbar .nw-modal-board-name');
+  const r = el.getBoundingClientRect();
+  const box = w.box.getBoundingClientRect();
+  return { x: Math.round(r.left + 8), y: Math.round(r.top + Math.round(r.height / 2)), left: Math.round(box.left), top: Math.round(box.top), styleLeft: Math.round(parseFloat(w.box.style.left) || 0), styleTop: Math.round(parseFloat(w.box.style.top) || 0), text: (el.textContent || '').trim() };
+});
+// Първият текст в тялото на бележката - за контролата, че там маркирането работи.
+const bodyTextPoint = () => page.evaluate(() => {
+  const walker = document.createTreeWalker(activeNoteWindow.body, NodeFilter.SHOW_TEXT);
+  let node = null;
+  while ((node = walker.nextNode())) if (node.textContent.trim().length > 5) break;
+  if (!node) return null;
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  const r = range.getBoundingClientRect();
+  return { x: Math.round(r.left + 4), y: Math.round(r.top + Math.round(r.height / 2)), right: Math.round(r.right), text: node.textContent.trim().slice(0, 24) };
+});
+// (б) Плъзгане с истинска мишка от името на борда надолу в тялото: селекцията остава празна, а
+// прозорецът пак се мести - пазачът на selectstart не пречи на местенето.
+await page.evaluate(() => window.getSelection().removeAllRanges());
+const dragFrom = await bandPoint();
+await page.mouse.move(dragFrom.x, dragFrom.y);
+await page.mouse.down();
+await page.mouse.move(dragFrom.x + 10, dragFrom.y + 40, { steps: 4 });
+await page.mouse.move(dragFrom.x + 20, dragFrom.y + 160, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(50);
+const dragHeader = await page.evaluate(() => {
+  const r = activeNoteWindow.box.getBoundingClientRect();
+  return {
+    text: window.getSelection().toString(),
+    left: Math.round(r.left), top: Math.round(r.top),
+    styleLeft: Math.round(parseFloat(activeNoteWindow.box.style.left) || 0),
+    styleTop: Math.round(parseFloat(activeNoteWindow.box.style.top) || 0),
+  };
+});
+ok(dragHeader.text === '',
+  `хедър: плъзгане от името на борда (${JSON.stringify(dragFrom.text)}) надолу в тялото не маркира нищо (селекция ${JSON.stringify(dragHeader.text)})`,
+  dragHeader);
+// Местенето се мери по стила на кутията (с него работи и самото местене), с толеранс от няколко
+// пиксела: истинската мишка минава през междинни стъпки, а кутията се закръгля на цяло.
+const movedX = dragHeader.styleLeft - dragFrom.styleLeft, movedY = dragHeader.styleTop - dragFrom.styleTop;
+ok(Math.abs(movedX - 20) <= 4 && Math.abs(movedY - 160) <= 4,
+  `хедър: същото плъзгане още мести прозореца (${dragFrom.styleLeft},${dragFrom.styleTop} -> ${dragHeader.styleLeft},${dragHeader.styleTop}, тоест +${movedX}/+${movedY})`,
+  { from: dragFrom, to: dragHeader });
+// (в) Контрола: плъзгане в тялото на бележката маркира текста както досега.
+const bodyFrom = await bodyTextPoint();
+await page.mouse.move(bodyFrom.x, bodyFrom.y);
+await page.mouse.down();
+await page.mouse.move(bodyFrom.x + 20, bodyFrom.y + 2, { steps: 3 });
+await page.mouse.move(bodyFrom.right - 2, bodyFrom.y, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(50);
+const dragBody = await page.evaluate(() => window.getSelection().toString());
+ok(!!bodyFrom && dragBody.trim().length > 0,
+  `хедър: контрола - плъзгане в тялото маркира текст (${JSON.stringify(dragBody)})`,
+  { from: bodyFrom, text: dragBody });
+// (г) Двоен клик върху името на борда в лентата: селекцията остава празна.
+await page.evaluate(() => window.getSelection().removeAllRanges());
+const dblPoint = await bandPoint();
+await page.mouse.dblclick(dblPoint.x, dblPoint.y);
+await page.waitForTimeout(50);
+const dblHeader = await page.evaluate(() => ({
+  text: window.getSelection().toString(),
+  open: getOpenNoteWindows().length,
+}));
+ok(dblHeader.text === '' && dblHeader.open === 1,
+  `хедър: двоен клик върху името на борда не маркира нищо (селекция ${JSON.stringify(dblHeader.text)}, отворени ${dblHeader.open})`,
+  dblHeader);
+await shot('header-no-select');
 
 // ======================= 7b. Езиковата смяна съществува в този HTML =======================
 // main.js пълни .lang-switcher-container. При подменен HTML (index-2.html, копиран от multinotes)
