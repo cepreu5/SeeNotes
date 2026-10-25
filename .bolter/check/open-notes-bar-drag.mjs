@@ -227,8 +227,11 @@ const tileCss = await page.evaluate(() => {
     const r = t.getBoundingClientRect();
     return { touchAction: cs.touchAction, userSelect: cs.userSelect, w: Math.round(r.width), h: Math.round(r.height), cursor: cs.cursor };
 });
-ok(tileCss.touchAction === 'pan-y',
-    `плочките имат touch-action: pan-y - хоризонталният жест е наш, вертикалният е скрол (${tileCss.touchAction})`, tileCss);
+// Собственикът (25.10.2026): „Плъзгането на лентата при препълване не се получава, местят се плочките."
+// Затова хоризонталният жест върху плочка вече е СКРОЛ на лентата (pan-x), а местенето с пръст тръгва
+// само след задържане - виж open-notes-bar-scroll-arrows.mjs.
+ok(tileCss.touchAction === 'pan-x',
+    `плочките имат touch-action: pan-x - хоризонталният жест скролва лентата (${tileCss.touchAction})`, tileCss);
 ok(tileCss.userSelect === 'none', `плочките не се маркират при плъзгане (user-select ${tileCss.userSelect})`, tileCss);
 ok(tileCss.w === 40 && tileCss.h === 40, `плочката е още 40x40 (${tileCss.w}x${tileCss.h})`, tileCss);
 
