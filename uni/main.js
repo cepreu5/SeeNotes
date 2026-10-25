@@ -6412,7 +6412,8 @@ function wireOpenNotesBarStripDrag(bar) {
         state.started = true;
         // Редът отпреди жеста - по него се връща плочката, ако жестът бъде отменен (pointercancel).
         state.restore = Array.from(strip.children).map(el => el.dataset.barKey).filter(Boolean);
-        // Задържането вече не е задържане: плъзгане не бива да затваря бележката, която местиш.
+        // Задържането вече не затваря нищо (b1.52) - то само е вдигнало плочката. Таймерът се отменя
+        // все пак, за да не вдигне плочката посред местенето.
         if (typeof state.tile._cancelLongPress === 'function') state.tile._cancelLongPress();
         state.tile.classList.add('is-dragging');
         try { strip.setPointerCapture(state.pointerId); } catch (e) { }
@@ -6430,7 +6431,12 @@ function wireOpenNotesBarStripDrag(bar) {
                 // Отменен жест: лентата се строи наново в реда отпреди него.
                 refreshOpenNotesBar();
             }
+        } else if (tile) {
+            // Жестът беше само задържане, без движение: плочката слиза долу, нищо не се записва и
+            // бележката остава отворена (затварянето е само през хиксчето ѝ).
+            tile.classList.remove('is-dragging');
         }
+        if (tile) tile._longPressArmed = false;
         state.tile = null;
         state.pointerId = null;
         state.started = false;
@@ -6442,8 +6448,17 @@ function wireOpenNotesBarStripDrag(bar) {
         const tile = e.target && e.target.closest ? e.target.closest('.open-notes-bar-tile') : null;
         if (!tile || !strip.contains(tile)) return;
         if (e.pointerType === 'mouse' && e.button !== 0) return;
-        // Задържането вече е задействало затварянето - оттук не се започва плъзгане.
+        // Кликът от предишното задържане още не е минал (флагът се вдига в
+        // wireOpenNotesBarTileLongPress и се нулира при самото натискане): тогава не се започва плъзгане.
         if (tile._longPressTriggered) return;
+        // Нов жест: въоръжаването на друга плочка (вдигната от предишно задържане) се нулира, за да не
+        // остане вдигната, без никой да я мести.
+        tiles().forEach(t => {
+            if (t !== tile && t._longPressArmed) {
+                t._longPressArmed = false;
+                t.classList.remove('is-dragging');
+            }
+        });
         state.tile = tile;
         state.pointerId = e.pointerId;
         state.startX = e.clientX;
@@ -6454,11 +6469,13 @@ function wireOpenNotesBarStripDrag(bar) {
     strip.addEventListener('pointermove', (e) => {
         if (!state.tile || e.pointerId !== state.pointerId) return;
         if (!state.started) {
-            // Плъзгането е ХОРИЗОНТАЛНО: вертикален жест по плочката не мести нищо (на телефон той е
-            // скрол на страницата - touch-action: pan-y - и дори не стига дотук).
             const dx = Math.abs(e.clientX - state.startX);
             const dy = Math.abs(e.clientY - state.startY);
-            if (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy) return;
+            // След задържане плочката вече е вдигната: местенето тръгва от първото движение напред, без
+            // праг и без значение на посоката (включително вертикална).
+            // Без задържане правилата са старите: плъзгането е ХОРИЗОНТАЛНО над 10px, защото вертикалният
+            // жест по плочката е скрол на страницата (touch-action: pan-y), а под прага си остава клик.
+            if (!state.tile._longPressArmed && (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy)) return;
             begin();
         }
         if (e.cancelable) e.preventDefault();
@@ -6583,20 +6600,25 @@ function openNotesBarFillTile(tile, win) {
 }
 
 /**
- * Задържане на плочка (500ms) ЗАТВАРЯ точно тази бележка - същият резултат като хиксчето в прозореца
- * ѝ (собственикът, 25.10.2026: „дълго натискане на мини бутон в лентата долу с отворените бележки да
- * затваря съответната бележка"). Обикновеният клик не се пипа: той си остава превключвател
- * скрий/покажи (виж слушателя за click в refreshOpenNotesBar).
+ * Задържане на плочка (500ms) само ВДИГА плочката, за да я местиш (собственикът, 25.10.2026:
+ * „Продължително натискане само за местене, не затваря"). Затварянето остава само през хиксчето в
+ * прозореца на бележката. Досега задържането викаше .modal-close, а местенето искаше бързо
+ * хоризонтално плъзгане ≥10px - двете се биеха, тоест щом задържиш, за да хванеш плочката, бележката
+ * се затваряше.
+ * Затова задействането ВЪОРЪЖАВА плочката (_longPressArmed) и слага класа is-dragging (съществуващото
+ * видимо повдигане), а wireOpenNotesBarStripDrag започва местенето от първото движение напред, без праг
+ * и без значение на посоката. Обикновеният клик не се пипа: той си остава превключвател скрий/покажи
+ * (виж слушателя за click в refreshOpenNotesBar), а кликът след задържане се прескача.
  * Слушателите се закачат ВЕДНЪЖ, при създаването на плочката: тя се преизползва между
  * опресняванията на лентата (картата existing по tile.dataset.barKey), значи иначе щяха да се трупат.
  */
-function wireOpenNotesBarTileLongPress(tile, bar) {
+function wireOpenNotesBarTileLongPress(tile) {
     if (tile._longPressWired) return;
     tile._longPressWired = true;
     const LONG_PRESS_MS = 500;
     // Прагът за отмяна е малък (8px): трепване на пръста не бива да губи задържането. Истинското
     // плъзгане по лентата хваща wireOpenNotesBarDragGuard (6px) и се проверява пак при самото
-    // задействане - движение между 6 и 8px е скрол, значи не затваря бележка.
+    // задействане - движение между 6 и 8px е скрол, значи не вдига плочката.
     const MOVE_CANCEL_PX = 8;
     let timer = null;
     let downX = 0, downY = 0;
@@ -6605,22 +6627,31 @@ function wireOpenNotesBarTileLongPress(tile, bar) {
     const cancel = () => {
         if (timer) { clearTimeout(timer); timer = null; }
     };
-    // Плъзгането по плочката (b1.50) отменя задържането още щом започне: иначе жестът, който
-    // мести плочката, след 500ms би затворил бележката, която мести (виж wireOpenNotesBarStripDrag).
+    // Вдигната плочка, която в момента се мести: повдигането не се маха оттук, а от края на местенето
+    // (иначе плочката слиза долу посред жеста, щом показалецът я подмине).
+    const beingDragged = () => {
+        const strip = tile.closest('.open-notes-bar-strip');
+        const drag = strip && strip._barDrag;
+        return !!(drag && drag.started && drag.tile === tile);
+    };
+    // Краят на жеста връща плочката долу: въоръжаването не бива да остане за следващия жест.
+    const disarm = () => {
+        cancel();
+        if (beingDragged()) return;
+        tile._longPressArmed = false;
+        tile.classList.remove('is-dragging');
+    };
+    // Плъзгането по плочката (b1.50) отменя задържането, ако още не е изтекло: иначе жестът, който
+    // мести плочката, след 500ms би я вдигнал посред местенето (виж wireOpenNotesBarStripDrag).
     tile._cancelLongPress = cancel;
-    // Затварянето минава по СЪЩИЯ път като хиксчето в прозореца (wireNoteWindow): то сваля
-    // popup-mode, връща копчето за копиране и вика closeNoteWindow, а тя опреснява лентата сама
-    // (onNoteWindowClosed → updateSingleNoteOverlay → refreshOpenNotesBar).
     const fire = () => {
         timer = null;
-        // Плъзгане по лентата е скрол, не задържане.
-        if (bar._barDragged && bar._barDragged()) return;
-        const target = openNotesBarWindowFor(tile);
-        if (!target) return;
+        // Задържането само ВДИГА плочката: никакво затваряне (собственикът, 25.10.2026).
+        tile._longPressArmed = true;
         // Кликът, който идва след пускането, НЕ бива да превключва скрий/покажи: той не е клик.
         tile._longPressTriggered = true;
+        tile.classList.add('is-dragging');
         if (navigator.vibrate) navigator.vibrate(40);
-        target.el.querySelector('.modal-close')?.click();
     };
     const start = (x, y) => {
         cancel();
@@ -6639,8 +6670,8 @@ function wireOpenNotesBarTileLongPress(tile, bar) {
         start(e.clientX, e.clientY);
     });
     tile.addEventListener('pointermove', (e) => move(e.clientX, e.clientY));
-    // Пускане, отмяна на жеста от браузъра (превзет скрол) и излизане от плочката отменят таймера.
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => tile.addEventListener(type, cancel));
+    // Пускане, отмяна на жеста от браузъра (превзет скрол) и излизане от плочката връщат плочката долу.
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => tile.addEventListener(type, disarm));
     // Пръст: touchend/touchcancel слагат и пазача срещу следващите миши събития.
     tile.addEventListener('touchstart', (e) => {
         const t = e.touches && e.touches[0];
@@ -6652,7 +6683,7 @@ function wireOpenNotesBarTileLongPress(tile, bar) {
     }, { passive: true });
     const touchEnd = () => {
         lastTouchEnd = Date.now();
-        cancel();
+        disarm();
     };
     tile.addEventListener('touchend', touchEnd);
     tile.addEventListener('touchcancel', touchEnd);
@@ -6726,7 +6757,7 @@ function refreshOpenNotesBar() {
             tile.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // Задържането вече е затворило бележката: това не е клик, значи не превключва
+                // След задържане плочката беше вдигната - това не е клик, значи не превключва
                 // скрий/покажи (флагът се вдига при задействането, а се нулира при следващо натискане).
                 if (tile._longPressTriggered) { tile._longPressTriggered = false; return; }
                 // Плъзгане по лентата не избира бележка: само истински клик.
@@ -6757,9 +6788,9 @@ function refreshOpenNotesBar() {
                 activateNoteWindow(target, true);
                 tile.scrollIntoView({ inline: 'nearest', block: 'nearest' });
             });
-            // Задържане на същата плочка затваря бележката. Закача се тук, при създаването: плочката
-            // се преизползва между опресняванията, значи слушателите остават само тези.
-            wireOpenNotesBarTileLongPress(tile, bar);
+            // Задържане на същата плочка само я вдига за местене. Закача се тук, при създаването:
+            // плочката се преизползва между опресняванията, значи слушателите остават само тези.
+            wireOpenNotesBarTileLongPress(tile);
         }
         keep.add(key);
         // Плочката влиза в реда ПРЕДИ да се строи: кешираната миниатюра се слага веднага, а
