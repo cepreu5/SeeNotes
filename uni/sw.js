@@ -1,4 +1,4 @@
-const CACHE_NAME = 'multinotes-b1.49';
+const CACHE_NAME = 'multinotes-b1.50';
 const ASSETS_TO_CACHE = [
   './',
   './index-2.html',

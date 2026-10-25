@@ -767,13 +767,27 @@ ok(s.tiles.every(t => t.w === 40 && t.h === 40),
     `плочките не се свиват - всички са 40x40 (${s.tiles.map(t => t.w + 'x' + t.h).join(', ')})`, s.tiles);
 
 // Плъзгането на реда не „избира" бележка: показалецът минава по лентата, а активната не се мени.
+// Жестът тръгва от ФОНА между две плочки, а НЕ от плочка: от b1.50 плъзгане, започнало върху плочка,
+// законно преподрежда лентата (виж open-notes-bar-drag.mjs) - а тук се проверява само, че минаването
+// по лентата не сменя активната бележка. Стартирането върху плочка би преместило реда и следващите
+// проверки (плочка n извиква бележка X) биха гледали друга бележка.
 const beforeDrag = await windowsState();
 const box = await page.locator('#open-notes-bar .open-notes-bar-strip').boundingBox();
-await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2);
-await page.mouse.down();
-await page.mouse.move(box.x + 30, box.y + box.height / 2, { steps: 12 });
-await page.mouse.up();
-await settle();
+const gapX9 = await page.evaluate(({ x0, x1, y }) => {
+    for (let x = Math.round(x0) + 1; x < Math.round(x1) - 1; x++) {
+        const el = document.elementFromPoint(x, y);
+        if (el && el.classList && el.classList.contains('open-notes-bar-strip')) return x;
+    }
+    return null;
+}, { x0: box.x, x1: box.x + box.width, y: box.y + box.height / 2 });
+ok(gapX9 !== null, `има фон между плочките, от който да тръгне жестът по лентата (${gapX9})`, { box, gapX9 });
+if (gapX9 !== null) {
+    await page.mouse.move(gapX9, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(gapX9 - 40, box.y + box.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await settle();
+}
 const afterDrag = await windowsState();
 ok(afterDrag.activeGdid === beforeDrag.activeGdid,
     `плъзгане по лентата не сменя активната бележка (${beforeDrag.activeGdid} -> ${afterDrag.activeGdid})`, afterDrag);

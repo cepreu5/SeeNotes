@@ -5927,6 +5927,71 @@ function openNotesBarWindowFor(tile) {
     return getOpenNoteWindows().find(w => openNotesBarKeyFor(w) === key) || null;
 }
 
+// --- Редът на плочките в лентата (b1.50) -------------------------------------------------------
+// Собственикът (25.10.2026): „dragging along the bar да премества бутона на бележките в рамките на
+// лентата за преподреждане". Редът е СПИСЪК ОТ КЛЮЧОВЕ (openNotesBarKeyFor), а не от позиции: плочката
+// на затворена и отворена наново бележка е същата бележка и си остава на мястото. Живее в localStorage
+// и оцелява след презареждане на страницата; ако localStorage не е достъпен, работи само в паметта.
+const OPEN_NOTES_BAR_ORDER_STORE = 'cx_open_notes_bar_order';
+let openNotesBarOrder = readOpenNotesBarOrder();
+// Ключовете, които ТАЗИ сесия е виждала отворени. По тях се разбира кое е „затворена бележка" (била е
+// отворена, сега я няма) и кое е „бележка, която още не е отваряна" (идва от записа на предишното
+// зареждане): иначе първото отваряне след презареждане би изтрило целия записан ред, защото в него
+// всички останали ключове изглеждат „затворени".
+const openNotesBarSeen = new Set();
+
+function readOpenNotesBarOrder() {
+    try {
+        const raw = localStorage.getItem(OPEN_NOTES_BAR_ORDER_STORE);
+        const list = raw ? JSON.parse(raw) : null;
+        if (!Array.isArray(list)) return [];
+        return list.filter(k => typeof k === 'string' && k);
+    } catch (e) { return []; }
+}
+
+function saveOpenNotesBarOrder() {
+    try { localStorage.setItem(OPEN_NOTES_BAR_ORDER_STORE, JSON.stringify(openNotesBarOrder)); } catch (e) { }
+}
+
+/**
+ * Подрежда отворените прозорци по запомнения ред. Новодошлите влизат в КРАЯ, а ключовете на
+ * затворените бележки се махат - иначе списъкът расте с всеки отворен прозорец и редът на новите
+ * зависи от това кога за последно е бил отворен някой стар.
+ */
+function orderOpenNoteWindows(open) {
+    // Без отворена бележка редът НЕ се пипа: първото опресняване при старт на приложението идва точно
+    // така (лентата се строи, когато няма отворена бележка) и иначе би изтрило запомнения ред, тоест
+    // редът не би оцелял след презареждане на страницата.
+    if (!open.length) return open.slice();
+    const keys = open.map(w => openNotesBarKeyFor(w));
+    keys.forEach(k => openNotesBarSeen.add(k));
+    // Ключ се маха само ако бележката е била отворена в тази сесия и вече я няма - виж openNotesBarSeen.
+    const kept = openNotesBarOrder.filter(k => keys.includes(k) || !openNotesBarSeen.has(k));
+    let changed = kept.length !== openNotesBarOrder.length;
+    keys.forEach((k) => {
+        if (!kept.includes(k)) { kept.push(k); changed = true; }
+    });
+    openNotesBarOrder = kept;
+    if (changed) saveOpenNotesBarOrder();
+    const rank = new Map(openNotesBarOrder.map((k, i) => [k, i]));
+    const rankOf = (win) => {
+        const k = openNotesBarKeyFor(win);
+        return rank.has(k) ? rank.get(k) : Number.MAX_SAFE_INTEGER;
+    };
+    return open.slice().sort((a, b) => rankOf(a) - rankOf(b));
+}
+
+/** Записва реда такъв, какъвто е в лентата в момента (след плъзгане). */
+function commitOpenNotesBarOrderFromStrip(strip) {
+    if (!strip) return [];
+    const keys = Array.from(strip.children).map(el => el.dataset.barKey).filter(Boolean);
+    if (!keys.length) return keys;
+    openNotesBarOrder = keys;
+    saveOpenNotesBarOrder();
+    return keys;
+}
+
+
 // --- Скриване на бележките без затваряне (порт от cx-notes b2.70) ------------------------------
 // Собственикът: „скрий всички бележки" - прозорците изчезват от екрана, но НЕ се затварят: бележката
 // остава отворена в noteWindows с текста, позицията и незаписаните си промени. Затова тук НЕ се
@@ -6199,6 +6264,9 @@ function openNotesBarFetchThumb(tile, fileName) {
             img.className = 'open-notes-bar-thumb';
             img.alt = '';
             img.decoding = 'async';
+            // Родният drag на картинката краде жеста: плъзгането по плочката преподрежда
+            // лентата (b1.50), а не тегли миниатюрата.
+            img.draggable = false;
             img.addEventListener('load', () => tile.classList.add('has-thumb'));
             img.addEventListener('error', () => {
                 // Мъртъв адрес (изтекъл подпис): плочката се връща на буквите, а адресът се забравя,
@@ -6244,6 +6312,108 @@ function wireOpenNotesBarDragGuard(bar) {
     bar._barDragged = () => dragged;
 }
 
+// --- Преподреждане с плъзгане (b1.50) -----------------------------------------------------------
+// Собственикът (25.10.2026): „dragging along the bar да премества бутона на бележките в рамките на
+// лентата за преподреждане". Плъзгане, започнало ВЪРХУ плочка, мести ТАЗИ плочка: докато показалецът
+// върви, плочките в лентата се разместват на живо (DOM ред на децата на .open-notes-bar-strip), за
+// да се вижда къде ще падне, а при пускане новият ред се записва. Плъзгане, започнало на фона на
+// лентата или върху бутоните ѝ, НЕ се пипа - то продължава да скролва лентата.
+// Прагът е 10px: под него жестът си остава клик. Пазачът wireOpenNotesBarDragGuard вдига своя флаг
+// още на 6px, значи след плъзгане click-ът на плочката не вдига и не скрива бележка (иначе плъзгане
+// би превключило активната бележка, преди да си преместил плочката).
+// Слушателите са на САМАТА лента, а показалецът се прихваща за нея: плочката се мести в DOM по време
+// на жеста, а местенето на елемент, който държи прихващането, би го загубило.
+const OPEN_NOTES_BAR_DRAG_PX = 10;
+
+function wireOpenNotesBarStripDrag(bar) {
+    const strip = bar && bar.querySelector('.open-notes-bar-strip');
+    if (!strip || strip._dragWired) return;
+    strip._dragWired = true;
+    const state = { tile: null, pointerId: null, startX: 0, startY: 0, started: false, restore: null };
+    strip._barDrag = state;
+    const tiles = () => Array.from(strip.querySelectorAll('.open-notes-bar-tile'));
+
+    // Къде отива плъзганата плочка при този X: пред първата плочка, чийто център е зад показалеца.
+    const targetNodeAt = (tile, clientX) => {
+        const others = tiles().filter(t => t !== tile);
+        for (let i = 0; i < others.length; i++) {
+            const r = others[i].getBoundingClientRect();
+            if (clientX < r.left + r.width / 2) return others[i];
+        }
+        return null;
+    };
+
+    const begin = () => {
+        if (state.started) return;
+        state.started = true;
+        // Редът отпреди жеста - по него се връща плочката, ако жестът бъде отменен (pointercancel).
+        state.restore = Array.from(strip.children).map(el => el.dataset.barKey).filter(Boolean);
+        // Задържането вече не е задържане: плъзгане не бива да затваря бележката, която местиш.
+        if (typeof state.tile._cancelLongPress === 'function') state.tile._cancelLongPress();
+        state.tile.classList.add('is-dragging');
+        try { strip.setPointerCapture(state.pointerId); } catch (e) { }
+    };
+
+    const finish = (commit) => {
+        const tile = state.tile;
+        if (state.started && tile) {
+            tile.classList.remove('is-dragging');
+            try { strip.releasePointerCapture(state.pointerId); } catch (e) { }
+            if (commit) commitOpenNotesBarOrderFromStrip(strip);
+            else if (state.restore && state.restore.length) {
+                openNotesBarOrder = state.restore.slice();
+                saveOpenNotesBarOrder();
+                // Отменен жест: лентата се строи наново в реда отпреди него.
+                refreshOpenNotesBar();
+            }
+        }
+        state.tile = null;
+        state.pointerId = null;
+        state.started = false;
+        state.restore = null;
+    };
+
+    strip.addEventListener('pointerdown', (e) => {
+        if (state.tile) finish(false);
+        const tile = e.target && e.target.closest ? e.target.closest('.open-notes-bar-tile') : null;
+        if (!tile || !strip.contains(tile)) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        // Задържането вече е задействало затварянето - оттук не се започва плъзгане.
+        if (tile._longPressTriggered) return;
+        state.tile = tile;
+        state.pointerId = e.pointerId;
+        state.startX = e.clientX;
+        state.startY = e.clientY;
+        state.started = false;
+    });
+
+    strip.addEventListener('pointermove', (e) => {
+        if (!state.tile || e.pointerId !== state.pointerId) return;
+        if (!state.started) {
+            // Плъзгането е ХОРИЗОНТАЛНО: вертикален жест по плочката не мести нищо (на телефон той е
+            // скрол на страницата - touch-action: pan-y - и дори не стига дотук).
+            const dx = Math.abs(e.clientX - state.startX);
+            const dy = Math.abs(e.clientY - state.startY);
+            if (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy) return;
+            begin();
+        }
+        if (e.cancelable) e.preventDefault();
+        // Плочката се мести на мястото, където показалецът вече е подминал центъра на съседна плочка.
+        const node = targetNodeAt(state.tile, e.clientX);
+        if (node !== state.tile.nextSibling) strip.insertBefore(state.tile, node);
+    });
+
+    const end = (e) => {
+        if (!state.tile || e.pointerId !== state.pointerId) return;
+        finish(e.type === 'pointerup');
+    };
+    strip.addEventListener('pointerup', end);
+    strip.addEventListener('pointercancel', end);
+    strip.addEventListener('lostpointercapture', (e) => {
+        if (state.tile && e.pointerId === state.pointerId) finish(false);
+    });
+}
+
 /** Лентата се строи при първата нужда и остава в слоя; скрита е с клас, не се маха. */
 function ensureOpenNotesBar() {
     const layer = document.getElementById('note-windows-layer');
@@ -6284,6 +6454,8 @@ function ensureOpenNotesBar() {
         });
         bar.appendChild(closeBtn);
         wireOpenNotesBarDragGuard(bar);
+        // Преподреждането с плъзгане се закача тук, веднъж - лентата се строи един път (b1.50).
+        wireOpenNotesBarStripDrag(bar);
     }
     // Лентата е ПОСЛЕДНОТО дете на слоя: над всички прозорци и извън подредбата им.
     if (bar.parentNode !== layer || layer.lastElementChild !== bar) layer.appendChild(bar);
@@ -6355,6 +6527,9 @@ function wireOpenNotesBarTileLongPress(tile, bar) {
     const cancel = () => {
         if (timer) { clearTimeout(timer); timer = null; }
     };
+    // Плъзгането по плочката (b1.50) отменя задържането още щом започне: иначе жестът, който
+    // мести плочката, след 500ms би затворил бележката, която мести (виж wireOpenNotesBarStripDrag).
+    tile._cancelLongPress = cancel;
     // Затварянето минава по СЪЩИЯ път като хиксчето в прозореца (wireNoteWindow): то сваля
     // popup-mode, връща копчето за копиране и вика closeNoteWindow, а тя опреснява лентата сама
     // (onNoteWindowClosed → updateSingleNoteOverlay → refreshOpenNotesBar).
@@ -6454,12 +6629,15 @@ function refreshOpenNotesBar() {
     }
     bar.setAttribute('aria-label', _('openNotesBar') || 'Open notes');
     const strip = bar.querySelector('.open-notes-bar-strip');
-    // Плочките се подреждат по getOpenNoteWindows(), а вече наличните се ползват наново - така
-    // картинката не се зарежда наново и скролът на лентата не скача.
+    // Ако в момента се плъзга плочка, редът се взема от лентата, а не от запомнения: иначе опресняване
+    // по средата на жеста би върнало стария ред под пръста на потребителя.
+    if (strip && strip._barDrag && strip._barDrag.started) commitOpenNotesBarOrderFromStrip(strip);
+    // Плочките се подреждат по ЗАПОМНЕНИЯ ред (orderOpenNoteWindows), а вече наличните се ползват
+    // наново - така картинката не се зарежда наново и скролът на лентата не скача.
     const existing = new Map();
     Array.from(strip.children).forEach(el => existing.set(el.dataset.barKey, el));
     const keep = new Set();
-    open.forEach((win, i) => {
+    orderOpenNoteWindows(open).forEach((win, i) => {
         const key = openNotesBarKeyFor(win);
         let tile = existing.get(key);
         if (!tile) {
