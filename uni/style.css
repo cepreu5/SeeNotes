@@ -610,6 +610,13 @@ main {
     font-size: var(--note-font-size);
     /* Set base font size for the whole note */
     box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    /* Картата е границата на бележката: нищо не бива да се рисува извън нея (собственик,
+       25.10.2026: „текста в бележката в борда излиза извън границите й"). Дългият текст се
+       скролва вътре в .note-content; ако нещо все пак се разпъне над височината на картата,
+       тук се реже, вместо да падне върху дъската под бележката. Сянката на самата карта не се
+       реже от това - overflow не пипа box-shadow на елемента. Менютата на бележката са
+       position: fixed върху body (вж. .nm-inline-menu), значи не се режат оттук. */
+    overflow: hidden;
     text-align: left;
     cursor: pointer;
     /* Added for pointer cursor on hover */
