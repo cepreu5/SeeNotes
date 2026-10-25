@@ -27804,19 +27804,31 @@ function getVisualLineEdge(textarea, pos, paraStart, paraEnd, moveToEnd) {
 // резултата на getVisualLineEdge, а не с lineStart/lineEnd: при пренасяне ръбът на реда е друга
 // позиция от ръба на абзаца.
 function moveCaretToLineEdge(textarea, moveToEnd, isParagraph = false, escalate = false) {
-    if (!textarea) return;
+    if (!textarea) return null;
     const text = textarea.value;
     const caretPosition = textarea.selectionStart;
     const lineStart = text.lastIndexOf('\n', Math.max(0, caretPosition - 1)) + 1;
     const nextLineBreak = text.indexOf('\n', caretPosition);
     const lineEnd = nextLineBreak === -1 ? text.length : nextLineBreak;
     let nextPosition = isParagraph ? (moveToEnd ? lineEnd : lineStart) : getVisualLineEdge(textarea, caretPosition, lineStart, lineEnd, moveToEnd);
-    if (escalate && nextPosition === caretPosition) {
+    // Каретата вече е била на ръба на реда, значи това задържане я праща в началото/края на ЦЕЛИЯ
+    // текст - а ако и там е била (0 или краят), няма накъде повече и тя си остава на място.
+    const wasAtEdge = nextPosition === caretPosition;
+    let escalated = false;
+    if (escalate && wasAtEdge) {
         nextPosition = moveToEnd ? text.length : 0;
+        escalated = nextPosition !== caretPosition;
     }
     textarea.focus();
     textarea.setSelectionRange(nextPosition, nextPosition);
     scrollCaretIntoView(textarea);
+    // За лентата с инструменти (b2.83): къде спря каретата. atLineEdge значи, че ВТОРО задържане би я
+    // пратило на ръба на целия текст; atTextEdge - че вече няма накъде.
+    return {
+        position: nextPosition,
+        atLineEdge: !escalated,
+        atTextEdge: nextPosition === 0 || nextPosition === text.length,
+    };
 }
 // За тестовете: същата функция се вика директно, както window.refreshOpenNotesBar.
 window.moveCaretToLineEdge = moveCaretToLineEdge;
@@ -28791,7 +28803,10 @@ function observeModalEditToolbarOverflow(toolbar) {
 function createModalEditToolbar(modalContentBox) {
     if (!modalContentBox) return;
     restoreModalHeaderListButtons();
-    modalContentBox.querySelector('.modal-edit-toolbar')?.remove();
+    const oldToolbar = modalContentBox.querySelector('.modal-edit-toolbar');
+    // Слушателите на старата лента (долу, за връщането на глифовете) се махат с нея.
+    if (oldToolbar && oldToolbar._arrowAbort) oldToolbar._arrowAbort.abort();
+    oldToolbar?.remove();
     const headerToolbar = modalContentBox.querySelector('.modal-header-toolbar');
     if (!headerToolbar) return;
     const toolbar = document.createElement('div');
@@ -28866,6 +28881,63 @@ function createModalEditToolbar(modalContentBox) {
             button.addEventListener('click', action);
         }
         toolbar.appendChild(button);
+        return button;
+    };
+    // --- Стрелки ← / → и глиф ↑ / ↓ след задържане (b2.83) ------------------------------------
+    // Собственикът (25.10.2026): „В режим редактиране след първото задържане на бутона със стрелка,
+    // когато курсорът отиде в началото/края на реда, стрелката да се сменя със стрелка нагоре/надолу,
+    // така че потребителят да вижда че ако задържи отново ще премести курсорът в началото/края."
+    // Задържането мести каретата на ръба на ВИЗУАЛНИЯ ред; ако оттам второ задържане има накъде да я
+    // прати (в началото/края на ЦЕЛИЯ текст), глифът на ЗАДЪРЖАНИЯ бутон става „↑"/„↓". Щом каретата
+    // мръдне по какъвто и да е начин, глифовете се връщат на „←"/„→". Състоянието живее на самата
+    // лента, значи ново отваряне на редактора го нулира заедно с лентата.
+    const ARROW_GLYPHS = {
+        left: { normal: '←', escalate: '↑' },
+        right: { normal: '→', escalate: '↓' },
+    };
+    const arrowButtons = {};
+    const arrowTitle = (dir, escalated) => {
+        const key = dir === 'left'
+            ? (escalated ? 'lineStartAllTooltip' : 'lineStartTooltip')
+            : (escalated ? 'lineEndAllTooltip' : 'lineEndTooltip');
+        const fallback = dir === 'left'
+            ? (escalated ? 'Hold again: start of the whole text' : 'One character left · Ctrl/hold: line start')
+            : (escalated ? 'Hold again: end of the whole text' : 'One character right · Ctrl/hold: line end');
+        return _('' + key) || fallback;
+    };
+    const renderArrow = (dir) => {
+        const button = arrowButtons[dir];
+        if (!button) return;
+        const escalated = !!(toolbar._arrowEscalation && toolbar._arrowEscalation[dir]);
+        const title = arrowTitle(dir, escalated);
+        button.textContent = ARROW_GLYPHS[dir][escalated ? 'escalate' : 'normal'];
+        button.title = title;
+        button.setAttribute('aria-label', title);
+        button.dataset.glyph = button.textContent;
+        button.classList.toggle('is-escalated', escalated);
+    };
+    const clearArrowEscalation = () => {
+        if (!toolbar._arrowEscalation) return;
+        toolbar._arrowEscalation = null;
+        renderArrow('left');
+        renderArrow('right');
+    };
+    // Всяко местене на каретата от стрелките минава оттук. Програмното местене се помни по позиция:
+    // selectionchange идва и след него и не бива да гаси глифа, който току-що е сложен.
+    const arrowMove = (dir, withEscalate) => {
+        const textarea = getActiveModalEditor();
+        if (!textarea) return;
+        toolbar._arrowEditor = textarea;
+        let result = null;
+        if (withEscalate) result = moveCaretToLineEdge(textarea, dir === 'right', false, true);
+        else moveCaretByOne(textarea, dir === 'right' ? 1 : -1);
+        toolbar._arrowCaret = { start: textarea.selectionStart, end: textarea.selectionEnd };
+        clearArrowEscalation();
+        // Само ръбът на реда, от който има накъде - иначе „↑"/„↓" би обещавал нещо, което няма.
+        if (result && result.atLineEdge && !result.atTextEdge) {
+            toolbar._arrowEscalation = dir === 'left' ? { left: true } : { right: true };
+            renderArrow(dir);
+        }
     };
     const applyMarkdown = (type) => {
         const textarea = getActiveModalEditor();
@@ -28907,21 +28979,19 @@ function createModalEditToolbar(modalContentBox) {
         button.style.display = 'flex';
         toolbar.appendChild(button);
     });
-    addButton({
+    arrowButtons.left = addButton({
         label: '←',
         title: _('lineStartTooltip') || 'One character left · Ctrl/hold: line start',
-        action: (e) => (e && (e.ctrlKey || e.metaKey))
-            ? moveCaretToLineEdge(getActiveModalEditor(), false, false, true)
-            : moveCaretByOne(getActiveModalEditor(), -1),
-        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, false, true)
+        className: 'is-caret-left',
+        action: (e) => arrowMove('left', !!(e && (e.ctrlKey || e.metaKey))),
+        onLongPress: () => arrowMove('left', true)
     });
-    addButton({
+    arrowButtons.right = addButton({
         label: '→',
         title: _('lineEndTooltip') || 'One character right · Ctrl/hold: line end',
-        action: (e) => (e && (e.ctrlKey || e.metaKey))
-            ? moveCaretToLineEdge(getActiveModalEditor(), true, false, true)
-            : moveCaretByOne(getActiveModalEditor(), 1),
-        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, false, true)
+        className: 'is-caret-right',
+        action: (e) => arrowMove('right', !!(e && (e.ctrlKey || e.metaKey))),
+        onLongPress: () => arrowMove('right', true)
     });
     addButton({
         label: '▦',
@@ -28941,6 +29011,31 @@ function createModalEditToolbar(modalContentBox) {
     modalContentBox.classList.add('has-edit-toolbar');
     // The strip is one row and scrolls: it fades at its right edge while there is more to the right.
     observeModalEditToolbarOverflow(toolbar);
+    // Глифовете „↑"/„↓" се връщат на „←"/„→" при ПЪРВОТО преместване на каретата - независимо дали е
+    // в рамките на реда, на друг ред или в началото/края на текста (собственикът, 25.10.2026).
+    // Покрити са всички пътища: клик на стрелките (arrowMove горе), писане, клавиши, клик/докосване в
+    // текста, смяна на селекцията и смяна на активния редактор. Слушателите са на документа, за да
+    // хващат и заглавието, и тялото на бележката, и се махат заедно с лентата (AbortController).
+    const arrowAbort = new AbortController();
+    toolbar._arrowAbort = arrowAbort;
+    const isArrowCaretField = (el) => !!el && (isNoteEditBodyField(el) || el.id === 'note-edit-title-textarea');
+    const onCaretMovedByUser = (e) => { if (isArrowCaretField(e.target)) clearArrowEscalation(); };
+    ['input', 'keyup', 'mouseup', 'touchend', 'click', 'select'].forEach((type) => {
+        document.addEventListener(type, onCaretMovedByUser, { capture: true, signal: arrowAbort.signal });
+    });
+    document.addEventListener('selectionchange', () => {
+        if (!toolbar._arrowEscalation) return;
+        const textarea = getActiveModalEditor();
+        if (!textarea) { clearArrowEscalation(); return; }
+        // Същата позиция като след програмното местене значи, че това е неговият selectionchange.
+        const pos = toolbar._arrowCaret;
+        if (pos && pos.start === textarea.selectionStart && pos.end === textarea.selectionEnd) return;
+        clearArrowEscalation();
+    }, { signal: arrowAbort.signal });
+    document.addEventListener('focusin', (e) => {
+        if (!isArrowCaretField(e.target)) return;
+        if (toolbar._arrowEditor && toolbar._arrowEditor !== e.target) clearArrowEscalation();
+    }, { signal: arrowAbort.signal });
 }
 
 function initNoteEditUI() {
