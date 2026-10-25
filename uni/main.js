@@ -6333,6 +6333,79 @@ function openNotesBarFillTile(tile, win) {
 }
 
 /**
+ * Задържане на плочка (500ms) ЗАТВАРЯ точно тази бележка - същият резултат като хиксчето в прозореца
+ * ѝ (собственикът, 25.10.2026: „дълго натискане на мини бутон в лентата долу с отворените бележки да
+ * затваря съответната бележка"). Обикновеният клик не се пипа: той си остава превключвател
+ * скрий/покажи (виж слушателя за click в refreshOpenNotesBar).
+ * Слушателите се закачат ВЕДНЪЖ, при създаването на плочката: тя се преизползва между
+ * опресняванията на лентата (картата existing по tile.dataset.barKey), значи иначе щяха да се трупат.
+ */
+function wireOpenNotesBarTileLongPress(tile, bar) {
+    if (tile._longPressWired) return;
+    tile._longPressWired = true;
+    const LONG_PRESS_MS = 500;
+    // Прагът за отмяна е малък (8px): трепване на пръста не бива да губи задържането. Истинското
+    // плъзгане по лентата хваща wireOpenNotesBarDragGuard (6px) и се проверява пак при самото
+    // задействане - движение между 6 и 8px е скрол, значи не затваря бележка.
+    const MOVE_CANCEL_PX = 8;
+    let timer = null;
+    let downX = 0, downY = 0;
+    // След пръст браузърът праща и миши събития: пазачът не пуска задържане да тръгне втори път.
+    let lastTouchEnd = 0;
+    const cancel = () => {
+        if (timer) { clearTimeout(timer); timer = null; }
+    };
+    // Затварянето минава по СЪЩИЯ път като хиксчето в прозореца (wireNoteWindow): то сваля
+    // popup-mode, връща копчето за копиране и вика closeNoteWindow, а тя опреснява лентата сама
+    // (onNoteWindowClosed → updateSingleNoteOverlay → refreshOpenNotesBar).
+    const fire = () => {
+        timer = null;
+        // Плъзгане по лентата е скрол, не задържане.
+        if (bar._barDragged && bar._barDragged()) return;
+        const target = openNotesBarWindowFor(tile);
+        if (!target) return;
+        // Кликът, който идва след пускането, НЕ бива да превключва скрий/покажи: той не е клик.
+        tile._longPressTriggered = true;
+        if (navigator.vibrate) navigator.vibrate(40);
+        target.el.querySelector('.modal-close')?.click();
+    };
+    const start = (x, y) => {
+        cancel();
+        tile._longPressTriggered = false;
+        downX = x; downY = y;
+        timer = setTimeout(fire, LONG_PRESS_MS);
+    };
+    const move = (x, y) => {
+        if (!timer) return;
+        if (Math.abs(x - downX) > MOVE_CANCEL_PX || Math.abs(y - downY) > MOVE_CANCEL_PX) cancel();
+    };
+    // Показалец: един път за мишка, пръст и стилус - pointerup идва и при пръст.
+    tile.addEventListener('pointerdown', (e) => {
+        if (typeof e.button === 'number' && e.button !== 0) return;
+        if (e.pointerType === 'mouse' && Date.now() - lastTouchEnd < 1000) return;
+        start(e.clientX, e.clientY);
+    });
+    tile.addEventListener('pointermove', (e) => move(e.clientX, e.clientY));
+    // Пускане, отмяна на жеста от браузъра (превзет скрол) и излизане от плочката отменят таймера.
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => tile.addEventListener(type, cancel));
+    // Пръст: touchend/touchcancel слагат и пазача срещу следващите миши събития.
+    tile.addEventListener('touchstart', (e) => {
+        const t = e.touches && e.touches[0];
+        if (t) start(t.clientX, t.clientY);
+    }, { passive: true });
+    tile.addEventListener('touchmove', (e) => {
+        const t = e.touches && e.touches[0];
+        if (t) move(t.clientX, t.clientY);
+    }, { passive: true });
+    const touchEnd = () => {
+        lastTouchEnd = Date.now();
+        cancel();
+    };
+    tile.addEventListener('touchend', touchEnd);
+    tile.addEventListener('touchcancel', touchEnd);
+}
+
+/**
  * Опреснява лентата: кога се вижда, кои плочки са в нея и коя е активна. Вика се от
  * updateSingleNoteOverlay (всяко вдигане, затваряне и „затвори всички") и в края на всеки
  * изчертан прозорец, за да не остане разсинхронизирано състояние.
@@ -6397,6 +6470,9 @@ function refreshOpenNotesBar() {
             tile.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // Задържането вече е затворило бележката: това не е клик, значи не превключва
+                // скрий/покажи (флагът се вдига при задействането, а се нулира при следващо натискане).
+                if (tile._longPressTriggered) { tile._longPressTriggered = false; return; }
                 // Плъзгане по лентата не избира бележка: само истински клик.
                 if (bar._barDragged && bar._barDragged()) return;
                 const target = openNotesBarWindowFor(tile);
@@ -6425,6 +6501,9 @@ function refreshOpenNotesBar() {
                 activateNoteWindow(target, true);
                 tile.scrollIntoView({ inline: 'nearest', block: 'nearest' });
             });
+            // Задържане на същата плочка затваря бележката. Закача се тук, при създаването: плочката
+            // се преизползва между опресняванията, значи слушателите остават само тези.
+            wireOpenNotesBarTileLongPress(tile, bar);
         }
         keep.add(key);
         // Плочката влиза в реда ПРЕДИ да се строи: кешираната миниатюра се слага веднага, а
