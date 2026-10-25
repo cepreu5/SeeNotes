@@ -6454,8 +6454,13 @@ window.addEventListener('resize', () => {
 });
 
 // --- Помнене на място и размер (ново: го няма в cx-notes) ----------------------------------------
-// Един речник в localStorage: { v: 1, order: [ключ...], boxes: { ключ: {x, y, w, h} } }. Редът е
-// от най-стария към най-скоро местения, за да знаем кого да изхвърлим на 300-ия запис.
+// Един речник в localStorage: { v: 2, seq: <брояч>, boxes: { ключ: {x, y, w, h, o[, e: true]} } }.
+// o е номерът на записа (по-голямо значи по-скоро пипан) и по него се вижда кой е най-старият, когато
+// се стигне таванът от 300. Стои в самата кутия, вместо в отделен масив с ключове: ключът и без това е
+// име на кутията и втори списък само го повтаряше.
+// seq е броячът, от който всеки нов запис взима номера си - така не се преномерират чуждите записи.
+// Старият формат ({ v: 1, order: [ключ...] }) се приема при четене и се превръща в паметта, за да не
+// губят хората, които вече имат записи, подредбата си (а с нея и местата на бележките).
 // Ключът е бележката (gdid, иначе id), не прозорецът: същата бележка си идва на същото място.
 function noteWindowKeyFor(id, gdid) {
     const sid = (id === undefined || id === null) ? '' : String(id);
@@ -6466,7 +6471,7 @@ function noteWindowKeyFor(id, gdid) {
 }
 
 function readNoteWindowGeometry() {
-    const empty = { v: 1, order: [], boxes: {} };
+    const empty = { v: 2, seq: 0, boxes: {} };
     try {
         const raw = JSON.parse(localStorage.getItem(NOTE_WINDOW_GEOM_KEY) || 'null');
         if (!raw || typeof raw !== 'object' || !raw.boxes || typeof raw.boxes !== 'object') return empty;
@@ -6479,14 +6484,43 @@ function readNoteWindowGeometry() {
             if (x === null || y === null || w === null || h === null) return;
             // Петото поле e значи „тази бележка се отваря разпъната"; тогава x/y/w/h са кутията, към
             // която се връща при свиване, а не разпънатият (цял екран) размер.
-            boxes[k] = (b.e === true) ? { x, y, w, h, e: true } : { x, y, w, h };
+            const box = (b.e === true) ? { x, y, w, h, e: true } : { x, y, w, h };
+            // Номерът на реда идва от самата кутия (v2). Липсва ли, записът е от стария формат и
+            // номерът му се взима от order по-долу.
+            const o = num(b.o);
+            if (o !== null) box.o = o;
+            boxes[k] = box;
         });
-        const order = Array.isArray(raw.order) ? raw.order.filter(k => boxes[k]) : [];
-        Object.keys(boxes).forEach(k => { if (!order.includes(k)) order.push(k); });
-        return { v: 1, order, boxes };
+        // Колкото по-голям е номерът, толкова по-скоро е пипан записът. Най-големият номер + 1 е и
+        // броячът seq, от който тръгва следващият запис.
+        let next = 0;
+        Object.keys(boxes).forEach(k => { if (boxes[k].o !== undefined && boxes[k].o >= next) next = boxes[k].o + 1; });
+        // v1: номерът беше позицията в отделния масив order (от най-стария към най-скоро местения).
+        // Мигрира се само в паметта - при четене нищо не се записва, за да не пипа приложението
+        // localStorage всеки път, щом някой отвори бележка. Записът става при следващото истинско
+        // местене/преоразмеряване.
+        if (Array.isArray(raw.order)) {
+            raw.order.forEach((k, i) => {
+                if (!boxes[k] || boxes[k].o !== undefined) return;
+                boxes[k].o = i;
+                if (i >= next) next = i + 1;
+            });
+        }
+        // Запис, който не е бил в order (ръчно сложен или от счупен речник), взима номера след най-
+        // големия: не знаем кога е пипан, а не бива да изпреварва току-що местения.
+        Object.keys(boxes).forEach(k => { if (boxes[k].o === undefined) boxes[k].o = next++; });
+        // Броячът се пази и когато е по-голям от номерата: иначе изхвърлените записи връщат стари
+        // номера обратно в играта.
+        const seq = num_or_zero(raw.seq);
+        return { v: 2, seq: Math.max(next, seq), boxes };
     } catch (e) {
         return empty;
     }
+}
+
+// Число от речника, иначе 0: счупена стойност не бива да чупи целия запис.
+function num_or_zero(x) {
+    return (typeof x === 'number' && isFinite(x)) ? Math.round(x) : 0;
 }
 
 function writeNoteWindowGeometry(store) {
@@ -6503,11 +6537,18 @@ function writeNoteWindowGeometry(store) {
 function writeNoteGeometryEntry(key, box) {
     if (!key || !box) return;
     const store = readNoteWindowGeometry();
-    store.boxes[key] = box;
-    store.order = store.order.filter(k => k !== key);
-    store.order.push(key);
-    while (store.order.length > NOTE_WINDOW_GEOM_MAX) {
-        const oldest = store.order.shift();
+    // Новият номер е броячът + 1: така тази бележка става последна (най-скоро пипана), без да се
+    // пипат номерата на останалите записи.
+    store.seq = (store.seq || 0) + 1;
+    store.boxes[key] = { ...box, o: store.seq };
+    while (Object.keys(store.boxes).length > NOTE_WINDOW_GEOM_MAX) {
+        // Най-старият е с най-малкия номер.
+        let oldest = null, oldestO = Infinity;
+        Object.keys(store.boxes).forEach(k => {
+            const o = store.boxes[k].o;
+            if (o < oldestO) { oldestO = o; oldest = k; }
+        });
+        if (oldest === null) break;
         delete store.boxes[oldest];
     }
     writeNoteWindowGeometry(store);
@@ -6529,7 +6570,7 @@ function measureNoteWindowBox(win) {
 
 // Запис се създава само при истинска промяна: win.geom0 е кутията, както приложението я е поставило
 // (при отваряне или при последния запис). Отваряне и затваряне на непреместена бележка не пипат
-// нито записа, нито order; разлика до 1px е закръгляне, не местене.
+// нито записа, нито номера на реда му; разлика до 1px е закръгляне, не местене.
 const NOTE_WINDOW_GEOM_TOL = 1;
 function noteWindowGeometryUnchanged(now, base) {
     return !!base
@@ -6566,6 +6607,10 @@ function resetNoteWindowGeometry() {
     // свиват, преди записът да бъде изтрит (иначе при затваряне пак щяха да си създадат запис с e:true).
     noteWindows.forEach(win => { if (win && win.expanded) setNoteWindowExpanded(win, false); });
     try {
+        // Ключът се маха целият, а не се оставя празен речник: така от стария формат (order, v: 1) не
+        // остава нищо, което по-късно да бъде прочетено като ред. Липсващ ключ и празен речник значат
+        // едно и също за readNoteWindowGeometry - „няма записи", тоест бележките сядат на дефолтното
+        // си място.
         localStorage.removeItem(NOTE_WINDOW_GEOM_KEY);
     } catch (e) {
         console.warn('noteWindowGeometry: reset failed', e);
