@@ -4792,6 +4792,17 @@ body.selection-locked .note.active-selection-note .note-content {
     transition: none;
     user-select: none;
 }
+/* --- Мобилна клавиатура (b2.89) ------------------------------------------------------------------
+   Докато полето за текст в бележката е на фокус на телефон, бележката застава на най-горния ръб и
+   се скъсява до 55vh - толкова остава над клавиатурата и на ниските телефони, така че и долният ред
+   с бутони остава над нея. Класът слага само !important правила: инлайн top/left, които местенето
+   пише, остават непокътнати, значи запомненото място не се променя и щом клавиатурата се затвори,
+   бележката се връща точно там, където е била. Нормалната височина (max-height: 95vh) се връща със
+   снемането на класа. */
+.note-window.note-window-kb-top .modal-content-box {
+    top: 0 !important;
+    max-height: 55vh !important;
+}
 /* The quiet trace after a background sync took the new text in, and the question when it could not. */
 .note-window-sync-trace {
     position: absolute;
