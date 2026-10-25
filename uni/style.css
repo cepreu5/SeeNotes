@@ -3706,6 +3706,9 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
        Жестът не бива да тегли картинката на плочката вместо да мести плочката. */
     touch-action: pan-y;
     -webkit-user-drag: none;
+    /* Сивото подсветване при докосване оставаше върху плочката след вдигането (b1.55) - местенето
+       започва с дълго натискане, а то не е клик. */
+    -webkit-tap-highlight-color: transparent;
     /* Разместването на останалите плочки върви с преход, за да не скача редът под показалеца. */
     transition: transform 0.15s ease;
 }
@@ -3765,6 +3768,19 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     display: none;
     /* Картинката е под контура (::after е с по-висок z-index), за да не закрива жълтото. */
     z-index: 1;
+}
+/* Съдържанието на плочката не приема показалеца (b1.55): жестът винаги попада върху САМАТА плочка, а
+   не върху <img>. Иначе дълъг натиск върху плочка със снимка отваряше родното меню на картинката -
+   собственикът (25.10.2026): „ако на плочката има снимка ... се показва стандартното меню за копиране,
+   споделяне и така нататък на снимката". Затова и родният callout се забранява, а тегленето и
+   маркирането - също. */
+.open-notes-bar-thumb,
+.open-notes-bar-letters {
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
 }
 .open-notes-bar-tile.has-thumb .open-notes-bar-thumb {
     display: block;
