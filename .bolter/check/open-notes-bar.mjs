@@ -17,8 +17,9 @@
 //   - бутонът в дясно затваря всички бележки (същата closeAllNoteWindows);
 //   - на 390px при 8 бележки редът се приплъзва (scrollWidth > clientWidth) и плочките не се свиват;
 //   - лентата е над всеки прозорец (z-index), не приема кликове през слоя и стои извън скрола;
-//   - в режим „единична бележка" лентата СЪЩО се вижда (той оставя една бележка, а лентата е
-//     пътят да я скриеш и върнеш, без да я затваряш) - в main няма правило, което да я крие там;
+//   - в режим „единична бележка" лентата НЕ се показва - изключването на режима я връща веднага,
+//     без презареждане, а скрита бележка се връща на екрана още при включването на режима
+//     (собственикът, 25.10.2026: „при включена настройка Single note лентата е излишно да се показва");
 //   - бележка със снимка показва <img> в плочката си, бележка без снимка - буквена плочка;
 //   - разпъната бележка при видима лента (extended mode на бележката): долната ѝ част (редът с
 //     датата във футъра) свършва НАД лентата, всеки бутон в бележката се натиска (elementFromPoint),
@@ -599,33 +600,94 @@ ok(wsClosed.open.length === 0, `бутонът затвори всички бе�
 ok(hidden(s), `след затваряне на всички лентата е скрита (display ${s.display})`, s);
 
 tick('до тук: 5-6) затваряне');
-// --- 7) Режим „единична бележка": лентата остава видима ----------------------------------
-// main държи режима „единична бележка" строго: включването му оставя САМО горната бележка (останалите
-// се затварят като с хиксче). Лентата обаче остава видима: режимът оставя една бележка, а лентата е
-// единственият път да я скриеш и върнеш, без да я затваряш (собственикът, 25.10.2026 - в main няма
-// правило, което да крие лентата в този режим).
+// Смяна на настройката „Single note" през ИСТИНСКИЯ чекбокс от настройките (същият път като клик на
+// потребителя): checked + change, без модалът да трябва да е отворен на екрана.
+// UI-ът на настройките (createSettingsUI) се създава още при старт на приложението, но в теста
+// стартът спира на мрежовите заявки, затова тук се вика изрично. Функцията има пазач
+// (settings-modal-body.dataset.initialized), значи повторното ѝ викане не слага втори слушател.
+const ensureSettingsUI = () => page.evaluate(async () => {
+    try { await createSettingsUI([], false); } catch (e) { }
+    const body = document.getElementById('settings-modal-body');
+    return !!body && body.dataset.initialized === 'true';
+});
+const setSingleNote = (on) => page.evaluate((on) => {
+    const cb = document.getElementById('single-note-mode-checkbox');
+    if (!cb) return false;
+    cb.checked = on;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+}, on);
+
+// --- 7) Режим „единична бележка": лентата НЕ се показва --------------------------------------
+// Собственикът (25.10.2026): „при включена настройка Single note лентата е излишно да се показва" -
+// режимът държи една бележка, значи лентата няма какво да показва. main държи режима строго:
+// включването му оставя САМО горната бележка (останалите се затварят като с хиксче), затова тук се
+// проверява и че лентата изчезва заедно с това.
 for (const key of ['photo', 'bread', 'plan']) await openNote(key);
 await settle();
-ok(!hidden(await barState()) && (await windowsState()).open.length === 3,
-    'преди включването на режима лентата е видима с 3 отворени бележки');
-await page.evaluate(() => localStorage.setItem('singleNoteMode', 'true'));
-await page.evaluate(() => { if (typeof applySingleNoteModeSetting === 'function') applySingleNoteModeSetting(); });
+s = await barState();
+ok(!hidden(s) && s.tiles.length === 3,
+    `преди включването на режима: 3 отворени бележки и видима лента (display ${s.display}, ${s.tiles.length} плочки)`, s);
+
+const settingsReady = await ensureSettingsUI();
+ok(settingsReady, 'настройките са инициализирани - чекбоксът Single note носи истинския си слушател');
+
+const cbFound = await setSingleNote(true);
+const modeNow = await page.evaluate(() => localStorage.getItem('singleNoteMode'));
+ok(cbFound, 'чекбоксът #single-note-mode-checkbox е на страницата - режимът се включва през него');
+ok(modeNow === 'true', `включването на режима записа настройката (singleNoteMode=${modeNow})`);
+await waitOpenCount(1);
 await settle();
 s = await barState();
+const rectSingle = await barRect();
 const wsSingle = await windowsState();
 ok(wsSingle.open.length === 1, `в режим „единична бележка" остава една отворена бележка (${wsSingle.open.length})`, wsSingle.open.length);
+ok(hidden(s), `при включен Single note лентата не се показва (display ${s.display})`, s);
+ok(!rectSingle.bodyClass && parseFloat(rectSingle.varH || '0') === 0,
+    `избутването на плаващите бутони е върнато (клас ${rectSingle.bodyClass}, --open-notes-bar-h ${rectSingle.varH})`, rectSingle);
+// В режима лентата е display: none - значи не заема място на екрана (плочките остават в скрития ѝ
+// DOM и се строят наново, щом лентата се покаже пак).
+ok(rectSingle.exists && rectSingle.rectH === 0 && rectSingle.rectW === 0,
+    `скритата лента не заема място на екрана (${rectSingle.rectW}x${rectSingle.rectH})`, rectSingle);
+
+tick('7а) лентата при включен Single note');
+// --- 7б) Изключването на режима връща лентата веднага, без презареждане -----------------------
+await setSingleNote(false);
+await settle();
+s = await barState();
+const rectBack = await barRect();
 ok(!hidden(s) && s.tiles.length === 1,
-    `в режим „единична бележка" лентата се вижда с плочката на останалата бележка (display ${s.display}, ${s.tiles.length})`, s.tiles.length);
-// Плочката работи и в режима: скрива бележката и я връща.
+    `след изключване на режима лентата се връща веднага с плочката на отворената бележка (display ${s.display}, ${s.tiles.length} плочки)`, s.tiles.length);
+ok(rectBack.bodyClass && parseFloat(rectBack.varH || '0') > 0,
+    `и плаващите бутони се качват пак над нея (клас ${rectBack.bodyClass}, --open-notes-bar-h ${rectBack.varH})`, rectBack);
+
+tick('7б) връщане при изключване');
+// --- 7в) Скрита бележка се връща на екрана при включване на режима ---------------------------
+// Лентата е ЕДИНСТВЕНИЯТ път да върнеш скрита бележка, а в режима тя я няма - затова включването
+// връща на екрана всичко скрито (applySingleNoteModeSetting), вместо да го остави недостъпно.
 await page.locator('#open-notes-bar .open-notes-bar-hide').click();
 await settle();
-ok((await windowsState()).open.every(w => w.hidden) && !hidden(await barState()),
-    'в режим „единична бележка" „скрий всички" скрива бележката, а лентата остава');
-await page.locator('#open-notes-bar .open-notes-bar-hide').click();
+const wsHid = await windowsState();
+ok(wsHid.open.length === 1 && wsHid.open.every(w => w.hidden),
+    `в изключен режим „скрий всички" скри бележката (скрити ${wsHid.open.filter(w => w.hidden).length})`, wsHid.open);
+ok(!hidden(await barState()), 'и лентата остава - тя е пътят да я върнеш');
+
+await setSingleNote(true);
 await settle();
-ok((await windowsState()).open.every(w => !w.hidden), 'и я връща обратно');
-await page.evaluate(() => { localStorage.setItem('singleNoteMode', 'false'); if (typeof applySingleNoteModeSetting === 'function') applySingleNoteModeSetting(); });
+const wsBackIn = await windowsState();
+s = await barState();
+ok(wsBackIn.open.length >= 1 && wsBackIn.open.every(w => w.hidden === false),
+    `включването на режима върна скритите бележки на екрана (hidden: ${wsBackIn.open.map(w => w.hidden).join(', ')})`, wsBackIn.open);
+ok(wsBackIn.open.every(w => w.display !== 'none' && w.boxW > 0 && w.boxH > 0),
+    `върнатите прозорци се виждат наистина, не са с нулева мярка (${wsBackIn.open.map(w => w.display + ' ' + w.boxW + 'x' + w.boxH).join(', ')})`, wsBackIn.open);
+ok(hidden(s), `и лентата остава скрита в режима (display ${s.display})`, s);
+
+await setSingleNote(false);
 await settle();
+s = await barState();
+ok(!hidden(s) && s.tiles.length === wsBackIn.open.length,
+    `след изключване на режима бележките пак стоят в лентата (display ${s.display}, ${s.tiles.length} плочки)`, s.tiles.length);
+
 // От чисто: затваря се останалата и се отварят пак трите, за да продължи тестът от същото състояние.
 ok(await closeAllOpenNotes(), 'останалата бележка се затваря, преди да се отворят трите наново');
 for (const key of ['photo', 'bread', 'plan']) await openNote(key);
