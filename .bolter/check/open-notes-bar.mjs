@@ -30,7 +30,10 @@
 //     същата плочка я показва пак и я прави активна - плочката е превключвател, а клик на плочка на
 //     друга/скрита бележка работи както досега (b2.77);
 //   - при ЕДНА отворена бележка разпънатата бележка и иконката на Ko-fi стоят НАД лентата - със
-//     същите мерки като при три (b2.78).
+//     същите мерки като при три (b2.78);
+//   - дълго натискане (500ms) на плочка ЗАТВАРЯ бележката ѝ - по същия път като хиксчето, и за
+//     скрита, и за активната видима плочка, а плочката изчезва от лентата; обикновен клик още
+//     вдига/скрива, а touchmove преди 500ms (плъзгане по лентата) не затваря нищо (b2.82).
 // Пуска се от корена на хранилището:
 //   node .bolter/check/open-notes-bar.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -1520,6 +1523,126 @@ ok(ws20.open.filter(w => !w.hidden).length === 1 && (await winProbe(lastHiddenG)
     `20б) връща се само тя и става активна (${ws20.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).join(' ')})`, ws20.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')));
 
 tick('до тук: 20) превключване от плочка');
+
+// --- 21) Дълго натискане на плочка затваря бележката (b2.82) --------------------------------
+// Собственикът (25.10.2026): „дълго натискане на мини бутон в лентата долу с отворените бележки да
+// затваря съответната бележка". Задържането минава по СЪЩИЯ път като хиксчето на прозореца
+// (activateNoteWindow + .modal-close), значи въпросът при незаписани промени идва без нов код.
+// Затваря и скрита, и активната видима плочка; обикновеният клик още вдига/скрива; плъзгане по
+// лентата не затваря нищо.
+// Жестът се пуска с истински touch събития (Touch конструктора): същите слушатели
+// touchstart/touchmove/touchend, които ползва приложението, с истинско изчакване на 500ms.
+const tileGesture = (gdid, { holdMs = 620, moveDx = 0 } = {}) => page.evaluate(async ([gdid, holdMs, moveDx]) => {
+    const tile = [...document.querySelectorAll('#open-notes-bar .open-notes-bar-tile')]
+        .find(t => (t.dataset.barKey || '').includes(gdid));
+    if (!tile) return { started: false };
+    const r = tile.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const make = (type, x, y) => {
+        const touch = new Touch({ identifier: 11, target: tile, clientX: x, clientY: y });
+        const active = type === 'touchend' ? [] : [touch];
+        return new TouchEvent(type, { bubbles: true, cancelable: true, touches: active, targetTouches: active, changedTouches: [touch] });
+    };
+    tile.dispatchEvent(make('touchstart', cx, cy));
+    if (moveDx) tile.dispatchEvent(make('touchmove', cx + moveDx, cy));
+    await new Promise(res => setTimeout(res, holdMs));
+    // touchend се пуска върху СЪЩИЯ елемент дори когато плочката вече е махната от лентата (затворена):
+    // точно както браузърът праща събитието на елемента, върху който е започнало докосването.
+    tile.dispatchEvent(make('touchend', cx, cy));
+    await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+    return { started: true, stillInBar: tile.isConnected };
+}, [gdid, holdMs, moveDx]);
+
+// Колко прозореца се ВИЖДАТ на екрана и какъв е броят на отворените. Класът 'visible' го имат всички
+// отворени (скритата бележка пази класа и получава note-window-hidden), затова „видима" се брои по
+// истинското състояние: не е скрита и се вижда (display + мярка).
+const windowsSeen = () => page.evaluate(() => {
+    const open = getOpenNoteWindows();
+    return {
+        open: open.length,
+        visible: open.filter(w => !w.hidden && getComputedStyle(w.el).display !== 'none'
+            && w.box.getBoundingClientRect().height > 0).length,
+        hidden: open.filter(w => !!w.hidden).length,
+        gdids: open.map(w => w.body.dataset.gdid || ''),
+    };
+});
+
+// Стартът на тази част: BAR2 е видима и активна, BAR3 и BAR4 са скрити (края на 20б).
+{
+    const start = await windowsSeen();
+    ok(start.open === 3 && start.visible === 1 && start.gdids.includes('BAR3'),
+        `21) изходно: три отворени бележки, една видима (${start.open}/${start.visible}: ${start.gdids.join(' ')})`, start);
+
+    // Контрола: обикновен клик още вдига и скрива - дългото натискане не е заменило клика.
+    ok(await clickTile('BAR4'), '21) контрола: клик на плочката на скритата BAR4 минава');
+    const shown = await winProbe('BAR4');
+    ok(shown.hidden === false && shown.display !== 'none' && shown.boxH > 0,
+        `21) контрола: обикновен клик показва бележката (hidden ${shown.hidden}, display ${shown.display})`, shown);
+    ok((await windowsSeen()).open === 3, '21) контрола: кликът не е затворил нищо');
+    ok(await clickTile('BAR4'), '21) контрола: втори клик на същата плочка минава');
+    const hiddenAgain = await winProbe('BAR4');
+    ok(hiddenAgain.hidden === true && (await windowsSeen()).open === 3,
+        `21) контрола: вторият клик я скрива, без да я затваря (hidden ${hiddenAgain.hidden}, отворени ${(await windowsSeen()).open})`, hiddenAgain);
+
+    // Плъзгане по лентата (touchmove преди 500ms) НЕ затваря бележка - плочката е в ред с хоризонтален
+    // скрол и лекото местене на пръста не бива да се брои за задържане.
+    const dragged = await tileGesture('BAR4', { moveDx: 14 });
+    ok(dragged.started, '21) плъзгане: жестът върху плочката на BAR4 минава', dragged);
+    const afterDrag = await windowsSeen();
+    const dragProbe = await winProbe('BAR4');
+    ok(afterDrag.open === 3 && dragProbe.present === true,
+        `21) touchmove преди 500ms не затваря бележката (отворени ${afterDrag.open}, BAR4 ${dragProbe.present ? 'стои' : 'липсва'})`, { afterDrag, dragProbe });
+
+    // Дълго натискане на СКРИТА плочка: бележката се затваря (пътят на хиксчето показва скритата и я
+    // затваря - въпросът при незаписани промени идва оттам, без нов код).
+    const beforeHide = await windowsSeen();
+    const press3 = await tileGesture('BAR3');
+    ok(press3.started, '21) дълго натискане: жестът върху плочката на скритата BAR3 минава', press3);
+    const afterHide = await windowsSeen();
+    const probe3 = await winProbe('BAR3');
+    ok(probe3.present === false && !afterHide.gdids.includes('BAR3'),
+        `21) дълго натискане на скрита плочка затваря бележката (отворени ${beforeHide.open} -> ${afterHide.open})`, { afterHide, probe3 });
+    ok(afterHide.visible === beforeHide.visible,
+        `21) видимите прозорци не се променят от затварянето на скрита бележка (${beforeHide.visible} -> ${afterHide.visible})`, { beforeHide, afterHide });
+    const tile3 = await tileStateOf('BAR3');
+    ok(tile3 === null, '21) плочката на затворената бележка изчезва от лентата', tile3);
+
+    // Дълго натискане на АКТИВНАТА ВИДИМА плочка също затваря бележката си.
+    const activeNow = (await windowsState()).activeGdid;
+    const beforeVisible = await windowsSeen();
+    const pressActive = await tileGesture(activeNow);
+    ok(pressActive.started, `21) дълго натискане: жестът върху плочката на активната ${activeNow} минава`, pressActive);
+    const afterVisible = await windowsSeen();
+    const probeActive = await winProbe(activeNow);
+    ok(probeActive.present === false,
+        `21) дълго натискане на активната видима плочка затваря бележката ѝ (${activeNow}), отворени ${beforeVisible.open} -> ${afterVisible.open}`, { afterVisible, probeActive });
+    ok(afterVisible.open === beforeVisible.open - 1 && afterVisible.gdids.includes('BAR4'),
+        `21) затваря се само нейният прозорец (отворени ${beforeVisible.open} -> ${afterVisible.open}, остават ${afterVisible.gdids.join(' ')})`, { beforeVisible, afterVisible });
+    ok((await tileStateOf(activeNow)) === null, '21) и нейната плочка изчезва от лентата', activeNow);
+
+    // Същото с МИШКА (десктоп): истинско задържане на показалеца върху плочка затваря бележката, а
+    // следващият click (браузърът го праща след mouseup) не я вдига отново.
+    await openNote('bread');
+    await settle();
+    ok((await winProbe('BAR2')).present === true, '21б) BAR2 е отворена наново за проверката с мишка');
+    const mouseIdx = await tileIndexFor('BAR2');
+    ok(mouseIdx >= 0, `21б) плочката на BAR2 е в лентата (индекс ${mouseIdx})`);
+    const mBox = await page.locator('#open-notes-bar .open-notes-bar-tile').nth(mouseIdx).boundingBox();
+    await page.mouse.move(mBox.x + mBox.width / 2, mBox.y + mBox.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(620);
+    await page.mouse.up();
+    await settle();
+    const mouseProbe = await winProbe('BAR2');
+    ok(mouseProbe.present === false,
+        `21б) задържане с мишка на плочката също затваря бележката (BAR2 ${mouseProbe.present ? 'стои' : 'затворена'})`, mouseProbe);
+
+    // Нищо не е останало недовършено: останалата бележка се затваря през своя X, лентата изчезва.
+    ok(await closeAllOpenNotes(), '21) останалата отворена бележка се затваря през своя X');
+    await settle();
+    s = await barState();
+    ok(hidden(s), `21) след затварянето на всички лентата е скрита (display ${s.display})`, s);
+}
 
 // --- 18) Никакви грешки в конзолата / страницата -------------------------------------------
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);
