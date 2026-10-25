@@ -11161,6 +11161,12 @@ function activateNoteWindow(win, front = true) {
         refreshOpenNotesBar();
     }
     if (front) raiseNoteWindow(win);
+    // Лентата следва прозорците и когато активната НЕ се сменя: щом бележката се върне от скрита
+    // през плочката си, приглушаването ѝ трябва да падне веднага. Без това (активната бележка е
+    // скрита, значи activateNoteWindow не влиза в горния клон, а raiseNoteWindow излиза още в
+    // началото, защото прозорецът вече е най-отпред) плочката остава is-hidden до следващото
+    // опресняване - стига се при една отворена бележка или когато всички са скрити.
+    refreshOpenNotesBar();
 }
 
 function raiseNoteWindow(win) {
@@ -11233,10 +11239,9 @@ function updateSingleNoteOverlay() {
 // ѝ бележка".
 // Лентата живее в #note-windows-layer - същият родител като прозорците - затова носи
 // pointer-events: auto и z-index над всеки прозорец: иначе вдигнат с клик прозорец би я закрил.
-// Показва се при ПОВЕЧЕ от 2 отворени бележки ("повече от 2" значи три и нагоре) ИЛИ когато има
-// скрити бележки - иначе няма как да ги върнеш обратно. В режим „единична бележка" не се показва:
-// там достъпна е само горната бележка.
-const OPEN_NOTES_BAR_MIN = 2;
+// Показва се още при ЕДНА отворена и видима бележка (собственикът, 25.10.2026 - преди беше при
+// повече от две) ИЛИ когато има скрити бележки - иначе няма как да ги върнеш обратно.
+const OPEN_NOTES_BAR_MIN = 1;
 const OPEN_NOTES_BAR_Z = NOTE_WINDOW_Z_BASE + 9000;
 // Размерът на миниатюрата: плочката е 40px, значи 80px стигат за плътна картинка на екран с
 // двойна плътност, а заявката остава малка.
@@ -11637,8 +11642,13 @@ function refreshOpenNotesBar() {
     if (!layer) return;
     const open = getOpenNoteWindows();
     const hiddenCount = open.filter(w => w.hidden).length;
-    // Повече от 2 отворени бележки ИЛИ има скрити: лентата остава, докато има какво да върне.
-    const show = !isSingleNoteMode() && (open.length > OPEN_NOTES_BAR_MIN || hiddenCount > 0);
+    // Видимите отворени бележки: скритите не се броят за „има какво да се покаже на лентата", но
+    // тяхната лента е точно пътят, по който се връщат - затова те я държат на екрана отделно.
+    const visibleOpen = open.length - hiddenCount;
+    // Една (и повече) видима отворена бележка ИЛИ има скрити: лентата остава, докато има какво да
+    // покаже или да върне. В режим „единична бележка" лентата СЪЩО се показва (в main няма
+    // правило, което да я крие там): тя е пътят да скриеш и върнеш бележката, без да я затваряш.
+    const show = visibleOpen >= OPEN_NOTES_BAR_MIN || hiddenCount > 0;
     let bar = document.getElementById('open-notes-bar');
     if (!show) {
         if (bar) bar.classList.remove('is-visible');
@@ -11715,8 +11725,12 @@ function refreshOpenNotesBar() {
             });
         }
         keep.add(key);
-        openNotesBarFillTile(tile, win);
+        // Плочката влиза в реда ПРЕДИ да се строи: кешираната миниатюра се слага веднага, а
+        // openNotesBarFetchThumb не пипа елемент извън документа (tile.isConnected) - иначе
+        // новосъздадената плочка изпуска готовия адрес, подписът ѝ вече е записан и тя остава с
+        // буквите, докато кешираният адрес не изтече.
         if (strip.children[i] !== tile) strip.insertBefore(tile, strip.children[i] || null);
+        openNotesBarFillTile(tile, win);
     });
     Array.from(strip.children).forEach(el => { if (!keep.has(el.dataset.barKey)) el.remove(); });
     bar.classList.add('is-visible');

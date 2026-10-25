@@ -185,6 +185,30 @@ const stripState = () => page.evaluate(() => {
   };
 });
 
+// Лентата с отворените бележки вече е на екрана и при ЕДНА отворена бележка (b2.78). Тя стои в
+// дъното на екрана и се рисува НАД прозорците, значи дъното на бележката не бива да влиза под нея:
+// иначе редът с плочките на прикачените файлове остава зад лентата и истинско щрак с мишката не
+// стига до плочката (натискът там е на лентата). Прозорецът се вдига над лентата - същото, което
+// прави и потребителят, като го плъзне нагоре.
+const raiseNoteAboveBar = () => page.evaluate(() => {
+  const box = document.getElementById('modal-body').closest('.modal-content-box');
+  const bar = document.getElementById('open-notes-bar');
+  const barTop = bar && bar.classList.contains('is-visible')
+    ? bar.getBoundingClientRect().top : window.innerHeight;
+  const r = box.getBoundingClientRect();
+  if (r.bottom > barTop - 8) {
+    const lift = r.bottom - (barTop - 8);
+    const top = Math.max(0, Math.round(r.top - lift - 4));
+    let h = Math.round(barTop - 8 - top);
+    if (h > r.height) h = Math.round(r.height);
+    box.style.top = top + 'px';
+    box.style.height = h + 'px';
+    box.style.maxHeight = h + 'px';
+  }
+  const after = box.getBoundingClientRect();
+  return { barTop: Math.round(barTop), top: Math.round(after.top), bottom: Math.round(after.bottom) };
+});
+
 const before = await stripState();
 ok(before.stripShown && before.addTile, `нова бележка в редакция: лентата е на екрана с плочката „+" (${before.stripShown}/${before.addTile})`);
 ok(before.tiles.length === 0, `преди прикачването в лентата няма плочки (${before.tiles.length})`);
@@ -220,6 +244,11 @@ ok(!during.noteSaved, 'бележката още не е записана - пл
 ok(!/Прикачено/.test(during.toast), `съобщението „Прикачено" още не е излязло, докато качването тече (${JSON.stringify(during.toast)})`);
 
 // --- Плочката е готова за работа веднага: кликът отваря менюто с „Сложи в текста" ---
+// Плочката трябва да е ИЗВЪН лентата, за да я стигне истински клик: прозорецът се вдига над нея.
+const raised = await raiseNoteAboveBar();
+ok(raised.bottom <= raised.barTop - 8,
+  `прозорецът е вдигнат над лентата, за да е стигаема плочката (дъно ${raised.bottom} <= ${raised.barTop} - 8)`, raised);
+
 await page.click('#modal-body .nm-attach-strip .nm-attach-tile:not(.is-add)');
 const menuOpen = await page.waitForFunction(() => !!document.querySelector('.nm-inline-menu'), null, { timeout: 4000 })
   .then(() => true).catch(() => false);

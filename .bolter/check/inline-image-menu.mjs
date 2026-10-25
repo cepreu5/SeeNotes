@@ -266,7 +266,37 @@ ok(s.charWidth > 0 && s.marks.every(m => m.rect.width <= s.charWidth * 1.6),
 ok(s.marks.every(m => m.text === '*'), 'маркерът стои точно на мястото на звездичката (знакът е в него)', s.marks.map(m => m.text));
 ok(s.value.includes('*'), 'звездичките са още в текста (записът е същият)', s.value);
 
+// Лентата с отворените бележки вече е на екрана и при ЕДНА отворена бележка (b2.78). Тя стои в
+// дъното на екрана и се рисува НАД прозорците, значи дъното на бележката не бива да влиза под нея:
+// иначе редът с плочките на прикачените файлове остава зад лентата и истинско щрак с мишката не
+// стига до плочката (натискът там е на лентата). Прозорецът се вдига над лентата - същото, което
+// прави и потребителят, като го плъзне нагоре.
+const raiseNoteAboveBar = () => page.evaluate(() => {
+  const box = document.getElementById('modal-body').closest('.modal-content-box');
+  const bar = document.getElementById('open-notes-bar');
+  const barTop = bar && bar.classList.contains('is-visible')
+    ? bar.getBoundingClientRect().top : window.innerHeight;
+  const r = box.getBoundingClientRect();
+  if (r.bottom > barTop - 8) {
+    const lift = r.bottom - (barTop - 8);
+    const top = Math.max(0, Math.round(r.top - lift - 4));
+    let h = Math.round(barTop - 8 - top);
+    if (h > r.height) h = Math.round(r.height);
+    box.style.top = top + 'px';
+    box.style.height = h + 'px';
+    box.style.maxHeight = h + 'px';
+  }
+  const after = box.getBoundingClientRect();
+  return { barTop: Math.round(barTop), top: Math.round(after.top), bottom: Math.round(after.bottom) };
+});
+
 // ======================= 3. Плочка -> менюто (Преглед, Ширина, Сложи в текста) =======================
+// Плочката трябва да е ИЗВЪН лентата, за да я стигне истински клик с мишката: прозорецът се вдига
+// над лентата (иначе редът с плочките остава зад нея - тя е над прозорците в дъното на екрана).
+const raisedAboveBar = await raiseNoteAboveBar();
+ok(raisedAboveBar.bottom <= raisedAboveBar.barTop - 8,
+  `прозорецът е вдигнат над лентата, за да е стигаема плочката (дъно ${raisedAboveBar.bottom} <= ${raisedAboveBar.barTop} - 8)`, raisedAboveBar);
+
 const tileRect = await page.evaluate(() => {
   const tile = document.querySelector('#modal-body .nm-attach-tile:not(.is-add)');
   const r = tile.getBoundingClientRect();

@@ -5,25 +5,29 @@
 // ѝ бележка".
 // Проверява се по ИСТИНСКИЯ път в браузър - истински прозорци (showModal), истински кликове с
 // показалеца, истински thumbnail от (фалшив) Drive:
-//   - при 0, 1 и 2 отворени бележки лентата я няма (display: none);
-//   - при 3 отворени се вижда с точно 3 плочки по 40x40;
+//   - при 0 отворени бележки лентата я няма (display: none);
+//   - при 1, 2 и 3 отворени бележки се вижда (собственикът, 25.10.2026: „лентата вече се показва
+//     веднага при 1 отворена бележка, не при 3") - при 1 е с една плочка 40x40, при 3 с три;
+//     при 1 кликът на плочката вдига бележката, а кликът на активната я скрива и връща;
 //   - фонът на всяка плочка е ТОЧНО цветът на бележката (фонът на .modal-content-box на прозореца ѝ);
 //   - буквите се четат: тъмни на светла бележка, бели на тъмна (бележка с цвят #222222);
 //   - активната бележка е оградена с жълт 2px контур, нарисуван ОТВЪТРЕ в плочката (на ::after, над
 //     миниатюрата) и контурът се мести при клик на друга плочка;
 //   - клик на плочка вдига нейния прозорец най-отпред и го прави активен;
-//   - затваряне на една бележка (2 остават) скрива лентата;
+//   - лентата изчезва едва когато не остане нито една отворена бележка;
 //   - бутонът в дясно затваря всички бележки (същата closeAllNoteWindows);
 //   - на 390px при 8 бележки редът се приплъзва (scrollWidth > clientWidth) и плочките не се свиват;
 //   - лентата е над всеки прозорец (z-index), не приема кликове през слоя и стои извън скрола;
-//   - в режим „единична бележка" лентата е скрита;
+//   - в режим „единична бележка" лентата СЪЩО се вижда (в main няма правило, което да я крие там);
 //   - бележка със снимка показва <img> в плочката си, бележка без снимка - буквена плочка;
 //   - разпъната бележка при видима лента (extended mode, b2.75): долният ред с бутоните и редът с
 //     датата под него свършват НАД лентата, всеки бутон се натиска (elementFromPoint), а щом лентата
 //     изчезне, бележката се връща на цялата височина - на 1280x900 и на 390x844;
 //   - клик на плочката на АКТИВНАТА бележка я скрива (плочката става is-hidden), втори клик върху
 //     същата плочка я показва пак и я прави активна - плочката е превключвател, а клик на плочка на
-//     друга/скрита бележка работи както досега (b2.77).
+//     друга/скрита бележка работи както досега (b2.77);
+//   - при ЕДНА отворена бележка разпънатата бележка и иконката на Ko-fi стоят НАД лентата - със
+//     същите мерки като при три (b2.78).
 // Пуска се от корена на хранилището:
 //   node .bolter/check/open-notes-bar.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -319,6 +323,36 @@ const barRect = () => page.evaluate(() => {
     };
 });
 
+// Иконката на Ko-fi: истинският widget се проверява в kofi-widget.mjs (със своите фикстури), а тук
+// се мери правилото, което я качва над лентата - контейнер със същите класове, вдиган със СЪЩАТА
+// променлива --open-notes-bar-h (12px от долния ръб, а с лента - височината ѝ + 8px отгоре).
+const kofiState = () => page.evaluate(() => {
+    let wrap = document.querySelector('.floatingchat-container-wrap[data-test-stub]');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.className = 'floatingchat-container-wrap';
+        wrap.dataset.testStub = '1';
+        wrap.style.width = '88px';
+        wrap.style.height = '48px';
+        document.body.appendChild(wrap);
+    }
+    const bar = document.getElementById('open-notes-bar');
+    const round = v => Math.round(v * 10) / 10;
+    const r = wrap.getBoundingClientRect();
+    const br = bar ? bar.getBoundingClientRect() : null;
+    return {
+        bottom: round(parseFloat(getComputedStyle(wrap).bottom) || 0),
+        rectBottom: round(r.bottom),
+        rectH: round(r.height),
+        barTop: br ? round(br.top) : null,
+        above: !!br && r.bottom <= br.top + 0.5,
+        bodyBar: document.body.classList.contains('open-notes-bar-visible'),
+    };
+});
+const removeKofiStub = () => page.evaluate(() => {
+    document.querySelectorAll('.floatingchat-container-wrap[data-test-stub]').forEach(el => el.remove());
+});
+
 // Затваря ВСИЧКИ отворени прозорци (всеки през своя X) и изчаква да останат нула. Ползва се там,
 // където тестът иска да започне от чисто - иначе забравена отворена бележка чупи бройките.
 const closeAllOpenNotes = async () => {
@@ -353,19 +387,50 @@ const hidden = (s) => !s.exists || s.display === 'none';
 const waitOpenCount = (count) => page.waitForFunction((c) => getOpenNoteWindows().length === c, count, { timeout: 8000 }).catch(() => { });
 const tileOf = (s, idx) => (s.tiles[idx] || {});
 
-// --- 1) При 0, 1 и 2 отворени бележки лентата я няма ----------------------------------------
+// --- 1) Лентата я няма само при 0 отворени бележки; при 1 вече се вижда ----------------------
 let s = await barState();
 ok(hidden(s), 'при 0 отворени бележки лентата е скрита', s);
 
+// ЕДНА отворена бележка вече е достатъчна (собственикът, 25.10.2026: „лентата вече се показва
+// веднага при 1 отворена бележка, не при 3"). Плочката е 40x40, кликът ѝ вдига бележката, а кликът
+// на активната ѝ плочка я скрива - вторият клик я връща.
 await openNote('photo');
 await settle();
 s = await barState();
-ok(hidden(s), `при 1 отворена бележка лентата е скрита (display ${s.display})`, s);
+ok(!hidden(s) && s.display === 'flex', `при 1 отворена бележка лентата се вижда (display ${s.display})`, s);
+ok(s.tiles.length === 1, `в лентата има точно 1 плочка (${s.tiles.length})`, s.tiles);
+ok(s.tiles.every(t => t.w === 40 && t.h === 40), `плочката е 40x40 (${s.tiles.map(t => t.w + 'x' + t.h).join(', ')})`, s.tiles);
+let ws1 = await windowsState();
+ok(ws1.open.length === 1 && ws1.activeGdid === 'BAR1',
+    `единствената бележка е отворена и активна (${ws1.open.length}, ${ws1.activeGdid})`, ws1);
+ok(s.tiles[0].active === true, `плочката ѝ е откроена (is-active ${s.tiles[0].active})`, s.tiles[0]);
+// Клик на плочката на активната (единствена) бележка я скрива, а лентата остава на екрана - тя е
+// пътят да се върне.
+await page.locator('#open-notes-bar .open-notes-bar-tile').nth(0).click();
+await settle();
+s = await barState();
+ws1 = await windowsState();
+ok(ws1.open.length === 1 && ws1.open[0].hidden === true,
+    `клик на плочката на активната бележка я скрива (отворени ${ws1.open.length}, скрити ${ws1.open.filter(w => w.hidden).length})`, ws1.open);
+ok(s.tiles.length === 1 && s.tiles[0].hiddenTile === true,
+    `плочката на скритата бележка е приглушена (is-hidden ${s.tiles[0].hiddenTile})`, s.tiles[0]);
+ok(!hidden(s) && s.display === 'flex',
+    `лентата остава на екрана и при скритата единствена бележка (display ${s.display})`, s);
+// Вторият клик на същата плочка я връща и я прави активна.
+await page.locator('#open-notes-bar .open-notes-bar-tile').nth(0).click();
+await settle();
+s = await barState();
+ws1 = await windowsState();
+ok(ws1.open.length === 1 && ws1.open[0].hidden === false && ws1.open[0].display !== 'none',
+    `вторият клик върна бележката на екрана (hidden ${ws1.open[0].hidden}, display ${ws1.open[0].display})`, ws1.open);
+ok(ws1.activeGdid === 'BAR1' && s.tiles[0].active === true && s.tiles[0].hiddenTile === false,
+    `върнатата бележка е активна и плочката ѝ е откроена, не приглушена (${ws1.activeGdid})`, s.tiles[0]);
 
 await openNote('bread');
 await settle();
 s = await barState();
-ok(hidden(s), `при 2 отворени бележки лентата е скрита (display ${s.display})`, s);
+ok(!hidden(s) && s.display === 'flex', `при 2 отворени бележки лентата се вижда (display ${s.display})`, s);
+ok(s.tiles.length === 2, `в лентата има 2 плочки (${s.tiles.length})`, s.tiles);
 ok((await windowsState()).open.length === 2, 'двете бележки са отворени в два прозореца');
 
 tick('до тук: 1) 0/1/2 бележки');
@@ -447,12 +512,13 @@ ok(firstWin && firstWin.active, 'прозорецът ѝ носи note-window-ac
 ok(s.display === 'flex' && s.tiles.length === 3, 'лентата остава на мястото си след клика', s);
 
 tick('до тук: 3-4) открояване и клик');
-// --- 5) Затваряне на една бележка (остават 2) скрива лентата --------------------------------
+// --- 5) Лентата остава и след като бележките станат 2 (прагът вече е 1) ----------------------
 ok(await closeNoteByX('BAR3'), 'прозорецът на третата бележка се затваря през своя X');
 await waitOpenCount(2);
 await settle();
 s = await barState();
-ok(hidden(s), `при 2 отворени бележки лентата пак е скрита (display ${s.display})`, s);
+ok(!hidden(s) && s.tiles.length === 2,
+    `при 2 отворени бележки лентата остава видима с 2 плочки (display ${s.display}, ${s.tiles.length})`, s);
 
 // --- 6) Бутонът в дясно затваря всички бележки ---------------------------------------------
 await openNote('plan');
@@ -469,14 +535,15 @@ ok(wsClosed.open.length === 0, `бутонът затвори всички бе�
 ok(hidden(s), `след затваряне на всички лентата е скрита (display ${s.display})`, s);
 
 tick('до тук: 5-6) затваряне');
-// --- 7) Режим „единична бележка": лентата не се показва ------------------------------------
+// --- 7) Режим „единична бележка": лентата СЪЩО се показва ------------------------------------
 await page.evaluate(() => localStorage.setItem('singleNoteMode', 'true'));
 for (const key of ['photo', 'bread', 'plan']) await openNote(key);
 await page.evaluate(() => { if (typeof applySingleNoteModeSetting === 'function') applySingleNoteModeSetting(); });
 await settle();
 s = await barState();
 ok((await windowsState()).open.length === 3, 'трите бележки са отворени и в режим „единична бележка"');
-ok(hidden(s), `при singleNoteMode с 3 отворени бележки лентата е скрита (display ${s.display})`, s);
+ok(!hidden(s) && s.tiles.length === 3,
+    `при singleNoteMode с 3 отворени бележки лентата също се вижда (display ${s.display}, ${s.tiles.length} плочки)`, s);
 await page.evaluate(() => { localStorage.setItem('singleNoteMode', 'false'); if (typeof applySingleNoteModeSetting === 'function') applySingleNoteModeSetting(); });
 await settle();
 s = await barState();
@@ -642,7 +709,7 @@ ok(JSON.stringify(contentsBefore) === JSON.stringify(contentsAfter),
     { before: contentsBefore, after: contentsAfter });
 
 tick('до тук: 11) връщане на една');
-// --- 12) Лентата остава, докато има скрити бележки, дори когато правилото за >2 не важи -------
+// --- 12) Лентата остава, докато има скрити бележки, а прагът за показване вече е 1 ------------
 for (const g of ['BAR4', 'BAR5', 'BAR6', 'BAR7', 'BAR8']) await closeNoteByX(g);
 await waitOpenCount(3);
 await settle();
@@ -653,7 +720,7 @@ ok((await windowsState()).open.length === 3 && !hidden(s),
 await page.locator('#open-notes-bar .open-notes-bar-hide').click();
 await settle();
 ok((await windowsState()).open.every(w => w.hidden), 'трите бележки са скрити');
-// Връщаме една по една: две показани, една скрита - правилото „>2 отворени" вече не важи.
+// Връщаме една по една: две показани, една скрита.
 await page.locator('#open-notes-bar .open-notes-bar-tile').nth(0).click();
 await settle();
 await page.locator('#open-notes-bar .open-notes-bar-tile').nth(1).click();
@@ -664,7 +731,7 @@ ok(wsRule.open.length === 3 && wsRule.open.filter(w => w.hidden).length === 1,
     `две бележки са показани, една остава скрита (${wsRule.open.map(w => w.hidden ? 'h' : 'v').join('')})`, wsRule.open.map(w => w.hidden));
 ok(!hidden(s), `лентата е видима, макар отворените да са 3 и едната скрита (display ${s.display})`, s);
 
-// Затваряме една от показаните: остават 2 отворени (1 скрита) - правилото за >2 не важи.
+// Затваряме една от показаните: остават 2 отворени (1 скрита).
 const shownGdid = wsRule.open.find(w => !w.hidden && w.gdid !== 'BAR2').gdid;
 ok(await closeNoteByX(shownGdid), `показаната бележка ${shownGdid} се затваря през своя X`);
 await waitOpenCount(2);
@@ -687,11 +754,12 @@ s = await barState();
 wsRule = await windowsState();
 ok(wsRule.open.length === 2 && wsRule.open.every(w => !w.hidden),
     `„покажи всички" върна и двете бележки (${wsRule.open.map(w => w.hidden ? 'h' : 'v').join('')})`, wsRule.open.map(w => w.hidden));
-ok(hidden(s), `при 2 показани бележки и нито една скрита лентата се скрива (display ${s.display})`, s);
+ok(!hidden(s) && s.tiles.length === 2,
+    `при 2 показани бележки и нито една скрита лентата остава видима (display ${s.display}, ${s.tiles.length} плочки)`, s);
 
-tick('до тук: 12) правило >2');
+tick('до тук: 12) праг 1');
 // --- 13) Лентата е над всеки прозорец и не е част от скрола на реда ------------------------
-// Отваряме трета бележка, за да е на екрана (предишната част я остави скрита при две отворени).
+// Отваряме трета бележка (предишната част остави две отворени).
 await openNote('call');
 await settle();
 const wsAll = await windowsState();
@@ -774,16 +842,17 @@ ok(noOverlap(addR, barR), `на 390px „+" е над лентата (${addR.rec
 ok(numPx(barR.varH) > 0, `на 390px височината на лентата е в променливата (${barR.varH})`, barR);
 
 tick('14e) 390px');
-// Връщане на бележките и затваряне до 2: лентата изчезва, бутоните слизат на първоначалното си място.
+// Връщане на бележките и затваряне на ВСИЧКИ: лентата изчезва, бутоните слизат на първоначалното си
+// място. Лентата вече се показва, докато има и една отворена бележка (прагът е 1), значи слиза от
+// екрана едва когато не остане нито една - затова тук се затварят всички, а не се стига до две.
 await page.setViewportSize({ width: 1280, height: 900 });
 await settle();
 await page.locator('#open-notes-bar .open-notes-bar-hide').click();
 await settle();
-const closedForReset = await closeNoteByX('BAR2');
-await waitOpenCount(2);
+const closedForReset = await closeAllOpenNotes();
 await settle();
 const wsReset = await windowsState();
-ok(wsReset.open.length === 2, `за проверката за връщане са отворени 2 бележки (${wsReset.open.length})`,
+ok(wsReset.open.length === 0, `за проверката за връщане няма отворени бележки (${wsReset.open.length})`,
     { wsReset: wsReset.open.map(w => w.gdid + (w.hidden ? ':h' : ':v')), closedForReset });
 barR = await barRect();
 fabR = await floaterState('kb-fab');
@@ -845,50 +914,32 @@ const fabOffset = (f) => {
 
 await closeAllOpenNotes();
 await settle();
-for (const key of ['photo', 'bread']) await openNote(key);
-await settle();
 await page.setViewportSize({ width: 1280, height: 900 });
 await settle();
 let flags = await bodyFlags();
 let fab = await floaterState('kb-fab');
 barR = await barRect();
+// Основното място на иконата се мери БЕЗ отворена бележка: лентата вече се показва и при една
+// (прагът е 1), значи „отворена бележка без лента" не се стига по нормалния път.
 ok(!flags.bar && !flags.expanded && !flags.lift && fab.present,
-    `изходно: 2 бележки, без лента, без отстъп (${JSON.stringify(flags)})`, flags);
+    `изходно: без отворени бележки, без лента, без отстъп (${JSON.stringify(flags)})`, flags);
 const fabOffsetPlain = fabOffset(fab);
 ok(Math.abs(fabOffsetPlain - 10) <= 0.6,
     `без бележка в разпънат вид иконата е на 10px от долния ръб (${fabOffsetPlain})`, fab);
 
-// а) Разпъване БЕЗ лента: иконата отстъпва 60px - това е истинското преместване.
-ok(await clickExpand(), 'разпъването минава през бутона в хедъра на бележката');
-await settle();
-flags = await bodyFlags();
-fab = await floaterState('kb-fab');
-ok(flags.expanded && flags.lift,
-    `разпъната бележка, иконата е на долния ръб → отстъпът е включен (${JSON.stringify(flags)})`, flags);
-ok(Math.abs(fabOffset(fab) - (fabOffsetPlain + 60)) <= 1.5,
-    `без лента иконата отстъпва точно 60px (${fabOffset(fab)} срещу ${fabOffsetPlain + 60})`, { fab, fabOffsetPlain });
-
-// б) Свиване: отстъпът изчезва и иконата се връща точно на мястото си.
-ok(await clickExpand(), 'свиването минава през същия бутон');
-await settle();
-flags = await bodyFlags();
-fab = await floaterState('kb-fab');
-ok(!flags.expanded && !flags.lift,
-    `свита бележка → няма отстъп (${JSON.stringify(flags)})`, flags);
-ok(Math.abs(fabOffset(fab) - fabOffsetPlain) <= 1.5,
-    `иконата се върна на долния ръб (${fabOffset(fab)} срещу ${fabOffsetPlain})`, { fab, fabOffsetPlain });
-
-// в) Разпъване, КОГАТО ЛЕНТАТА ВЕЧЕ Е ВИДИМА: лентата я е вдигнала и втори отстъп не се дава.
-await openNote('plan');
+// а) ЕДНА отворена бележка: лентата вече е на екрана и е вдигнала иконата.
+await openNote('photo');
 await settle();
 flags = await bodyFlags();
 barR = await barRect();
-ok(flags.bar && !hidden(barR),
-    `3 бележки → лентата е на екрана и вдига бутоните (${JSON.stringify(flags)})`, { flags, barR });
 const fabInBar = await floaterState('kb-fab');
 const expectedOffset = 10 + numPx(barR.varH) + 8;
+ok(flags.bar && !hidden(barR),
+    `1 бележка → лентата е на екрана и вдига бутоните (${JSON.stringify(flags)})`, { flags, barR });
 ok(Math.abs(fabOffset(fabInBar) - expectedOffset) <= 0.6,
     `лентата е вдигнала иконата с височината си + 8px (${fabOffset(fabInBar)} срещу ${expectedOffset})`, { fabInBar, barR });
+
+// б) Разпъване при ВИДИМАТА лента: лентата вече я е вдигнала и втори отстъп (60px) не се дава.
 ok(await clickExpand(), 'разпъването на активната бележка минава при видима лента');
 await settle();
 flags = await bodyFlags();
@@ -903,7 +954,7 @@ ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
 ok(fabOffset(fab) > numPx(barR.rectH),
     `иконата е над лентата и в разпъната бележка (${fabOffset(fab)} > ${numPx(barR.rectH)})`, { fab, barR });
 
-// г) Свиване при видима лента: нищо не се размества, лентата продължава да я вдига.
+// в) Свиване при видима лента: нищо не се размества, лентата продължава да я вдига.
 ok(await clickExpand(), 'свиването минава при видима лента');
 await settle();
 flags = await bodyFlags();
@@ -912,6 +963,35 @@ ok(!flags.expanded && !flags.lift && flags.bar,
     `свито при видима лента: пак без отстъп, лентата я вдига (${JSON.stringify(flags)})`, flags);
 ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
     `иконата остава на ${expectedOffset}px от долния ръб (${fabOffset(fab)})`, fab);
+
+// г) Отстъпът при разпъната бележка (b2.74) остава верен и когато лентата я няма на екрана: тогава
+// иконата получава своите 60px, а щом лентата се върне, отстъпът изчезва и я вдига тя. Лентата
+// слиза от екрана с ТОЧНО това, което прави и приложението (refreshOpenNotesBar →
+// syncOpenNotesBarLift(false)).
+ok(await clickExpand(), 'разпъването минава и за проверката с отстъпа');
+await settle();
+await page.evaluate(() => {
+    const bar = document.getElementById('open-notes-bar');
+    if (bar) bar.classList.remove('is-visible');
+    syncOpenNotesBarLift(false);
+});
+await settle();
+flags = await bodyFlags();
+fab = await floaterState('kb-fab');
+ok(flags.expanded && !flags.bar && flags.lift,
+    `без лента при разпъната бележка иконата получава отстъпа (${JSON.stringify(flags)})`, flags);
+ok(Math.abs(fabOffset(fab) - (fabOffsetPlain + 60)) <= 1.5,
+    `без лента иконата отстъпва точно 60px (${fabOffset(fab)} срещу ${fabOffsetPlain + 60})`, { fab, fabOffsetPlain });
+await page.evaluate(() => refreshOpenNotesBar());
+await settle();
+flags = await bodyFlags();
+fab = await floaterState('kb-fab');
+ok(flags.expanded && flags.bar && !flags.lift,
+    `щом лентата се върне, отстъпът изчезва (${JSON.stringify(flags)})`, flags);
+ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
+    `иконата пак е на ${expectedOffset}px, вдигната от лентата (${fabOffset(fab)})`, fab);
+ok(await clickExpand(), 'свиването след това минава');
+await settle();
 
 // --- 17) „Скрий/покажи всички": иконите са стрелки, не око (b2.74) -------------------------
 // Собственикът: „бутонът око да стане със стрелки вместо око". Двойна стрелка НАДОЛУ значи „скрий
@@ -1059,7 +1139,7 @@ const waitBoxSettled = () => page.waitForFunction(() => {
 const settleAll = async () => { await settle(); await waitBoxSettled(); await settle(); };
 
 // Един пълен кръг на един екран: разпъване при видима лента, свиване, пак разпъване и изчезване на
-// лентата, когато бележките станат 2.
+// лентата от екрана.
 const clearanceScenario = async (label, view) => {
     await page.setViewportSize(view);
     await settle();
@@ -1090,20 +1170,24 @@ const clearanceScenario = async (label, view) => {
         `${label}: долният ръб на кутията се върна на мястото отпреди разпъването (${st.boxBottom} срещу ${collapsedBottom})`,
         { st, collapsedBottom });
 
-    // в) Пак разпъване и сваляне на бележките на 2: лентата изчезва, бележката пак е цял екран.
+    // в) Пак разпъване, а после лентата слиза от екрана: бележката си връща цялата височина.
+    // Лентата вече се показва, докато има и една отворена бележка (собственикът, 25.10.2026), значи
+    // „лентата я няма, а бележката е отворена" не се стига със затваряне на бележки. Затова тук се
+    // прави ТОЧНО това, което прави и приложението, когато лентата слиза (refreshOpenNotesBar →
+    // syncOpenNotesBarLift(false)): класът is-visible се маха и променливата се връща на 0px.
     ok(await clickExpand(), `${label}: разпъването минава втори път`);
     await waitExpandedClass(true);
     await settleAll();
     st = await checkExpandedClearance(label + ' (второ разпъване)');
-    const expandedGdid = st.gdid;
-    // Затваря се ДРУГА бележка - разпънатата остава отворена и разпъната.
-    const other = ['BAR1', 'BAR2'].find(g => g !== expandedGdid) || 'BAR1';
-    await closeNoteByX(other);
-    await waitOpenCount(2);
+    await page.evaluate(() => {
+        const bar = document.getElementById('open-notes-bar');
+        if (bar) bar.classList.remove('is-visible');
+        syncOpenNotesBarLift(false);
+    });
     await settleAll();
     st = await expandedBottomState();
-    ok(st.openCount === 2 && !st.barVisible && !st.bodyBar,
-        `${label}: при 2 бележки лентата изчезва (${st.openCount}, клас на body ${st.bodyBar})`, st);
+    ok(!st.barVisible && !st.bodyBar,
+        `${label}: лентата слиза от екрана (класът на body го няма: ${st.bodyBar})`, st);
     ok(numPx(st.varH) === 0, `${label}: променливата с височината на лентата се върна на 0px (${st.varH})`, st);
     ok(st.expanded && Math.abs(st.boxBottom - st.viewH) <= 1.5,
         `${label}: разпънатата бележка пак стига до долния ръб на екрана (${st.boxBottom} срещу ${st.viewH})`, st);
@@ -1112,7 +1196,13 @@ const clearanceScenario = async (label, view) => {
     // И долният ред вече не е ограничен от нищо: стига до дъното на кутията.
     ok(!!st.toolbar && st.toolbar.bottom <= st.viewH + 0.5,
         `${label}: редът с бутоните е на дъното на екрана, без остатъчна пролука (${st.toolbar && st.toolbar.bottom} <= ${st.viewH})`, st.toolbar);
-    ok(await clickExpand(), `${label}: свиването след изчезването на лентата минава`);
+    // Връщане на лентата (по същия път, по който се появява): бележката пак свършва над нея.
+    await page.evaluate(() => refreshOpenNotesBar());
+    await settleAll();
+    st = await checkExpandedClearance(label + ' (лентата се връща)');
+    ok(Math.abs(st.boxBottom - (st.barTop - 8)) <= 2,
+        `${label}: щом лентата се върне, кутията пак свършва 8px над нея (${st.boxBottom} срещу ${st.barTop - 8})`, st);
+    ok(await clickExpand(), `${label}: свиването след това минава`);
     await waitExpandedClass(false);
     await settle();
 };
@@ -1125,6 +1215,44 @@ tick('19c) 390x844');
 await page.setViewportSize({ width: 1280, height: 900 });
 await settle();
 tick('до тук: 19) разпъната бележка над лентата');
+
+// --- 19д) Същите мерки при ЕДНА отворена бележка (b2.78) -------------------------------------
+// Собственикът (25.10.2026): „лентата вече се показва веднага при 1 отворена бележка, не при 3".
+// Значи разпънатата бележка и иконката на Ko-fi трябва да стоят НАД лентата точно както при три.
+const oneNoteClearance = async (label, view) => {
+    await page.setViewportSize(view);
+    await settle();
+    ok(await closeAllOpenNotes(), `${label}: изходно няма отворени бележки`);
+    await openNote('dated');
+    await settleAll();
+    let st = await expandedBottomState();
+    ok(st.openCount === 1 && st.barVisible && !st.expanded,
+        `${label}: една отворена бележка, лентата е видима, бележката е свита (${st.openCount}, лента от ${st.barTop})`, st);
+    ok(await clickExpand(), `${label}: разпъването минава при една отворена бележка`);
+    await waitExpandedClass(true);
+    await settleAll();
+    st = await checkExpandedClearance(label);
+    ok(Math.abs(st.boxBottom - (st.barTop - 8)) <= 2,
+        `${label}: кутията свършва с 8px пролука над лентата (${st.boxBottom} срещу ${st.barTop - 8})`, st);
+    // Иконката на Ko-fi се качва със СЪЩАТА променлива --open-notes-bar-h: контейнерът със същите
+    // класове се мери срещу върха на лентата (истинският widget се проверява в kofi-widget.mjs).
+    const kofi = await kofiState();
+    ok(kofi.above, `${label}: иконката на Ko-fi стои НАД лентата (${kofi.rectBottom} <= ${kofi.barTop})`, kofi);
+    ok(Math.abs(kofi.bottom - (12 + numPx(st.varH) + 8)) <= 0.6,
+        `${label}: контейнерът на Ko-fi е вдигнат с височината на лентата + 8px (${kofi.bottom} срещу ${12 + numPx(st.varH) + 8})`,
+        { kofi, varH: st.varH });
+    await removeKofiStub();
+    ok(await clickExpand(), `${label}: свиването минава`);
+    await waitExpandedClass(false);
+    await settle();
+};
+tick('19д) подготовка');
+await oneNoteClearance('една бележка на 1280x900', { width: 1280, height: 900 });
+tick('19д) 1280x900');
+await oneNoteClearance('една бележка на 390x844', { width: 390, height: 844 });
+tick('до тук: 19д) една бележка над лентата');
+await page.setViewportSize({ width: 1280, height: 900 });
+await settle();
 
 tick('20) подготовка');
 // --- 20) Клик на плочката на активната бележка я скрива, втори клик я показва (b2.77) ---------
