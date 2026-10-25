@@ -37,7 +37,10 @@
 //   - дълго натискане (500ms) на плочка само ВДИГА плочката (is-dragging) и я въоръжава за местене
 //     (_longPressArmed); пускане без движение не затваря, не скрива и не показва нищо - .modal-close на
 //     бележката не се вика, а плочката слиза долу; обикновен клик още вдига/скрива, а touchmove преди
-//     500ms (плъзгане по лентата) не вдига нищо (b2.85).
+//     500ms (плъзгане по лентата) не вдига нищо (b2.85);
+//   - статично в източниците (b2.88): плочката забранява родния callout и подсветването, миниатюрата и
+//     буквите не приемат показалеца и не се маркират, а лентата отменя contextmenu/selectstart/dragstart
+//     - родното меню на Android върху плочка (особено върху снимката ѝ) вече не излиза.
 // Пуска се от корена на хранилището:
 //   node .bolter/check/open-notes-bar.mjs      (exit 1 при провалена проверка)
 import { chromium } from '/opt/nvm/versions/node/v22.23.3/lib/node_modules/playwright/index.mjs';
@@ -1917,6 +1920,45 @@ ok(!!emojiTitle && /ASCII/.test(emojiTitle.title || '') && /ASCII/.test(emojiTit
 // Бележките се затварят през своя X: тестът свършва от същото състояние, от което е тръгнал.
 for (const c of EMOJI_CASES) await closeNoteByX(c.gdid);
 await settle();
+
+// --- 24) Статично: родното меню и маркирането върху плочките са забранени (b2.88) --------------
+// Собственикът (25.10.2026): „забрани стандартното меню на плочките". Проверява се направо в
+// източниците - CSS-ът на плочката и на съдържанието ѝ, и пазачите на лентата в main.js.
+{
+    const css = await readFile(path.join(root, 'style.css'), 'utf8');
+    const js = await readFile(path.join(root, 'main.js'), 'utf8');
+    // Коментарите се махат: иначе текстът им влиза в селектора на следващото правило.
+    const cssRules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Всички блокове, в чийто селектор участва sel: правилото може да е общо с други селектори
+    // (.open-notes-bar-thumb, .open-notes-bar-letters { ... }).
+    const ruleBodies = (sel) => {
+        const out = [];
+        const re = /([^{};]+)\{([^{}]*)\}/g;
+        let m;
+        while ((m = re.exec(cssRules))) {
+            const sels = m[1].split(',').map(s => s.trim());
+            if (sels.some(s => s === sel || s.startsWith(sel + ':') || s.startsWith(sel + ' ') || s.startsWith(sel + '.'))) out.push(m[2]);
+        }
+        return out;
+    };
+    const hasProp = (sel, prop) => ruleBodies(sel).some(b => b.replace(/\s+/g, ' ').includes(prop));
+    ok(hasProp('.open-notes-bar-tile', '-webkit-touch-callout: none'),
+        'CSS: .open-notes-bar-tile забранява родния callout (-webkit-touch-callout: none)');
+    ok(hasProp('.open-notes-bar-tile', '-webkit-tap-highlight-color: transparent'),
+        'CSS: .open-notes-bar-tile маха сивото подсветване при докосване');
+    ok(hasProp('.open-notes-bar-thumb', 'pointer-events: none'),
+        'CSS: .open-notes-bar-thumb не приема показалеца (pointer-events: none)');
+    ok(hasProp('.open-notes-bar-thumb', '-webkit-touch-callout: none') && hasProp('.open-notes-bar-thumb', 'user-select: none'),
+        'CSS: .open-notes-bar-thumb не се маркира и не дава родно меню');
+    ok(hasProp('.open-notes-bar-letters', '-webkit-touch-callout: none') && hasProp('.open-notes-bar-letters', 'user-select: none'),
+        'CSS: .open-notes-bar-letters не се маркира и не дава родно меню');
+    ok(/bar\.addEventListener\('contextmenu',\s*\(e\)\s*=>\s*e\.preventDefault\(\)\)/.test(js),
+        'main.js: лентата отменя contextmenu - никакво меню за копиране/споделяне върху плочките');
+    ok(/bar\.addEventListener\('selectstart',\s*\(e\)\s*=>\s*e\.preventDefault\(\)\)/.test(js),
+        'main.js: лентата отменя selectstart - плочките не се маркират');
+    ok(/bar\.addEventListener\('dragstart',\s*\(e\)\s*=>\s*e\.preventDefault\(\)\)/.test(js),
+        'main.js: лентата отменя dragstart - картинката в плочката не се тегли');
+}
 
 // --- 18) Никакви грешки в конзолата / страницата -------------------------------------------
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`);

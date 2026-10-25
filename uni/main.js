@@ -11833,11 +11833,19 @@ function wireOpenNotesBarTileLongPress(tile) {
     tile.addEventListener('touchmove', (e) => {
         const touch = e.touches && e.touches[0];
         if (!touch) return cancelPress();
+        // ВДИГНАТА плочка: движението вече е местене, а не скрол. Затова жестът се спира тук
+        // (passive: false), иначе браузърът го поема като скрол на страницата или на лентата и праща
+        // pointercancel - а с него местенето умираше точно когато е готово да тръгне (b2.88).
+        // ПРЕДИ въоръжаването нищо не се спира: там жестът си е скрол, както досега.
+        if (tile._longPressArmed || beingDragged()) {
+            if (e.cancelable) e.preventDefault();
+            return;
+        }
         if (Math.abs(touch.clientX - touchStartX) > OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX
             || Math.abs(touch.clientY - touchStartY) > OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX) {
             cancelPress();
         }
-    }, { passive: true });
+    }, { passive: false });
     tile.addEventListener('touchcancel', disarm);
     tile.addEventListener('touchend', (e) => {
         lastTouchEnd = Date.now();
@@ -11854,9 +11862,18 @@ function wireOpenNotesBarTileLongPress(tile) {
         startPress();
     });
     ['mouseup', 'mouseleave'].forEach((type) => tile.addEventListener(type, disarm));
-    // Показалецът се пуска или браузърът отмени жеста (превзет скрол): плочката слиза долу. При пръст
-    // това идва и когато пръстът излезе от плочката, значи въоръжаването не остава за следващия жест.
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => tile.addEventListener(type, disarm));
+    // Показалецът се пуска или излиза от плочката: плочката слиза долу. При пръст това идва и когато
+    // пръстът излезе от плочката, значи въоръжаването не остава за следващия жест.
+    ['pointerup', 'pointerleave'].forEach((type) => tile.addEventListener(type, disarm));
+    // pointercancel НЕ сваля ВДИГНАТА плочка (b2.88). Android праща pointercancel веднага след
+    // вибрацията, защото родният жест за дълго натискане поема пръста (собственикът, 25.10.2026:
+    // „продължителното натискане води до кратка вибрация, но само толкова"). Жестът не се хвърля -
+    // wireOpenNotesBarStripDrag го поема по touch пътя и сваля плочката накрая. Иначе едно
+    // pointercancel убиваше местенето точно преди да е тръгнало.
+    tile.addEventListener('pointercancel', () => {
+        if (tile._longPressArmed || beingDragged()) return;
+        disarm();
+    });
 }
 
 // --- Преподреждане с плъзгане (b2.83) ----------------------------------------------------------
@@ -11876,7 +11893,7 @@ function wireOpenNotesBarStripDrag(bar) {
     const strip = bar && bar.querySelector('.open-notes-bar-strip');
     if (!strip || strip._dragWired) return;
     strip._dragWired = true;
-    const state = { tile: null, pointerId: null, startX: 0, startY: 0, started: false, restore: null };
+    const state = { tile: null, pointerId: null, startX: 0, startY: 0, started: false, restore: null, pointerDead: false };
     strip._barDrag = state;
     const tiles = () => Array.from(strip.querySelectorAll('.open-notes-bar-tile'));
 
@@ -11890,6 +11907,26 @@ function wireOpenNotesBarStripDrag(bar) {
         return null;
     };
 
+    // Плочката се мести на мястото, където показалецът (или пръстът) вече е подминал центъра на
+    // съседна плочка. Една и съща логика за двата входа - показалец и touch (b2.88).
+    const moveTo = (clientX) => {
+        if (!state.tile) return;
+        const node = targetNodeAt(state.tile, clientX);
+        if (node !== state.tile.nextSibling) strip.insertBefore(state.tile, node);
+    };
+
+    // Тръгва ли местенето от това движение? След задържане плочката вече е вдигната: местенето тръгва от
+    // първото движение напред, без праг и без значение на посоката (включително вертикална). Без
+    // задържане правилата са старите: плъзгането е ХОРИЗОНТАЛНО над 10px, защото вертикалният жест по
+    // плочката е скрол на страницата (touch-action: pan-y), а под прага си остава клик.
+    const shouldStart = (clientX, clientY) => {
+        if (state.started) return true;
+        const dx = Math.abs(clientX - state.startX);
+        const dy = Math.abs(clientY - state.startY);
+        if (!state.tile._longPressArmed && (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy)) return false;
+        return true;
+    };
+
     const begin = () => {
         if (state.started) return;
         state.started = true;
@@ -11899,7 +11936,8 @@ function wireOpenNotesBarStripDrag(bar) {
         // все пак, за да не вдигне плочката посред местенето.
         if (typeof state.tile._cancelLongPress === 'function') state.tile._cancelLongPress();
         state.tile.classList.add('is-dragging');
-        try { strip.setPointerCapture(state.pointerId); } catch (e) { }
+        // Прихващането е за ЖИВИЯ показалец: след pointercancel той е мъртъв и жестът върви по touch пътя.
+        if (!state.pointerDead && state.pointerId !== null) { try { strip.setPointerCapture(state.pointerId); } catch (e) { } }
     };
 
     const finish = (commit) => {
@@ -11924,6 +11962,7 @@ function wireOpenNotesBarStripDrag(bar) {
         state.pointerId = null;
         state.started = false;
         state.restore = null;
+        state.pointerDead = false;
     };
 
     strip.addEventListener('pointerdown', (e) => {
@@ -11947,35 +11986,78 @@ function wireOpenNotesBarStripDrag(bar) {
         state.startX = e.clientX;
         state.startY = e.clientY;
         state.started = false;
+        state.pointerDead = false;
     });
 
     strip.addEventListener('pointermove', (e) => {
         if (!state.tile || e.pointerId !== state.pointerId) return;
-        if (!state.started) {
-            const dx = Math.abs(e.clientX - state.startX);
-            const dy = Math.abs(e.clientY - state.startY);
-            // След задържане плочката вече е вдигната: местенето тръгва от първото движение напред, без
-            // праг и без значение на посоката (включително вертикална).
-            // Без задържане правилата са старите: плъзгането е ХОРИЗОНТАЛНО над 10px, защото вертикалният
-            // жест по плочката е скрол на страницата (touch-action: pan-y), а под прага си остава клик.
-            if (!state.tile._longPressArmed && (dx < OPEN_NOTES_BAR_DRAG_PX || dx < dy)) return;
-            begin();
-        }
+        // След pointercancel показалецът е мъртъв: местенето върви по touch пътя, иначе едно движение
+        // на пръста би се броило два пъти (веднъж тук, веднъж там).
+        if (state.pointerDead) return;
+        if (!shouldStart(e.clientX, e.clientY)) return;
+        begin();
         if (e.cancelable) e.preventDefault();
-        // Плочката се мести на мястото, където показалецът вече е подминал центъра на съседна плочка.
-        const node = targetNodeAt(state.tile, e.clientX);
-        if (node !== state.tile.nextSibling) strip.insertBefore(state.tile, node);
+        moveTo(e.clientX);
     });
 
     const end = (e) => {
-        if (!state.tile || e.pointerId !== state.pointerId) return;
+        if (!state.tile || state.pointerDead || e.pointerId !== state.pointerId) return;
         finish(e.type === 'pointerup');
     };
     strip.addEventListener('pointerup', end);
-    strip.addEventListener('pointercancel', end);
+    // pointercancel при Android идва, щом родният жест за дълго натискане поеме пръста - веднага след
+    // вибрацията (собственикът, 25.10.2026). Тогава жестът НЕ се хвърля: показалецът се обявява за
+    // мъртъв и местенето продължава по touch пътя долу (touch събитията остават живи). Иначе тук
+    // свършваше всичко - плочката слизаше долу и редът се връщаше, тоест „само кратко вибрация".
+    strip.addEventListener('pointercancel', (e) => {
+        if (!state.tile || e.pointerId !== state.pointerId) return;
+        if (state.tile._longPressArmed || state.started) {
+            state.pointerDead = true;
+            return;
+        }
+        finish(false);
+    });
     strip.addEventListener('lostpointercapture', (e) => {
+        // Събитието ИЗПЛУВА от плочката, когато прихващането на пръста мине към лентата: при touch
+        // браузърът дава неявно прихващане на елемента, който е получил pointerdown (плочката), и
+        // setPointerCapture на лентата го отнема. Без тази проверка местенето свършваше още с ПЪРВОТО
+        // движение на пръста - точно оплакването „продължителното натискане води до кратка вибрация, но
+        // само толкова" (собственикът, 25.10.2026). При мишка неявно прихващане няма, затова там
+        // плъзгането работеше.
+        if (e.target !== strip) return;
+        // Жестът вече е по touch пътя - прихващането няма думата.
+        if (state.pointerDead) return;
         if (state.tile && e.pointerId === state.pointerId) finish(false);
     });
+
+    // --- Втори вход за местенето: touch (b2.88) ---------------------------------------------------
+    // Пръстът остава жив и след pointercancel (touch събитията не се отменят от родния жест), затова
+    // местенето има и път по touchmove. Работи САМО когато показалецът е мъртъв (state.pointerDead),
+    // за да не мести плочката два пъти за едно движение.
+    const touchOf = (e) => (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || null;
+    strip.addEventListener('touchmove', (e) => {
+        const touch = touchOf(e);
+        if (!touch) return;
+        if (!state.pointerDead) {
+            // Живият показалец върши работата. Тук само се пази жестът от скрол, докато плочката е
+            // вдигната - иначе браузърът поема движението, праща pointercancel и местенето умира.
+            if (state.tile && (state.tile._longPressArmed || state.started) && e.cancelable) e.preventDefault();
+            return;
+        }
+        if (!state.tile) return;
+        if (!shouldStart(touch.clientX, touch.clientY)) return;
+        begin();
+        if (e.cancelable) e.preventDefault();
+        moveTo(touch.clientX);
+    }, { passive: false });
+    const touchEnd = (e) => {
+        if (!state.pointerDead || !state.tile) return;
+        // Пръстът се вдигна - жестът се довършва както при pointerup. Отменен жест (touchcancel)
+        // връща стария ред, също както pointercancel без въоръжаване.
+        finish(e.type === 'touchend');
+    };
+    strip.addEventListener('touchend', touchEnd);
+    strip.addEventListener('touchcancel', touchEnd);
 }
 
 /** Лентата се строи при първата нужда и остава в слоя; скрита е с клас, не се маха. */
@@ -12017,6 +12099,16 @@ function ensureOpenNotesBar() {
             closeAllNoteWindows();
         });
         bar.appendChild(closeBtn);
+        // Родното меню на плочките е забранено (собственикът, 25.10.2026: „забрани стандартното меню на
+        // плочките"). То изскачаше при дълго натискане - особено върху плочка със снимка, където Android
+        // предлага копиране/споделяне на картинката - и поемаше жеста, с който се мести плочката.
+        // Пазачите са на САМАТА лента, за да хващат и плочките, и всичко, което се появи в тях по-късно.
+        // Извън лентата нищо не се пипа: маркирането и менюто на текста в бележките си остават.
+        bar.addEventListener('contextmenu', (e) => e.preventDefault());
+        // Маркиране на буквите и теглене на миниатюрата: и двете са начало на роден жест, който би
+        // откраднал показалеца от местенето.
+        bar.addEventListener('selectstart', (e) => e.preventDefault());
+        bar.addEventListener('dragstart', (e) => e.preventDefault());
         wireOpenNotesBarDragGuard(bar);
         wireOpenNotesBarStripDrag(bar);
     }
