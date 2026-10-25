@@ -4930,6 +4930,14 @@ body.selection-locked .note.active-selection-note .note-content {
     user-select: none;
     -webkit-user-select: none;
     -webkit-user-drag: none;
+    /* Дългото натискане е НАШЕ (b2.88): то вдига плочката за местене. Родният жест на Android за
+       дълго натискане (меню за копиране/споделяне, маркиране) обаче поема жеста точно когато
+       плочката се вдигне, праща pointercancel и местенето умираше - собственикът, 25.10.2026:
+       „продължителното натискане води до кратко вибрация, но само толкова". Затова родният
+       callout се забранява, а сивото подсветване при докосване се маха - то оставаше върху плочката
+       след вдигането. */
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
     transition: transform 0.15s ease;
 }
 /* Плъзганата плочка: леко повдигната над останалите, за да се вижда коя се мести. Сянката е през
@@ -4988,6 +4996,19 @@ body.selection-locked .note.active-selection-note .note-content {
     display: none;
     /* Картинката е под контура (::after е с по-висок z-index), за да не закрива жълтото. */
     z-index: 1;
+}
+/* Съдържанието на плочката не приема показалеца (b2.88): жестът винаги попада върху САМАТА плочка,
+   а не върху <img>. Иначе дълъг натиск върху плочка със снимка отваряше родното меню на картинката
+   (собственикът, 25.10.2026: „ако на плочката има снимка ... се показва стандартното меню за
+   копиране, споделяне и така нататък на снимката"). Затова и родният callout се забранява, а
+   тегленето и маркирането - също. */
+.open-notes-bar-thumb,
+.open-notes-bar-letters {
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
 }
 .open-notes-bar-tile.has-thumb .open-notes-bar-thumb {
     display: block;
