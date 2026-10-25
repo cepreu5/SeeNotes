@@ -1,0 +1,121 @@
+<html>
+<head>
+    <title>Calculator</title>
+    <meta charset="UTF-8">
+    <link rel="shortcut icon" type="image/png" href="NoteFav.png" />
+</head>
+<script>
+    // JavaScript code for calculator functionality
+let text = `1733.90-13.80-12.05-5.42-52.63`;
+ /* 2. second line -2,5 x 2
+3 third line 3х4 + 2*2
+4. 5 / 2 + 1.5`; */
+function extractAndFormat() {
+    let lines = text.split('\n');
+    let results = []
+
+    lines.forEach(line => {
+        let trimmedLine = line.trim();
+        if (!trimmedLine) return;
+
+        // 1. Първична нормализация
+        let normalized = trimmedLine
+            .replace(/(\d),(\d)/g, '$1.$2') // запетая -> точка
+            .replace(/[xх*]/gi, '*')        // х (кирилица/латиница) -> *
+            .replace(/[:\/]/g, '/');        // : -> /
+
+        // 2. ПРЕМАХВАНЕ НА ИНТЕРВАЛИТЕ ОКОЛО ОПЕРАТОРИТЕ
+        // Това превръща "1 + 3 / 3" в "1+3/3"
+        normalized = normalized.replace(/(\d|[\*\/\+\-])\s+([\*\/\+\-]|(\d))/g, (match) => {
+             return match.replace(/\s+/g, '');
+        });
+        // Повтаряме за сигурност при сложни изрази
+        normalized = normalized.replace(/([\*\/\+\-])\s+/g, '$1').replace(/\s+([\*\/\+\-])/g, '$1');
+
+        // 3. Изчистване на номерацията в началото (напр. "1. ")
+        let cleanLine = normalized.replace(/^\d+[\.\)]\s*/, '');
+
+        // 4. Търсим математическия израз
+        // Сега, след като изчистихме интервалите, изразът е един цял блок
+        let mathMatch = cleanLine.match(/[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g);
+
+        if (mathMatch) {
+            let expression = mathMatch[mathMatch.length - 1];
+
+            // 5. Поставяме липсващия "+" в началото
+            if (!expression.startsWith('-') && !expression.startsWith('+')) {
+                expression = '+' + expression;
+            }
+            results.push(expression);
+
+        }
+    });
+
+    // 5. Генерираме финалния стринг
+    let finalSequence = results.join('');
+    console.log(text);
+    console.log("Готов низ за вашата функция:", finalSequence);
+    return (finalSequence);
+}
+
+console.log("Returned string:", extractAndFormat());
+</script>
+
+<body>
+    <h1>Calculator Page</h1>
+    <p>This is a simple calculator page.</p>
+    <button onclick="extractAndFormat()">Extract and Format</button>
+</body>
+</html>
+
+function extractAndFormat() {
+    let lines = document.body.innerText.split('\n');
+    let results = [];
+
+    lines.forEach(line => {
+        let trimmedLine = line.trim();
+        if (!trimmedLine) return;
+
+        // 1. Първична нормализация на символите
+        let normalized = trimmedLine
+            .replace(/(\d),(\d)/g, '$1.$2') // запетая -> точка
+            .replace(/[xх*]/gi, '*')        // х -> *
+            .replace(/[:\/]/g, '/');        // : -> /
+
+        // 2. УСЪВЪРШЕНСТВАНО ЧИСТЕНЕ НА НОМЕРАЦИЯ (Защита за 1733.90)
+        // Тук казваме: Премахни число+точка в началото, САМО АКО след него има поне два интервала 
+        // или ако след него има букви (текст), преди да започне математическия израз.
+        // \p{L} хваща всякаква буква (латиница, кирилица, гръцки, арабски и т.н.)
+        // Флагът 'u' (unicode) накрая е задължителен за тази функционалност.
+        let cleanLine = normalized.replace(/^\d+[\.\)]\s+(?=\p{L})/gu, '');
+        
+        // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
+        // НЕ го пипаме, защото това е част от сумата.
+
+        // 3. Залепяме операторите (чистим интервалите около тях)
+        cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
+
+        // 4. Екстракция на математическия блок
+        // Търсим най-дългата поредица от цифри и оператори
+        let mathMatch = cleanLine.match(/[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g);
+
+        if (mathMatch) {
+            // Вземаме последното съвпадение (обикновено сумата е в края на реда)
+            let expression = mathMatch[mathMatch.length - 1];
+
+            // 5. Финална проверка за знака в самото начало на целия низ
+            if (/^\d/.test(expression)) {
+                expression = '+' + expression;
+            }
+            results.push(expression);
+        }
+    });
+
+    let finalSequence = results.join('');
+    console.log("%c Краен низ:", "color: cyan; font-weight: bold;", finalSequence);
+    
+    // Подаване към вашата функция
+    // yourFunction(finalSequence);
+}
+
+extractAndFormat();
