@@ -14,6 +14,9 @@
 //   - потвърждението при изтриване излиза НАД отворените бележки (b1.11);
 //   - „Единична бележка" (чекбоксът в Настройки, по подразбиране изключен) оставя една бележка,
 //     слага затъмнение под нея, а натиск върху затъмнението я затваря като хиксчето;
+//   - броячът seq в noteWindowGeometry расте само при истинска промяна на записа (b1.46): отваряне,
+//     затваряне, пре-рисуване и разпъване/свиване до вече записано състояние не пишат нищо, а истинско
+//     местене, преоразмеряване или смяна на режима вдигат брояча точно с 1;
 //   - записът за място/размер (noteWindowGeometry) се създава само при истинска промяна след отваряне,
 //     дефолтният размер (modalWidth/modalHeight) се пипа само в режим „Единична бележка", а редът
 //     „Ресет на позиции/размери" в Настройки трие записите;
@@ -311,8 +314,8 @@ ok(!!capped.geomRaw && !capped.geomRaw.boxes['g:K0'] && capped.geom.first === 'g
 ok(!!capBox && Number.isInteger(capBox.x) && Number.isInteger(capBox.y) && capBox.w > 0 && capBox.h > 0,
   `таван: новият запис е с истински числа (${JSON.stringify(capBox)})`, capBox);
 // Номерата са цели числа и броячът е стигнал до новия запис - иначе изхвърлените записи връщат стари
-// номера обратно в играта и „най-старият" спира да е най-старият. (Броячът може да е и повече от 301:
-// всяко истинско местене взима нов номер, а едно плъзгане може да запише и два пъти.)
+// номера обратно в играта и „най-старият" спира да е най-старият. (От b1.46 броячът расте точно с 1 на
+// истинска промяна, значи след 300-ия запис е 301.)
 const capSeq = capped.geomRaw && capped.geomRaw.seq;
 const capOs = capped.geomRaw ? Object.keys(capped.geomRaw.boxes).map(k => capped.geomRaw.boxes[k].o) : [];
 ok(Number.isInteger(capSeq) && capSeq >= 301 && capOs.length === 300 && capOs.every(o => Number.isInteger(o) && o <= capSeq) && capBox && capBox.o === capSeq,
@@ -887,7 +890,7 @@ const activeBox = () => page.evaluate(() => {
     key: w.key,
     left: Math.round(w.box.offsetLeft), top: Math.round(w.box.offsetTop),
     w: Math.round(parseFloat(cs.width)), h: Math.round(parseFloat(cs.height)),
-    geom0: w.geom0 ? { x: w.geom0.x, y: w.geom0.y, w: w.geom0.w, h: w.geom0.h } : null,
+    dirty: !!w.geomDirty,
   };
 });
 const closeActive = async () => {
@@ -937,9 +940,8 @@ const opened1 = await openNote({ id: 'G1', gdid: 'GG1', boardId: 'B1', raw: 'г�
 const box1 = await activeBox();
 ok(opened1.geom === null,
   `геометрия 1: чиста памет - отварянето не създава запис (${JSON.stringify(opened1.geom)})`, opened1.geom);
-ok(!!box1.geom0 && box1.geom0.x === box1.left && box1.geom0.y === box1.top
-  && box1.geom0.w === box1.w && box1.geom0.h === box1.h,
-  `геометрия 1: базовата кутия при отваряне съвпада с текущата (${JSON.stringify(box1.geom0)} срещу ${box1.left},${box1.top} ${box1.w}x${box1.h})`, box1);
+ok(box1.w > 0 && box1.h > 0 && box1.dirty === false,
+  `геометрия 1: бележката е на екрана с реален размер и не е „пипана" след отварянето (${box1.left},${box1.top} ${box1.w}x${box1.h}, флаг ${box1.dirty})`, box1);
 await closeActive();
 const afterClose1 = await geomRead();
 ok(afterClose1 === null,
@@ -950,8 +952,8 @@ await openNote({ id: 'G1B', gdid: 'GG1B', boardId: 'B1', width: 640, height: 420
 const box1b = await activeBox();
 await closeActive();
 const afterClose1b = await geomRead();
-ok(box1b.w === 640 && box1b.h === 420 && !!box1b.geom0 && box1b.geom0.w === 640 && box1b.geom0.h === 420,
-  `геометрия 1б: бележка с размери от options се отваря с тях и базовата кутия ги пази (${box1b.w}x${box1b.h})`, box1b);
+ok(box1b.w === 640 && box1b.h === 420 && box1b.dirty === false,
+  `геометрия 1б: бележка с размери от options се отваря с тях и не е „пипана" (${box1b.w}x${box1b.h}, флаг ${box1b.dirty})`, box1b);
 ok(afterClose1b === null,
   `геометрия 1б: и тя не създава запис, щом никой не я е пипал (${JSON.stringify(afterClose1b)})`, afterClose1b);
 
@@ -1263,6 +1265,176 @@ ok(langOk(langState['lang/i18n-bg.json']) && langState['lang/i18n-bg.json'].labe
   && langOk(langState['lang/i18n-en.json']) && langState['lang/i18n-en.json'].label === 'Reset positions/sizes:'
   && langOk(langState['lang/i18n-ru.json']) && langState['lang/i18n-ru.json'].label === 'Сброс позиций/размеров:',
   'езици: надписите са точно поисканите (bg / en / ru)', langState);
+
+// ======================= 10б. seq расте само при истинска промяна (b1.46) =======================
+// Собственикът (25.10.2026): броячът seq се вдига и когато бележка не е местена и не е преоразмерявана,
+// тоест когато не би трябвало да има нов запис. Правилото, което се проверява тук: отваряне,
+// затваряне, пре-рисуване и разпъване/свиване до състояние, което вече е записано, не пишат нищо и не
+// вдигат seq; истинско местене, преоразмеряване или смяна на режима вдигат seq точно с 1.
+// Записът се сравнява поле по поле, за да не зависи проверката от реда на ключовете в JSON-а.
+const recIs = (rec, exp) => !!rec
+  && ['x', 'y', 'w', 'h'].every(f => typeof rec[f] === 'number' && Math.abs(rec[f] - exp[f]) <= 1)
+  && (rec.e === true) === (exp.e === true);
+const recBrief = (rec) => rec ? { x: rec.x, y: rec.y, w: rec.w, h: rec.h, e: rec.e === true, o: rec.o } : null;
+// Истински клик с мишка върху елемент по селектор (бутонът за разпъване живее в активния прозорец).
+const clickSel = async (sel) => {
+  const r = await rectOf(sel);
+  if (!r) return false;
+  await page.mouse.click(Math.round(r.x), Math.round(r.y));
+  await page.waitForTimeout(250);
+  return true;
+};
+const seedGeometry = (store) => page.evaluate((s) => localStorage.setItem('noteWindowGeometry', JSON.stringify(s)), store);
+
+await closeAllWindows();
+await clearGeometryStorage();
+
+// (1) Бележка, записана като разпъната: отваряне и затваряне не пипат нито seq, нито записа. Преди
+// поправката всяко отваряне на такава бележка пишеше идентичен запис (setNoteWindowExpanded(win, true)
+// при прилагането на геометрията) и вдигаше seq с 1, без никой да е пипал нищо.
+const seedExp = { v: 2, seq: 8, boxes: { 'g:GEXP': { x: 140, y: 100, w: 520, h: 360, o: 7, e: true } } };
+await seedGeometry(seedExp);
+const openedExp = await openNote({ id: 'EXP', gdid: 'GEXP', boardId: 'B1', raw: 'разпъната със запис' }, 1);
+const expBox = await page.evaluate(() => {
+  const w = activeNoteWindow;
+  return { expanded: !!w.expanded, left: Math.round(w.box.offsetLeft), top: Math.round(w.box.offsetTop), restore: w.restoreBox };
+});
+const expAfterOpen = await geomRead();
+ok(expBox.expanded === true && expBox.left === 0 && expBox.top === 0,
+  `seq 1: бележка, записана като разпъната, се отваря разпъната (${expBox.left},${expBox.top}, разпъната ${expBox.expanded})`, expBox);
+ok(!!expAfterOpen && expAfterOpen.seq === 8 && recIs(expAfterOpen.raw['g:GEXP'], seedExp.boxes['g:GEXP']),
+  `seq 1: отварянето на разпъната бележка не вдига брояча (seq ${expAfterOpen && expAfterOpen.seq} срещу 8, запис ${JSON.stringify(recBrief(expAfterOpen && expAfterOpen.raw['g:GEXP']))})`,
+  { after: expAfterOpen && expAfterOpen.dict, seed: seedExp });
+await closeActive();
+const expAfterClose = await geomRead();
+ok(!!expAfterClose && expAfterClose.seq === 8 && recIs(expAfterClose.raw['g:GEXP'], seedExp.boxes['g:GEXP'])
+  && expAfterClose.boxes === 1 && expAfterClose.raw['g:GEXP'].o === 7,
+  `seq 1: затварянето ѝ също не пипа нито брояча, нито записа (seq ${expAfterClose && expAfterClose.seq}, запис ${JSON.stringify(recBrief(expAfterClose && expAfterClose.raw['g:GEXP']))})`,
+  { after: expAfterClose && expAfterClose.dict, seed: seedExp });
+
+// (2) Бележка БЕЗ запис: отваряне и затваряне не създават запис и не вдигат seq. Прозорецът тук е
+// току-що ползваният от разпънатата бележка горе (след затваряне той остава като празен и се ползва
+// наново): преди поправката новата бележка наследяваше разпъването и кутията за връщане на старата и
+// си създаваше запис още при отваряне. Мери се и дали измерената при затваряне кутия се разминава с
+// поставената при отваряне - тя би била причината, ако запис все пак се появи.
+await clearGeometryStorage();
+const openedFresh = await openNote({ id: 'FRSH', gdid: 'GFRESH', boardId: 'B1', raw: 'без запис' }, 1);
+ok(openedFresh.geom === null,
+  `seq 2: бележка без запис се отваря без да си създава запис (${JSON.stringify(openedFresh.geom)})`, openedFresh.geom);
+const freshProbe = await page.evaluate(() => {
+  const w = activeNoteWindow;
+  return { now: measureNoteWindowBox(w), expanded: !!w.expanded, dirty: !!w.geomDirty };
+});
+await closeActive();
+const freshAfterClose = await geomRead();
+ok(freshAfterClose === null,
+  `seq 2: и затварянето не създава запис (${JSON.stringify(freshAfterClose && freshAfterClose.dict)}), измерена ${JSON.stringify(freshProbe.now)}, флаг ${freshProbe.dirty}`,
+  { after: freshAfterClose && freshAfterClose.dict, probe: freshProbe });
+
+// (3) Истинско местене с мишката: seq расте точно с 1 и записът е новата кутия.
+const seedMove = { v: 2, seq: 12, boxes: { 'g:GMOVE': { x: 200, y: 150, w: 480, h: 340, o: 11 } } };
+await seedGeometry(seedMove);
+const openedMove = await openNote({ id: 'MOVE', gdid: 'GMOVE', boardId: 'B1', raw: 'за местене' }, 1);
+const moveBefore = await geomRead();
+const moveBox0 = await activeBox();
+await moveActive(70, 50);
+const moveAfter = await geomRead();
+const movedTo = moveAfter && moveAfter.raw['g:GMOVE'];
+ok(moveBefore && moveBefore.seq === 12 && recIs(moveBefore.raw['g:GMOVE'], seedMove.boxes['g:GMOVE']),
+  `seq 3: отваряне на бележка със запис не вдига брояча (seq ${moveBefore && moveBefore.seq} срещу 12)`,
+  { before: moveBefore && moveBefore.dict, seed: seedMove });
+ok(!!moveAfter && moveAfter.seq === 13,
+  `seq 3: местенето вдига брояча точно с 1 (seq ${moveBefore && moveBefore.seq} -> ${moveAfter && moveAfter.seq})`,
+  { before: moveBefore && moveBefore.dict, after: moveAfter && moveAfter.dict });
+ok(!!movedTo && Math.abs(movedTo.x - (moveBox0.left + 70)) <= 2 && Math.abs(movedTo.y - (moveBox0.top + 50)) <= 2,
+  `seq 3: записът е новата кутия (${JSON.stringify(recBrief(movedTo))} срещу ${moveBox0.left + 70},${moveBox0.top + 50})`,
+  { movedTo, moveBox0 });
+await closeActive();
+const moveAfterClose = await geomRead();
+ok(!!moveAfterClose && moveAfterClose.seq === 13 && recIs(moveAfterClose.raw['g:GMOVE'], movedTo),
+  `seq 3: затварянето след местенето не вдига брояча пак (seq ${moveAfterClose && moveAfterClose.seq})`,
+  moveAfterClose && moveAfterClose.dict);
+
+// (4) Разпъване и връщане: e се слага и маха правилно, а seq расте само на истинските смени на режима.
+await seedGeometry(seedMove);
+await openNote({ id: 'MOVE', gdid: 'GMOVE', boardId: 'B1', raw: 'за местене' }, 1);
+const beforeExpSeq = await geomRead();
+const boxQuad = await activeBox();
+// activeBox дава left/top, а записът - x/y: сравнява се едно и също.
+const quadRec = { x: boxQuad.left, y: boxQuad.top, w: boxQuad.w, h: boxQuad.h, e: true };
+const quadBack = { x: boxQuad.left, y: boxQuad.top, w: boxQuad.w, h: boxQuad.h };
+await clickSel('#modal-expand-btn');
+const afterExpand = await geomRead();
+const expRec = afterExpand && afterExpand.raw['g:GMOVE'];
+ok(!!expRec && expRec.e === true && recIs(expRec, quadRec),
+  `seq 4: разпъването слага e: true и пази кутията за връщане (${JSON.stringify(recBrief(expRec))} срещу ${boxQuad.left},${boxQuad.top} ${boxQuad.w}x${boxQuad.h})`,
+  { expRec, boxQuad });
+ok(!!afterExpand && afterExpand.seq === 13,
+  `seq 4: разпъването е истинска смяна и вдига брояча с 1 (seq ${beforeExpSeq && beforeExpSeq.seq} -> ${afterExpand && afterExpand.seq})`,
+  { before: beforeExpSeq && beforeExpSeq.dict, after: afterExpand && afterExpand.dict });
+await clickSel('#modal-expand-btn');
+const afterCollapse = await geomRead();
+const backRec = afterCollapse && afterCollapse.raw['g:GMOVE'];
+ok(!!backRec && backRec.e !== true && recIs(backRec, quadBack),
+  `seq 4: свиването маха e и връща същата кутия (${JSON.stringify(recBrief(backRec))})`, backRec);
+ok(!!afterCollapse && afterCollapse.seq === 14,
+  `seq 4: свиването също е истинска смяна, броячът става 14 (${afterCollapse && afterCollapse.seq})`,
+  afterCollapse && afterCollapse.dict);
+// Още един цикъл „отваряне/затваряне без пипане" върху записа, който вече няма e: нищо не се пише.
+await closeActive();
+const afterExpCycleClose = await geomRead();
+ok(!!afterExpCycleClose && afterExpCycleClose.seq === 14 && recIs(afterExpCycleClose.raw['g:GMOVE'], quadBack),
+  `seq 4: затварянето след цикъла пак не вдига брояча (seq ${afterExpCycleClose && afterExpCycleClose.seq})`,
+  afterExpCycleClose && afterExpCycleClose.dict);
+
+// (4б) Натискане по дръжката за размер без местене не е преоразмеряване: не пише нищо и не вдига seq.
+await seedGeometry(seedMove);
+await openNote({ id: 'MOVE', gdid: 'GMOVE', boardId: 'B1', raw: 'за местене' }, 1);
+const handleAt = await page.evaluate(() => {
+  const h = activeNoteWindow.box.querySelector('.modal-resize-handle');
+  const r = h.getBoundingClientRect();
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+});
+await page.mouse.move(handleAt.x, handleAt.y);
+await page.mouse.down();
+await page.mouse.up();
+await page.waitForTimeout(120);
+const afterHandleClick = await geomRead();
+ok(!!afterHandleClick && afterHandleClick.seq === 12 && recIs(afterHandleClick.raw['g:GMOVE'], seedMove.boxes['g:GMOVE']),
+  `seq 4б: натискане по дръжката без местене не пише и не вдига брояча (seq ${afterHandleClick && afterHandleClick.seq})`,
+  afterHandleClick && afterHandleClick.dict);
+// А истинско преоразмеряване вдига брояча с 1.
+await resizeActive(60, 40);
+const afterResize = await geomRead();
+const resizedRec = afterResize && afterResize.raw['g:GMOVE'];
+ok(!!afterResize && afterResize.seq === 13 && !!resizedRec && Math.abs(resizedRec.w - 540) <= 2 && Math.abs(resizedRec.h - 380) <= 2,
+  `seq 4б: преоразмеряването вдига брояча с 1 и записва новия размер (seq ${afterResize && afterResize.seq}, ${JSON.stringify(recBrief(resizedRec))})`,
+  { after: afterResize && afterResize.dict });
+await closeActive();
+
+// (5) „Ресет на позиции/размери" от Настройки пак трие всичко - и когато отворената бележка е разпъната.
+await seedGeometry(seedExp);
+await openNote({ id: 'EXP', gdid: 'GEXP', boardId: 'B1', raw: 'разпъната преди ресета' }, 1);
+await page.evaluate(() => document.getElementById('settings_button').click());
+await page.waitForFunction(() => {
+  const m = document.getElementById('settings-modal');
+  return !!m && m.classList.contains('visible');
+}, null, { timeout: 5000 }).catch(() => { });
+await page.locator('#reset-window-geometry-btn').click();
+await page.waitForFunction(() => localStorage.getItem('noteWindowGeometry') === null, null, { timeout: 3000 }).catch(() => { });
+const resetState = await page.evaluate(() => ({
+  raw: localStorage.getItem('noteWindowGeometry'),
+  expanded: getOpenNoteWindows().map(w => ({ key: w.key, expanded: !!w.expanded })),
+}));
+ok(resetState.raw === null && resetState.expanded.every(w => w.expanded === false),
+  `seq 5: ресетът трие всичко и излиза от разпънатия режим (${String(resetState.raw)}, ${JSON.stringify(resetState.expanded)})`,
+  resetState);
+await page.evaluate(() => document.getElementById('settings-modal').classList.remove('visible'));
+await closeActive();
+const afterResetClose = await geomRead();
+ok(afterResetClose === null,
+  `seq 5: затварянето след ресета не си създава запис наново (${JSON.stringify(afterResetClose && afterResetClose.dict)})`,
+  afterResetClose);
 
 // ======================= 11. Петте поправки от собственика (b1.11) =======================
 // (а) „Затвори всички" и хиксчето са една дясна група, едно до друго, и двете извън плъзгащия се ред;
