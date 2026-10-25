@@ -1,3 +1,0 @@
-    <script src="kb-assistantt.js"></script>
-    <script src="msmrtt.js"></script>
-    <script src="mainn.js"></script>
