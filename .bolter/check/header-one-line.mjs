@@ -128,12 +128,12 @@ await ctx.addInitScript(() => {
   localStorage.setItem('language', 'bg');
 });
 const page = await ctx.newPage();
-const errs = [];
-page.on('pageerror', e => errs.push(String(e.message).slice(0, 200)));
 // 'kofiWidgetOverlay is not defined' идва от самия тест: скриптът на Ko-fi от CDN е подменен с
-// празен отговор в маршрутизацията по-долу. Грешката е същата и на изходния комит (проверено с
-// BASE=<branch point>), значи не е от тази промяна.
+// празен отговор в маршрутизацията по-долу, а main го вика без проверка. Грешката е същата и на
+// изходния комит (проверено с BASE=<branch point>), значи не е от тази промяна.
 const IGNORE_CONSOLE = /^(Failed to load resource|kofiWidgetOverlay is not defined)/;
+const errs = [];
+page.on('pageerror', e => { if (!IGNORE_CONSOLE.test(String(e.message))) errs.push(String(e.message).slice(0, 200)); });
 page.on('console', m => { if (m.type() === 'error' && !IGNORE_CONSOLE.test(m.text())) errs.push(String(m.text()).slice(0, 200)); });
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' });
 await page.waitForFunction(() => typeof startApp === 'function');

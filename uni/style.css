@@ -85,16 +85,51 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    /* Пренасянето е ПОСЛЕДНАТА мярка (23.10.2026): редът стига до него само когато дори с
+       полето за търсене на 20ch не се побира. Затова flex-basis на #search-wrapper е
+       долната ѝ граница: flex подрежда редовете по „хипотетичния" размер на децата, тоест
+       точно по долните им граници — не по желаните ширини. Така полето се свива до 20ch,
+       ПРЕДИ хедърът да мине на втори ред. */
     flex-wrap: wrap;
     background-image: url('Frame.jpg');
     position: sticky;
     top: 0;
     z-index: 100;
+    /* Стъпките на хедъра се засичат по НЕГОВАТА ширина, не по ширината на екрана:
+       @container app-header (max-width: …) по-долу. */
+    container-type: inline-size;
+    container-name: app-header;
+}
+
+/* Единственият ред на хедъра: лого+заглавие, търсене, бутони — никога не се пренася
+   (flex-wrap: nowrap). Под прага по ширината на хедъра (@container app-header, виж края на
+   файла) този ред става ТРИ реда grid. Две състояния, никога две: един ред или три реда.
+   Контейнерът е самият <header>, а container query не може да стилизира собствения си
+   контейнер — затова превключва този вътрешен ред, а не header. */
+#header-content {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-width: 0;
+}
+
+/* Марката (лого + заглавие): НЕ се свива и заглавието не се реже — текстът му винаги се чете
+   целият (искане на собственика, 23.10.2026). Мястото за търсачката се освобождава от
+   стъпките @container (по-малко лого, по-малък шрифт на заглавието, по-стегнати бутони). */
+#header-content>div:first-child {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
 }
 
 .header-logo {
     margin-right: 10px;
     flex-shrink: 0;
+    /* Височината е тук, а не inline в HTML: стъпките @container app-header я смаляват. */
+    height: 60px;
+    transition: height 0.15s, width 0.15s;
 }
 
 header h1 {
@@ -102,6 +137,9 @@ header h1 {
     text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
     color: darkorange;
     font-size: 2.2rem;
+    /* Без рязане и без многоточие: винаги се чете целият текст. Шрифтът се смалява само на
+       стъпките @container app-header по-долу. */
+    white-space: nowrap;
 }
 
 /* --- Пълноекранен режим на приложението (порт от cx-notes) ---
@@ -116,7 +154,20 @@ header.header-fullscreen {
     justify-content: center;
 }
 
-header.header-fullscreen>*:not(#search-wrapper) {
+header.header-fullscreen>*:not(#header-content) {
+    display: none !important;
+}
+
+/* В пълноекранен режим редът не се превключва на три реда — остава само търсачката. */
+header.header-fullscreen #header-content {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+}
+
+/* Всичко в реда се скрива ОСВЕН търсачката и лентата с бутони (в нея остава само плаващият
+   бутон за бордове — единственият изход от пълноекранния режим в main). */
+header.header-fullscreen #header-content>*:not(#search-wrapper):not(#header-buttons) {
     display: none !important;
 }
 
@@ -124,11 +175,11 @@ header.header-fullscreen>*:not(#search-wrapper) {
    затова не се скрива; в main е в хедъра, а без него от режима няма видим изход - менюто с бордове
    (и квадратът „Цял екран" в него) не може да се отвори. Затова тук се показва само той: всички
    останали бутони на хедъра си остават скрити. */
-body header.header-fullscreen>#header-buttons {
+body header.header-fullscreen #header-buttons {
     display: block !important;
 }
 
-header.header-fullscreen>#header-buttons>*:not(#boards-menu-container) {
+header.header-fullscreen #header-buttons>*:not(#boards-menu-container) {
     display: none !important;
 }
 
@@ -184,6 +235,16 @@ header.header-fullscreen #fullscreen-board-label {
     max-width: 400px;
     display: flex;
     align-items: center;
+    /* Търсачката е ПОСЛЕДНАТА, която се свива (23.10.2026): flex-basis Е долната ѝ граница —
+       20ch използваем текст плюс подложката за иконите (--hdr-search-pad). Затова flex я брои
+       в реда с ТАЗИ ширина и хедърът минава на втори ред само ако и тя не се побира. Свободното
+       място пък я разпъва до 400px (max-width), преди да стигне до заглавието. */
+    flex: 1 1 calc(20ch + var(--hdr-search-pad, 135px));
+    min-width: calc(20ch + var(--hdr-search-pad, 135px));
+    margin: 0 12px;
+    /* Хоризонтална подложка на полето (ляво за иконата за режим + дясно за save/clear).
+       Стъпките @container я стягат — и долната граница на полето върви с нея. */
+    --hdr-search-pad: 135px;
 }
 
 #search-box {
@@ -192,6 +253,10 @@ header.header-fullscreen #fullscreen-board-label {
     height: 40px;
     /* padding: left for icon, right for 2 large buttons */
     padding: 4px 90px 4px 45px;
+    /* Долната граница на полето: 20ch ИЗПОЛЗУЕМ ТЕКСТ (искане на собственика, 23.10.2026) плюс
+       собствената хоризонтална подложка за иконите. 20ch се мери в шрифта на полето
+       (16px Arial → ~178px). Виж flex-basis/min-width на #search-wrapper. */
+    min-width: calc(20ch + var(--hdr-search-pad, 135px));
     border-radius: 20px;
     border: 1px solid #aaa;
     font-size: 1em;
@@ -1454,12 +1519,9 @@ code {
     margin-top: 5px;
 }
 
-/* Hide logo on small screens */
-@media (max-width: 480px) {
-    .header-logo {
-        display: none;
-    }
-}
+/* Hide logo on small screens — 23.10.2026: вече не по ширина на ЕКРАНА. Логото се смалява на
+   стъпките @container app-header, а не се крие: хедърът остава с лого и заглавие на всяка
+   ширина (искане на собственика: нищо не изчезва от реда). */
 
 #boards-table th,
 #boards-table td {
@@ -1951,50 +2013,13 @@ code {
     opacity: 1;
 }
 
-@media (max-width: 1220px) {
-    header {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    /* Order for tablets (769px - 1030px) */
-    /* header > div:first-child { order: 1; } Title */
-    #search-container {
-        order: 3;
-    }
-
-    /* Search Box */
-    #header-buttons {
-        order: 2;
-    }
-
-    /* Buttons */
-    .boards-note {
-        order: 4;
-    }
-
-    /* Board menu at the bottom */
-}
-
-@media (max-width: 768px) {
-
-    /* Reorder elements for mobile view (up to 768px) */
-    /* Title is already order 1 from the rule above */
-    #search-container {
-        order: 3;
-    }
-
-    /* Search Box moves down */
-    #header-buttons {
-        order: 2;
-    }
-
-    /* Buttons move up */
-    .boards-note {
-        order: 4;
-    }
-
-    /* .boards-note is already order 4 from the rule above */
+/* 23 Oct 2026: медиите по ширина на ЕКРАНА, които подреждаха хедъра в колона (max-width:1220px и
+   max-width:768px), са премахнати — хедърът вече е един ред на всички ширини, а стъпките му се
+   засичат по НЕГОВАТА ширина (@container app-header, виж края на файла). Тук остава само редът
+   на лентите: панелът с дъските (.boards-note, добавя се от main.js) е под реда с
+   логото/търсачката/бутоните. */
+.boards-note {
+    order: 4;
 }
 
 /*#search-container {
@@ -2003,9 +2028,15 @@ code {
 
 #header-buttons {
     display: flex;
+    align-items: center;
     justify-content: center;
     padding-top: 5px;
     padding-bottom: 5px;
+    /* Бутоните не се мачкат: когато редът не се побира, хедърът минава на втори ред, а не
+       бутоните да се смачкват един в друг. Всички бутони остават видими на всяка ширина
+       (23.10.2026) — стъпките @container само стягат подложката им. */
+    flex: 0 0 auto;
+    order: 2;
 }
 
 /* Responsive layout for settings modal on small screens */
@@ -4196,4 +4227,164 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
 
 .note-pinned {
     box-shadow: 0 0 0 2px rgba(194, 45, 31, 0.28), 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+}
+/* ===== Стъпки на едноредовия хедър: @container app-header ==============================
+   Засичането е по ширината на САМИЯ хедър (container-type: inline-size на header), не по
+   ширината на екрана — затова няма нито едно @media (max-width: …) за това поведение.
+
+   Редът на смаляване (искане на собственика, 23.10.2026) е точно този:
+     1. по-стегнати отстояния и по-малка подложка на бутоните;
+     2. по-малко лого;
+     3. полето за търсене — ПОСЛЕДНО, с долна граница 20ch използваем текст.
+   Заглавието НЕ участва в смаляването с рязане: то пази пълния си текст, а шрифтът му се
+   смалява само на стъпките тук. Ако и така редът не се побира, хедърът минава на втори ред
+   (flex-wrap: wrap на header) — това е правилният изход, а не отрязване на текст.
+
+   Числата са измерени на истинския хедър с .bolter/check/header-one-line.mjs (заглавието тук е
+   дългото „CX MultiNotes Viewer", затова шрифтът му пада по-бързо, отколкото в cx-notes). */
+@container app-header (max-width: 1149px) {
+    #header-buttons .header-btn {
+        padding: 6px;
+        margin-left: 4px;
+    }
+
+    #note-counter {
+        margin-right: 3px;
+        margin-left: 4px;
+        padding: 3px 6px;
+    }
+
+    #search-wrapper {
+        margin: 0 8px;
+        --hdr-search-pad: 130px;
+    }
+
+    #search-box {
+        padding-left: 42px;
+        padding-right: 88px;
+    }
+
+    .header-logo {
+        height: 44px;
+    }
+
+    /* Заглавието тук е дългото „CX MultiNotes Viewer" (в cx-notes е „CX Notes"), затова
+       шрифтът му пада по-бързо — иначе редът не се побира над 900px. */
+    header h1 {
+        font-size: 1.3rem;
+    }
+}
+
+@container app-header (max-width: 899px) {
+    #header-buttons .header-btn {
+        padding: 4px;
+        margin-left: 4px;
+    }
+
+    #note-counter {
+        font-size: 13px;
+        margin-left: 4px;
+        margin-right: 2px;
+        padding: 2px 5px;
+    }
+
+    #search-wrapper {
+        margin: 0 5px;
+        --hdr-search-pad: 120px;
+    }
+
+    #search-box {
+        padding-left: 37px;
+        padding-right: 83px;
+    }
+
+    .header-logo {
+        height: 32px;
+    }
+
+    header h1 {
+        font-size: 1.15rem;
+    }
+}
+
+@container app-header (max-width: 699px) {
+    #header-buttons .header-btn {
+        padding: 3px;
+        margin-left: 3px;
+    }
+
+    #note-counter {
+        margin-left: 3px;
+        padding: 2px 4px;
+    }
+
+    #search-wrapper {
+        margin: 0 4px;
+    }
+
+    .header-logo {
+        height: 26px;
+    }
+
+    header h1 {
+        font-size: 1.05rem;
+    }
+}
+
+@container app-header (max-width: 479px) {
+    #header-buttons .header-btn {
+        padding: 2px;
+        margin-left: 2px;
+    }
+
+    #search-wrapper {
+        margin: 0 4px;
+        /* Най-тясната стъпка: иконите отстрани се стягат още, за да се побират 20ch текст дори
+           на 320px екран (съдържанието на хедъра там е 299px, а 20ch + 118px = 296px). */
+        --hdr-search-pad: 118px;
+    }
+
+    #search-box {
+        padding-left: 36px;
+        padding-right: 82px;
+    }
+
+    .header-logo {
+        height: 22px;
+    }
+
+    header h1 {
+        font-size: 0.95rem;
+    }
+}
+
+/* ПРАГЪТ на превключване: под него редът не се побира дори с полето на неговите 20ch, значи
+   хедърът става ТРИ реда — марка / бутони / търсене (пълна ширина). Прагът е по ширината на
+   СЪДЪРЖАНИЕТО на хедъра (container-type: inline-size мери точно нея), измерен на истинския
+   хедър с .bolter/check/header-one-line.mjs. Тестът минава през ширини и проверява, че хедърът
+   е или един, или три реда — никога два. */
+@container app-header (max-width: 800px) {
+    #header-content {
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+        justify-items: center;
+        row-gap: 6px;
+    }
+
+    /* Редове в този ред: 1) лого + заглавие, 2) всички бутони, 3) полето за търсене */
+    #header-content>div:first-child {
+        order: 1;
+    }
+
+    #header-buttons {
+        order: 2;
+    }
+
+    #search-wrapper {
+        order: 3;
+        width: 100%;
+        max-width: none;
+        margin: 0;
+    }
 }
