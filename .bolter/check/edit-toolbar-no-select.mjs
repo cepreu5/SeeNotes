@@ -313,6 +313,170 @@ ok(prevented.board === true, 'selectstart върху името на борда 
   ok(wide.editorBlocked === false && wide.editorUs !== 'none', `1280: редакторът още се маркира (blocked ${wide.editorBlocked}, ${wide.editorUs})`, wide);
 }
 
+// ---- 7) Залепналият hover: фонът при задържане е само за устройства с мишка (b2.82) ----------
+// Собственикът (25.10.2026): „след дълго натискане бутонът със стрелки остава натиснат и след
+// освобождаване - нека си връща първоначалния цвят". Причината: `.modal-edit-toolbar-btn:hover` дава
+// фон и кант, а на телефон браузърът оставя :hover залепен след дългото натискане. Затова правилото
+// за hover е вътре в `@media (hover: hover)`, а `:focus-visible` (клавиатурата) остава извън него.
+{
+  const css = await readFile(path.join(root, 'style.css'), 'utf8');
+  // Блокът на @media, в който попада даден селектор: броят се скобите от началото на медията.
+  const mediaBlockOf = (needle) => {
+    const at = css.indexOf(needle);
+    if (at < 0) return { found: false };
+    const mediaAt = css.lastIndexOf('@media (hover: hover)', at);
+    if (mediaAt < 0) return { found: true, inMedia: false, at };
+    let depth = 0, i = css.indexOf('{', mediaAt), end = -1;
+    for (; i < css.length; i++) {
+      if (css[i] === '{') depth++;
+      else if (css[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    return { found: true, inMedia: at > mediaAt && at < end, at, mediaAt, end };
+  };
+  const hover = mediaBlockOf('.modal-edit-toolbar-btn:hover');
+  const focus = mediaBlockOf('.modal-edit-toolbar-btn:focus-visible');
+  ok(hover.found && hover.inMedia,
+    `hover-фонът на бутоните е вътре в @media (hover: hover) (${JSON.stringify(hover)})`, hover);
+  ok(focus.found, ':focus-visible правилото за бутоните още съществува', focus);
+  ok(focus.found && focus.inMedia === false,
+    `:focus-visible остава ИЗВЪН @media (hover: hover) - клавиатурата вижда фокуса (${JSON.stringify(focus)})`, focus);
+  // Контрола: на десктоп (тук има истинска мишка) подсветката още работи - тя не е изчезнала, а е
+  // ограничена до устройствата, на които има смисъл.
+  const hasHover = await page.evaluate(() => matchMedia('(hover: hover)').matches);
+  ok(hasHover === true, `браузърът на теста е устройство с мишка (hover: ${hasHover})`);
+  const pt = await centre(`${BOX} .modal-edit-toolbar-btn.is-undo`);
+  if (pt) {
+    await page.mouse.move(pt.x, pt.y);
+    await page.waitForTimeout(60);
+    const hovered = await page.evaluate((s) => getComputedStyle(document.querySelector(s)).backgroundColor, `${BOX} .modal-edit-toolbar-btn.is-undo`);
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(60);
+    const away = await page.evaluate((s) => getComputedStyle(document.querySelector(s)).backgroundColor, `${BOX} .modal-edit-toolbar-btn.is-undo`);
+    ok(hovered === 'rgba(255, 255, 255, 0.35)',
+      `с мишка бутонът още светва при посочване (${hovered})`, hovered);
+    ok(away === 'rgba(0, 0, 0, 0)',
+      `и се връща към първоначалния прозрачен фон, щом показалецът се махне (${away})`, away);
+  }
+}
+
+// ---- 8) След дълго натискане фокусът не остава върху бутона (blur) ----------------------------
+// `:focus-visible` би държал фона на бутона дори когато браузърът вече е махнал :hover, затова след
+// задържане бутонът се освобождава. Проверява се върху ▦ (без таблица в бележката той не пипа
+// текста и не мести фокуса в редактора), за да се види САМОТО освобождаване.
+{
+  const tableBtn = `${BOX} .modal-edit-toolbar-btn.is-table`;
+  await page.evaluate((s) => { const b = document.querySelector(s); if (b) b.focus(); }, tableBtn);
+  const focused = await page.evaluate(() => document.activeElement && document.activeElement.classList.contains('modal-edit-toolbar-btn')
+    ? document.activeElement.textContent.trim() : null);
+  ok(focused === '▦', `▦ е фокусиран преди задържането (${focused})`, focused);
+  // Задържане с пръст: истински touchstart/touchend с 620ms между тях.
+  const press = await page.evaluate(async (s) => {
+    const b = document.querySelector(s);
+    if (!b) return { pressed: false };
+    const t = (type) => {
+      const touch = new Touch({ identifier: 3, target: b, clientX: 10, clientY: 10 });
+      const active = type === 'touchend' ? [] : [touch];
+      return new TouchEvent(type, { bubbles: true, cancelable: true, touches: active, targetTouches: active, changedTouches: [touch] });
+    };
+    b.dispatchEvent(t('touchstart'));
+    await new Promise(r => setTimeout(r, 620));
+    b.dispatchEvent(t('touchend'));
+    return {
+      pressed: true,
+      activeIsButton: document.activeElement === b,
+      activeTag: document.activeElement ? document.activeElement.tagName + '.' + (document.activeElement.className || '') : null,
+    };
+  }, tableBtn);
+  ok(press.pressed && press.activeIsButton === false,
+    `след touchend бутонът не е document.activeElement (${press.activeTag})`, press);
+}
+
+// ---- 9) Второ задържане на ←/→ стига до началото/края на ЦЕЛИЯ текст -------------------------
+// Собственикът (25.10.2026): „когато сме преместили курсора в началото/края на реда с този бутон и го
+// задържим повторно, курсорът да отива в началото/края на целия текст на бележката".
+{
+  // Стрелките се отбелязват по текста си, за да не зависи изборът от подредбата на лентата.
+  const arrows = await page.evaluate((box) => {
+    const tb = document.querySelector(box + ' .modal-edit-toolbar');
+    const btns = tb ? [...tb.querySelectorAll('button')] : [];
+    const left = btns.find(b => b.textContent.trim() === '←');
+    const right = btns.find(b => b.textContent.trim() === '→');
+    if (left) left.dataset.checkLeft = '1';
+    if (right) right.dataset.checkRight = '1';
+    return { left: !!left, right: !!right };
+  }, BOX);
+  ok(arrows.left && arrows.right, 'ескалация: лентата има бутони ← и →', arrows);
+  const LEFT = `${BOX} .modal-edit-toolbar [data-check-left="1"]`;
+  const RIGHT = `${BOX} .modal-edit-toolbar [data-check-right="1"]`;
+  const clickHold = async (sel, holdMs = 650) => {
+    const p = await centre(sel);
+    if (!p) return false;
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.waitForTimeout(holdMs);
+    await page.mouse.up();
+    await page.waitForTimeout(50);
+    return true;
+  };
+  const caretOf = () => page.evaluate(() => {
+    const t = document.getElementById('note-edit-textarea');
+    return { start: t.selectionStart, end: t.selectionEnd, len: t.value.length, value: t.value };
+  });
+  const setCaret = (i) => page.evaluate((i) => {
+    const t = document.getElementById('note-edit-textarea');
+    t.focus();
+    t.setSelectionRange(i, i);
+  }, i);
+
+  // ←: от средата на втория ред до неговото начало (първото задържане), после пак ← - начало на текста.
+  await setCaret(LINE2 + 4);
+  ok(await clickHold(LEFT), 'ескалация ←: първото задържане минава');
+  let c = await caretOf();
+  ok(c.start === LINE2, `ескалация ←: първото задържане стига до началото на реда (${c.start}, чакаме ${LINE2})`, c);
+  ok(await clickHold(LEFT), 'ескалация ←: второто задържане минава');
+  c = await caretOf();
+  ok(c.start === 0 && c.end === 0,
+    `ескалация ←: второто задържане стига до НАЧАЛОТО на целия текст (${c.start}, дължина ${c.len})`, c);
+  // Трето задържане не мести нищо (вече е в началото).
+  await clickHold(LEFT);
+  c = await caretOf();
+  ok(c.start === 0, `ескалация ←: третото задържане оставя каретата в началото (${c.start})`, c);
+
+  // →: от средата на първия ред до края на реда, после пак → - край на целия текст.
+  const line1End = 9; // „Първи ред" (без \n)
+  await setCaret(4);
+  ok(await clickHold(RIGHT), 'ескалация →: първото задържане минава');
+  c = await caretOf();
+  ok(c.start === line1End, `ескалация →: първото задържане стига до края на реда (${c.start}, чакаме ${line1End})`, c);
+  ok(await clickHold(RIGHT), 'ескалация →: второто задържане минава');
+  c = await caretOf();
+  ok(c.start === c.len && c.end === c.len,
+    `ескалация →: второто задържане стига до КРАЯ на целия текст (${c.start} от ${c.len})`, c);
+
+  // Същото през самата функция (Ctrl/⌘-пътят на бутоните ползва същия escalate):
+  const direct = await page.evaluate(() => {
+    const t = document.getElementById('note-edit-textarea');
+    const out = {};
+    t.focus(); t.setSelectionRange(12, 12);
+    // Без escalate: само до ръба на реда.
+    window.moveCaretToLineEdge(t, false, false);
+    out.plain = t.selectionStart;
+    // Същата позиция, но с escalate: началото на целия текст.
+    t.setSelectionRange(out.plain, out.plain);
+    window.moveCaretToLineEdge(t, false, false, true);
+    out.escalated = t.selectionStart;
+    // Един знак надясно и без escalate: ръбът на ВИЗУАЛНИЯ ред, а не на абзаца.
+    t.setSelectionRange(out.plain, out.plain);
+    window.moveCaretToLineEdge(t, true, false, false);
+    out.lineEnd = t.selectionStart;
+    return out;
+  });
+  ok(direct.escalated === 0 && direct.plain > 0,
+    `moveCaretToLineEdge с escalate: от ръба на реда (${direct.plain}) до началото на текста (${direct.escalated})`, direct);
+  ok(direct.lineEnd === 15,
+    `moveCaretToLineEdge без escalate спира на ръба на реда (${direct.lineEnd}), не на края на текста`, direct);
+}
+
 ok(errs.length === 0, `няма pageerror/console error (${errs.slice(0, 3).join(' | ')})`, errs);
 
 await ctx.close();

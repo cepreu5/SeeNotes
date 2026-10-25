@@ -11585,6 +11585,80 @@ function wireOpenNotesBarDragGuard(bar) {
     bar._barDragged = () => dragged;
 }
 
+// Дълго натискане на плочка в лентата затваря бележката ѝ (собственикът, 25.10.2026: „дълго
+// натискане на мини бутон в лентата долу с отворените бележки да затваря съответната бележка").
+// Минава по СЪЩИЯ път като хиксчето на прозореца (activateNoteWindow + .modal-close), значи въпросът
+// при незаписани промени идва без нов код. Затваря и скрита, и активната видима плочка. Задействането
+// спира следващия click, за да не се вдигне/скрие бележката вместо да се затвори.
+// Прагът за отмяна при touchmove е ПО-МАЛЪК от този на wireOpenNotesBarDragGuard (6px): плъзгане по
+// лентата отменя задържането още преди пазачът да го обяви за плъзгане, така двата механизма не се
+// бият, а лекото трепване на пръста (2-3px) не губи дългото натискане.
+const OPEN_NOTES_BAR_LONG_PRESS_MS = 500;
+const OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX = 5;
+
+function wireOpenNotesBarTileLongPress(tile, bar) {
+    let pressTimer = null;
+    // Състоянието живее на самата плочка (като bar._barDragged), за да го чете и кликът.
+    tile._longPressTriggered = false;
+    let touchStartX = 0, touchStartY = 0;
+    let lastTouchEnd = 0;
+    const cancelPress = () => {
+        if (pressTimer) {
+            clearTimeout(pressTimer);
+            pressTimer = null;
+        }
+    };
+    const firePress = () => {
+        pressTimer = null;
+        // Плъзгане по лентата не е задържане - то не избира и не затваря бележка.
+        if (bar._barDragged && bar._barDragged()) return;
+        const target = openNotesBarWindowFor(tile);
+        if (!target) return;
+        tile._longPressTriggered = true;
+        if (navigator.vibrate) navigator.vibrate(40);
+        // Точно пътят на хиксчето: активиране (скритата се показва) и след това затваряне.
+        activateNoteWindow(target, true);
+        target.el.querySelector('.modal-close')?.click();
+    };
+    const startPress = () => {
+        tile._longPressTriggered = false;
+        cancelPress();
+        pressTimer = setTimeout(firePress, OPEN_NOTES_BAR_LONG_PRESS_MS);
+    };
+    tile.addEventListener('touchstart', (e) => {
+        const touch = e.touches && e.touches[0];
+        if (touch) {
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+        }
+        startPress();
+    }, { passive: true });
+    tile.addEventListener('touchmove', (e) => {
+        const touch = e.touches && e.touches[0];
+        if (!touch) return cancelPress();
+        if (Math.abs(touch.clientX - touchStartX) > OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX
+            || Math.abs(touch.clientY - touchStartY) > OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX) {
+            cancelPress();
+        }
+    }, { passive: true });
+    tile.addEventListener('touchcancel', cancelPress);
+    tile.addEventListener('touchend', (e) => {
+        cancelPress();
+        lastTouchEnd = Date.now();
+        if (tile._longPressTriggered) {
+            // Синтетичният click след touchend не бива да вдига/скрива бележката - тя се затваря.
+            if (e.cancelable) e.preventDefault();
+            tile._longPressTriggered = false;
+        }
+    });
+    // Задържане с мишка; събитията на мишката веднага след докосване се прескачат.
+    tile.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || Date.now() - lastTouchEnd < 1000) return;
+        startPress();
+    });
+    ['mouseup', 'mouseleave'].forEach((type) => tile.addEventListener(type, cancelPress));
+}
+
 /** Лентата се строи при първата нужда и остава в слоя; скрита е с клас, не се маха. */
 function ensureOpenNotesBar() {
     const layer = document.getElementById('note-windows-layer');
@@ -11734,6 +11808,11 @@ function refreshOpenNotesBar() {
             tile.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // След дълго натискане бележката вече се затваря - този click не бива да я вдига/скрива.
+                if (tile._longPressTriggered) {
+                    tile._longPressTriggered = false;
+                    return;
+                }
                 // Плъзгане по лентата не избира бележка: само истински клик.
                 if (bar._barDragged && bar._barDragged()) return;
                 const target = openNotesBarWindowFor(tile);
@@ -11762,6 +11841,8 @@ function refreshOpenNotesBar() {
                 activateNoteWindow(target, true);
                 tile.scrollIntoView({ inline: 'nearest', block: 'nearest' });
             });
+            // Дългото натискане на плочката затваря бележката ѝ (собственикът, 25.10.2026).
+            wireOpenNotesBarTileLongPress(tile, bar);
         }
         keep.add(key);
         // Плочката влиза в реда ПРЕДИ да се строи: кешираната миниатюра се слага веднага, а
@@ -27555,18 +27636,29 @@ function getVisualLineEdge(textarea, pos, paraStart, paraEnd, moveToEnd) {
     return result;
 }
 
-function moveCaretToLineEdge(textarea, moveToEnd, isParagraph = false) {
+// Ръб на ВИЗУАЛНИЯ ред при мека среда (пренасяне на редове). `escalate` е за второто задържане на
+// ←/→: щом каретата вече е на ръба на реда, тя минава в началото/края на ЦЕЛИЯ текст на бележката
+// (собственикът, 25.10.2026: „когато сме преместили курсора в началото/края на реда с този бутон и го
+// задържим повторно, курсорът да отива в началото/края на целия текст на бележката"). Сравнява се с
+// резултата на getVisualLineEdge, а не с lineStart/lineEnd: при пренасяне ръбът на реда е друга
+// позиция от ръба на абзаца.
+function moveCaretToLineEdge(textarea, moveToEnd, isParagraph = false, escalate = false) {
     if (!textarea) return;
     const text = textarea.value;
     const caretPosition = textarea.selectionStart;
     const lineStart = text.lastIndexOf('\n', Math.max(0, caretPosition - 1)) + 1;
     const nextLineBreak = text.indexOf('\n', caretPosition);
     const lineEnd = nextLineBreak === -1 ? text.length : nextLineBreak;
-    const nextPosition = isParagraph ? (moveToEnd ? lineEnd : lineStart) : getVisualLineEdge(textarea, caretPosition, lineStart, lineEnd, moveToEnd);
+    let nextPosition = isParagraph ? (moveToEnd ? lineEnd : lineStart) : getVisualLineEdge(textarea, caretPosition, lineStart, lineEnd, moveToEnd);
+    if (escalate && nextPosition === caretPosition) {
+        nextPosition = moveToEnd ? text.length : 0;
+    }
     textarea.focus();
     textarea.setSelectionRange(nextPosition, nextPosition);
     scrollCaretIntoView(textarea);
 }
+// За тестовете: същата функция се вика директно, както window.refreshOpenNotesBar.
+window.moveCaretToLineEdge = moveCaretToLineEdge;
 
 function moveCaretByOne(textarea, delta) {
     if (!textarea) return;
@@ -28568,6 +28660,10 @@ function createModalEditToolbar(modalContentBox) {
                 if (longPressTriggered) {
                     if (e.cancelable) e.preventDefault();
                     longPressTriggered = false;
+                    // След дълго натискане фокусът не остава върху бутона: иначе :focus-visible би го
+                    // държал „натиснат" и стрелката не си връща първоначалния цвят, докато не се
+                    // докосне другаде (собственикът, 25.10.2026).
+                    button.blur();
                 }
             });
             button.addEventListener('touchmove', () => {
@@ -28588,10 +28684,15 @@ function createModalEditToolbar(modalContentBox) {
                     onLongPress();
                 }, 500);
             });
-            ['mouseup', 'mouseleave', 'mouseout'].forEach((type) => {
+            ['mouseleave', 'mouseout'].forEach((type) => {
                 button.addEventListener(type, () => {
                     if (pressTimer) clearTimeout(pressTimer);
                 });
+            });
+            button.addEventListener('mouseup', () => {
+                if (pressTimer) clearTimeout(pressTimer);
+                // Същото като touchend: след задържане с мишка фокусът не остава върху бутона.
+                if (longPressTriggered) button.blur();
             });
             button.addEventListener('click', (e) => {
                 if (longPressTriggered) {
@@ -28649,17 +28750,17 @@ function createModalEditToolbar(modalContentBox) {
         label: '←',
         title: _('lineStartTooltip') || 'One character left · Ctrl/hold: line start',
         action: (e) => (e && (e.ctrlKey || e.metaKey))
-            ? moveCaretToLineEdge(getActiveModalEditor(), false, false)
+            ? moveCaretToLineEdge(getActiveModalEditor(), false, false, true)
             : moveCaretByOne(getActiveModalEditor(), -1),
-        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, false)
+        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), false, false, true)
     });
     addButton({
         label: '→',
         title: _('lineEndTooltip') || 'One character right · Ctrl/hold: line end',
         action: (e) => (e && (e.ctrlKey || e.metaKey))
-            ? moveCaretToLineEdge(getActiveModalEditor(), true, false)
+            ? moveCaretToLineEdge(getActiveModalEditor(), true, false, true)
             : moveCaretByOne(getActiveModalEditor(), 1),
-        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, false)
+        onLongPress: () => moveCaretToLineEdge(getActiveModalEditor(), true, false, true)
     });
     addButton({
         label: '▦',

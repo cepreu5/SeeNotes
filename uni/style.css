@@ -4021,7 +4021,19 @@ body.selection-locked .note.active-selection-note .note-content {
     flex: 0 0 auto;
 }
 
-.modal-edit-toolbar-btn:hover,
+/* Фонът при задържане е само за устройства с ИСТИНСКА мишка: на телефон браузърът оставя :hover
+   залепен за елемента след дълго натискане, затова стрелката изглежда натисната, докато не се
+   докосне другаде (собственикът, 25.10.2026: „след дълго натискане бутонът със стрелки остава
+   натиснат и след освобождаване - нека си връща първоначалния цвят"). Фокусът за клавиатура
+   остава извън блока, за да се вижда на десктоп. */
+@media (hover: hover) {
+
+    .modal-edit-toolbar-btn:hover {
+        background: rgba(255, 255, 255, 0.35);
+        border-color: #555;
+    }
+}
+
 .modal-edit-toolbar-btn:focus-visible {
     background: rgba(255, 255, 255, 0.35);
     border-color: #555;
