@@ -9,7 +9,8 @@
 //      когато след него бележките се отворят в друг ред;
 //   4) нова бележка влиза в КРАЯ, без да разваля подредбата, а затворена бележка изчезва от реда;
 //   5) плъзгането не скрива/показва/затваря нищо (кликът след плъзгане се прескача от
-//      bar._barDragged), а дългото натискане (500ms без движение) още ЗАТВАРЯ бележката;
+//      bar._barDragged), а дългото натискане (500ms) само ВДИГА плочката - местенето тръгва от първото
+//      движение, без праг, и нищо не се затваря (b1.52);
 //   6) плъзгане, започнало на ФОНА на лентата, още скролва (scrollLeft се мени) и не мести плочки;
 //   7) на 390px при 8 бележки редът се приплъзва и пак се преподрежда с плъзгане;
 //   8) плъзганата плочка носи клас is-dragging, а на плочките има touch-action: pan-y.
@@ -350,26 +351,105 @@ ok(same(stored1, ['DGB3', 'DGB1', 'DGB2', 'DGB4']),
         `отворена наново, бележката влиза в края (${afterReopen.join(' ')})`, afterReopen);
 }
 
-// --- 9) Дълго натискане без движение още ЗАТВАРЯ бележката (b1.49 не е счупено) ----------------
-// Истински показалец: натискане върху плочката, 620ms без нито един пиксел движение, пускане.
+// --- 9) Задържане ВДИГА плочката, а местенето тръгва от първото движение (b1.52) ----------------
+// Собственикът (25.10.2026): „Продължително натискане само за местене, не затваря". Задържане 500ms
+// върху плочка я вдига (is-dragging) - същото повдигане като при плъзгане - а после и 3px движение, под
+// стария праг от 10px, вече местят: редът се сменя и се записва. Задържане и пускане без движение не
+// променя реда, не затваря и не скрива нищо.
 {
-    const victim = (await tileOrder())[1];
-    const wsBefore = await windowsState();
-    const p4 = await tileCentre(victim);
-    await page.mouse.move(p4.x, p4.y);
+    // а) Задържане 500ms и след него малко движение: местенето тръгва ПОД стария праг.
+    const before = await tileOrder();
+    const moved = before[2];
+    const firstCentre = await tileCentre(before[0]);
+    const p = await tileCentre(moved);
+    const wsBeforeHeld = await windowsState();
+    const heldTile = () => page.evaluate(() => {
+        const t = document.querySelector('#open-notes-bar .open-notes-bar-tile.is-dragging');
+        if (!t) return null;
+        const cs = getComputedStyle(t);
+        const m = String(cs.transform).match(/^matrix\(([\d.]+)/);
+        return {
+            key: (t.dataset.barKey || '').split('\u0000')[1],
+            scale: m ? Number(m[1]) : 1,
+            opacity: Number(cs.opacity),
+        };
+    });
+    await page.mouse.move(p.x, p.y);
     await page.mouse.down();
     await page.waitForTimeout(620);
+    const heldState = await heldTile();
+    ok(heldState && heldState.key === moved,
+        `задържане 500ms вдига точно тази плочка (${heldState && heldState.key})`, heldState);
+    ok(heldState && heldState.scale > 1.04 && heldState.opacity < 1,
+        `вдигнатата плочка изглежда както при плъзгане: уголемена и леко прозрачна (scale ${heldState && heldState.scale}, opacity ${heldState && heldState.opacity})`, heldState);
+    // 3px надясно - под стария праг от 10px. След задържане това вече е местене: жестът е започнал.
+    await page.mouse.move(p.x + 3, p.y);
+    const smallMove = await page.evaluate(() => {
+        const s = document.querySelector('#open-notes-bar .open-notes-bar-strip');
+        const d = s && s._barDrag;
+        return { started: !!(d && d.started), tileIsLifted: !!(d && d.tile && d.tile.classList.contains('is-dragging')) };
+    });
+    ok(smallMove.started,
+        `след задържане местенето тръгва от 3px движение - без прага от 10px (започнал жест ${smallMove.started})`, smallMove);
+    // Останалото движение до преди първата плочка сменя реда.
+    await page.mouse.move(firstCentre.x - 12, p.y, { steps: 8 });
     await page.mouse.up();
     await settle();
+    const afterHeld = await tileOrder();
+    ok(afterHeld[0] === moved && same(afterHeld.filter(g => g !== moved), before.filter(g => g !== moved)),
+        `след задържане и движение под стария праг редът се сменя: ${moved} е първа (${before.join(' ')} -> ${afterHeld.join(' ')})`, { before, afterHeld });
+    const storedHeld = await storedOrder();
+    ok(same(storedHeld, afterHeld),
+        `новият ред е записан в localStorage (${(storedHeld || []).join(' ')})`, storedHeld);
+    ok(!(await page.evaluate(() => !!document.querySelector('#open-notes-bar .open-notes-bar-tile.is-dragging'))),
+        'след пускането класът is-dragging е махнат');
+    const wsAfterHeld = await windowsState();
+    ok(wsAfterHeld.open.length === wsBeforeHeld.open.length
+        && same(wsAfterHeld.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).sort(), wsBeforeHeld.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).sort()),
+        `задържането и местенето не затварят, не скриват и не показват бележка (отворени ${wsBeforeHeld.open.length} -> ${wsAfterHeld.open.length})`, { wsBeforeHeld, wsAfterHeld });
+}
+
+// б) Задържане и пускане БЕЗ движение: плочката слиза долу, нищо не се записва и бележката остава.
+{
+    const ordBefore = await tileOrder();
+    const storedBefore = await storedOrder();
+    const wsBefore = await windowsState();
+    const target = ordBefore[1];
+    const p = await tileCentre(target);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.waitForTimeout(620);
+    const heldKey = await page.evaluate(() => {
+        const t = document.querySelector('#open-notes-bar .open-notes-bar-tile.is-dragging');
+        return t ? (t.dataset.barKey || '').split('\u0000')[1] : null;
+    });
+    await page.mouse.up();
+    await settle();
+    const ordAfter = await tileOrder();
+    const storedAfter = await storedOrder();
     const wsAfter = await windowsState();
-    ok(wsAfter.open.length === wsBefore.open.length - 1 && !wsAfter.open.some(w => w.gdid === victim),
-        `дълго натискане (500ms без движение) още затваря бележката (${victim}: отворени ${wsBefore.open.length} -> ${wsAfter.open.length})`, { victim, wsBefore, wsAfter });
-    ok(!(await tileOrder()).includes(victim), `и плочката на ${victim} изчезва от лентата (${(await tileOrder()).join(' ')})`, await tileOrder());
+    ok(heldKey === target, `задържане 500ms без движение също вдига плочката (${heldKey})`, { heldKey, target });
+    ok(same(ordAfter, ordBefore),
+        `задържане и пускане без движение не променя реда (${ordAfter.join(' ')})`, { ordBefore, ordAfter });
+    ok(same(storedAfter, storedBefore),
+        `и записаният ред остава същият (${(storedAfter || []).join(' ')})`, { storedBefore, storedAfter });
+    ok(wsAfter.open.length === wsBefore.open.length
+        && same(wsAfter.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).sort(), wsBefore.open.map(w => w.gdid + (w.hidden ? 'h' : 'v')).sort()),
+        `задържане и пускане без движение не затваря, не скрива и не показва бележка (отворени ${wsBefore.open.length} -> ${wsAfter.open.length})`, { wsBefore, wsAfter });
+    ok(wsAfter.activeGdid === wsBefore.activeGdid,
+        `активната бележка не се сменя (${wsBefore.activeGdid} -> ${wsAfter.activeGdid})`, { wsBefore, wsAfter });
+    ok(!(await page.evaluate(() => !!document.querySelector('#open-notes-bar .open-notes-bar-tile.is-dragging'))),
+        'след пускането плочката слиза долу');
 }
 
 // --- 10) Тесен екран: 8 бележки, редът се приплъзва и пак се преподрежда ----------------------
 await page.setViewportSize({ width: 390, height: 844 });
-for (const g of ['DGB2', 'DGB6', 'DGB7', 'DGB8']) await openNote(g);
+// Лентата се допълва до ОСЕМ плочки с бележки, които още не са отворени: жестът в точка 9 вече не
+// затваря нищо, значи броят на отворените не може да се смята на ръка.
+for (const g of ['DGB1', 'DGB2', 'DGB3', 'DGB4', 'DGB5', 'DGB6', 'DGB7', 'DGB8']) {
+    if ((await tileOrder()).length >= 8) break;
+    if (!(await tileOrder()).includes(g)) { await openNote(g); await settle(); }
+}
 await settle();
 let strip = await stripInfo();
 ord = await tileOrder();
