@@ -11195,8 +11195,10 @@ function applySingleNoteModeSetting() {
     const checkbox = document.getElementById('single-note-mode-checkbox');
     if (checkbox) checkbox.checked = isSingleNoteMode();
     // В режим „единична бележка" лентата не се показва, значи скрита бележка остава недостъпна -
-    // затова включването на режима връща на екрана всичко скрито.
-    if (isSingleNoteMode()) getHiddenNoteWindows().forEach(showNoteWindow);
+    // затова включването на режима затваря скритите, вместо да ги връща на екрана. Собственикът
+    // (25.10.2026): „Включването на режима връща скритите бележки на екрана - не, в този режим не
+    // може да има много бележки, така че да не ги връща, а да ги затваря".
+    if (isSingleNoteMode()) closeHiddenNoteWindows();
     updateSingleNoteOverlay();
 }
 
@@ -11318,6 +11320,39 @@ function showAllNoteWindows() {
     const top = getTopNoteWindow();
     if (top) activateNoteWindow(top, true);
     updateSingleNoteOverlay();
+}
+
+/** Включването на режима „единична бележка" затваря скритите прозорци: в него не може да има много
+ *  бележки, а лентата, единственият път да върнеш скрита бележка, не се показва. Пита се, ако някоя
+ *  има незаписани промени - същото правило като при „затвори всички". */
+async function closeHiddenNoteWindows() {
+    // Списъкът се помни ПРЕДИ проверката за незаписани промени: withNoteWindow прави прозореца
+    // временно активен, а активният прозорец се показва (activateNoteWindow вика showNoteWindow) -
+    // тоест след проверката вече няма скрити и въпросът „кои да затворя" трябва да има отговор
+    // отпреди нея. Затварянето е в същия такт, значи показаното за проверката не се вижда.
+    const hidden = getHiddenNoteWindows();
+    if (!hidden.length) return;
+    const dirty = hidden.filter(w => withNoteWindow(w, () => !!getNoteUnsavedKind()));
+    if (dirty.length) {
+        const msg = (_('closeAllNotesConfirm') || 'Unsaved changes in {count} notes. Save them before closing?').replace('{count}', dirty.length);
+        const answer = await showConfirmation(msg, { showCancel: true });
+        if (answer === 'cancel') {
+            // Отказ: скритите си остават скрити, както са били - проверката ги беше показала.
+            hidden.forEach(w => { if (w.open) hideNoteWindow(w); });
+            updateSingleNoteOverlay();
+            return;
+        }
+        if (answer === true) {
+            dirty.forEach(w => {
+                if (!w.open) return;
+                withNoteWindow(w, () => {
+                    if (getNoteUnsavedKind() === 'ui') enableNoteEditing(w.body);
+                    saveEditedNote(true);
+                });
+            });
+        }
+    }
+    hidden.forEach(w => { if (w.open) closeNoteWindow(w); });
 }
 
 // --- Лентата избутва нагоре плаващите бутони на долния ръб (b2.70) ------------------------------
@@ -11650,8 +11685,8 @@ function refreshOpenNotesBar() {
     // Една (и повече) видима отворена бележка ИЛИ има скрити: лентата остава, докато има какво да
     // покаже или да върне. В режим „единична бележка" лентата НЕ се показва (собственикът,
     // 25.10.2026: „при включена настройка Single note лентата е излишно да се показва") - режимът
-    // държи една бележка, значи лентата няма какво да показва. Затова скритите бележки се връщат
-    // на екрана още при включването на режима (виж applySingleNoteModeSetting), а не през лентата.
+    // държи една бележка, значи лентата няма какво да показва. Затова включването на режима затваря
+    // скритите бележки (виж applySingleNoteModeSetting), вместо да ги остави недостъпни.
     const show = !isSingleNoteMode() && (visibleOpen >= OPEN_NOTES_BAR_MIN || hiddenCount > 0);
     let bar = document.getElementById('open-notes-bar');
     if (!show) {
@@ -18492,8 +18527,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             localStorage.setItem('singleNoteMode', singleNoteModeCheckbox.checked.toString());
             // Не само updateSingleNoteOverlay: в режима лентата изчезва (собственикът, 25.10.2026), а
             // тя е единственият път да върнеш скрита бележка - затова смяната минава през
-            // applySingleNoteModeSetting, което връща на екрана всичко скрито, слага чекбокса и
-            // опреснява.
+            // applySingleNoteModeSetting, което затваря скритите бележки, слага чекбокса и опреснява.
             applySingleNoteModeSetting();
             showToast(_('settingSaved'), 2000);
         });
