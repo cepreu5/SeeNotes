@@ -29033,17 +29033,26 @@ function createModalEditToolbar(modalContentBox) {
     const arrowAbort = new AbortController();
     toolbar._arrowAbort = arrowAbort;
     const isArrowCaretField = (el) => !!el && (isNoteEditBodyField(el) || el.id === 'note-edit-title-textarea');
-    const onCaretMovedByUser = (e) => { if (isArrowCaretField(e.target)) clearArrowEscalation(); };
+    // Каретата е точно там, където стрелката я е сложила: значи събитието идва от САМОТО ѝ местене, а
+    // не от потребителя. `select` се пуска и при програмно setSelectionRange (и то със закъснение),
+    // затова той се разпознава по позиция, а не по вида си.
+    const arrowCaretUnchanged = () => {
+        const textarea = getActiveModalEditor();
+        const pos = toolbar._arrowCaret;
+        return !!(textarea && pos && pos.start === textarea.selectionStart && pos.end === textarea.selectionEnd);
+    };
+    const onCaretMovedByUser = (e) => {
+        if (!isArrowCaretField(e.target)) return;
+        if (e.type === 'select' && arrowCaretUnchanged()) return;
+        clearArrowEscalation();
+    };
     ['input', 'keyup', 'mouseup', 'touchend', 'click', 'select'].forEach((type) => {
         document.addEventListener(type, onCaretMovedByUser, { capture: true, signal: arrowAbort.signal });
     });
     document.addEventListener('selectionchange', () => {
         if (!toolbar._arrowEscalation) return;
-        const textarea = getActiveModalEditor();
-        if (!textarea) { clearArrowEscalation(); return; }
-        // Същата позиция като след програмното местене значи, че това е неговият selectionchange.
-        const pos = toolbar._arrowCaret;
-        if (pos && pos.start === textarea.selectionStart && pos.end === textarea.selectionEnd) return;
+        if (!getActiveModalEditor()) { clearArrowEscalation(); return; }
+        if (arrowCaretUnchanged()) return;
         clearArrowEscalation();
     }, { signal: arrowAbort.signal });
     document.addEventListener('focusin', (e) => {
