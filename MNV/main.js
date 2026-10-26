@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.65'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.65)
+const version = 'Beta 1.66'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.66)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -12545,7 +12545,23 @@ async function createNoteElement(noteContent) {
             showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
         }
     };
-    const handleHeaderClick = (e) => { if (e.ctrlKey) handleNoteDelete(note, e); };
+    // JSON-ът на бележката, като в uni (b2.97+). Обикновен клик в празното на горната
+    // ивица (над заглавието), за да работи и с пръст на телефон, където Ctrl няма.
+    // Датата, часът и пин-бутонът имат собствени обработчици и спират събитието по-рано.
+    const showNoteDebugJson = () => {
+        showModal({ raw: JSON.stringify(fullNoteContent, null, 2), color: 'white' });
+    };
+    const handleHeaderClick = (e) => {
+        const onTitleText = !!(e.target && e.target.closest && e.target.closest('.note-title-truncated'));
+        if (!onTitleText) {
+            if (!debug) return; // без Debug кликът стига до бележката както досега
+            e.stopPropagation();
+            e.preventDefault();
+            showNoteDebugJson();
+            return;
+        }
+        if (e.ctrlKey) handleNoteDelete(note, e);
+    };
     titleWrapper.addEventListener('click', handleHeaderClick);
     addLongPressOrCtrlClick(titleWrapper, (e) => handleNoteDelete(note, e));
 
