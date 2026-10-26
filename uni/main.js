@@ -13188,17 +13188,60 @@ function wireNoteWindow(win) {
     el.addEventListener('mousedown', activate, true);
     el.addEventListener('touchstart', activate, { capture: true, passive: true });
     el.addEventListener('focusin', activate, true);
+    // --- Натискане по средата на местенето (b2.96) -------------------------------------------
+    // На телефон, докато клавиатурата е тук, бележката стои най-горе. Когато фокусът излезе, без да
+    // отиде в друг елемент от бележката (на докосване relatedTarget е null - така изглежда
+    // затварянето на клавиатурата), тя слиза долу. Ако това стане по средата на натискане, елементът
+    // под пръста се измества между mousedown и mouseup, браузърът не издава click (click иска
+    // натискането и вдигането да са върху един и същ елемент) и натискането се губи - затова
+    // „Запис“ искаше две натискания. Затова слизането се отлага, докато натискането не свърши, и се
+    // изпълнява след неговия click.
+    // Освобождаване на pointerup НЕ върши работа: при докосване pointerup идва преди mousedown,
+    // значи бележката би слязла точно преди click и натискането пак би се загубило. Затова
+    // освобождаването е на click, с резервен таймер след pointerup за случаите, в които click
+    // изобщо не дойде (целта е сменена, прозорецът е преизчертан) - иначе бележката остава залепена
+    // най-горе.
+    let pressOpen = false;
+    let dockReleasePending = false;
+    let dockReleaseFallback = null;
+    const clearDockReleaseFallback = () => {
+        if (dockReleaseFallback) { clearTimeout(dockReleaseFallback); dockReleaseFallback = null; }
+    };
+    const finishPress = () => {
+        clearDockReleaseFallback();
+        pressOpen = false;
+        if (!dockReleasePending) return;
+        dockReleasePending = false;
+        setTimeout(() => setNoteKeyboardDock(win, false), 0);
+    };
+    const cancelDockRelease = () => {
+        dockReleasePending = false;
+        clearDockReleaseFallback();
+    };
+    el.addEventListener('pointerdown', () => { pressOpen = true; }, true);
+    el.addEventListener('pointercancel', finishPress, true);
+    el.addEventListener('click', () => { if (pressOpen) setTimeout(finishPress, 0); }, true);
+    el.addEventListener('pointerup', () => {
+        if (!pressOpen) return;
+        clearDockReleaseFallback();
+        dockReleaseFallback = setTimeout(finishPress, 700);
+    }, true);
+
     // Фокус в поле за текст на телефон вдига бележката най-горе, за да не я закрива клавиатурата
     // (b2.89). Фокусът, който остава в същата бележка (бутон в лентата ѝ, друго поле), не сваля
     // бележката - иначе тя би подскочила надолу по средата на писане.
     el.addEventListener('focusin', (e) => {
         if (!isNoteKeyboardField(e.target)) return;
+        if (dockReleasePending) cancelDockRelease(); // фокусът се върна в поле: отлагането пада
         setNoteKeyboardDock(win, true);
     });
     el.addEventListener('focusout', (e) => {
         if (!isNoteKeyboardField(e.target)) return;
         const to = e.relatedTarget;
         if (to && el.contains(to)) return;
+        // Натискането в бележката още трае: тя остава на мястото си до неговия край, иначе елементът
+        // под пръста се измества и click не пристига (b2.96).
+        if (pressOpen) { dockReleasePending = true; return; }
         setNoteKeyboardDock(win, false);
     });
     el.addEventListener('click', (e) => {
