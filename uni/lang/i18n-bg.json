@@ -575,5 +575,8 @@
     "nmInlineUpdateTitle": "Прилага ширината и затваря менюто",
     "nmInlineCancel": "Отказ",
     "nmInlineCancelTitle": "Връща ширината от отварянето на менюто",
-    "nmInlineRefusedCode": "Тук снимка не може да се сложи"
+    "nmInlineRefusedCode": "Тук снимка не може да се сложи",
+    "nmAttachDelete": "Изтрий файла „{name}“",
+    "nmAttachDeleteConfirm": "Файлът „{name}“ ще бъде изтрит от бележката и от Google Drive. Продължаваш ли?",
+    "nmAttachDeleted": "Файлът „{name}“ е изтрит"
 }

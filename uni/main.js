@@ -22999,6 +22999,12 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
         showAttachmentJson();
     });
 
+    // X за махане на файла: на всяка плочка на файл (1..4) и ВИНАГИ видим - и в четене, и в
+    // редакция, защото на телефон няма задържане, с което да се покаже. type=5 е място, не файл,
+    // значи там няма какво да се трие. Плочка без път (счупен запис) също има X - иначе записът
+    // остава в media.txt и плочката с пунктир не може да се махне от екрана.
+    if ([1, 2, 3, 4].includes(Number(attachment.type))) attachAttachmentDeleteBadge(tile, attachment);
+
     attachmentWrapper.classList.add('nm-attach-source');
     // Редът има inline display от строежа си (за борда е нужно), затова тук се скрива със inline
     // style - иначе остава видим и имената пак излизат под плочките.
@@ -23007,6 +23013,422 @@ function buildAttachmentTile(attachment, attachmentWrapper, iconData, slot) {
     return tile;
 }
 
+// --- X върху плочката: махане на ЕДИН прикачен файл -------------------------------------------
+// Собственикът (26.10.2026): X на всяка плочка, винаги видим, с потвърждение; трие файла и от
+// Google Drive, а ако същият файл е сложен и в текста - маха и рамката от текста.
+// Досега прикачените файлове се триеха само заедно с цялата бележка (deleteNoteAttachmentFiles).
+// Тук се трие САМО това, което собственикът е натиснал: id-тата идват от записите на ТАЗИ бележка
+// за ТОВА име - по име в Drive не се търси, защото така би се изтрил файл на друга бележка.
+
+/**
+ * X-ът в горния десен ъгъл на плочката.
+ * <span role="button">, не <button>: плочката вече е бутон, а вложен бутон е невалиден HTML -
+ * кликът му би отварял файла вместо да трие. Затова кликът и Enter/Space се прихващат ТУК и се
+ * спират до тази плочка: файлът не се отваря, звукът не свири, менюто на снимката не излиза.
+ * @param {HTMLElement} tile - Плочката (бутонът), върху която застава X-ът.
+ * @param {object} attachment - Записът на прикачения файл.
+ * @returns {HTMLElement|null} Знакът, или null (няма плочка).
+ */
+function attachAttachmentDeleteBadge(tile, attachment) {
+    if (!tile) return null;
+    const badge = document.createElement('span');
+    badge.className = 'nm-attach-del';
+    // Роля и tabindex, за да стига до него клавиатурата: то е бутон, без да е <button>.
+    badge.setAttribute('role', 'button');
+    badge.tabIndex = 0;
+    const fileName = inlineImageName(attachment && attachment.path) || String((tile.dataset && tile.dataset.nmFileName) || '');
+    // Подсказката и за екранните четци: казва КОЙ файл ще се изтрие, преди да се натисне.
+    const label = (_('nmAttachDelete') || 'Изтрий файла').replace('{name}', nmAttachmentDisplayName(attachment, fileName));
+    badge.title = label;
+    badge.setAttribute('aria-label', label);
+    const press = (e) => {
+        // Enter/Space идват като keydown, кликът - като click; и трите стигат до тук.
+        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Грешката се логва тук, за да не остане нехванато обещание в конзолата.
+        nmDeleteNoteAttachment(tile, attachment).catch(err => console.warn('[Attach] Изтриването на файла се провали:', err));
+    };
+    badge.addEventListener('click', press);
+    badge.addEventListener('keydown', press);
+    tile.appendChild(badge);
+    return badge;
+}
+
+/**
+ * Името, което се показва в потвърждението и в съобщението. Запис без път (счупен запис в
+ * media.txt) няма име - тогава се казва поне от коя папка е (Images/Sound/Other/Video), за да не
+ * излезе празно „Файлът „““.
+ * @param {object} attachment - Записът на прикачения файл.
+ * @param {string} fileName - Голото име на файла (може да е празно).
+ * @returns {string} Име за показване.
+ */
+function nmAttachmentDisplayName(attachment, fileName) {
+    if (fileName) return fileName;
+    const description = String((attachment && attachment.description) || '').trim();
+    if (description) return description;
+    return ATTACHMENT_TYPE_FOLDERS[Number(attachment && attachment.type)] || '';
+}
+
+/**
+ * Локалното копие на прикачен файл - в подпапката на типа (Images/Sound/Other/Video), както го
+ * записва прикачването. Липсващ файл не е грешка: той може вече да е изтрит от друго място.
+ * @param {string} fileName - Името на файла.
+ * @param {number} type - Типът на прикачения файл (1..4).
+ * @returns {Promise<boolean>} true, ако файлът е махнат от диска.
+ */
+async function nmDeleteLocalAttachmentCopy(fileName, type) {
+    const folder = ATTACHMENT_TYPE_FOLDERS[Number(type)];
+    if (!fileName || !folder) return false;
+    let handle = (typeof dirHandle !== 'undefined' && dirHandle) ? dirHandle : null;
+    if (!handle && typeof getDirectoryHandle === 'function' && localStorage.getItem('useLocalDb') === 'true') {
+        try { handle = await getDirectoryHandle(); } catch (e) { handle = null; }
+    }
+    if (!handle) return false;
+    const folderHandle = await handle.getDirectoryHandle(folder, { create: false }).catch(() => null);
+    if (!folderHandle) return false;
+    try {
+        await folderHandle.removeEntry(fileName);
+        return true;
+    } catch (e) {
+        if (!(e && e.name === 'NotFoundError')) {
+            console.warn(`[Attach] ${fileName} остана в ${folder}/:`, e);
+        }
+        return false;
+    }
+}
+
+/**
+ * Трие ЕДИН прикачен файл от отворената бележка - след потвърждение.
+ * Редът: чакащият запис (файлът още не е свързан със записа), записите в media.txt за това име,
+ * самият файл (Drive по id-тата от записите, локалната папка по име), кешовете на вградените
+ * снимки и накрая вградената снимка в текста.
+ * Нищо не хвърля навън: всяка стъпка е в try, провалът се логва и останалите пак се пробват -
+ * един заключен файл в Drive не бива да оставя запис в media.txt, който се връща при зареждане.
+ * @param {HTMLElement} tile - Плочката, чийто X е натиснат.
+ * @param {object} attachment - Записът на прикачения файл (може да е чакащ).
+ * @returns {Promise<boolean>} true, ако файлът е махнат; false при отказ.
+ */
+async function nmDeleteNoteAttachment(tile, attachment) {
+    const host = (tile && tile.closest && tile.closest('#modal-body, .nw-modal-body')) || document.getElementById('modal-body');
+    if (!host) return false;
+    // Името може да е празно: запис в media.txt без път (счупен запис) няма файл, но плочката му
+    // стои на екрана и трябва да може да се махне.
+    const fileName = inlineImageName(attachment && attachment.path)
+        || inlineImageName(tile && tile.dataset ? tile.dataset.nmFileName : '');
+    const type = Number((attachment && attachment.type) || (tile && tile.dataset ? tile.dataset.type : 0) || 0);
+    if (!fileName && !(attachment && attachment.type)) return false;
+    const displayName = nmAttachmentDisplayName(attachment, fileName);
+    const noteId = host.dataset.id || '';
+    const noteGdid = host.dataset.gdid || '';
+
+    // 1. Потвърждение: казва името и че файлът изчезва и от Google Drive.
+    try {
+        const message = (_('nmAttachDeleteConfirm')
+            || 'Файлът „{name}“ ще бъде изтрит от бележката и от Google Drive. Продължаваш ли?')
+            .replace('{name}', displayName);
+        if ((await showConfirmation(message)) !== true) return false;
+    } catch (e) {
+        console.warn('[Attach] Потвърждението за изтриване не се показа:', e);
+        return false;
+    }
+
+    const updateGDriveNow = useGoogleDb && !isOffline;
+    const driveIds = new Set(); // id-та на файла в Drive - всяко се трие веднъж
+
+    // 2. Чакащ файл: още не е в media.txt, значи се маха само от списъка с чакащи. Blob адресът се
+    //    отменя, а ако качването вече е свършило (има id) - трие се и файлът в Drive.
+    try {
+        // Чакащ запис винаги има име (то идва от избрания файл) - празно име не търси там.
+        const pending = fileName
+            ? pendingAttachmentsOf(noteId).find(entry => entry && inlineImageName(entry.path) === fileName)
+            : null;
+        if (pending) {
+            removePendingAttachment(noteId, pending);
+            if (pending._blobUrl) {
+                try { URL.revokeObjectURL(pending._blobUrl); } catch (e) { /* адресът е от паметта - не е важно */ }
+            }
+            if (looksLikeDriveFileId(pending.pathGD)) driveIds.add(String(pending.pathGD));
+        }
+    } catch (e) {
+        console.warn('[Attach] Чакащият запис не се махна:', e);
+    }
+
+    // 3. Записите на ТАЗИ бележка за ТОВА име: от паметта (mediaData се записва в media.txt), от
+    //    media.txt в Drive, от IndexedDB и от локалната папка. Всеки запис е отделен файл media.txt
+    //    и без него записът се връща при следващо зареждане - пак сочещ изтрит файл.
+    // Същото име (или същият липсващ път, при счупен запис) и СЪЩИЯТ тип: запис със същото име от
+    // друга папка не е този файл.
+    const sameFile = (value) => {
+        const name = inlineImageName(value);
+        return fileName ? name === fileName : !name;
+    };
+    const records = (Array.isArray(mediaData) ? mediaData.slice() : [])
+        .filter(m => m && mediaEntryBelongsToNote(m, noteGdid, noteId) && sameFile(m.path)
+            && (!m.type || !type || Number(m.type) === type));
+    for (const record of records) {
+        const index = mediaData.indexOf(record);
+        if (index !== -1) mediaData.splice(index, 1);
+        const key = record.gdid || (record.id !== undefined && record.id !== null ? String(record.id) : '');
+        if (key && useIndexedDb && typeof MEDIA_STORE_NAME !== 'undefined') {
+            try { await deleteFromDB(MEDIA_STORE_NAME, key); } catch (e) {
+                console.warn(`[Attach] Записът ${key} остана в локалната база:`, e);
+            }
+        }
+        if (key && typeof deleteLocalFile === 'function') {
+            try { await deleteLocalFile(record.gdid || key); } catch (e) {
+                console.warn('[Attach] Записът остана в локалната папка:', e);
+            }
+        }
+        if (looksLikeDriveFileId(record.gdid) && updateGDriveNow) {
+            try { await deleteGDriveFileWithRetry(record.gdid); } catch (e) {
+                console.warn(`[Attach] Записът ${record.gdid} остана в Drive:`, e);
+            }
+        }
+        if (looksLikeDriveFileId(record.pathGD)) driveIds.add(String(record.pathGD));
+    }
+
+    // 4. Самият файл: Drive копията по id-тата от записите (без повторения) и локалното копие в
+    //    папката на типа. Файл, който вече го няма, не е грешка.
+    if (updateGDriveNow) {
+        for (const fileId of driveIds) {
+            try { await deleteGDriveFileWithRetry(fileId); } catch (e) {
+                console.warn(`[Attach] ${fileName} (${fileId}) остана в Drive:`, e);
+            }
+        }
+    }
+    if (fileName) {
+        try { await nmDeleteLocalAttachmentCopy(fileName, type); } catch (e) {
+            console.warn(`[Attach] ${fileName} остана в локалната папка:`, e);
+        }
+    }
+    // Кешовете на вградените снимки: иначе изтрит файл се показва до края на сесията.
+    try { forgetInlineImageCaches(fileName, [...driveIds]); } catch (e) {
+        console.warn('[Attach] Кешът на снимките не се изчисти:', e);
+    }
+
+    // 5. Вградената снимка в текста: рамката ѝ не бива да остава празна.
+    if (fileName) {
+        try { await nmRemoveInlineImageFromNote(host, fileName); } catch (e) {
+            console.warn(`[Attach] Вградената снимка ${fileName} остана в текста:`, e);
+        }
+    }
+
+    // 6. Лентата се строи наново: плочката изчезва, а ако е била последната - и лентата.
+    //    Плочката се маха и направо от мястото си, защото преизграждането пипа само главния
+    //    прозорец (#modal-body), а същата лента стои и в отделен прозорец на бележка.
+    try {
+        const slot = tile && tile.parentElement && tile.parentElement.classList.contains('nm-attach-slot')
+            ? tile.parentElement : tile;
+        if (slot && slot.remove) slot.remove();
+        const strip = host.querySelector(':scope > .nm-attach-strip');
+        if (strip && !strip.querySelector('.nm-attach-slot')) {
+            const separator = strip.previousElementSibling;
+            if (separator && separator.classList.contains('nm-attach-sep')) separator.remove();
+            strip.remove();
+            if (host.dataset.nmEditMode === '1') host.classList.remove('nm-edit-with-strip');
+        }
+    } catch (e) {
+        console.warn('[Attach] Плочката не се махна от лентата:', e);
+    }
+    try {
+        // rebuildEditAttachmentStrip пипа само главния прозорец (#modal-body): лентата на отделен
+        // прозорец на бележка се строи на място, по същия начин и в същия режим.
+        if (host.id === 'modal-body') rebuildEditAttachmentStrip();
+        else buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid,
+            host.dataset.nmEditMode === '1' ? { editMode: true } : undefined);
+    } catch (e) {
+        console.warn('[Attach] Лентата не се преизгради:', e);
+    }
+    if (typeof showToast === 'function') {
+        showToast((_('nmAttachDeleted') || 'Файлът „{name}“ е изтрит').replace('{name}', displayName), 4000);
+    }
+    return true;
+}
+
+/**
+ * Маха от ЕДНО поле (тяло или заглавие) знака на вградена снимка с това име.
+ * Вградената снимка е ЕДИН знак в текста, а форматът type=8 пази диапазона му; рендерът слага
+ * рамката на първия неинтервален знак от диапазона (същото правило като при рисуването). Затова
+ * се трие точно този един знак, а всеки диапазон, който започва след него, се измества с -1 -
+ * иначе следващата снимка и удебеляванията биха легнали върху съседни думи. Диапазонът на
+ * махнатата снимка пада; диапазон, който остане празен, също (иначе би покривал нула знака).
+ * Функцията е чиста - не пипа DOM, за да може същата сметка да се провери и без браузър.
+ * @param {string} text - Текстът на полето.
+ * @param {Array<object>} formats - Форматите на СЪЩОТО поле.
+ * @param {string} fileName - Голото име на файла (без път).
+ * @param {Function} [nameOf] - Как се вади името от paramstring (по подразбиране inlineImageName).
+ * @returns {{text:string, formats:Array<object>, removed:number, caret:number}} Новото състояние.
+ */
+function nmCutInlineImageFromField(text, formats, fileName, nameOf) {
+    const bare = String(fileName || '').trim();
+    const nameOfValue = typeof nameOf === 'function' ? nameOf : inlineImageName;
+    let outText = String(text === undefined || text === null ? '' : text);
+    const outFormats = (Array.isArray(formats) ? formats : []).map(f => ({ ...f }));
+    if (!bare) return { text: outText, formats: outFormats, removed: 0, caret: 0 };
+    let removed = 0;
+    let caret = 0;
+    // Всяко място се маха на свой ред: след едно триене диапазоните на останалите вече са
+    // изместени, затова се търси наново, а не се смята предварително. Всяка обиколка маха по един
+    // диапазон type=8, значи цикълът свършва.
+    for (let guard = outFormats.length + 1; guard > 0; guard--) {
+        const target = outFormats.find(f => Number(f.type) === 8 && nameOfValue(f.paramstring) === bare);
+        if (!target) break;
+        // Знакът, който рамката заема: първият неинтервален в диапазона, както го рисува рендерът.
+        // Ако диапазонът е само интервали (или извън текста), се взима началото му - иначе снимката
+        // би останала завинаги.
+        let index = nmInlineFirstNonSpace(outText, target.start, target.end);
+        if (index < 0) index = Math.min(Math.max(0, Math.floor(Number(target.start) || 0)), Math.max(0, outText.length - 1));
+        outText = outText.slice(0, index) + outText.slice(index + 1);
+        const kept = [];
+        for (const f of outFormats) {
+            if (f === target) continue; // диапазонът на махнатата снимка пада
+            if (Number(f.start) > index) f.start = Number(f.start) - 1;
+            if (Number(f.end) > index) f.end = Number(f.end) - 1;
+            if (Number(f.end) > Number(f.start)) kept.push(f);
+        }
+        outFormats.length = 0;
+        outFormats.push(...kept);
+        removed++;
+        caret = index;
+    }
+    return { text: outText, formats: outFormats, removed, caret };
+}
+
+/**
+ * Маха вградената снимка от ЕДНО поле на редактора. Текстът и форматите се сменят наведнъж, за да
+ * не се изместят форматите втори път - затова dataset.lastVal се слага преди събитието и
+ * разликата, която handleEditInput вижда, е нула.
+ * Черновата в режим Преглед държи свои формати (previewDraftFormat) до форматите на показаното -
+ * чистят се и двата, както прави writeNmInlineDraftWidths.
+ * @param {HTMLTextAreaElement} field - Полето (тяло или заглавие).
+ * @param {string[]} keys - Ключовете на dataset-а с форматите за това поле, първият е основният.
+ * @param {string} fileName - Голото име на файла.
+ * @returns {number} Броят махнати места.
+ */
+function nmCutInlineImageInEditField(field, keys, fileName, hostElem) {
+    if (!field || !field.isConnected || !Array.isArray(keys)) return 0;
+    const context = getNoteEditContext(field);
+    const host = hostElem || (context ? context.modalBody : document.getElementById('modal-body'));
+    if (!host) return 0;
+    // Всички отрязвания се смятат върху СТАРИЯ текст: самият текст се маха веднъж, а всеки ключ
+    // носи свои формати.
+    const cuts = [];
+    keys.forEach(key => {
+        if (host.dataset[key] === undefined) return;
+        const result = nmCutInlineImageFromField(field.value, readNoteEditFormats(host, key), fileName, inlineImageName);
+        if (result.removed) cuts.push({ key, result });
+    });
+    if (!cuts.length) return 0;
+    const text = String(cuts[0].result.text);
+    const caret = Math.min(cuts[0].result.caret, text.length);
+    cuts.forEach(cut => writeNoteEditFormats(host, cut.key, cut.result.formats));
+    const wasApplying = noteMdApplying;
+    noteMdApplying = true;
+    try {
+        field.dataset.lastVal = text;
+        if (field.value !== text) field.value = text;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.setSelectionRange(caret, caret);
+    } finally {
+        noteMdApplying = wasApplying;
+    }
+    refreshNoteEditBackdrops(context);
+    commitNoteEditUndo(host);
+    return cuts.reduce((sum, cut) => sum + cut.result.removed, 0);
+}
+
+/**
+ * Маха вградената снимка от текста на ЗАПИСАНА бележка в режим четене: обектът (notetxt,
+ * text_span, title_span) се сменя, записва се по източниците и прозорецът се рисува наново.
+ * Отместванията на text_span са от началото на ТЯЛОТО (след '|'), затова заглавието и тялото се
+ * режат отделно - иначе разделителят би се броял два пъти.
+ * @param {HTMLElement} host - Тялото на прозореца (режим четене).
+ * @param {string} fileName - Голото име на файла.
+ * @returns {Promise<number>} Броят махнати места.
+ */
+async function nmCutInlineImageInReadNote(host, fileName) {
+    const note = typeof nmInlineNoteObject === 'function' ? nmInlineNoteObject(host) : null;
+    if (!note) return 0;
+    const raw = String(note.notetxt !== undefined ? note.notetxt : (note.text || ''));
+    const pipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(raw) : raw.indexOf('|');
+    const hasTitle = pipe !== -1;
+    const titleText = hasTitle ? raw.slice(0, pipe) : '';
+    const bodyText = hasTitle ? raw.slice(pipe + 1) : raw;
+    const bodyCut = nmCutInlineImageFromField(bodyText, parseFormatsString(note.text_span), fileName, inlineImageName);
+    const titleFormats = parseFormatsString(note.title_span);
+    const titleCut = hasTitle
+        ? nmCutInlineImageFromField(titleText, titleFormats, fileName, inlineImageName)
+        : { text: titleText, formats: titleFormats, removed: 0, caret: 0 };
+    const removed = bodyCut.removed + titleCut.removed;
+    if (!removed) return 0;
+    const newRaw = hasTitle ? titleCut.text + '|' + bodyCut.text : bodyCut.text;
+    // Бележка от по-старо място може да пази текста в `text`, не в `notetxt` - сменя се това, което
+    // е имало, за да не се появи второ поле с текст.
+    if (note.notetxt === undefined && note.text !== undefined) note.text = newRaw;
+    else note.notetxt = newRaw;
+    note.text_span = stringifyFormatsArray(bodyCut.formats);
+    if (hasTitle) note.title_span = stringifyFormatsArray(titleCut.formats);
+    note.version = note.version ? parseInt(note.version, 10) + 1 : 1;
+    note.datemod = Date.now();
+    // Прозорецът се рисува наново, за да изчезне рамката на махнатата снимка (същият ход като при
+    // смяна на отметка). Лентата с плочки пада заедно със съдържанието и се строи отново след това.
+    const html = getFormattedNoteHtml(newRaw, note.text_span, note.title_span, true);
+    host.innerHTML = html;
+    host.dataset.renderedHtml = html;
+    hydrateInlineImages(host);
+    setNoteCheckboxSource(host, 0, newRaw.length);
+    currentModalContent = newRaw;
+    host.dataset.baseDatemod = String(note.datemod);
+    host.dataset.baseNote = JSON.stringify(note);
+    try {
+        await writeNoteToSources(note, host);
+    } catch (e) {
+        console.warn('[Attach] Бележката не се записа след махането на снимката:', e);
+    }
+    // Картата на борда показва същия текст - тя се строи наново, за да не остане рамката на
+    // махнатата снимка и там (същият ход като при свързване на прикачен файл).
+    if (typeof refreshNoteUI === 'function' && note.gdid) {
+        try { await refreshNoteUI(note.gdid); } catch (e) {
+            console.warn('[Attach] Картата на бележката не се преизгради:', e);
+        }
+    }
+    return removed;
+}
+
+/**
+ * Маха вградената снимка от текста на бележката в отворения прозорец.
+ * В режим Редактиране/Преглед се пипа САМО полето на редактора - промяната става част от
+ * редакцията, която собственикът вече прави, и не се записва зад гърба му. В режим четене се
+ * пипа записът и той се записва. Чернова (режим Преглед без поле или нова, още незаписана бележка)
+ * не се пипа: там няма запазен текст, който да се сменя.
+ * @param {HTMLElement} host - Тялото на прозореца.
+ * @param {string} fileName - Голото име на файла.
+ * @returns {Promise<number>} Броят махнати места (0, ако снимката не е в текста).
+ */
+async function nmRemoveInlineImageFromNote(host, fileName) {
+    if (!host || !fileName) return 0;
+    // Полетата се търсят САМО в този прозорец: един и същ id стои в повече от един отворен
+    // прозорец, а getElementById би върнал полето на друг - и би се редактирала чужда бележка.
+    // Прозорец, който не е отпред, държи id-то си като data-mwid (виж stashNoteWindowIds).
+    const findField = (id) => host.querySelector(`textarea#${id}, textarea[data-mwid="${id}"]`);
+    const editBody = findField('note-edit-textarea');
+    const editTitle = findField('note-edit-title-textarea');
+    if (editBody || editTitle) {
+        const isPreview = host.dataset.isPreview === 'true';
+        let removed = 0;
+        if (editBody) {
+            removed += nmCutInlineImageInEditField(editBody, isPreview ? ['previewDraftFormat', 'format'] : ['format'], fileName, host);
+        }
+        if (editTitle) {
+            removed += nmCutInlineImageInEditField(editTitle, isPreview ? ['previewDraftTitleFormat', 'titleFormat'] : ['titleFormat'], fileName, host);
+        }
+        return removed;
+    }
+    if (host.dataset.isPreview === 'true' || host.dataset.draftText !== undefined || host.dataset.isNewNote === 'true') return 0;
+    if (!nmInlineNoteObject(host)) return 0;
+    return await nmCutInlineImageInReadNote(host, fileName);
+}
 
 /**
  * Форматира текстов низ възоснова на JSON параметри.

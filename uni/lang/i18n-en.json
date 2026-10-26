@@ -575,5 +575,8 @@
     "nmInlineUpdateTitle": "Applies the width and closes the menu",
     "nmInlineCancel": "Cancel",
     "nmInlineCancelTitle": "Restores the width from when the menu was opened",
-    "nmInlineRefusedCode": "An image cannot go here"
+    "nmInlineRefusedCode": "An image cannot go here",
+    "nmAttachDelete": "Delete the file \"{name}\"",
+    "nmAttachDeleteConfirm": "The file \"{name}\" will be deleted from the note and from Google Drive. Continue?",
+    "nmAttachDeleted": "The file \"{name}\" was deleted"
 }
