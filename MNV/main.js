@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.64'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.64)
+const version = 'Beta 1.65'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.65)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -12537,7 +12537,10 @@ async function createNoteElement(noteContent) {
     const handleNoteClick = (e) => {
         const selection = window.getSelection();
         if (selection.toString().length > 0) return;
-        if (!isLongPress && !e.target.closest('.note-footer')) {
+        // От 26.10.2026 кликът във футъра (.note-footer) също отваря бележката: карта, запълнена
+        // изцяло от вложена снимка, няма празно място за докосване. Иконите за снимка и видео във
+        // футъра продължават да отварят своето превю — addInNotePreviewListener спира събитието.
+        if (!isLongPress) {
             const noteBgColor = (noteColor !== null && noteColor >= 0 && noteColor <= 9) ? noteColorMap[noteColor] : noteColorMap[0];
             showModal({ raw: fileContent, format: textSpan, color: noteBgColor, boardId: extraData.boardid, id: noteID, gdid: noteGdid }, note);
         }
