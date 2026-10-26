@@ -5724,3 +5724,77 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe,
 body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     bottom: calc(75px + var(--open-notes-bar-h));
 }
+
+/* --- Full screen при инсталиране (b3.06) ---------------------------------------------------------
+   Собственикът (26.10.2026): „добави опция за full screen“. Манифестът вече иска
+   display: fullscreen (с standalone като резерва в display_override), значи инсталираното приложение
+   покрива ЦЕЛИЯ екран - статус лентата и жестовата лента на Android вече не са отделни ленти, а
+   места, върху които страницата рисува. Без отстъпи хедърът влизаше под камерата, а лентата на
+   отворените бележки и плаващите бутони - под жестовата лента.
+   Отстъпите идват от env(safe-area-inset-*) и са 0px, когато ги няма (нормален браузър, екран без
+   изрез), значи извън full screen изгледът не се променя с нито един пиксел.
+   Плаващите бутони (kb-fab, add-note-fab, scrollTopBtn, popup-menu-btn-floating) получават инлайн
+   !important позиция от makeElementDraggable, затова техните отстъпи се слагат в setDefaultPosition
+   в main.js, а не тук. */
+:root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* Съдържанието в потока пази страничните изрези (в хоризонтално положение изрезът е отстрани). */
+body {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+}
+
+/* Залепеният хедър залепва за самия ръб на екрана и покрива изреза със своя фон - иначе между
+   ръба и хедъра оставаше тясна ивица, в която съдържанието се вижда как минава под камерата. */
+header {
+    padding-top: calc(5px + var(--safe-top));
+}
+
+/* Екранът за вход стои преди хедъра в готовото приложение, значи отстъпът се слага и на него. */
+.login-div {
+    padding-top: calc(1em + var(--safe-top));
+}
+
+/* Лентата на отворените бележки: фонът стига до долния ръб, а плочките остават над жестовата
+   лента. Височината расте с отстъпа, значи измерването в openNotesBarHeight() (което вдига
+   плаващите бутони над лентата) го отчита само. */
+#open-notes-bar {
+    height: calc(52px + var(--safe-bottom));
+    padding-bottom: calc(6px + var(--safe-bottom));
+}
+
+/* Закачени за долния ръб - същото място, но изместено над жестовата лента. */
+#selection-bar {
+    bottom: var(--safe-bottom);
+}
+
+.board-filter-popup {
+    bottom: calc(20px + var(--safe-bottom));
+}
+
+#kb-loading-panel {
+    bottom: calc(80px + var(--safe-bottom));
+}
+
+/* Прозорците на бележките са fixed върху целия екран, а вътрешната кутия се мести от JS по
+   координати. Скъсяваме самия прозорец до безопасната площ, за да не може хедърът на бележката
+   (с бутоните за затваряне и запис) да излезе под камерата, а долният ред - под жестовата лента.
+   В нормален браузър стойностите са 0px и правилата не променят нищо. */
+.note-window.modal-overlay,
+.note-window.modal-overlay.visible {
+    top: var(--safe-top);
+    left: var(--safe-left);
+    width: calc(100% - var(--safe-left) - var(--safe-right));
+    height: calc(100% - var(--safe-top) - var(--safe-bottom));
+}
+
+/* Съобщението за синхронизация стои на долния ръб на бележката - вдигаме го над жестовата лента. */
+.note-window-sync-trace {
+    bottom: calc(6px + var(--safe-bottom));
+}
+

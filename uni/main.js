@@ -10702,6 +10702,12 @@ function addInNotePreviewListener(element, attachments, indexOrSource, sourceMod
 // =================================================================================
 // V. СЪЗДАВАНЕ И УПРАВЛЕНИЕ НА UI ЕЛЕМЕНТИ
 // =================================================================================
+// Отстъпите на екрана при full screen изглед (инсталирано приложение): изрезът отгоре и жестовата
+// лента отдолу вече не са отделни ленти, а места, върху които страницата рисува. env() връща 0px,
+// когато ги няма - значи в нормален браузър позициите остават точно същите числа.
+const SAFE_TOP_CSS = 'env(safe-area-inset-top, 0px)';
+const SAFE_BOTTOM_CSS = 'env(safe-area-inset-bottom, 0px)';
+
 /**
  * Makes an element draggable and saves its position to localStorage.
  * @param {HTMLElement} element - The element to make draggable.
@@ -10733,20 +10739,20 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
 
         if (element.id === 'kb-fab') {
             element.style.setProperty('right', '10px', 'important');
-            element.style.setProperty('bottom', '10px', 'important');
+            element.style.setProperty('bottom', `calc(10px + ${SAFE_BOTTOM_CSS})`, 'important');
         } else if (element.id === 'scrollTopBtn') {
             element.style.setProperty('right', '10px', 'important');
-            element.style.setProperty('bottom', '80px', 'important');
+            element.style.setProperty('bottom', `calc(80px + ${SAFE_BOTTOM_CSS})`, 'important');
         } else if (element.id === 'add-note-fab') {
             element.style.setProperty('right', '80px', 'important');
-            element.style.setProperty('bottom', '10px', 'important');
+            element.style.setProperty('bottom', `calc(10px + ${SAFE_BOTTOM_CSS})`, 'important');
         } else if (element.id === 'popup-menu-btn-floating') {
             element.style.setProperty('right', '10px', 'important');
-            element.style.setProperty('top', '60px', 'important');
+            element.style.setProperty('top', `calc(60px + ${SAFE_TOP_CSS})`, 'important');
             element.style.setProperty('bottom', 'auto', 'important');
         } else {
             element.style.setProperty('right', '10px', 'important');
-            element.style.setProperty('bottom', '10px', 'important');
+            element.style.setProperty('bottom', `calc(10px + ${SAFE_BOTTOM_CSS})`, 'important');
         }
     };
 
