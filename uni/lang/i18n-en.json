@@ -575,6 +575,5 @@
     "nmInlineUpdateTitle": "Applies the width and closes the menu",
     "nmInlineCancel": "Cancel",
     "nmInlineCancelTitle": "Restores the width from when the menu was opened",
-    "nmAddPhoto": "Add a photo",
     "nmInlineRefusedCode": "An image cannot go here"
 }

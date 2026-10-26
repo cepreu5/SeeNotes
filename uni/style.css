@@ -5590,7 +5590,7 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 /* Редакторът с лентата с прикачените файлове под него: тялото става колона, за да не изяде лентата
-   височината на редактора. Плочката „+" качва нова снимка - тя влиза само в лентата, не в текста. */
+   височината на редактора. Лентата я има само когато бележката има прикачени файлове. */
 :is(#modal-body, .nw-modal-body).nm-edit-with-strip {
     display: flex;
     flex-direction: column;
@@ -5605,19 +5605,6 @@ body.selection-locked .note.active-selection-note .note-content {
     margin-top: 6px;
     padding: 6px 0 2px;
     border-top: 1px solid rgba(0, 0, 0, .12);
-}
-
-:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-add {
-    border: 1px dashed rgba(0, 0, 0, .28);
-    background: rgba(127, 127, 127, .1);
-    color: #6b6f76;
-    font-size: 18px;
-    font-weight: 600;
-    line-height: 1;
-}
-
-:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-add:hover {
-    background: rgba(127, 127, 127, .2);
 }
 
 /* Файл, влачен върху редактора: рамката казва, че ще влезе в лентата, не в текста. */
