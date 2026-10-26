@@ -10787,8 +10787,11 @@ function hydrateInlineImages(rootEl) {
             if (img.naturalWidth) {
                 const pct = Math.max(10, Math.min(100, Number(box.dataset.nmPct) || 100));
                 const px0 = Math.max(1, Math.round(img.naturalWidth * pct / 100));
+                // На борда картата е по-тясна от колоната на бележката: ширината се смалява с
+                // NM_INLINE_BOARD_SCALE. В отворена бележка снимката остава както досега.
+                const want = nmInlineOnBoard(box) ? Math.max(1, Math.round(px0 * NM_INLINE_BOARD_SCALE)) : px0;
                 const columnWidth = nmInlineColumnWidth(box);
-                const px = (columnWidth > 0 && px0 > columnWidth) ? columnWidth : px0;
+                const px = (columnWidth > 0 && want > columnWidth) ? columnWidth : want;
                 box.style.width = px + 'px';
                 box.dataset.nmPx = String(px);
                 box.dataset.nmBaseUsed = String(img.naturalWidth);
@@ -10857,6 +10860,19 @@ function hydrateInlineImages(rootEl) {
         };
         attempt(false);
     }
+}
+
+/**
+ * Коефициентът за снимките, нарисувани върху карта на борда (същото правило като в uni, 26.10.2026):
+ * картата е по-тясна от колоната на бележката, затова ширината от самата снимка се смалява с това
+ * число и чак после се слага таванът на картата.
+ */
+const NM_INLINE_BOARD_SCALE = 0.5;
+
+/** Рамката е на борда (карта), не в отворена бележка: там ширината минава през коефициента. */
+function nmInlineOnBoard(box) {
+    if (!box || !box.closest) return false;
+    return !box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]');
 }
 
 /**

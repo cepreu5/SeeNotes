@@ -22372,9 +22372,12 @@ function hydrateInlineImages(rootEl) {
                 if (recorded > 0) box.dataset.nmBase = String(recorded);
                 const base = recorded > 0 ? recorded : img.naturalWidth;
                 const px0 = Math.max(1, Math.round(base * (Number(box.dataset.nmPct) || 100) / 100));
+                // На борда картата е по-тясна от колоната на бележката: ширината се смалява с
+                // NM_INLINE_BOARD_SCALE. В отворена бележка снимката остава както досега.
+                const want = nmInlineOnBoard(box) ? Math.max(1, Math.round(px0 * NM_INLINE_BOARD_SCALE)) : px0;
                 // По-широко от колоната на бележката не се показва: взима се ширината на картата.
                 const columnWidth = nmInlineColumnWidth(box);
-                const px = (columnWidth > 0 && px0 > columnWidth) ? columnWidth : px0;
+                const px = (columnWidth > 0 && want > columnWidth) ? columnWidth : want;
                 box.style.width = px + 'px';
                 box.dataset.nmPx = String(px);
                 box.dataset.nmNatural = String(img.naturalWidth);
@@ -26656,6 +26659,21 @@ function nmInlineBaseWidthForBox(box) {
     const fallback = nmInlineBaseFallback.get(key);
     const value = fallback ? Number(fallback[file]) : 0;
     return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
+
+/**
+ * Коефициентът за снимките, нарисувани върху карта на борда (решение на собственика, 26.10.2026).
+ * Картата е доста по-тясна от колоната на бележката, затова изчислената от самата снимка ширина
+ * се смалява с това число и чак после се слага таванът на картата. Модалът не се пипа - там
+ * снимката остава в пиксели от себе си. Едно число: колкото по-малко, толкова по-дребни снимки
+ * на борда.
+ */
+const NM_INLINE_BOARD_SCALE = 0.5;
+
+/** Рамката е на борда (карта), не в отворена бележка: там ширината минава през коефициента. */
+function nmInlineOnBoard(box) {
+    if (!box || !box.closest) return false;
+    return !box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]');
 }
 
 /**
