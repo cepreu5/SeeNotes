@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.55'; // App version
+const version = 'Beta 1.58'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.58)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -12818,6 +12818,19 @@ if ('serviceWorker' in navigator) {
 
             if (debug) console.log('ServiceWorker registered with scope: ', registration.scope);
 
+            // КОРЕКЦИЯ (b1.58): проверка за нов worker при всяко отваряне и при връщане към
+            // приложението. На телефон PWA-та стои отворена със дни, а без това проверката
+            // минава само при пълно стартиране и новата версия не се появява.
+            const checkForUpdate = () => {
+                if (!navigator.onLine) return;
+                registration.update().catch((err) => console.log('[SW] update check failed:', err));
+            };
+            checkForUpdate();
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') checkForUpdate();
+            });
+            window.addEventListener('online', checkForUpdate);
+
             // Global set to track which SW versions we've already notified about
             window.swNotifiedWorkers = window.swNotifiedWorkers || new Set();
 
@@ -12826,14 +12839,12 @@ if ('serviceWorker' in navigator) {
                 if (!waitingSW) return;
                 const swUrl = waitingSW.scriptURL;
 
-                // Extract version from SW URL if possible
-                const swVersionMatch = swUrl.match(/[?&]v=([^&]+)/);
-                const swVersion = swVersionMatch ? decodeURIComponent(swVersionMatch[1]) : null;
-
-                // Don't show if the version is the same as current (redundant notification)
-                if (swVersion && swVersion === version) {
-                    console.log(`[SW] Worker version ${swVersion} is already current. Skipping notification.`);
-                    return;
+                // КОРЕКЦИЯ (b1.58): известието вече не се пропуска, когато версията в URL-а
+                // съвпада с version. Двата файла се вдигат заедно, но ако по някаква причина
+                // не съвпадат, чакащият worker пак трябва да се покаже - иначе ъпдейтът
+                // остава невидим, а старият style.css се сервира от кеша.
+                if (swUrl !== (registration.active && registration.active.scriptURL)) {
+                    console.log('[SW] Waiting worker:', swUrl);
                 }
 
                 // Don't show if already showed for THIS worker or if a refresh is already pending or if bar exists
