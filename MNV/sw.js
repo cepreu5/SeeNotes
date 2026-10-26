@@ -1,4 +1,4 @@
-const CACHE_NAME = 'multinotes-b1.57';
+const CACHE_NAME = 'multinotes-b1.58';
 const ASSETS_TO_CACHE = [
   './',
   './index-2.html',
@@ -97,6 +97,28 @@ self.addEventListener('message', (event) => {
 self.addEventListener('fetch', (event) => {
   // --- FIX: Skip cross-origin requests (e.g. Google GSI, GDrive) to avoid 403/CORS or timeout issues ---
   if (!event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  // КОРЕКЦИЯ (b1.58): отварянето на приложението върви към мрежата първо, за да стигне
+  // новият index-2.html веднага, а кешът остава само за офлайн.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(event.request).then((cached) => cached || caches.match('./index-2.html'))
+        )
+    );
     return;
   }
 
