@@ -12958,7 +12958,11 @@ function onNoteWindowClosed(win) {
     flushNmInlinePreviewChanges().catch(() => { });
     win.el.querySelector('.note-window-sync-banner')?.remove();
     const others = getOpenNoteWindows().filter(w => w !== win);
-    if (!others.length) {
+    // Само СКРИТИ бележки остават: затварянето не ги връща на екрана. Активността остава у
+    // затворения прозорец (празният „модал"), а скритите чакат своята плочка - иначе getTopNoteWindow
+    // пада към тях, activateNoteWindow ги показва и едно хиксче разкрива всичко скрито.
+    const visibleOthers = others.filter(w => !w.hidden);
+    if (!visibleOthers.length) {
         // The last one stays in the DOM as the idle window: "the" modal always exists.
         if (activeNoteWindow !== win) activateNoteWindow(win, false);
         setExpandedModalFloatingControls(false);
@@ -12967,7 +12971,7 @@ function onNoteWindowClosed(win) {
         updateSingleNoteOverlay();
         return;
     }
-    if (activeNoteWindow === win) activateNoteWindow(getTopNoteWindow(others), false);
+    if (activeNoteWindow === win) activateNoteWindow(getTopNoteWindow(visibleOthers), false);
     noteWindows = noteWindows.filter(w => w !== win);
     updateSingleNoteOverlay();
     setTimeout(() => { if (!win.open && activeNoteWindow !== win) win.el.remove(); }, 450);
