@@ -23825,20 +23825,11 @@ async function createNoteElement(noteContent) {
     headerDate.appendChild(dateTextEl);
     headerTime.appendChild(clockIconEl);
     headerTime.appendChild(timeTextEl);
-    // Обикновеният клик отваря седмичния мини календар. В debug режим Ctrl+клик
-    // показва суровите данни - същият жест, с който debug показва JSON и другаде.
-    // (`debug` в cx-notes е винаги true, така че условие само по него би оставило
-    // мини календара недостъпен.)
+    // Обикновеният клик отваря седмичния мини календар. JSON-ът на бележката вече се
+    // отваря с обикновен клик в празното на горната ивица (над заглавието), затова
+    // Ctrl+клик върху датата е махнат - със същия жест се стига и без Ctrl, и на телефон.
     headerDate.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (debug && e.ctrlKey) {
-            let debugText = JSON.stringify(fullNoteContent, null, 2);
-            if (fullNoteContent.gdid && localFileMap.has(fullNoteContent.gdid)) {
-                debugText = `File: ${localFileMap.get(fullNoteContent.gdid)}\n\n` + debugText;
-            }
-            showModal({ raw: debugText, color: 'white' });
-            return;
-        }
         showNoteWeekCalendar(note, getNoteHeaderDateTimestamp(extraData));
     });
     let isAutoTimer = false;
@@ -24208,6 +24199,17 @@ async function createNoteElement(noteContent) {
         suppressClickTimer = setTimeout(() => { suppressNextClick = false; }, 700);
     };
 
+    // JSON-ът на бележката - същият изглед, който дотогава се отваряше с Ctrl+клик върху датата.
+    // От b2.97 го отваря обикновен клик в празното на горната ивица (над заглавието), за да
+    // работи и с пръст на телефон, където Ctrl няма.
+    const showNoteDebugJson = () => {
+        let debugText = JSON.stringify(fullNoteContent, null, 2);
+        if (fullNoteContent.gdid && localFileMap.has(fullNoteContent.gdid)) {
+            debugText = `File: ${localFileMap.get(fullNoteContent.gdid)}\n\n` + debugText;
+        }
+        showModal({ raw: debugText, color: 'white' });
+    };
+
     // Обработва клик върху цялата бележка (с изключение на хедъра)
     const handleNoteClick = async (e) => {
         // Кликът, който следва задействано продължително натискане, не прави нищо.
@@ -24290,6 +24292,17 @@ async function createNoteElement(noteContent) {
             suppressNextClick = false;
             clearTimeout(suppressClickTimer);
             e.stopPropagation();
+            return;
+        }
+        // Празното в горната ивица - всичко над заглавието - показва JSON-а с обикновен клик,
+        // за да работи и с пръст на телефон. Датата, часът и пин-бутонът имат собствени
+        // обработчици и спират събитието преди да стигне дотук.
+        const onTitleText = !!(e.target && e.target.closest && e.target.closest('.note-title-truncated'));
+        if (!onTitleText) {
+            if (!debug) return; // без Debug кликът стига до бележката както досега
+            e.stopPropagation();
+            e.preventDefault();
+            showNoteDebugJson();
             return;
         }
         if (e.ctrlKey) {
