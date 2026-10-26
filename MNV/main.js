@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.63'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.63)
+const version = 'Beta 1.64'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.64)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -10787,8 +10787,12 @@ function hydrateInlineImages(rootEl) {
             if (img.naturalWidth) {
                 const pct = Math.max(10, Math.min(100, Number(box.dataset.nmPct) || 100));
                 const px0 = Math.max(1, Math.round(img.naturalWidth * pct / 100));
+                // На борда картата е по-тясна от колоната на бележката: ширината се смалява с
+                // колкото е по-тясна картата (nmInlineBoardScale). В отворена бележка снимката
+                // остава както досега.
+                const want = nmInlineOnBoard(box) ? Math.max(1, Math.round(px0 * nmInlineBoardScale(box))) : px0;
                 const columnWidth = nmInlineColumnWidth(box);
-                const px = (columnWidth > 0 && px0 > columnWidth) ? columnWidth : px0;
+                const px = (columnWidth > 0 && want > columnWidth) ? columnWidth : want;
                 box.style.width = px + 'px';
                 box.dataset.nmPx = String(px);
                 box.dataset.nmBaseUsed = String(img.naturalWidth);
@@ -10857,6 +10861,78 @@ function hydrateInlineImages(rootEl) {
         };
         attempt(false);
     }
+}
+
+/**
+ * Коефициентът за снимките, нарисувани върху карта на борда (същото правило като в uni, 26.10.2026):
+ * картата е по-тясна от колоната на бележката, затова ширината от самата снимка се смалява с
+ * колкото е по-тясна картата (ширина на картата / ширина на модала) и чак после се слага таванът
+ * на картата. Това число е резервата, докато модалът още не може да се измери, и таван на
+ * коефициента, за да не става снимка на борда по-голяма от изчислената от себе си.
+ */
+const NM_INLINE_BOARD_SCALE = 0.5;
+
+/**
+ * Ширината на колоната на отворена бележка в пиксели, без отстъпите.
+ *
+ * Не е едно число в кода: style.css дава 90% от екрана като таван, а бележката се отваря със
+ * запомнения си размер (localStorage modalWidth, иначе 400px). Затова тук се смята от тези две
+ * неща, а отстъпите се четат от истинските класове: строи се скрита проба
+ * .modal-content-box > .nw-modal-body, която веднага се маха. Така числото не се разминава с
+ * оформлението, ако CSS-ът се промени, и не зависи от това дали има отворена бележка.
+ */
+const NM_INLINE_NOTE_DEFAULT_WIDTH = 400;
+let nmInlineModalProbe = null;
+
+function nmInlineNoteReferenceWidth() {
+    let px = 0;
+    try { px = parseFloat(localStorage.getItem('modalWidth') || '') || 0; } catch (e) { px = 0; }
+    return px > 0 ? px : NM_INLINE_NOTE_DEFAULT_WIDTH;
+}
+
+function nmInlineModalColumnWidth() {
+    const width = nmInlineNoteReferenceWidth();
+    const key = width + 'x' + window.innerWidth;
+    if (nmInlineModalProbe && nmInlineModalProbe.key === key) return nmInlineModalProbe.value;
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    // Скрита, но с layout: display:none би дало ширина 0, а visibility:hidden я запазва.
+    overlay.style.cssText = 'visibility:hidden;pointer-events:none;z-index:-1;';
+    const box = document.createElement('div');
+    box.className = 'modal-content-box';
+    box.style.width = width + 'px';
+    const body = document.createElement('div');
+    body.className = 'nw-modal-body';
+    box.appendChild(body);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    const styles = typeof window.getComputedStyle === 'function' ? getComputedStyle(body) : null;
+    const padding = styles ? (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0) : 0;
+    const value = Math.max(0, Math.round((body.clientWidth || 0) - padding));
+    overlay.remove();
+    nmInlineModalProbe = { key: key, value: value };
+    return value;
+}
+
+/**
+ * Колко пъти е по-тясна картата на борда от колоната на бележката: 1 = същата ширина (нищо не се
+ * смалява). Резервата NM_INLINE_BOARD_SCALE се ползва, когато картата или модалът още не могат да
+ * се измерят.
+ */
+function nmInlineBoardScale(box) {
+    const modalWidth = nmInlineModalColumnWidth(box);
+    if (!modalWidth) return NM_INLINE_BOARD_SCALE;
+    const cardWidth = nmInlineColumnWidth(box);
+    if (!cardWidth) return NM_INLINE_BOARD_SCALE;
+    const ratio = cardWidth / modalWidth;
+    if (!Number.isFinite(ratio) || ratio <= 0) return NM_INLINE_BOARD_SCALE;
+    return Math.min(1, ratio);
+}
+
+/** Рамката е на борда (карта), не в отворена бележка: там ширината минава през коефициента. */
+function nmInlineOnBoard(box) {
+    if (!box || !box.closest) return false;
+    return !box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]');
 }
 
 /**
