@@ -13717,6 +13717,7 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     // Редакторът е строен с лента с прикачените файлове под себе си; щом тялото се рисува наново
     // (преглед, запис, отваряне на бележката), класът се маха заедно съдържанието.
     modalBody.classList.remove('nm-edit-with-strip', 'nm-file-drop');
+    delete modalBody.dataset.nmEditMode;
     modalBody.innerHTML = displayContent;
     modalBody.dataset.renderedHtml = displayContent; // Запазваме оригинала за възстановяване при търсене
     hydrateInlineImages(modalBody); // вградените картинки (type=8) влизат в рамките си
@@ -27140,26 +27141,29 @@ function markPendingAttachmentTile(tile, attachment) {
 /**
  * Лентата с плочки на прикачените файлове: същият строеж в режим четене (под бележката, след ред) и
  * в режим Редактиране (под кутията за редактиране), за да е един и същ редът, както в оригинала.
- * В редакция накрая има и плочка „+", която качва нова снимка - тя влиза само в лентата, не в текста.
- * @returns {HTMLElement|null} лентата, или null (няма прикачени файлове и не сме в редакция).
+ * Лентата се строи само когато има прикачени файлове - празна не заема място. Прикачването става с
+ * бутона с кламерчето в реда с бутоните (той отваря същото поле за избор на файл).
+ * @returns {HTMLElement|null} лентата, или null (няма прикачени файлове).
  */
 function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
     if (!host) return null;
     const editMode = !!(opts && opts.editMode);
-    // Класът казва на CSS, че тялото е колона: редакторът отгоре, лентата отдолу.
-    host.classList.toggle('nm-edit-with-strip', editMode);
+    // Режимът се помни отделно от класа: класът има смисъл само докато има лента, а режимът трябва
+    // да се знае и когато лентата се строи след първото прикачване.
+    if (editMode) host.dataset.nmEditMode = '1'; else delete host.dataset.nmEditMode;
     // Една лента на бележка: преизградената маха старата (и реда над нея).
     host.querySelectorAll(':scope > .nm-attach-strip, :scope > .nm-attach-sep').forEach(el => el.remove());
-    if (!noteId && !noteGdid) return null;
-    const attachments = noteAttachmentItems(noteId, noteGdid);
-    if (!attachments.length && !editMode) return null;
-    if (!editMode) {
-        const separator = document.createElement('hr');
-        separator.className = 'nm-attach-sep';
-        separator.style.marginTop = '10px';
-        separator.style.marginBottom = '10px';
-        host.appendChild(separator);
-    }
+    // Без прикачени файлове няма лента - нито в четене, нито в редакция: празна лента не бива да
+    // заема място под редактора. Тогава и класът се маха, за да не остане тялото в колонно
+    // подреждане без лента.
+    const attachments = (noteId || noteGdid) ? noteAttachmentItems(noteId, noteGdid) : [];
+    host.classList.toggle('nm-edit-with-strip', editMode && attachments.length > 0);
+    if (!attachments.length) return null;
+    const separator = document.createElement('hr');
+    separator.className = 'nm-attach-sep';
+    separator.style.marginTop = '10px';
+    separator.style.marginBottom = '10px';
+    host.appendChild(separator);
     // Футърът е лента от плочки като в оригиналното приложение: снимките се виждат самите те,
     // другите файлове носят иконата на типа си, лентата се плъзга настрана, когато не се
     // събират. Имената не стоят под плочките (излизат при задържане), както в оригинала.
@@ -27200,26 +27204,6 @@ function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
             markPendingAttachmentTile(slot.querySelector('.nm-attach-tile'), attachment);
         })();
     });
-    if (editMode) {
-        // Плочката „+" качва нова снимка: файлът влиза в Images и в лентата, без type=8.
-        const addSlot = document.createElement('div');
-        addSlot.className = 'nm-attach-slot';
-        const addTile = document.createElement('button');
-        addTile.type = 'button';
-        addTile.className = 'nm-attach-tile is-add';
-        addTile.dataset.nmAdd = '1';
-        addTile.textContent = '+';
-        addTile.title = _('nmAddPhoto') || 'Добави снимка';
-        addTile.setAttribute('aria-label', addTile.title);
-        addTile.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const input = document.getElementById('modal-attach-image-input');
-            if (input) input.click();
-        });
-        addSlot.appendChild(addTile);
-        stripEl.appendChild(addSlot);
-    }
     return stripEl;
 }
 
@@ -27235,12 +27219,14 @@ function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
 function rebuildEditAttachmentStrip() {
     const host = document.getElementById('modal-body');
     if (!host) return null;
-    if (host.classList.contains('nm-edit-with-strip')) {
-        return buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid, { editMode: true });
+    // Режимът се чете от запазения флаг, а не от класа: класът липсва, докато няма лента, а
+    // именно тогава се строи първата (след прикачване към бележка без файлове).
+    const inEdit = host.dataset.nmEditMode === '1';
+    if (!noteAttachmentItems(host.dataset.id, host.dataset.gdid).length) {
+        if (inEdit) host.classList.remove('nm-edit-with-strip');
+        return null;
     }
-    // В режим четене лентата съществува само ако има какво да показва - иначе не се строи празна.
-    if (!noteAttachmentItems(host.dataset.id, host.dataset.gdid).length) return null;
-    return buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid);
+    return buildNoteAttachmentStrip(host, host.dataset.id, host.dataset.gdid, inEdit ? { editMode: true } : undefined);
 }
 
 /**
