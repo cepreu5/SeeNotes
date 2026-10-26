@@ -21755,13 +21755,11 @@ function buildInlineImagePlaceholder(format, isForModal) {
     const name = inlineImageName(format && format.paramstring);
     if (!name) return '';
     const pct = inlineImageWidthPct(format && format.paramint);
-    // Две места, две ширини (решение на собственика, 22.10):
-    //  - в бележката (редактор и преглед на една бележка) процентът е от САМАТА СНИМКА: рамката
-    //    получава ширина в пиксели, когато картинката се зареди (paramint/10 × естествената ширина),
-    //    и затова не се мени с прозореца на бележката;
-    //  - на борда ширината остава процент от ШИРИНАТА НА КОЛОНАТА, както беше.
-    // И в двата случая CSS-ът слага max-width:100%, значи по-тясна бележка свива снимката, за да
-    // се побере - и само тогава.
+    // Едно правило за двете места (решение на собственика, 26.10): процентът е от САМАТА СНИМКА,
+    // и в бележката (редактор и преглед), и на борда - рамката получава ширина в пиксели, когато
+    // картинката се зареди (paramint/10 × естествената ширина), и не се мени с прозореца.
+    // Таванът е ширината на картата: по-широко изчисление се показва с нея (nmInlineColumnWidth,
+    // плюс max-width:100% в style.css за рамка, която още не е в страницата).
     // Базата на ширината НЕ влиза в записа: в text_span остава само paramint. Тя живее при размерите
     // и мястото на бележката (uiState.imgbase) и се слага на рамката при рисуването - виж putImage.
     const view = isForModal ? ' data-nm-view="note"' : '';
@@ -21780,8 +21778,9 @@ function buildInlineImagePlaceholder(format, isForModal) {
  * смалена, а не такава, каквато я е сложил. Заглавието е един ред (nowrap), значи с голяма снимка
  * редът просто расте по височина - това е желаното.
  *
- * Класът nm-inline-img-title и data-nm-view="title" остават: putImage сменя ширината само при
- * data-nm-view="note", значи процентът от inline стила тук се запазва както е записан.
+ * Класът nm-inline-img-title и data-nm-view="title" остават за разпознаване, но ширината вече е
+ * по същото правило като в тялото (собственик, 26.10.2026: „всичко по новото правило"): пиксели
+ * от ширината на снимката, с таван ширината на картата.
  * Иначе рамката е същата: hydrateInlineImages я намира по .nm-inline-img[data-nm-file] и я пълни.
  */
 function buildInlineImageTitlePlaceholder(format) {
@@ -22358,16 +22357,20 @@ function hydrateInlineImages(rootEl) {
             box.classList.remove('is-loading');
             box.classList.add('is-ready');
             box.dataset.nmState = 'ready';
-            // В бележката ширината е проценти от САМАТА снимка: щом естествената ширина се знае,
-            // рамката минава на пиксели и спира да зависи от прозореца. По-тясна бележка пак свива
-            // снимката - това го прави max-width: 100% в style.css.
-            if (box.dataset.nmView === 'note' && img.naturalWidth) {
+            // Ширината е проценти от САМАТА снимка - навсякъде: в бележката, на борда и в реда-
+            // заглавие. Щом естествената ширина се знае, рамката минава на пиксели и спира да
+            // зависи от ширината на картата. Таванът е колоната на бележката: по-широко изчисление
+            // се показва с ширината на картата (тук, и с max-width: 100% в style.css).
+            if (img.naturalWidth) {
                 // Базата е естествената ширина на снимката, записана при поставянето в размерите на
                 // бележката; стара бележка без нея ползва същата естествена ширина.
                 const recorded = nmInlineBaseWidthForBox(box);
                 if (recorded > 0) box.dataset.nmBase = String(recorded);
                 const base = recorded > 0 ? recorded : img.naturalWidth;
-                const px = Math.max(1, Math.round(base * (Number(box.dataset.nmPct) || 100) / 100));
+                const px0 = Math.max(1, Math.round(base * (Number(box.dataset.nmPct) || 100) / 100));
+                // По-широко от колоната на бележката не се показва: взима се ширината на картата.
+                const columnWidth = nmInlineColumnWidth(box);
+                const px = (columnWidth > 0 && px0 > columnWidth) ? columnWidth : px0;
                 box.style.width = px + 'px';
                 box.dataset.nmPx = String(px);
                 box.dataset.nmNatural = String(img.naturalWidth);
@@ -26631,8 +26634,41 @@ function rememberNmInlineBaseWidth(modalBodyElem, fileName, base) {
 /** Базата за рамка в тялото на бележка: записаната, иначе 0 (пада се на естествената ширина). */
 function nmInlineBaseWidthForBox(box) {
     if (!box) return 0;
+    const name = box.dataset ? (box.dataset.nmFile || '') : '';
+    const file = inlineImageName(name) || String(name || '');
+    if (!file) return 0;
     const body = box.closest ? box.closest('#modal-body, .nw-modal-body, [data-mwid="modal-body"]') : null;
-    return body ? nmInlineBaseWidth(body, box.dataset.nmFile || '') : 0;
+    if (body) return nmInlineBaseWidth(body, name);
+    // Борд: картата носи бележката в data-g (gdid) / data-i (id) - по тях се намира
+    // uiState.imgbase, същата база като в модала (записана при поставянето на снимката).
+    const card = box.closest ? box.closest('.note') : null;
+    if (!card || !card.dataset) return 0;
+    const key = String(card.dataset.g || card.dataset.i || '');
+    if (!key) return 0;
+    const note = allNotesData.find(n => (n.gdid && String(n.gdid) === key) || (n.id && String(n.id) === key)) || null;
+    const map = note && note.uiState && !Array.isArray(note.uiState) ? note.uiState.imgbase : null;
+    const stored = map && typeof map === 'object' ? Number(map[file]) : 0;
+    if (Number.isFinite(stored) && stored > 0) return Math.round(stored);
+    const fallback = nmInlineBaseFallback.get(key);
+    const value = fallback ? Number(fallback[file]) : 0;
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+}
+
+/**
+ * Ширината на колоната на бележката в пиксели: тялото на модала или .note-content на картата
+ * (без отстъпите). 0, когато рамката още не е в страницата - тогава таванът го слага
+ * max-width: 100% в style.css.
+ */
+function nmInlineColumnWidth(box) {
+    if (!box || !box.closest) return 0;
+    // Рамката в реда-заглавие е извън .note-content - тогава таванът е самата карта.
+    const column = box.closest('.note-content, #modal-body, .nw-modal-body, [data-mwid="modal-body"]')
+        || box.closest('.note');
+    if (!column) return 0;
+    const styles = typeof window.getComputedStyle === 'function' ? getComputedStyle(column) : null;
+    const padding = styles ? (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0) : 0;
+    const width = Math.round((column.clientWidth || 0) - padding);
+    return width > 0 ? width : 0;
 }
 
 /** Каретата стои вътре в {{ }} или в ограден код: там маркер не се слага. */

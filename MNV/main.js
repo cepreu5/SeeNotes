@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.58'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.58)
+const version = 'Beta 1.59'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.59)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -10130,8 +10130,9 @@ function renderNoteContent(text) {
 // прикачения файл (интересува ни само името - файлът се търси по име, точно както прикачените:
 // в папка Images в Drive, в Images на локалната папка или направо в плоския архив),
 // а paramint е ширината в десетки проценти: 1 = 10%, 10 = 100%.
-// Ширината е процент от КОЛОНАТА на бележката (.note-content / #modal-body), не от прозореца -
-// един и същ запис се показва и на 250px карта на борда, и в модала.
+// Ширината е процент от САМАТА СНИМКА (собственик, 26.10.2026): щом тя се зареди, рамката получава
+// ширина в пиксели (paramint/10 × естествената ширина) и таван - ширината на картата. Затова един
+// и същ запис не изглежда различно на 250px карта и в модала, а по-широко от картата не се показва.
 // formatText слага на мястото на маркера рамка с резервирана височина и ширина;
 // hydrateInlineImages после я превръща в картинка, щом файлът се намери по име - в Drive, в
 // локалната папка или в архива (в кой режим сме решава inlineImageSourceMode).
@@ -10220,7 +10221,7 @@ function buildInlineImagePlaceholder(format) {
     const pct = inlineImageWidthPct(format && format.paramint);
     const safeName = escapeHtml(name);
     return `<span class="nm-inline-img is-loading" data-nm-file="${safeName}" ` +
-        `data-nm-state="loading" style="width:${pct}%" role="img" aria-label="${safeName}"></span>`;
+        `data-nm-state="loading" data-nm-pct="${pct}" style="width:${pct}%" role="img" aria-label="${safeName}"></span>`;
 }
 
 /**
@@ -10694,6 +10695,18 @@ function hydrateInlineImages(rootEl) {
             box.classList.remove('is-loading');
             box.classList.add('is-ready');
             box.dataset.nmState = 'ready';
+            // Ширината е проценти от САМАТА снимка: щом естествената ширина се знае, рамката минава
+            // на пиксели и спира да зависи от ширината на картата. Таванът е колоната на бележката -
+            // по-широко изчисление се показва с ширината на картата (виж и max-width:100% в style.css).
+            if (img.naturalWidth) {
+                const pct = Math.max(10, Math.min(100, Number(box.dataset.nmPct) || 100));
+                const px0 = Math.max(1, Math.round(img.naturalWidth * pct / 100));
+                const columnWidth = nmInlineColumnWidth(box);
+                const px = (columnWidth > 0 && px0 > columnWidth) ? columnWidth : px0;
+                box.style.width = px + 'px';
+                box.dataset.nmPx = String(px);
+                box.dataset.nmBaseUsed = String(img.naturalWidth);
+            }
         });
         img.addEventListener('error', () => {
             // Адресът не се зареди: мъртъв blob, изтекъл подпис или още неготов thumbnail. Нов опит
@@ -10758,6 +10771,22 @@ function hydrateInlineImages(rootEl) {
         };
         attempt(false);
     }
+}
+
+/**
+ * Ширината на колоната на бележката в пиксели: тялото на модала или .note-content на картата
+ * (без отстъпите); рамка в реда-заглавие е извън .note-content, значи таванът е самата карта.
+ * 0, когато рамката още не е в страницата - тогава таванът го слага max-width: 100% в style.css.
+ */
+function nmInlineColumnWidth(box) {
+    if (!box || !box.closest) return 0;
+    const column = box.closest('.note-content, #modal-body, .nw-modal-body, [data-mwid="modal-body"]')
+        || box.closest('.note');
+    if (!column) return 0;
+    const styles = typeof window.getComputedStyle === 'function' ? getComputedStyle(column) : null;
+    const padding = styles ? (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0) : 0;
+    const width = Math.round((column.clientWidth || 0) - padding);
+    return width > 0 ? width : 0;
 }
 
 /**
