@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.59'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.59)
+const version = 'Beta 1.62'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.62)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -7504,15 +7504,21 @@ function onNoteWindowClosed(win) {
     resetNoteWindowWalk();
     stopAttachmentAudio();
     const others = getOpenNoteWindows().filter(w => w !== win);
-    if (!others.length) {
-        // Последният остава в DOM като празен прозорец: „модалът" винаги съществува.
+    // Само СКРИТИ бележки остават: затварянето не ги връща на екрана. Активността остава у
+    // затворения прозорец (празният „модал"), а скритите чакат своята плочка - иначе getTopNoteWindow
+    // пада към тях, activateNoteWindow ги показва и едно хиксче разкрива всичко скрито.
+    const visibleOthers = others.filter(w => !w.hidden);
+    if (!visibleOthers.length) {
+        // Последният остава в DOM като празен прозорец: „модалът" винаги съществува. Скритите
+        // отворени прозорци остават в списъка - иначе плочките им изчезват от лентата и няма как
+        // да се върнат на екрана.
         if (activeNoteWindow !== win) activateNoteWindow(win, false);
-        noteWindows.filter(w => w !== win).forEach(w => w.el.remove());
-        noteWindows = noteWindows.filter(w => w === win);
+        noteWindows.filter(w => w !== win && !w.open).forEach(w => w.el.remove());
+        noteWindows = noteWindows.filter(w => w === win || w.open);
         updateSingleNoteOverlay();
         return;
     }
-    if (activeNoteWindow === win) activateNoteWindow(getTopNoteWindow(others), false);
+    if (activeNoteWindow === win) activateNoteWindow(getTopNoteWindow(visibleOthers), false);
     noteWindows = noteWindows.filter(w => w !== win);
     updateSingleNoteOverlay();
     setTimeout(() => { if (!win.open && activeNoteWindow !== win) win.el.remove(); }, 450);
