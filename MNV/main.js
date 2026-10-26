@@ -5912,6 +5912,12 @@ const OPEN_NOTES_BAR_DARK_TEXT = '#1F2A30';
 // Цветът, с който showModal боядисва бележка без свой цвят (вж. renderNoteWindow). Ползва се само
 // ако прозорецът още не е боядисан и бележката няма цвят в данните си.
 const OPEN_NOTES_BAR_DEFAULT_BG = '#eef603';
+// Дългото натискане на плочка само я ВДИГА за местене (собственикът, 25.10.2026: „Продължително
+// натискане само за местене, не затваря"). Прагът за отмяна при touchmove (5px) е ПО-МАЛЪК от този на
+// wireOpenNotesBarDragGuard (6px): плъзгане по лентата отменя задържането още преди пазачът да го
+// обяви за плъзгане, а лекото трепване на пръста не губи задържането.
+const OPEN_NOTES_BAR_LONG_PRESS_MS = 500;
+const OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX = 5;
 // Намерен адрес на миниатюра по име на файл: при всяко опресняване плочката се строи наново, а без
 // този кеш всяка смяна на активната бележка връща картинката в началото и тя мига. Помни се за
 // КОЛКОТО и общият кеш на thumbnail-ите (INLINE_IMAGE_THUMB_TTL): подписаният адрес на Drive изтича
@@ -6796,12 +6802,8 @@ function openNotesBarFillTile(tile, win) {
     // или снимката) - иначе картинката се зарежда отначало при всяко вдигане на прозорец. Адресът,
     // дошъл от тялото на бележката, влиза в подписа: той се появява СЛЕД построяването на плочката
     // (hydrateInlineImages) и без него опресняването не виждаше, че има какво да се покаже.
-    // Подписът НЕ се помни, когато бележката още не се намира в данните: лентата се строи и докато
-    // прозорецът се пълни, а тогава плочката излиза с празно заглавие - ако се запомни, подписът
-    // съвпада при всяко следващо опресняване и празната плочка остава завинаги. Така тя се строи
-    // наново при следващото опресняване и заглавието идва, щом бележката е налична.
-    const sig = note ? `${title}\u0000${file}\u0000${fromBody.src}\u0000${color}\u0000${textColor}` : '';
-    if (sig && tile.dataset.barSig === sig) {
+    const sig = `${title}\u0000${file}\u0000${fromBody.src}\u0000${color}\u0000${textColor}`;
+    if (tile.dataset.barSig === sig) {
         // Подписът съвпада, значи друго не се е сменило - но плочка БЕЗ картинка се довършва, ако
         // тялото вече има готов адрес. Иначе една бавна или неуспешна заявка заключваше буквите до
         // края на сесията.
@@ -6842,19 +6844,17 @@ function openNotesBarFillTile(tile, win) {
  * опресняванията на лентата (картата existing по tile.dataset.barKey), значи иначе щяха да се трупат.
  */
 function wireOpenNotesBarTileLongPress(tile) {
-    if (tile._longPressWired) return;
-    tile._longPressWired = true;
-    const LONG_PRESS_MS = 500;
-    // Прагът за отмяна е малък (8px): трепване на пръста не бива да губи задържането. Истинското
-    // плъзгане по лентата хваща wireOpenNotesBarDragGuard (6px) и се проверява пак при самото
-    // задействане - движение между 6 и 8px е скрол, значи не вдига плочката.
-    const MOVE_CANCEL_PX = 8;
-    let timer = null;
-    let downX = 0, downY = 0;
-    // След пръст браузърът праща и миши събития: пазачът не пуска задържане да тръгне втори път.
+    let pressTimer = null;
+    // Състоянието живее на самата плочка (като bar._barDragged), за да го четат кликът и местенето.
+    tile._longPressTriggered = false;
+    tile._longPressArmed = false;
+    let touchStartX = 0, touchStartY = 0;
     let lastTouchEnd = 0;
-    const cancel = () => {
-        if (timer) { clearTimeout(timer); timer = null; }
+    const cancelPress = () => {
+        if (pressTimer) {
+            clearTimeout(pressTimer);
+            pressTimer = null;
+        }
     };
     // Вдигната плочка, която в момента се мести: повдигането не се маха оттук, а от края на местенето
     // (иначе плочката слиза долу посред жеста, щом показалецът я подмине).
@@ -6865,43 +6865,74 @@ function wireOpenNotesBarTileLongPress(tile) {
     };
     // Краят на жеста връща плочката долу: въоръжаването не бива да остане за следващия жест.
     const disarm = () => {
-        cancel();
+        cancelPress();
         if (beingDragged()) return;
         tile._longPressArmed = false;
         tile.classList.remove('is-dragging');
     };
-    // Плъзгането по плочката (b1.50) отменя задържането, ако още не е изтекло: иначе жестът, който
-    // мести плочката, след 500ms би я вдигнал посред местенето (виж wireOpenNotesBarStripDrag).
-    tile._cancelLongPress = cancel;
-    const fire = () => {
-        timer = null;
+    const firePress = () => {
+        pressTimer = null;
         // Задържането само ВДИГА плочката: никакво затваряне (собственикът, 25.10.2026).
         tile._longPressArmed = true;
-        // Кликът, който идва след пускането, НЕ бива да превключва скрий/покажи: той не е клик.
         tile._longPressTriggered = true;
         tile.classList.add('is-dragging');
         if (navigator.vibrate) navigator.vibrate(40);
     };
-    const start = (x, y) => {
-        cancel();
+    const startPress = () => {
         tile._longPressTriggered = false;
-        downX = x; downY = y;
-        timer = setTimeout(fire, LONG_PRESS_MS);
+        cancelPress();
+        pressTimer = setTimeout(firePress, OPEN_NOTES_BAR_LONG_PRESS_MS);
     };
-    const move = (x, y) => {
-        if (!timer) return;
-        if (Math.abs(x - downX) > MOVE_CANCEL_PX || Math.abs(y - downY) > MOVE_CANCEL_PX) cancel();
-    };
-    // Показалец: един път за мишка, пръст и стилус - pointerup идва и при пръст.
-    tile.addEventListener('pointerdown', (e) => {
-        if (typeof e.button === 'number' && e.button !== 0) return;
-        if (e.pointerType === 'mouse' && Date.now() - lastTouchEnd < 1000) return;
-        start(e.clientX, e.clientY);
+    // Плъзгането по плочката (b2.83) отменя задържането, ако още не е изтекло: иначе жестът, който
+    // мести плочката, след 500ms би я вдигнал посред местенето.
+    tile._cancelLongPress = cancelPress;
+    // Нов жест: кликът от предишното задържане вече е минал (той идва веднага след пускането), значи
+    // флагът му не бива да важи за този жест - иначе wireOpenNotesBarStripDrag би отказал да мести.
+    tile.addEventListener('pointerdown', () => { tile._longPressTriggered = false; });
+    tile.addEventListener('touchstart', (e) => {
+        const touch = e.touches && e.touches[0];
+        if (touch) {
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+        }
+        startPress();
+    }, { passive: true });
+    tile.addEventListener('touchmove', (e) => {
+        const touch = e.touches && e.touches[0];
+        if (!touch) return cancelPress();
+        // ВДИГНАТА плочка: движението вече е местене, а не скрол. Затова жестът се спира тук
+        // (passive: false), иначе браузърът го поема като скрол на страницата или на лентата и праща
+        // pointercancel - а с него местенето умираше точно когато е готово да тръгне (b2.88).
+        // ПРЕДИ въоръжаването нищо не се спира: там жестът си е скрол, както досега.
+        if (tile._longPressArmed || beingDragged()) {
+            if (e.cancelable) e.preventDefault();
+            return;
+        }
+        if (Math.abs(touch.clientX - touchStartX) > OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX
+            || Math.abs(touch.clientY - touchStartY) > OPEN_NOTES_BAR_LONG_PRESS_MOVE_PX) {
+            cancelPress();
+        }
+    }, { passive: false });
+    tile.addEventListener('touchcancel', disarm);
+    tile.addEventListener('touchend', (e) => {
+        lastTouchEnd = Date.now();
+        if (tile._longPressTriggered) {
+            // Синтетичният click след touchend не бива да вдига/скрива бележката - жестът беше задържане.
+            if (e.cancelable) e.preventDefault();
+            tile._longPressTriggered = false;
+        }
+        disarm();
     });
-    tile.addEventListener('pointermove', (e) => move(e.clientX, e.clientY));
-    // Пускане и излизане от плочката връщат плочката долу.
-    ['pointerup', 'pointerleave'].forEach(type => tile.addEventListener(type, disarm));
-    // pointercancel НЕ сваля ВДИГНАТА плочка (b1.55). Android праща pointercancel веднага след
+    // Задържане с мишка; събитията на мишката веднага след докосване се прескачат.
+    tile.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || Date.now() - lastTouchEnd < 1000) return;
+        startPress();
+    });
+    ['mouseup', 'mouseleave'].forEach((type) => tile.addEventListener(type, disarm));
+    // Показалецът се пуска или излиза от плочката: плочката слиза долу. При пръст това идва и когато
+    // пръстът излезе от плочката, значи въоръжаването не остава за следващия жест.
+    ['pointerup', 'pointerleave'].forEach((type) => tile.addEventListener(type, disarm));
+    // pointercancel НЕ сваля ВДИГНАТА плочка (b2.88). Android праща pointercancel веднага след
     // вибрацията, защото родният жест за дълго натискане поема пръста (собственикът, 25.10.2026:
     // „продължителното натискане води до кратка вибрация, но само толкова"). Жестът не се хвърля -
     // wireOpenNotesBarStripDrag го поема по touch пътя и сваля плочката накрая. Иначе едно
@@ -6910,30 +6941,6 @@ function wireOpenNotesBarTileLongPress(tile) {
         if (tile._longPressArmed || beingDragged()) return;
         disarm();
     });
-    // Пръст: touchend/touchcancel слагат и пазача срещу следващите миши събития.
-    tile.addEventListener('touchstart', (e) => {
-        const t = e.touches && e.touches[0];
-        if (t) start(t.clientX, t.clientY);
-    }, { passive: true });
-    tile.addEventListener('touchmove', (e) => {
-        const t = e.touches && e.touches[0];
-        if (!t) return;
-        // ВДИГНАТА плочка: движението вече е местене, а не скрол. Затова жестът се спира тук
-        // (passive: false), иначе браузърът го поема като скрол на страницата или на лентата и праща
-        // pointercancel - а с него местенето умираше точно когато е готово да тръгне (b1.55).
-        // ПРЕДИ въоръжаването нищо не се спира: там жестът си е скрол, както досега.
-        if (tile._longPressArmed || beingDragged()) {
-            if (e.cancelable) e.preventDefault();
-            return;
-        }
-        move(t.clientX, t.clientY);
-    }, { passive: false });
-    const touchEnd = () => {
-        lastTouchEnd = Date.now();
-        disarm();
-    };
-    tile.addEventListener('touchend', touchEnd);
-    tile.addEventListener('touchcancel', touchEnd);
 }
 
 /**
