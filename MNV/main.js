@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.62'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.62)
+const version = 'Beta 1.63'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.63)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -10210,6 +10210,77 @@ function inlineImageName(paramstring) {
     return name && name !== '.' && name !== '..' ? name : '';
 }
 
+/** Истинско id на файл в Drive ли е: местните записи започват с 'L' и не са файлове там. */
+function looksLikeDriveFileId(fileId) {
+    const id = String(fileId == null ? '' : fileId).trim();
+    return id.length >= 10 && !id.startsWith('L');
+}
+
+/**
+ * Id на файла от прикачените файлове на бележката (media.txt) за име, което стои в текста.
+ * В text_span се пази САМО името - така е записът на Android и той не се променя. Затова id-то
+ * се взима от записа в media.txt: това е същият файл, който плочката на прикачения файл отваря
+ * по id. Дотук тук картинката се търсеше само по име в папка Images и ако файлът е в друга папка
+ * „Images" или името е с друг регистър, рамката оставаше празна, докато плочката работеше.
+ * При няколко записа с едно и също име се взима последният: mediaData се дописва в края, значи
+ * последният запис е най-новият. Същият ред като в uni (решение на собственика, 26.10.2026).
+ */
+function inlineImageMediaFileId(fileName) {
+    const name = inlineImageName(fileName).toLowerCase();
+    if (!name) return '';
+    const records = Array.isArray(mediaData) ? mediaData : [];
+    let found = '';
+    for (const m of records) {
+        if (!m || !looksLikeDriveFileId(m.pathGD)) continue;
+        if (inlineImageName(m.path).toLowerCase() !== name) continue;
+        found = String(m.pathGD);
+    }
+    return found;
+}
+
+/**
+ * Дали файлът с това id още е в Drive. Запис в media.txt може да сочи вече изтрит файл - тогава
+ * картинката трябва да падне към търсене по име, а не да остане празна. Положителният отговор се
+ * помни за сесията, отрицателният - кратко (като липсващ файл), за да не пита всяка карта пак.
+ */
+const inlineImageFileAliveCache = new Map();
+
+function inlineImageFileAlive(fileId) {
+    const key = String(fileId || '');
+    if (!key) return Promise.resolve(false);
+    const cached = inlineImageFileAliveCache.get(key);
+    if (cached) {
+        if (cached.alive) return Promise.resolve(true);
+        if (Date.now() - cached.at < INLINE_IMAGE_MISSING_TTL) return Promise.resolve(false);
+        inlineImageFileAliveCache.delete(key);
+    }
+    return (async () => {
+        const token = inlineDriveToken();
+        if (!token) return false;
+        try {
+            const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(key)}?fields=id,trashed`,
+                { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.status === 401) {
+                const refreshed = await inlineRefreshToken();
+                if (!refreshed) return false;
+                const retry = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(key)}?fields=id,trashed`,
+                    { headers: { 'Authorization': `Bearer ${refreshed}` } });
+                if (!retry.ok) return false;
+                const info2 = await retry.json();
+                return !!info2 && info2.id && info2.trashed !== true;
+            }
+            if (!res.ok) return false;
+            const info = await res.json();
+            return !!info && info.id && info.trashed !== true;
+        } catch (e) {
+            return false;
+        }
+    })().then(alive => {
+        inlineImageFileAliveCache.set(key, { at: Date.now(), alive: alive === true });
+        return alive === true;
+    }, () => false);
+}
+
 /** Ширината в проценти от колоната: paramint 1..10 -> 10..100 (липсващ/странен = 100). */
 function inlineImageWidthPct(paramint) {
     const n = Number(paramint);
@@ -10368,6 +10439,15 @@ function resolveInlineImageFile(fileName) {
         at: Date.now(),
         promise: (async () => {
             if (typeof isOfflineMode !== 'undefined' && isOfflineMode) return { status: 'unavailable' };
+            // 1) По id от прикачените файлове на бележката - същият файл, който плочката отваря.
+            //    Записът в text_span пази само името, затова id-то се взима от media.txt.
+            //    Редът е като в uni (решение на собственика, 26.10.2026): иначе файл в друга папка
+            //    „Images" или име с друг регистър оставаше празен в MNV, а в uni се виждаше.
+            const mediaFileId = inlineImageMediaFileId(fileName);
+            if (mediaFileId && await inlineImageFileAlive(mediaFileId)) {
+                return { status: 'ok', fileId: mediaFileId };
+            }
+            // 2) Старото търсене по име в папка Images - резерва за записи без media.txt.
             const folderId = await inlineImageFolderId();
             if (!folderId) return { status: 'unavailable' };
             const found = await inlineImageFilesByNameDetailed(folderId, fileName);
