@@ -24673,49 +24673,49 @@ async function createNoteElement(noteContent) {
         if (selection.toString().length > 0) {
             return;
         }
-        // Отваряме модала, само ако кликът не е върху футъра
-        if (!e.target.closest('.note-footer')) {
-            const currentGdid = noteContent.gdid || note.dataset.g;
+        // От 26.10.2026 кликът във футъра (.note-footer) също отваря бележката: карта, запълнена
+        // изцяло от вложена снимка, няма празно място за докосване. Иконите за снимка и видео във
+        // футъра продължават да отварят своето превю — addInNotePreviewListener спира събитието.
+        const currentGdid = noteContent.gdid || note.dataset.g;
 
-            // --- FORCE GDRIVE READ LOGIC ---
-            const forceGDriveRead = localStorage.getItem('forceGDriveRead') === 'true';
-            if (forceGDriveRead && currentGdid) {
-                showToast(_('loadingFromDrive'), 2000);
-                const txt = await fetchGDriveFileContent(currentGdid);
-                if (txt) {
-                    try {
-                        const newItem = JSON.parse(txt);
-                        // Update memory
-                        Object.assign(noteContent, newItem);
-                        // Update critical fields for modal
-                        if (newItem.notetxt !== undefined) fileContent = newItem.notetxt;
-                        else if (newItem.text !== undefined) fileContent = newItem.text;
+        // --- FORCE GDRIVE READ LOGIC ---
+        const forceGDriveRead = localStorage.getItem('forceGDriveRead') === 'true';
+        if (forceGDriveRead && currentGdid) {
+            showToast(_('loadingFromDrive'), 2000);
+            const txt = await fetchGDriveFileContent(currentGdid);
+            if (txt) {
+                try {
+                    const newItem = JSON.parse(txt);
+                    // Update memory
+                    Object.assign(noteContent, newItem);
+                    // Update critical fields for modal
+                    if (newItem.notetxt !== undefined) fileContent = newItem.notetxt;
+                    else if (newItem.text !== undefined) fileContent = newItem.text;
 
-                        if (newItem.title_span !== undefined) titleSpan = newItem.title_span;
-                        if (newItem.text_span !== undefined) textSpan = newItem.text_span;
+                    if (newItem.title_span !== undefined) titleSpan = newItem.title_span;
+                    if (newItem.text_span !== undefined) textSpan = newItem.text_span;
 
-                        extraData = { ...noteContent };
-                        delete extraData.notetxt;
+                    extraData = { ...noteContent };
+                    delete extraData.notetxt;
 
-                        // Update global data array reference too (find and update)
-                        if (typeof allNotesData !== 'undefined') {
-                            const noteInHeader = allNotesData.find(n => n.gdid === currentGdid);
-                            if (noteInHeader) {
-                                Object.assign(noteInHeader, newItem);
-                            }
+                    // Update global data array reference too (find and update)
+                    if (typeof allNotesData !== 'undefined') {
+                        const noteInHeader = allNotesData.find(n => n.gdid === currentGdid);
+                        if (noteInHeader) {
+                            Object.assign(noteInHeader, newItem);
                         }
-
-                    } catch (err) {
-                        console.error("Error parsing GDrive content", err);
-                        showToast(_('errorParsingNote'), 3000);
                     }
+
+                } catch (err) {
+                    console.error("Error parsing GDrive content", err);
+                    showToast(_('errorParsingNote'), 3000);
                 }
             }
-            // --- END FORCE GDRIVE READ LOGIC ---
-
-            const noteBgColor = getNoteColorCss(noteColor);
-            showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: (function () { try { const _src = (typeof noteContent !== 'undefined' && noteContent) ? noteContent : extraData; const _live = (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) ? allNotesData.find(n => n && (String(n.gdid) === String(_src.gdid) || (n.id !== undefined && _src.id !== undefined && String(n.id) === String(_src.id)))) : null; return (_live && _live.boardid !== undefined) ? _live.boardid : extraData.boardid; } catch (e) { return extraData.boardid; } })(), id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
         }
+        // --- END FORCE GDRIVE READ LOGIC ---
+
+        const noteBgColor = getNoteColorCss(noteColor);
+        showModal({ raw: fileContent, format: textSpan, titleFormat: titleSpan, color: noteBgColor, boardId: (function () { try { const _src = (typeof noteContent !== 'undefined' && noteContent) ? noteContent : extraData; const _live = (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) ? allNotesData.find(n => n && (String(n.gdid) === String(_src.gdid) || (n.id !== undefined && _src.id !== undefined && String(n.id) === String(_src.id)))) : null; return (_live && _live.boardid !== undefined) ? _live.boardid : extraData.boardid; } catch (e) { return extraData.boardid; } })(), id: noteID, gdid: currentGdid, datemod: extraData.datemod, originalNote: noteContent }, note);
     };
 
     // Обработва клик върху хедъра (за изтриване)
