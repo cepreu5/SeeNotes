@@ -1007,6 +1007,67 @@ main {
     border: 1px dashed rgba(127, 127, 127, .55);
 }
 
+/* X за махане на файла: на всяка плочка и ВИНАГИ видим - не само при задържане, защото на телефон
+   няма как да се задържи. Кръгът е 16px в горния десен ъгъл (плочката е 40x40), а кутията около
+   него - 20x20, за да се уцели с пръст; плочката реже извън себе си, затова зоната е отвътре.
+   Знакът е нарисуван с две черти (градиенти), без емоджи и без картинка - остава чист във всеки
+   мащаб и се вижда и върху снимка, защото кръгът е бял. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 3;
+    display: block;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Бялото кръгче: то държи X-ът четим върху снимка и върху червената PDF плочка. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(213, 69, 59, .8), 0 1px 2px rgba(0, 0, 0, .35);
+    transition: background-color .15s ease;
+}
+
+/* Самият знак: два тънки диагонала на кръст. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    background:
+        linear-gradient(to top right, transparent calc(50% - 0.8px), #d5453b 0, #d5453b calc(50% + 0.8px), transparent 0),
+        linear-gradient(to bottom right, transparent calc(50% - 0.8px), #d5453b 0, #d5453b calc(50% + 0.8px), transparent 0);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-del:hover::before {
+    background: #fdeceb;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-del:active::before {
+    background: #f8d5d2;
+}
+
+/* Клавиатура: същият син пръстен като на плочката, за да се вижда къде е фокусът. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del:focus-visible {
+    outline: 2px solid #3a6ff0;
+    outline-offset: 1px;
+    border-radius: 50%;
+}
+
+/* Без движение: кръгчето сменя цвета си веднага. */
+@media (prefers-reduced-motion: reduce) {
+    :is(#modal-body, .nw-modal-body) .nm-attach-del::before {
+        transition: none;
+    }
+}
+
 pre,
 code {
     font-size: 100%;
