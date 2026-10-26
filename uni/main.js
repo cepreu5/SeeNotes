@@ -27318,7 +27318,8 @@ function markPendingAttachmentTile(tile, attachment) {
  * Лентата с плочки на прикачените файлове: същият строеж в режим четене (под бележката, след ред) и
  * в режим Редактиране (под кутията за редактиране), за да е един и същ редът, както в оригинала.
  * Лентата се строи само когато има прикачени файлове - празна не заема място. Прикачването става с
- * бутона с кламерчето в реда с бутоните (той отваря същото поле за избор на файл).
+ * бутона с кламерчето в реда с бутоните (той отваря същото поле за избор на файл); той липсва в
+ * демо режима, защото там няма Google Drive папка и прикачването не работи.
  * @returns {HTMLElement|null} лентата, или null (няма прикачени файлове).
  */
 function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
@@ -30152,62 +30153,59 @@ function initNoteEditUI() {
         footerToolbar.dataset.editOnly = 'true';
         modalContentBox.appendChild(footerToolbar);
     }
-    // Add attach button if not exists
-    if (!document.getElementById('note-attach-btn')) {
-        const attachBtn = document.createElement('div');
-        attachBtn.id = 'note-attach-btn';
-        attachBtn.className = 'modal-footer-btn';
-        attachBtn.innerHTML = paperclipIconSvg;
-        attachBtn.title = (typeof _ === 'function') ? _('attachFileTooltip') || "Attach file" : "Attach file";
-        attachBtn.addEventListener('click', (e) => {
+    // Бутонът с кламерите се създава само извън демо режима: в демото няма Google Drive папка,
+    // значи прикачването не работи и бутонът само лъже, че може.
+    let attachBtnEl = IS_DEMO_MODE ? null : document.getElementById('note-attach-btn');
+    if (!IS_DEMO_MODE && !attachBtnEl) {
+        attachBtnEl = document.createElement('div');
+        attachBtnEl.id = 'note-attach-btn';
+        attachBtnEl.className = 'modal-footer-btn';
+        attachBtnEl.innerHTML = paperclipIconSvg;
+        attachBtnEl.title = (typeof _ === 'function') ? _('attachFileTooltip') || "Attach file" : "Attach file";
+        attachBtnEl.addEventListener('click', (e) => {
             e.stopPropagation();
             const attachInput = document.getElementById('modal-attach-image-input');
             if (attachInput) attachInput.click();
         });
+    }
 
-        // Add save button if not exists
-        const saveBtn = document.createElement('div');
-        saveBtn.id = 'note-save-btn';
-        saveBtn.className = 'modal-footer-btn';
-        saveBtn.innerHTML = diskIconSvg;
-        saveBtn.title = (typeof _ === 'function') ? _('saveTooltip') || "Save changes" : "Save changes";
-        saveBtn.addEventListener('click', (e) => {
+    // Add save button if not exists
+    let saveBtnEl = document.getElementById('note-save-btn');
+    if (!saveBtnEl) {
+        saveBtnEl = document.createElement('div');
+        saveBtnEl.id = 'note-save-btn';
+        saveBtnEl.className = 'modal-footer-btn';
+        saveBtnEl.innerHTML = diskIconSvg;
+        saveBtnEl.title = (typeof _ === 'function') ? _('saveTooltip') || "Save changes" : "Save changes";
+        saveBtnEl.addEventListener('click', (e) => {
             e.stopPropagation();
             if (typeof saveEditedNote === 'function') saveEditedNote();
         });
+    }
 
-        // Add preview button
-        const previewBtn = document.createElement('div');
-        previewBtn.id = 'note-preview-btn';
-        previewBtn.className = 'modal-footer-btn';
-        previewBtn.innerHTML = eyeIconSvg;
-        previewBtn.style.backgroundColor = '#4a90e2';
-        previewBtn.title = (typeof _ === 'function') ? _('previewTooltip') || "Preview changes" : "Preview changes";
-        previewBtn.addEventListener('click', (e) => {
+    // Add preview button if not exists
+    let previewBtnEl = document.getElementById('note-preview-btn');
+    if (!previewBtnEl) {
+        previewBtnEl = document.createElement('div');
+        previewBtnEl.id = 'note-preview-btn';
+        previewBtnEl.className = 'modal-footer-btn';
+        previewBtnEl.innerHTML = eyeIconSvg;
+        previewBtnEl.style.backgroundColor = '#4a90e2';
+        previewBtnEl.title = (typeof _ === 'function') ? _('previewTooltip') || "Preview changes" : "Preview changes";
+        previewBtnEl.addEventListener('click', (e) => {
             e.stopPropagation();
             if (typeof previewEditedNote === 'function') previewEditedNote();
         });
+    }
 
-        if (footerToolbar) {
-            // We append them in order: Attach, Preview, Search (already exists, will move), Save
-            const existingSearchBtn = document.getElementById('note-search-btn');
-            footerToolbar.appendChild(attachBtn);
-            footerToolbar.appendChild(previewBtn);
-            if (existingSearchBtn) footerToolbar.appendChild(existingSearchBtn);
-            footerToolbar.appendChild(saveBtn);
-        }
-    } else {
-        // If buttons already exist, re-append them to ensure order: Attach, Preview, Search, Save
-        const aBtn = document.getElementById('note-attach-btn');
-        const sBtn = document.getElementById('note-save-btn');
-        const pBtn = document.getElementById('note-preview-btn');
-        const searchBtn = document.getElementById('note-search-btn');
-        if (footerToolbar) {
-            if (aBtn) footerToolbar.appendChild(aBtn);
-            if (pBtn) footerToolbar.appendChild(pBtn);
-            if (searchBtn) footerToolbar.appendChild(searchBtn);
-            if (sBtn) footerToolbar.appendChild(sBtn);
-        }
+    if (footerToolbar) {
+        // Редът е: Attach, Preview, Search (вече съществува, само се мести), Save.
+        // В демо режим кламерът липсва, затова останалите три се подреждат едни след други.
+        const searchBtnEl = document.getElementById('note-search-btn');
+        if (attachBtnEl) footerToolbar.appendChild(attachBtnEl);
+        if (previewBtnEl) footerToolbar.appendChild(previewBtnEl);
+        if (searchBtnEl) footerToolbar.appendChild(searchBtnEl);
+        if (saveBtnEl) footerToolbar.appendChild(saveBtnEl);
     }
     if (footerToolbar) {
         observeModalFooterDateVisibility(footerToolbar);
