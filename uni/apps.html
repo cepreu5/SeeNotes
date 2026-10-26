@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="bg" data-app-mode="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cx-apps — Две приложения. Един вход.</title>
+<meta name="description" content="CX Notes за бележки на стикери и CX Tracks за маршрути — двете приложения на cx-apps.site, събрани на едно място.">
+<meta name="theme-color" content="#04091a">
+<link rel="icon" type="image/png" sizes="192x192" href="apps/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apps/icon-180.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="cx-apps.site">
+<meta property="og:locale" content="bg_BG">
+<meta property="og:title" content="cx-apps — Две приложения. Един вход.">
+<meta property="og:description" content="CX Notes за бележки на стикери и CX Tracks за маршрути — двете приложения на cx-apps.site, събрани на едно място.">
+<meta property="og:url" content="https://cx-notes.cx-apps.site/apps/">
+<meta property="og:image" content="https://cx-notes.cx-apps.site/apps/banner.jpg">
+<meta property="og:image:width" content="718">
+<meta property="og:image:height" content="499">
+<meta property="og:image:alt" content="Банер на cx-apps.site: светеща врата и четири цветни икони">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="cx-apps — Две приложения. Един вход.">
+<meta name="twitter:description" content="CX Notes за бележки на стикери и CX Tracks за маршрути — двете приложения на cx-apps.site, събрани на едно място.">
+<meta name="twitter:image" content="https://cx-notes.cx-apps.site/apps/banner.jpg">
+<style>
+  :root {
+    color-scheme: dark;
+    --app-bg: #04091a;
+    --app-panel: #0a152c;
+    --app-panel-2: #0d1c39;
+    --app-line: rgba(120, 170, 255, .16);
+    --app-ink: #e9f2ff;
+    --app-dim: #93a7c6;
+    --app-cyan: #3fd0ff;
+    --app-mint: #77dfc9;
+    --app-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --app-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --app-radius: 16px;
+  }
+  html[data-app-mode="dark"] { color-scheme: dark; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    background: var(--app-bg);
+    color: var(--app-ink);
+    font-family: var(--app-font);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .page {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    overflow-x: clip;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 20px 16px 26px;
+    background: var(--app-bg);
+  }
+  /* the cyan glow behind the top of the page, as in the plan mockups */
+  .page::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: -120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 720px;
+    height: 420px;
+    max-width: 160%;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(63, 208, 255, .22), rgba(119, 223, 201, .06), transparent 72%);
+  }
+
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; }
+
+  /* ---------- brand header ---------- */
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .brand-word {
+    font-weight: 700; font-size: 14px; letter-spacing: -.01em;
+    min-width: 0; overflow-wrap: anywhere;
+  }
+  .pill {
+    margin-left: auto;
+    flex: none;
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--app-dim);
+    border: 1px solid var(--app-line);
+    border-radius: 999px;
+    padding: 3px 9px;
+    white-space: nowrap;
+  }
+
+  /* ---------- hero ---------- */
+  .hero {
+    /* the h1's own metrics, so the mark beside it can be measured in h1 lines */
+    --h1-size: clamp(26px, 7.1vw, 33px);
+    --h1-lh: 1.1;
+    --mark: calc(2 * var(--h1-size) * var(--h1-lh));
+    margin: 22px 0 18px;
+  }
+  /* logo in front of the headline, exactly two headline lines tall */
+  .hero-head { display: flex; align-items: flex-start; gap: 11px; min-width: 0; }
+  .hero-mark {
+    flex: none;
+    width: var(--mark);
+    height: var(--mark);
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    display: block;
+    border-radius: 14px;
+    border: 1px solid var(--app-line);
+    background: #050d1f;
+  }
+  .hero h1 {
+    flex: 1 1 auto;
+    min-width: 0;
+    /* just under the width of the whole headline, so it breaks at the sentence
+       stop and reads as the two lines the mark beside it measures */
+    max-width: 11.2em;
+    margin: 0 0 10px;
+    font-size: var(--h1-size);
+    line-height: var(--h1-lh);
+    font-weight: 800;
+    letter-spacing: -.03em;
+    overflow-wrap: break-word;
+    background: linear-gradient(100deg, #ffffff 10%, var(--app-cyan) 62%, var(--app-mint) 96%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  @supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+    .hero h1 { color: var(--app-ink); }
+  }
+  .lede {
+    margin: 0;
+    color: var(--app-dim);
+    font-size: 14.5px;
+    line-height: 1.5;
+    max-width: 46ch;
+  }
+  .lede-more { display: none; }
+
+  .hero-art {
+    margin: 16px 0 0;
+    border: 1px solid var(--app-line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #050d1f;
+    aspect-ratio: 718 / 499;
+  }
+  .hero-art img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* ---------- tiles ---------- */
+  .tiles { display: grid; grid-template-columns: 1fr; gap: 14px; margin: 0; padding: 0; }
+
+  .tile {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    text-decoration: none;
+    color: inherit;
+    overflow: hidden;
+    background: linear-gradient(180deg, var(--app-panel-2), var(--app-panel));
+    border: 1px solid var(--app-line);
+    border-radius: var(--app-radius);
+    position: relative;
+    transition: transform .28s cubic-bezier(.16, 1, .3, 1), border-color .28s, box-shadow .28s;
+  }
+  .tile:hover {
+    transform: translateY(-4px);
+    border-color: rgba(63, 208, 255, .5);
+    box-shadow: 0 22px 50px -32px rgba(63, 208, 255, .55);
+  }
+  .tile:focus-visible {
+    outline: 2px solid var(--app-cyan);
+    outline-offset: 3px;
+    border-color: rgba(63, 208, 255, .5);
+    box-shadow: 0 22px 50px -32px rgba(63, 208, 255, .55);
+  }
+
+  .tile-img {
+    position: relative;
+    aspect-ratio: 5 / 4;
+    overflow: hidden;
+    background: #050d1f;
+    flex: none;
+  }
+  .tile-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .tile-img::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 55%, rgba(10, 21, 44, .85));
+    pointer-events: none;
+  }
+
+  .tile-body { padding: 14px 15px 15px; display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .tile-body h2 { margin: 0 0 6px; font-size: 19px; letter-spacing: -.02em; font-weight: 700; }
+  .tile-body p { margin: 0 0 14px; color: var(--app-dim); font-size: 12.5px; line-height: 1.55; }
+  .tile-foot {
+    margin-top: auto;
+    padding-top: 11px;
+    border-top: 1px solid var(--app-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+  .tile-foot .url {
+    font-family: var(--app-mono);
+    font-size: 10px;
+    color: var(--app-dim);
+    opacity: .75;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .tile-foot .go { font-size: 12px; font-weight: 600; color: var(--app-cyan); white-space: nowrap; flex: none; }
+
+  .site-foot {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 10.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--app-dim);
+    opacity: .6;
+  }
+
+  /* ---------- entrance ---------- */
+  .arrive { animation: arrive .7s cubic-bezier(.16, 1, .3, 1) both; animation-delay: var(--at, 0s); }
+  @keyframes arrive { from { opacity: 0; transform: translateY(14px) scale(.985); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .arrive { animation: none !important; opacity: 1; transform: none; }
+    .tile { transition: none; }
+    .tile:hover { transform: none; }
+  }
+
+  /* ---------- wide ---------- */
+  @media (min-width: 760px) {
+    .page { padding: 22px 40px 30px; }
+
+    .brand { gap: 11px; }
+    .brand-word { font-size: 17px; }
+    .pill { font-size: 11px; padding: 4px 12px; }
+
+    /* stacked hero until the text column is wide enough for the logo beside two headline lines */
+    .hero { margin: 30px 0 24px; }
+    .hero-art { max-width: 560px; margin: 20px auto 0; }
+
+    .tiles { grid-template-columns: 1fr 1fr; gap: 24px; align-items: stretch; }
+    .tile-body { padding: 20px 22px; }
+    .tile-body h2 { font-size: 26px; margin-bottom: 8px; }
+    .tile-body p { font-size: 14.5px; line-height: 1.6; margin-bottom: 18px; }
+    .tile-foot { padding-top: 14px; }
+    .tile-foot .url { font-size: 11.5px; }
+    .tile-foot .go { font-size: 13.5px; }
+    .site-foot { margin-top: 34px; font-size: 11px; }
+  }
+
+  /* ---------- wide hero: text left, banner right ----------
+     From here the text column is wide enough to hold the logo plus two
+     headline lines, which is what keeps the mark exactly two lines tall. */
+  @media (min-width: 860px) {
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 44px;
+      margin: 40px 0 30px;
+      --h1-size: clamp(30px, 3.7vw, 50px);
+      --h1-lh: 1.04;
+    }
+    .hero-head { gap: 18px; }
+    .hero-mark { border-radius: 18px; }
+    .hero h1 { margin-bottom: 14px; }
+    .lede { font-size: 17px; max-width: 56ch; }
+    .lede-more { display: inline; }
+    .hero-art { margin: 0; max-width: none; border-radius: var(--app-radius); }
+  }</style>
+</head>
+<body>
+<div class="page">
+  <div class="wrap">
+
+    <header class="brand">
+      <span class="brand-word">cx-apps</span>
+      <span class="pill">2 приложения</span>
+    </header>
+
+    <section class="hero">
+      <div class="hero-text">
+        <div class="hero-head">
+          <img class="hero-mark" src="apps/icon-192.png" width="192" height="192"
+               alt="Икона на cx-apps">
+          <h1>Две приложения. Един вход.</h1>
+        </div>
+        <p class="lede">Бележки и маршрути, събрани на едно място.<span class="lede-more"> Изберете плочка и продължете направо в приложението.</span></p>
+      </div>
+      <figure class="hero-art">
+        <img src="apps/banner.jpg" width="718" height="499" fetchpriority="high" decoding="async"
+             alt="Банер на cx-apps.site: светеща врата и четири цветни икони — настройки, бележка, календар и графика">
+      </figure>
+    </section>
+
+    <div class="tiles">
+
+      <a class="tile arrive" href="https://cx-notes.cx-apps.site" style="--at:.1s">
+        <div class="tile-img">
+          <img src="apps/notes.jpg" width="800" height="739" loading="lazy" decoding="async"
+               alt="CX Notes: бележки на стикери, закачени върху коркова дъска">
+        </div>
+        <div class="tile-body">
+          <h2>CX Notes</h2>
+          <p>Бележки на стикери върху коркова дъска. Пиши, закачай и мести, без да губиш подредбата. Всяка бележка пази дата, час и прикачени файлове. Снимките и видеата се качват направо в бележката. Синхронизира се с Google Drive и работи и офлайн.</p>
+          <div class="tile-foot">
+            <span class="url">cx-notes.cx-apps.site</span>
+            <span class="go">Отвори →</span>
+          </div>
+        </div>
+      </a>
+
+      <a class="tile arrive" href="https://cx-tracks.cx-apps.site" style="--at:.24s">
+        <div class="tile-img">
+          <img src="apps/tracks.jpg" width="800" height="776" loading="lazy" decoding="async"
+               alt="CX Tracks: спътникова карта с начертан маршрут">
+        </div>
+        <div class="tile-body">
+          <h2>CX Tracks</h2>
+          <p>Записва маршрута, докато вървиш или караш. Старт, междинни точки и край на една карта. Разстояние, време и надморска височина за всяка следа. Спътникова карта, за да виждаш терена. Следите остават при теб и се пазят на телефона.</p>
+          <div class="tile-foot">
+            <span class="url">cx-tracks.cx-apps.site</span>
+            <span class="go">Отвори →</span>
+          </div>
+        </div>
+      </a>
+
+    </div>
+
+    <footer class="site-foot">cx-apps.site</footer>
+
+  </div>
+</div>
+</body>
+</html>
