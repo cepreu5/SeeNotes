@@ -1,8 +1,7 @@
-// Как големи вложени снимки (text_span type=8) се показват в бележка НА БОРДА.
-// Мери се истинският път: createNoteElement с фалшив Drive, който връща ГОЛЯМА снимка.
-// За всяка карта: рамката на снимката срещу .note-content и срещу самата карта - прелива ли,
-// реже ли се, колко от снимката остава извън картата.
-//   node .bolter/check/board-inline-large.mjs
+// Как големи вложени снимки (text_span type=8) се показват в бележка НА БОРДА на MNV: БЕЗ скрол.
+// Цялата снимка трябва да се вижда, значи високата снимка се смалява по ширина, а широката и
+// малката остават със същите размери. Мери се истинският път: createNoteElement с фалшив Drive.
+//   node .bolter/check/board-inline-fit-mnv.mjs
 import { chromium } from '/opt/nvm/versions/node/v22.23.4/lib/node_modules/playwright/index.mjs';
 import http from 'node:http'; import { readFile } from 'node:fs/promises'; import path from 'node:path';
 
@@ -96,15 +95,19 @@ async function run(viewport, label, hasTouch) {
 
   // Всеки случай: какво трябва да се види. w/h са очакваните размери на рамката в пиксели -
   // снимката НЕ се смалява, за да влезе; когато е по-висока от тялото, тялото се скролира.
+  // Всеки случай: какво трябва да се види. w/h са очакваните размери на рамката в пиксели -
+  // снимката НЕ се смалява, за да влезе; когато е по-висока от тялото, тялото се скролира.
+  // Всеки случай: какво трябва да се види. w/h са очакваните размери на рамката, когато снимката
+  // се побира и без смаляване; за високата снимка няма w/h - тя се смалява, за да се побере.
   const CASES = [
-    { key: 'wide-only-100', raw: '*', file: 'wide.png', pct: 10, w: 205, h: 115, scroll: false },
-    { key: 'tall-only', raw: '*', file: 'tall.png', pct: 10, w: 205, h: 282, scroll: true },
-    { key: 'wide-50', raw: '*', file: 'wide.png', pct: 5, w: 205, h: 115, scroll: false },
-    { key: 'tall-with-text', raw: '*\nнародни представители', file: 'tall.png', pct: 10, w: 205, h: 282, scroll: true },
-    { key: 'tall-in-body-text', raw: 'Обикновена бележка\n*\nи още текст', file: 'tall.png', pct: 10, w: 205, h: 282, scroll: true },
+    { key: 'wide-only-100', raw: '*', file: 'wide.png', pct: 10, w: 205, h: 115 },
+    { key: 'tall-only', raw: '*', file: 'tall.png', pct: 10 },
+    { key: 'wide-50', raw: '*', file: 'wide.png', pct: 5, w: 205, h: 115 },
+    { key: 'tall-with-text', raw: '*\nнародни представители', file: 'tall.png', pct: 10 },
+    { key: 'tall-in-body-text', raw: 'Обикновена бележка\n*\nи още текст', file: 'tall.png', pct: 10 },
     // С футър с икони (бележка с прикачен файл): футърът е absolute върху долните 35px на картата.
-    { key: 'tall-with-footer', raw: '*', file: 'tall.png', pct: 10, footer: true, w: 205, h: 282, scroll: true },
-    { key: 'small-only', raw: '*', file: 'small.png', pct: 10, w: 205, h: 137, scroll: false },
+    { key: 'tall-with-footer', raw: '*', file: 'tall.png', pct: 10, footer: true },
+    { key: 'small-only', raw: '*', file: 'small.png', pct: 10, w: 205, h: 137 },
   ];
 
   const out = await page.evaluate(async ({ cases }) => {
@@ -239,135 +242,37 @@ async function run(viewport, label, hasTouch) {
   console.log('===== ' + label + ' (' + viewport.width + 'x' + viewport.height + ') =====');
   for (const r of out) console.log(JSON.stringify(r));
 
-  // Договорът: снимката остава ГОЛЯМА; ако не се побира по височина, тялото се скролира и след
-  // скрол до края долният ръб на снимката се вижда - не под ръба на картата и не под футъра.
+  // Договорът (собственик, 27.10.2026): в картата НЯМА скрол - цялата снимка се вижда. Ако при
+  // ширината си е по-висока от тялото, ширината се смалява пропорционално; широката и малката
+  // снимка остават със същите размери, както дотук.
   for (const c of CASES) {
     const r = out.find(x => x.key === c.key);
     const t = label + '/' + c.key;
     ok(!!r, `${t}: картата е измерена`, r);
     if (!r) continue;
-    ok(r.frame && r.frame.w === c.w && r.frame.h === c.h,
-      `${t}: снимката не се смалява (рамка ${r.frame && r.frame.w}x${r.frame && r.frame.h}, очаквано ${c.w}x${c.h})`, r);
-    ok(r.frameStyleW === c.w + 'px', `${t}: ширината е ${c.w}px (процент от снимката с таван картата)`, r);
-    if (c.scroll) {
-      ok(r.hasScrollClass, `${t}: картата е с пуснат скрол на тялото (.note-body-scroll)`, r);
-      ok(r.scrollMax > 0, `${t}: тялото се скролира (scrollHeight ${r.content && r.content.scrollH} > clientHeight ${r.content && r.content.clientH})`, r);
-      ok(r.visibleFractionTop < 1, `${t}: без скрол снимката е по-висока от картата (вижда се ${r.visibleFractionTop})`, r);
-      ok(r.scrollTopAtMax > 0, `${t}: скролът стига до края (scrollTop ${r.scrollTopAtMax})`, r);
-      // Всеки пиксел от снимката се стига с плъзгане - нищо не остава завинаги под ръба или футъра.
-      ok(r.reachableFraction >= 0.999, `${t}: цялата снимка е достижима със скрол (${r.reachableFraction})`, r);
-      // Долният край се вижда при скрол до края (там е последната ивица от снимката, не началото).
-      ok(r.visibleFractionMax > 0, `${t}: при скрол до края се вижда долната част от снимката (${r.visibleFractionMax})`, r);
-      ok(r.frameBottomOverCardAtMax <= 0, `${t}: долният ръб на снимката е над ръба на картата (${r.frameBottomOverCardAtMax}px)`, r);
-      ok(r.underFooterAtMax === null || r.underFooterAtMax <= 0, `${t}: долният ръб на снимката не е под футъра (${r.underFooterAtMax}px)`, r);
-    } else {
-      ok(!r.hasScrollClass, `${t}: картата НЕ пуска скрол (снимката се побира)`, r);
-      ok(r.scrollMax === 0, `${t}: няма какво да се скролира (scrollMax ${r.scrollMax})`, r);
-      ok(r.visibleFractionTop >= 0.999, `${t}: цялата снимка се вижда без скрол (${r.visibleFractionTop})`, r);
-    }
-    ok(r.insideCardX !== false && r.horizontalOverflowPx === 0, `${t}: снимката не излиза от картата по хоризонтала (${r.horizontalOverflowPx}px)`, r);
     ok(r.state === 'ready', `${t}: снимката е заредена (${r.state})`, r);
-  }
-
-  // Жестът: плъзгане с пръст (телефон) / колелце (десктоп) върху високата снимка скролва бележката
-  // и НЕ мести картата, нито страницата. Картата се строи наново в отделен домакин, защото при
-  // седем карти подред последната излиза извън екрана и жестът не може да я улучи.
-  const gesture = await page.evaluate(async () => {
-    // Домакинът от геометричните проверки покрива целия екран - маха се, иначе жестът попада в него.
-    const big = document.getElementById('big-inline-host');
-    if (big) big.style.display = 'none';
-    let g = document.getElementById('gesture-host');
-    if (g) g.remove();
-    g = document.createElement('div');
-    g.id = 'gesture-host';
-    g.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;display:flex;gap:10px;overflow:hidden;z-index:99998;background:#ddd;padding:8px;';
-    document.body.appendChild(g);
-    const id = 980001;
-    const gdid = 'gesture' + Date.now();
-    const span = { start: 0, end: 1, type: 8, paramstring: '/storage/emulated/0/Pictures/Images/tall.png', paramint: 10 };
-    const nt = {
-      alarm_type: -1, boardid: null, calendarDate: 0, color: 0, date: Date.now(), datemod: Date.now(),
-      eventId: 0, gdid, id, notetxt: '*', numord: id, sellist: 0, status: 0,
-      text_span: JSON.stringify(span), title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, version: 244,
-    };
-    if (typeof mediaData !== 'undefined' && Array.isArray(mediaData)) mediaData.push({ noteid: gdid, path: 'photo.jpg', pathGD: 'ID_photo.jpg', type: 1, name: 'photo.jpg' });
-    allNotesData.push(nt);
-    const el = await createNoteElement(nt);
-    el.style.display = 'flex';
-    el.style.contentVisibility = 'visible';
-    el.dataset.probeKey = 'gesture';
-    g.appendChild(el);
-    const deadline = Date.now() + 12000;
-    while (Date.now() < deadline) {
-      const f = el.querySelector('.nm-inline-img');
-      if (f && f.dataset.nmState && f.dataset.nmState !== 'loading') break;
-      await new Promise(r => setTimeout(r, 40));
-    }
-    await new Promise(r => requestAnimationFrame(r));
-    const content = el.querySelector('.note-content');
-    const frame = content ? content.querySelector('.nm-inline-img[data-nm-file]') : null;
-    if (!content || !frame) return null;
-    content.scrollTop = 0;
-    const fr = frame.getBoundingClientRect();
-    const cr = content.getBoundingClientRect();
-    const cardRect = el.getBoundingClientRect();
-    return {
-      x: Math.round(fr.left + fr.width / 2),
-      y: Math.round(Math.max(cr.top, fr.top) + 20),
-      cardTop: Math.round(cardRect.top),
-      cardLeft: Math.round(cardRect.left),
-      scrollMax: Math.max(0, content.scrollHeight - content.clientHeight),
-    };
-  });
-  if (gesture && gesture.scrollMax > 0) {
-    const cdp = await ctx.newCDPSession(page);
-    if (hasTouch) {
-      // Истински тъч жестове: пръст надолу по снимката. Input.synthesizeScrollGesture не стига до
-      // вътрешния скрол (проверено - вижда scrollTop 0), затова жестът се праща като touch събития,
-      // както идва от екрана.
-      const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
-      await touch('touchStart', [{ x: gesture.x, y: gesture.y, id: 1 }]);
-      for (let i = 1; i <= 8; i++) await touch('touchMove', [{ x: gesture.x, y: gesture.y - i * 12, id: 1 }]);
-      await touch('touchEnd', []);
+    ok(!r.hasScrollClass, `${t}: картата не е с класа за скрол (.note-body-scroll)`, r);
+    ok(r.scrollMax === 0, `${t}: в картата няма какво да се скролира (scrollMax ${r.scrollMax})`, r);
+    ok(r.visibleFractionTop >= 0.999, `${t}: цялата снимка се вижда без скрол (${r.visibleFractionTop})`, r);
+    ok(r.frame.bottom <= r.visibleBottom + 1,
+      `${t}: долният ръб на снимката е над ръба на картата/футъра (${r.frame.bottom} срещу ${Math.round(r.visibleBottom)})`, r);
+    ok(r.frame.top >= r.content.top - 1, `${t}: горният ръб на снимката е под ръба на тялото`, r);
+    ok(r.insideCardX !== false && r.horizontalOverflowPx === 0,
+      `${t}: снимката не излиза от картата по хоризонтала (${r.horizontalOverflowPx}px)`, r);
+    const ratio = r.natural ? r.natural.h / r.natural.w : 0;
+    ok(ratio > 0 && Math.abs(r.frame.h / r.frame.w - ratio) < 0.03,
+      `${t}: снимката е в същите пропорции (${r.frame.w}x${r.frame.h})`, r);
+    if (c.w) {
+      ok(r.frame.w === c.w && r.frame.h === c.h,
+        `${t}: снимката е със същите размери (${r.frame.w}x${r.frame.h}, очаквано ${c.w}x${c.h})`, r);
     } else {
-      await cdp.send('Input.synthesizeScrollGesture', {
-        x: gesture.x, y: gesture.y, xDistance: 0, yDistance: -80,
-        gestureSourceType: 'mouse', speed: 800, preventFling: true,
-      });
+      const availH = Math.round(r.visibleBottom - r.content.top);
+      ok(r.frame.w < 205, `${t}: високата снимка е смалена по ширина (${r.frame.w} < 205)`, r);
+      ok(r.frame.h <= availH, `${t}: височината се побира в тялото (${r.frame.h} <= ${availH})`, r);
+      ok(r.frame.w >= 60, `${t}: снимката не е смалена до невидимо (${r.frame.w}px)`, r);
     }
-    const scrolled = await page.waitForFunction(() => {
-      const c = document.querySelector('#gesture-host .note-content');
-      return c && c.scrollTop > 0;
-    }, null, { timeout: 4000 }).then(() => true, () => false);
-    const a = await page.evaluate(() => {
-      const el = document.querySelector('#gesture-host .note');
-      const content = el.querySelector('.note-content');
-      const r = el.getBoundingClientRect();
-      return { scrollTop: Math.round(content.scrollTop), top: Math.round(r.top), left: Math.round(r.left), pageY: window.scrollY };
-    });
-    const mode = hasTouch ? 'плъзгане с пръст' : 'колелце';
-    ok(scrolled && a.scrollTop > 0, `${label}: ${mode} върху високата снимка скролва бележката (scrollTop ${a.scrollTop})`, a);
-    ok(a.top === gesture.cardTop && a.left === gesture.cardLeft,
-      `${label}: жестът не мести картата (${a.top}/${a.left} срещу ${gesture.cardTop}/${gesture.cardLeft})`, a);
-    ok(a.pageY === 0, `${label}: жестът не скролва страницата (scrollY ${a.pageY})`, a);
-
-    // Обратното: бележка, в която НЯМА какво да се скролира, не бива да поема жеста - там плъзгането
-    // подминава картата. Картата не се мести (в двете приложения местене на карта няма - местят се
-    // само плаващите бутони), значи жестът отива по-нататък и не залепва по снимката.
-    const noScroll = await page.evaluate(() => {
-      const el = document.querySelector('#gesture-host .note');
-      const c = el.querySelector('.note-content');
-      c.scrollTop = 0;
-      return { hasClass: el.classList.contains('note-body-scroll') };
-    });
-    ok(noScroll.hasClass, `${label}: картата с високата снимка е с пуснат скрол (за жеста)`, noScroll);
-  } else {
-    ok(false, `${label}: карта за жестовата проверка (${gesture ? 'scrollMax=' + gesture.scrollMax : 'липсва'})`, gesture);
   }
 
-  // Карта ИЗВЪН екрана на дълъг борд: .note има content-visibility: auto, значи браузърът не я
-  // подрежда и тялото ѝ е с височина 0, докато не влезе в изгледа. Класът трябва да дойде тогава -
-  // иначе точно високата снимка по-надолу в борда остава без скрол.
   const offscreen = await page.evaluate(async () => {
     const big = document.getElementById('big-inline-host');
     if (big) big.style.display = 'none';
@@ -397,20 +302,23 @@ async function run(viewport, label, hasTouch) {
       await new Promise(r => setTimeout(r, 40));
     }
     await new Promise(r => requestAnimationFrame(r));
-    const before = { top: Math.round(el.getBoundingClientRect().top), clientH: el.querySelector('.note-content').clientHeight, cls: el.classList.contains('note-body-scroll') };
+    const fr = () => { const f = el.querySelector('.nm-inline-img'); const b = f ? f.getBoundingClientRect() : null; return b ? Math.round(b.width) : 0; };
+    const before = { top: Math.round(el.getBoundingClientRect().top), clientH: el.querySelector('.note-content').clientHeight, w: fr() };
     el.scrollIntoView({ block: 'center' });
     for (let i = 0; i < 40; i++) {
       await new Promise(r => setTimeout(r, 50));
-      if (el.classList.contains('note-body-scroll')) break;
+      if (fr() < before.w) break;
     }
     const content = el.querySelector('.note-content');
     return {
       before,
-      after: { top: Math.round(el.getBoundingClientRect().top), clientH: content.clientHeight, cls: el.classList.contains('note-body-scroll'), scrollMax: content.scrollHeight - content.clientHeight },
+      after: { top: Math.round(el.getBoundingClientRect().top), clientH: content.clientHeight, w: fr(), scrollMax: content.scrollHeight - content.clientHeight },
     };
   });
-  ok(offscreen.after.cls && offscreen.after.scrollMax > 0,
-    `${label}: карта извън екрана на дълъг борд пуска скрол (scrollMax ${offscreen.after.scrollMax})`, offscreen);
+  ok(offscreen.after.w > 0 && offscreen.after.w < 205,
+    `${label}: картата на дълъг борд е със смалена висока снимка (${offscreen.after.w}px < 205)`, offscreen);
+  ok(offscreen.after.scrollMax === 0,
+    `${label}: смалената снимка се побира без скрол (scrollMax ${offscreen.after.scrollMax})`, offscreen);
 
   // Резервният път, когато картата още НЕ може да се измери (тяло с височина 0, както при карта,
   // която браузърът още не е подредил): класът трябва да дойде, щом тялото стане измеримо.
@@ -442,17 +350,19 @@ async function run(viewport, label, hasTouch) {
       await new Promise(r => setTimeout(r, 40));
     }
     await new Promise(r => requestAnimationFrame(r));
-    const whileHidden = { cls: el.classList.contains('note-body-scroll'), clientH: content.clientHeight };
+    const fr = () => { const f = el.querySelector('.nm-inline-img'); const b = f ? f.getBoundingClientRect() : null; return b ? Math.round(b.width) : 0; };
+    const whileHidden = { w: fr(), clientH: content.clientHeight };
     content.style.display = '';
     for (let i = 0; i < 40; i++) {
       await new Promise(r => setTimeout(r, 50));
-      if (el.classList.contains('note-body-scroll')) break;
+      if (fr() < whileHidden.w) break;
     }
-    return { whileHidden, after: { cls: el.classList.contains('note-body-scroll'), clientH: content.clientHeight, scrollMax: content.scrollHeight - content.clientHeight } };
+    return { whileHidden, after: { w: fr(), clientH: content.clientHeight, scrollMax: content.scrollHeight - content.clientHeight } };
   });
-  ok(late.whileHidden.cls === false, `${label}: докато тялото не може да се измери, класът не се слага (clientHeight ${late.whileHidden.clientH})`, late);
-  ok(late.after.cls && late.after.scrollMax > 0,
-    `${label}: щом тялото стане измеримо, скролът се пуска (scrollMax ${late.after.scrollMax})`, late);
+  ok(late.after.w > 0 && late.after.w < 205,
+    `${label}: щом тялото стане измеримо, високата снимка е смалена (${late.after.w}px < 205)`, late);
+  ok(late.after.scrollMax === 0,
+    `${label}: след смаляването няма скрол (scrollMax ${late.after.scrollMax})`, late);
 
   // Отворена бележка (модал): нищо не се променя - нито размерът на снимката, нито скролът.
   const modal = await page.evaluate(async () => {
