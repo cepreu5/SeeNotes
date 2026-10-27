@@ -10793,6 +10793,10 @@ function hydrateInlineImages(rootEl) {
                 const want = nmInlineOnBoard(box) ? Math.max(1, Math.round(px0 * nmInlineBoardScale(box))) : px0;
                 const columnWidth = nmInlineColumnWidth(box);
                 const px = (columnWidth > 0 && want > columnWidth) ? columnWidth : want;
+                // Ширината не се пипа - снимката остава голяма. Ако при нея снимката е по-висока от
+                // тялото на картата, картата получава клас, който пуска скрол на тялото, за да се
+                // стигне до долния ръб на снимката (вж. .note-body-scroll в style.css).
+                nmInlineMarkBoardScroll(box, px, img);
                 box.style.width = px + 'px';
                 box.dataset.nmPx = String(px);
                 box.dataset.nmBaseUsed = String(img.naturalWidth);
@@ -10949,6 +10953,54 @@ function nmInlineColumnWidth(box) {
     const padding = styles ? (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0) : 0;
     const width = Math.round((column.clientWidth || 0) - padding);
     return width > 0 ? width : 0;
+}
+
+/** Карти, за които се чака влизане в изгледа, за да се премери тялото им (вж. nmInlineMarkBoardScroll). */
+const nmInlineScrollWaiters = new WeakSet();
+
+/**
+ * Слага на картата клас .note-body-scroll, когато вградената снимка при тази ширина е по-висока от
+ * тялото на картата. Тогава тялото се скролира, за да се стигне до долния ръб на снимката - .note
+ * реже всичко извън себе си, значи без скрол краят ѝ е недостъпен (вж. .note-body-scroll в
+ * style.css, там е и мястото отдолу за футъра с иконите). Ширината НЕ се пипа: снимката остава
+ * голяма (собственик, 27.10.2026). Извън борда (отворена бележка) и извън .note-content
+ * (ред-заглавие) не се прави нищо; малка или широка снимка също не получава класа.
+ */
+function nmInlineMarkBoardScroll(box, px, img) {
+    if (!box || !box.closest || !img) return;
+    if (!img.naturalWidth || !img.naturalHeight) return;
+    if (!nmInlineOnBoard(box)) return;
+    const body = box.closest('.note-content');
+    const card = body ? body.closest('.note') : null;
+    if (!body || !card) return;
+    const apply = () => {
+        const styles = typeof window.getComputedStyle === 'function' ? getComputedStyle(body) : null;
+        const padding = styles ? (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0) : 0;
+        const availH = (body.clientHeight || 0) - padding;
+        if (availH <= 0) return false;
+        card.classList.toggle('note-body-scroll', (px * img.naturalHeight / img.naturalWidth) > availH);
+        return true;
+    };
+    if (apply()) return;
+    // Картата още не е в страницата или е извън изгледа: .note има content-visibility: auto, значи
+    // браузърът не я подрежда и височината на тялото е 0. Дотук класът се слагаше само веднъж и
+    // точно високата снимка на дълъг борд (или карта, която още не е в page-а) оставаше без скрол.
+    // Затова се чака тялото да добие височина - влизането в изгледа и подреждането на картата са
+    // точно това събитие. Наблюдението пада, щом мярката стане възможна.
+    if (nmInlineScrollWaiters.has(card)) return;
+    nmInlineScrollWaiters.add(card);
+    const retry = () => {
+        if (!apply()) return false;
+        nmInlineScrollWaiters.delete(card);
+        if (ro) ro.disconnect();
+        if (io) io.disconnect();
+        return true;
+    };
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(retry) : null;
+    if (ro) ro.observe(body);
+    const io = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) retry(); }) : null;
+    if (io) io.observe(card);
+    if (!ro && !io) nmInlineScrollWaiters.delete(card);
 }
 
 /**
