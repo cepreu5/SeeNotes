@@ -4199,3 +4199,62 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
 .note-pinned {
     box-shadow: 0 0 0 2px rgba(194, 45, 31, 0.28), 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
 }
+/* --- Телефон в завъртян екран (landscape): хедърът в ЕДИН ред (Beta 1.67) ----------------------------
+   Причината е същата като в cx-notes: @media (max-width:1220px) дава колона на всеки телефон, значи и в
+   landscape. Тук хедърът е на един ред, логото се скрива, а заглавието остава, докато се побира —
+   .title-hidden слага syncHeaderTitleFit() в main.js, когато заглавието изяде мястото на полето. */
+@media (orientation: landscape) and (max-height: 500px) {
+    header {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+    }
+
+    .header-logo {
+        display: none;
+    }
+
+    /* Заглавието пази естествената си ширина и НЕ се свива — иначе остава накъсано до 100px.
+       Когато не се побира, syncHeaderTitleFit() го скрива с .title-hidden. */
+    header > div:first-child {
+        order: 1;
+        flex: 0 0 auto;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    header > div:first-child h1 {
+        font-size: 1.5rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+
+    /* 307px = точно 20 видими знака в полето */
+    #search-wrapper {
+        order: 2;
+        flex: 1 1 309px;
+        width: auto;
+        min-width: 309px;
+        max-width: none;
+        margin-left: 8px;
+        margin-right: 8px;
+    }
+
+    #header-buttons {
+        order: 3;
+        flex-shrink: 0;
+    }
+
+    .boards-note {
+        order: 4;
+        flex: 1 1 100%;
+    }
+}
+
+header.title-hidden > div:first-child {
+    /* !important, защото блокът на заглавието носи inline style="display:flex" в HTML-а */
+    display: none !important;
+}
