@@ -10793,12 +10793,12 @@ function hydrateInlineImages(rootEl) {
                 const want = nmInlineOnBoard(box) ? Math.max(1, Math.round(px0 * nmInlineBoardScale(box))) : px0;
                 const columnWidth = nmInlineColumnWidth(box);
                 const px = (columnWidth > 0 && want > columnWidth) ? columnWidth : want;
-                // Ширината не се пипа - снимката остава голяма. Ако при нея снимката е по-висока от
-                // тялото на картата, картата получава клас, който пуска скрол на тялото, за да се
-                // стигне до долния ръб на снимката (вж. .note-body-scroll в style.css).
-                nmInlineMarkBoardScroll(box, px, img);
-                box.style.width = px + 'px';
-                box.dataset.nmPx = String(px);
+                // На борда цялата снимка трябва да се вижда: ако при тази ширина е по-висока от
+                // тялото на картата, ширината се смалява, докато се побере (nmInlineFitBoardHeight).
+                // В отворена бележка ширината остава както досега.
+                const fitPx = nmInlineFitBoardHeight(box, px, img);
+                box.style.width = fitPx + 'px';
+                box.dataset.nmPx = String(fitPx);
                 box.dataset.nmBaseUsed = String(img.naturalWidth);
             }
         });
@@ -10955,43 +10955,86 @@ function nmInlineColumnWidth(box) {
     return width > 0 ? width : 0;
 }
 
-/** Карти, за които се чака влизане в изгледа, за да се премери тялото им (вж. nmInlineMarkBoardScroll). */
-const nmInlineScrollWaiters = new WeakSet();
+/** Карти, за които се чака влизане в изгледа, за да се премери тялото им (вж. nmInlineFitBoardHeight). */
+const nmInlineFitWaiters = new WeakSet();
 
 /**
- * Слага на картата клас .note-body-scroll, когато вградената снимка при тази ширина е по-висока от
- * тялото на картата. Тогава тялото се скролира, за да се стигне до долния ръб на снимката - .note
- * реже всичко извън себе си, значи без скрол краят ѝ е недостъпен (вж. .note-body-scroll в
- * style.css, там е и мястото отдолу за футъра с иконите). Ширината НЕ се пипа: снимката остава
- * голяма (собственик, 27.10.2026). Извън борда (отворена бележка) и извън .note-content
- * (ред-заглавие) не се прави нищо; малка или широка снимка също не получава класа.
+ * На борда цялата вградена снимка трябва да се вижда, значи при висока снимка ширината се смалява
+ * толкова, колкото е нужно, за да се побере по височина (собственик, 27.10.2026: скрол не иска,
+ * снимката да се смали). В отворена бележка ширината не се пипа.
+ *
+ * Таванът е тялото на картата без мястото под футъра с иконите: футърът е absolute, висок 30px и
+ * стои на 5px от долния ръб, значи закрива долните 35px на картата, а тялото свършва на 25px от
+ * ръба ѝ - без отбив последната ивица от снимката остава под футъра.
+ *
+ * Снимката е inline-block в самия текст, значи горният ѝ ръб не е в началото на тялото: затова
+ * след задаването на ширината се мери истинският долен ръб на рамката и се смалява, докато се
+ * побере (до 3 пъти). Иначе снимка под няколко реда текст пак излиза под ръба.
+ *
+ * Връща ширината, която е сложила. Извън борда и извън .note-content (ред-заглавие) не прави нищо.
  */
-function nmInlineMarkBoardScroll(box, px, img) {
-    if (!box || !box.closest || !img) return;
-    if (!img.naturalWidth || !img.naturalHeight) return;
-    if (!nmInlineOnBoard(box)) return;
+function nmInlineFitBoardHeight(box, px, img) {
+    if (!box || !box.closest || !img) return px;
+    if (!img.naturalWidth || !img.naturalHeight) return px;
+    if (!nmInlineOnBoard(box)) return px;
     const body = box.closest('.note-content');
     const card = body ? body.closest('.note') : null;
-    if (!body || !card) return;
+    if (!body || !card) return px;
     const apply = () => {
+        const rect = body.getBoundingClientRect ? body.getBoundingClientRect() : null;
+        // Картата още не е подредена (.note има content-visibility: auto извън изгледа): мярка няма.
+        if (!rect || !rect.height || !body.clientHeight) return 0;
         const styles = typeof window.getComputedStyle === 'function' ? getComputedStyle(body) : null;
-        const padding = styles ? (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0) : 0;
-        const availH = (body.clientHeight || 0) - padding;
-        if (availH <= 0) return false;
-        card.classList.toggle('note-body-scroll', (px * img.naturalHeight / img.naturalWidth) > availH);
-        return true;
+        const padTop = styles ? (parseFloat(styles.paddingTop) || 0) : 0;
+        const padBottom = styles ? (parseFloat(styles.paddingBottom) || 0) : 0;
+        const top = rect.top + padTop;
+        let limit = top + Math.max(0, (body.clientHeight || 0) - padTop - padBottom);
+        const footer = card.querySelector('.note-footer');
+        if (footer && footer.getBoundingClientRect) {
+            const f = footer.getBoundingClientRect();
+            if (f.height) limit = Math.min(limit, f.top - 4);
+        }
+        if (!(limit - top >= 24)) return 0;
+        const ratio = img.naturalHeight / img.naturalWidth;
+        let width = px;
+        // 1. цялата височина на снимката да се побира в свободното място на тялото
+        const maxH = limit - top;
+        if (width * ratio > maxH) width = Math.max(1, Math.floor(maxH / ratio));
+        box.style.width = width + 'px';
+        // 2. снимката стои след текста: мери се истинският долен ръб и се смалява, докато се побере
+        for (let i = 0; i < 3; i++) {
+            const b = box.getBoundingClientRect ? box.getBoundingClientRect() : null;
+            if (!b || !b.height) break;
+            if (b.bottom <= limit + 0.5) break;
+            const room = limit - b.top;
+            width = room > 0 ? Math.max(1, Math.floor(width * (room / b.height))) : 1;
+            box.style.width = width + 'px';
+        }
+        // 3. снимката носи 4px отстъп отгоре и отдолу, а под нея може да има и редове текст: докато
+        //    тялото прелива, ширината се смалява още. Под 60px не се слиза - една дълга бележка
+        //    иначе би смалила снимката до нищо, а останалото е текст, който се скролира.
+        const bodyH = body.clientHeight || 0;
+        for (let i = 0; i < 4; i++) {
+            const overflow = (body.scrollHeight || 0) - bodyH;
+            if (overflow <= 0 || width <= 60) break;
+            const next = Math.max(60, Math.floor(width * Math.max(0.5, (bodyH - 4) / (body.scrollHeight || 1))));
+            if (next >= width) break;
+            width = next;
+            box.style.width = width + 'px';
+        }
+        box.dataset.nmPx = String(width);
+        return width;
     };
-    if (apply()) return;
-    // Картата още не е в страницата или е извън изгледа: .note има content-visibility: auto, значи
-    // браузърът не я подрежда и височината на тялото е 0. Дотук класът се слагаше само веднъж и
-    // точно високата снимка на дълъг борд (или карта, която още не е в page-а) оставаше без скрол.
-    // Затова се чака тялото да добие височина - влизането в изгледа и подреждането на картата са
-    // точно това събитие. Наблюдението пада, щом мярката стане възможна.
-    if (nmInlineScrollWaiters.has(card)) return;
-    nmInlineScrollWaiters.add(card);
+    const applied = apply();
+    if (applied) return applied;
+    // Картата още не е в страницата или е извън изгледа: тогава тялото е с височина 0. Изчаква се
+    // да влезе в изгледа (или да се подреди) и мярката се прави тогава. Наблюдението пада, щом
+    // мярката стане възможна.
+    if (nmInlineFitWaiters.has(card)) return px;
+    nmInlineFitWaiters.add(card);
     const retry = () => {
         if (!apply()) return false;
-        nmInlineScrollWaiters.delete(card);
+        nmInlineFitWaiters.delete(card);
         if (ro) ro.disconnect();
         if (io) io.disconnect();
         return true;
@@ -11000,7 +11043,8 @@ function nmInlineMarkBoardScroll(box, px, img) {
     if (ro) ro.observe(body);
     const io = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) retry(); }) : null;
     if (io) io.observe(card);
-    if (!ro && !io) nmInlineScrollWaiters.delete(card);
+    if (!ro && !io) nmInlineFitWaiters.delete(card);
+    return px;
 }
 
 /**
