@@ -5798,3 +5798,68 @@ header {
     bottom: calc(6px + var(--safe-bottom));
 }
 
+
+/* --- Телефон в завъртян екран (landscape): хедърът в ЕДИН ред (b3.07) -------------------------------
+   Досега редът се решаваше само по ширина (@media min-width:900px), а телефон в landscape е 740-915px
+   широк, значи оставаше в колоната от 4 реда, макар да има място. Тук хедърът е на един ред, логото се
+   скрива (60px височина само за картинка), а заглавието остава, докато се побира. Класът
+   .title-hidden слага syncHeaderTitleFit() в main.js, когато заглавието изяде мястото на полето.
+   Лентата с дъските остава на свой ред, както преди. max-height:500px пази таблети и малки прозорци в
+   портрет да не влизат тук. */
+@media (orientation: landscape) and (max-height: 500px) {
+    header {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+    }
+
+    .header-logo {
+        display: none;
+    }
+
+    /* Заглавието отстъпва първо: не се свива под 90px, за да не остане накъсан иконом */
+    /* Заглавието пази естествената си ширина и НЕ се свива — иначе остава накъсано до 100px.
+       Когато не се побира, syncHeaderTitleFit() го скрива с .title-hidden. */
+    header > div:first-child {
+        order: 1;
+        flex: 0 0 auto;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    header > div:first-child h1 {
+        font-size: 1.5rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+
+    /* 307px = точно 20 видими знака в полето (ch е ширината на „0“, а полето има 45+90px отстъп) */
+    #search-wrapper {
+        order: 2;
+        flex: 1 1 309px;
+        width: auto;
+        min-width: 309px;
+        max-width: none;
+        margin-left: 8px;
+        margin-right: 8px;
+    }
+
+    #header-buttons {
+        order: 3;
+        flex-shrink: 0;
+    }
+
+    .boards-note {
+        order: 4;
+        flex: 1 1 100%;
+    }
+}
+
+/* Няма място за заглавието — скрива се, за да остане полето поне 20 знака. Класът се слага от JS. */
+header.title-hidden > div:first-child {
+    /* !important, защото блокът на заглавието носи inline style="display:flex" в HTML-а */
+    display: none !important;
+}

@@ -33772,6 +33772,71 @@ async function cleanupOrphanedImages() {
     }
 }
 
+/* --- Телефон в завъртян екран: заглавието се крие само ако не остане място за полето (b3.07) --------
+   Хедърът на един ред (виж @media (orientation: landscape) and (max-height: 500px) в style.css) пази
+   поне 309px за полето за търсене, колкото са 20 видими знака. Ако заглавието + полето + бутоните не
+   се събират в ширината на хедъра, заглавието се скрива с класа .title-hidden; иначе си стои.
+   Смята се по ширини, а не по координати: при зареждане разположението още не е стабилно и меренето
+   на позиции дава грешен отговор. Вика се при зареждане, resize, завъртане и след шрифтовете. */
+const HEADER_SEARCH_MIN_WIDTH = 309;   // 307px съдържание + рамка = 20 видими знака
+const HEADER_TITLE_GAP = 8;            // отстъпите на #search-wrapper отляво и отдясно
+
+function syncHeaderTitleFit() {
+    const header = document.querySelector('header');
+    if (!header) return;
+
+    header.classList.remove('title-hidden');
+    if (!window.matchMedia('(orientation: landscape) and (max-height: 500px)').matches) return;
+
+    const title = header.firstElementChild;
+    const search = document.getElementById('search-wrapper');
+    const buttons = document.getElementById('header-buttons');
+    if (!title || !search || !buttons) return;
+
+    const cs = getComputedStyle(header);
+    const available = header.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const needed = title.getBoundingClientRect().width
+        + HEADER_SEARCH_MIN_WIDTH
+        + buttons.getBoundingClientRect().width
+        + HEADER_TITLE_GAP * 2;
+
+    if (needed > available) {
+        header.classList.add('title-hidden');
+    }
+}
+
+/* Разположението не е готово веднага: шрифтовете, преводът и демо режимът сменят ширината на заглавието
+   и бутоните след зареждането. Затова се премерва няколко пъти в първите две секунди, а после при
+   всяка промяна на размерите на заглавието или бутоните. */
+function scheduleHeaderTitleFit() {
+    requestAnimationFrame(() => requestAnimationFrame(syncHeaderTitleFit));
+    [60, 200, 500, 1000, 1800].forEach((ms) => setTimeout(syncHeaderTitleFit, ms));
+}
+
+window.addEventListener('resize', syncHeaderTitleFit);
+window.addEventListener('orientationchange', () => setTimeout(syncHeaderTitleFit, 250));
+window.addEventListener('load', scheduleHeaderTitleFit);
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleHeaderTitleFit);
+} else {
+    scheduleHeaderTitleFit();
+}
+if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(syncHeaderTitleFit);
+}
+if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => syncHeaderTitleFit());
+    const header = document.querySelector('header');
+    if (header) {
+        const title = header.firstElementChild;
+        const buttons = document.getElementById('header-buttons');
+        if (title) ro.observe(title);
+        if (buttons) ro.observe(buttons);
+    }
+}
+
+window.syncHeaderTitleFit = syncHeaderTitleFit;
+
 // Задаваме периодична проверка за осиротели изображения
 // setInterval(cleanupOrphanedImages, 10 * 60 * 1000); // На всеки 10 минути
 
