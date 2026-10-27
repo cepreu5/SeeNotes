@@ -27221,25 +27221,45 @@ function nmInlineFitBoardHeight(box, px, img) {
         const padBottom = styles ? (parseFloat(styles.paddingBottom) || 0) : 0;
         const top = rect.top + padTop;
         let limit = top + Math.max(0, (body.clientHeight || 0) - padTop - padBottom);
+        // Собственик, 27.10.2026: само когато снимката е по-висока от свободното място в картата и
+        // се смалява, от сметнатата височина се вадят височината на футъра с иконите и още 20px
+        // въздух. Досега резервът беше 4px над футъра и смалената снимка стигаше до иконите, все
+        // едно е отрязана. Широка или малка снимка, която се побира, не се пипа.
         const footer = card.querySelector('.note-footer');
+        let footerH = 0;
         if (footer && footer.getBoundingClientRect) {
             const f = footer.getBoundingClientRect();
-            if (f.height) limit = Math.min(limit, f.top - 4);
+            if (f.height) {
+                footerH = f.height;
+                limit = Math.min(limit, f.top - 4);
+            }
         }
         if (!(limit - top >= 24)) return 0;
+        const reserve = (footerH || 30) + 20;
         const ratio = img.naturalHeight / img.naturalWidth;
         let width = px;
-        // 1. цялата височина на снимката да се побира в свободното място на тялото
-        const maxH = limit - top;
-        if (width * ratio > maxH) width = Math.max(1, Math.floor(maxH / ratio));
+        // 1. цялата височина на снимката да се побира в свободното място на тялото. Само когато
+        //    трябва смаляване, от височината се вади резервът под футъра.
+        const roomH = limit - top;
+        if (width * ratio > roomH) {
+            const maxH = Math.max(24, roomH - reserve);
+            width = Math.max(1, Math.floor(maxH / ratio));
+        }
         box.style.width = width + 'px';
-        // 2. снимката стои след текста: мери се истинският долен ръб и се смалява, докато се побере
-        for (let i = 0; i < 3; i++) {
+        // 2. снимката стои след текста: мери се истинският долен ръб и се смалява, докато се побере.
+        //    Щом вече е смалена, резервът под футъра важи и тук.
+        for (let i = 0; i < 4; i++) {
+            const bottomLimit = width < px ? limit - reserve : limit;
             const b = box.getBoundingClientRect ? box.getBoundingClientRect() : null;
             if (!b || !b.height) break;
-            if (b.bottom <= limit + 0.5) break;
-            const room = limit - b.top;
-            width = room > 0 ? Math.max(1, Math.floor(width * (room / b.height))) : 1;
+            if (b.bottom <= bottomLimit + 0.5) break;
+            // Под 60px не се слиза (същата граница като в стъпка 3): много текст над снимката не
+            // бива да я смали до нищо.
+            if (width <= 60) break;
+            const room = bottomLimit - b.top;
+            const next = room > 0 ? Math.max(60, Math.min(width, Math.floor(width * (room / b.height)))) : 60;
+            if (next >= width) break;
+            width = next;
             box.style.width = width + 'px';
         }
         // 3. снимката носи 4px отстъп отгоре и отдолу, а под нея може да има и редове текст: докато
