@@ -5496,70 +5496,182 @@ async function createColoredNoteBackground(color, src, width, height) {
 }
 
 // ------------------------ Database ----------------------------
+// Таван на един опит за отваряне. Заключена от друг таб база иначе оставя
+// приложението вечно на екрана за зареждане: нито onsuccess, нито onerror идват.
+const NOTES_DB_OPEN_TIMEOUT_MS = 8000;
+// Питаме за изтриване най-много веднъж на влизане, не при всяка заявка към базата.
+let notesDbRecoveryAsked = false;
+
 /**
- * Отваря IndexedDB базата данни.
+ * Четимо описание на грешка от IndexedDB за конзолата.
+ * @param {any} error
+ * @returns {string}
+ */
+function describeDbError(error) {
+    if (!error) return 'unknown error';
+    if (error.name && error.message) return `${error.name}: ${error.message}`;
+    if (error.message) return String(error.message);
+    return String(error);
+}
+
+/**
+ * Създава липсващите object store-и върху база, която се отваря или вдига.
+ * @param {IDBDatabase} db
+ */
+function createMissingNotesStores(db) {
+    if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
+        db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
+    }
+    if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
+        db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
+    }
+    if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
+        db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
+    }
+    if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
+        db.createObjectStore(CONFIG_STORE_NAME);
+    }
+    if (!db.objectStoreNames.contains(FILES_STORE_NAME)) {
+        db.createObjectStore(FILES_STORE_NAME, { keyPath: 'key' });
+    }
+}
+
+/**
+ * Отваря NotesDB на точно определена версия (или на текущата, ако version е null).
+ * @param {number|null} version
  * @returns {Promise<IDBDatabase>}
  */
-function openNotesDB() {
+function openNotesDBAtVersion(version) {
     return new Promise((resolve, reject) => {
-        let retries = 0;
-        const maxRetries = 3;
-
-        const attemptOpen = (version = NOTES_DB_VERSION) => {
-            const request = version === null
-                ? indexedDB.open(NOTES_DB_NAME)   // без версия: отваря каквато е в момента
-                : indexedDB.open(NOTES_DB_NAME, version);
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains(BOARD_STORE_NAME)) {
-                    db.createObjectStore(BOARD_STORE_NAME, { keyPath: 'gdid' });
-                }
-                if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) {
-                    db.createObjectStore(MEDIA_STORE_NAME, { keyPath: 'gdid' });
-                }
-                if (!db.objectStoreNames.contains(NOTE_STORE_NAME)) {
-                    db.createObjectStore(NOTE_STORE_NAME, { keyPath: 'gdid' });
-                }
-                if (!db.objectStoreNames.contains(CONFIG_STORE_NAME)) {
-                    db.createObjectStore(CONFIG_STORE_NAME);
-                }
-                if (!db.objectStoreNames.contains(FILES_STORE_NAME)) {
-                    db.createObjectStore(FILES_STORE_NAME, { keyPath: 'key' });
-                }
-                console.log("NotesDB structure is up to date.");
-            };
-            request.onsuccess = (event) => {
-                const db = event.target.result;
-                // Отворена връзка не бива да блокира deleteNotesDB (смяна на акаунт)
-                db.onversionchange = () => db.close();
-                resolve(db);
-            };
-            request.onerror = (event) => {
-                const error = event.target.error;
-                const errorName = error ? error.name : "UnknownError";
-
-                if (errorName === 'VersionError' && version !== null) {
-                    // Базата вече е вдигната до по-висока версия от друг вариант (напр. локалния
-                    // режим, който я вдига до 4, или бъдещ такъв). Повторен опит със същата
-                    // версия не може да успее — отваряме без версия, което дава текущата схема
-                    // и запазените данни, вместо да заключим човека извън собствените му бележки.
-                    console.warn(`NotesDB is already at a newer version than ${NOTES_DB_VERSION}; opening it at its existing version.`);
-                    attemptOpen(null);
-                    return;
-                }
-
-                // Retry specifically for UnknownError or if backing store is gone (typical browser hiccups)
-                if (errorName === 'UnknownError' && retries < maxRetries) {
-                    retries++;
-                    console.warn(`Retry ${retries} opening NotesDB due to ${errorName}...`);
-                    setTimeout(attemptOpen, 100 * retries);
-                    return;
-                }
-                reject("Error opening NotesDB: " + (error ? (error.name + " - " + error.message) : "Unknown"));
-            };
+        const request = version ? indexedDB.open(NOTES_DB_NAME, version) : indexedDB.open(NOTES_DB_NAME);
+        // Заявка, която не получава нито onsuccess, нито onerror, не бива да държи
+        // приложението на екрана за зареждане — отчитаме я като провал.
+        let timedOut = false;
+        const timer = setTimeout(() => {
+            timedOut = true;
+            console.warn(`NotesDB: open at version ${version} timed out after ${NOTES_DB_OPEN_TIMEOUT_MS} ms.`);
+            reject(new Error('IndexedDB open timed out'));
+        }, NOTES_DB_OPEN_TIMEOUT_MS);
+        const done = (settle, value) => {
+            clearTimeout(timer);
+            settle(value);
         };
-        attemptOpen();
+        request.onupgradeneeded = (event) => {
+            createMissingNotesStores(event.target.result);
+            console.log("NotesDB structure is up to date.");
+        };
+        request.onsuccess = (event) => {
+            const db = event.target.result;
+            // Отворена връзка не бива да блокира deleteNotesDB (смяна на акаунт)
+            db.onversionchange = () => db.close();
+            // Закъсняла връзка след таймаут вече не е нужна — затваряме я, за да не дели базата.
+            if (timedOut) { db.close(); return; }
+            done(resolve, db);
+        };
+        request.onerror = (event) => {
+            // Истинската грешка е в error (VersionError, QuotaExceededError...),
+            // а не в остарелия errorCode, който винаги е undefined.
+            done(reject, event.target.error || new Error('IndexedDB open failed without an error object'));
+        };
+        request.onblocked = () => {
+            console.warn('NotesDB: another tab keeps the database open; waiting for it to close.');
+        };
     });
+}
+
+/**
+ * След като отваряне на NOTES_DB_VERSION се провали веднъж (базата на диска е
+ * по-нова), запомняме го: всяко следващо отваряне минава направо без версия,
+ * за да не пълним конзолата със същото предупреждение при всеки DB достъп.
+ * @type {boolean}
+ */
+let notesDbVersionUnavailable = false;
+
+/**
+ * Отварянията минават едно по едно: иначе няколко едновременни извиквания пробват
+ * невалидната версия преди флагът да е вдигнат и предупреждението се повтаря.
+ * @type {Promise<void>}
+ */
+let notesDbOpenQueue = Promise.resolve();
+
+/**
+ * Отваря IndexedDB базата данни.
+ * Ако базата на диска е по-нова от тази версия на приложението (VersionError),
+ * отваря я такава, каквато е, вместо да остане без бележки.
+ * Ако не се отвори по никакъв начин, пита веднъж на влизане дали да я изтрие и
+ * да я изгради наново от източника.
+ * @returns {Promise<IDBDatabase>}
+ */
+async function openNotesDB() {
+    const waitForPrevious = notesDbOpenQueue;
+    let releaseQueue;
+    notesDbOpenQueue = new Promise((resolve) => { releaseQueue = resolve; });
+    await waitForPrevious;
+    try {
+        return await openNotesDBUnqueued();
+    } catch (error) {
+        console.warn(`NotesDB could not be opened (${describeDbError(error)}).`);
+        if (notesDbRecoveryAsked) throw error;
+        notesDbRecoveryAsked = true;
+        let answer = false;
+        try {
+            answer = await showConfirmation(notesDbRecoveryMessage());
+        } catch (popupError) {
+            console.warn("NotesDB recovery popup could not be shown:", popupError);
+        }
+        if (answer !== true) {
+            showToast(_('dbRecoveryDeclined') || 'Локалната база данни не се отваря.', 10000);
+            throw error;
+        }
+        await deleteNotesDB();
+        // След изтриване базата се вдига от нулата, значи версията пак е нашата.
+        notesDbVersionUnavailable = false;
+        return openNotesDBUnqueued();
+    } finally {
+        releaseQueue();
+    }
+}
+
+/**
+ * Самото отваряне: нашата версия, падане към текущата версия и ремонт на липсващи store-и.
+ * @returns {Promise<IDBDatabase>}
+ */
+async function openNotesDBUnqueued() {
+    let db;
+    if (notesDbVersionUnavailable) {
+        db = await openNotesDBAtVersion(null);
+    } else {
+        try {
+            db = await openNotesDBAtVersion(NOTES_DB_VERSION);
+        } catch (error) {
+            notesDbVersionUnavailable = true;
+            console.warn(`NotesDB: open at version ${NOTES_DB_VERSION} failed (${describeDbError(error)}). Opening the existing database as it is. Shown once.`);
+            db = await openNotesDBAtVersion(null);
+        }
+    }
+    const requiredStores = [BOARD_STORE_NAME, MEDIA_STORE_NAME, NOTE_STORE_NAME, CONFIG_STORE_NAME, FILES_STORE_NAME];
+    const missingStores = requiredStores.filter(name => !db.objectStoreNames.contains(name));
+    if (missingStores.length > 0) {
+        const nextVersion = db.version + 1;
+        console.warn(`NotesDB: missing stores (${missingStores.join(', ')}), upgrading to version ${nextVersion}.`);
+        db.close();
+        db = await openNotesDBAtVersion(nextVersion);
+    }
+    return db;
+}
+
+/**
+ * Текстът в попъпа за изтриване на базата. Когато тя е единственото копие
+ * (демо режим или режим „само база“), не обещаваме, че нищо няма да се загуби.
+ * @returns {string}
+ */
+function notesDbRecoveryMessage() {
+    const ask = _('dbRecoveryAsk') || 'Локалната база данни не се отваря. Може да е заключена от друг таб или повредена. Да я изтрия ли и да я изградя наново?';
+    const dbIsOnlySource = IS_DEMO_MODE || (useIndexedDb && !useGoogleDb && !useLocalFolder);
+    const note = dbIsOnlySource
+        ? (_('dbRecoveryNoBackup') || 'В момента няма друг източник, така че бележките, които съществуват само в базата, ще се загубят.')
+        : (_('dbRecoveryRebuild') || 'Базата ще се изгради наново от източника и нищо няма да се загуби.');
+    return ask + '\n\n' + note;
 }
 
 /**
@@ -5761,6 +5873,8 @@ async function checkDbExists(dbName) {
         };
         // If we can't even open it, assume it doesn't exist or is inaccessible.
         req.onerror = () => resolve(false);
+        // Заключена от друг таб база не дава нито onsuccess, нито onerror — не чакаме.
+        req.onblocked = () => resolve(true);
     });
 }
 
