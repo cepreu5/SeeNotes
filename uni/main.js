@@ -10,7 +10,7 @@
 // App version: идва от CACHE_NAME на service worker-а ('cx-notes-b1.67' -> 'Beta 1.67').
 // null, докато не се разбере; ако не се разбере изобщо, надписът се скрива.
 let version = null;
-const debug = true; // Глобален флаг за дебъг режим
+const debug = false; // Глобален флаг за дебъг режим
 
 function versionFromCacheName(cacheName) {
     const match = /^cx-notes-b(\d.*)$/.exec(String(cacheName || '').trim());
@@ -187,7 +187,7 @@ const handleShareEvent = async (eventData, source, ackPort) => {
         payload = await takePendingShare(sid);
         if (!payload) {
             console.log(`[Main] Share ${sid || ''} from ${source}: not in cache (already taken or stale).`);
-            if (ackPort) { try { ackPort.postMessage({ type: 'SHARE_TARGET_ACK', sid: sid }); } catch (e) {} }
+            if (ackPort) { try { ackPort.postMessage({ type: 'SHARE_TARGET_ACK', sid: sid }); } catch (e) { } }
             return;
         }
         console.log(`[Main] Handling share ${payload.sid} from ${source}`);
@@ -198,7 +198,7 @@ const handleShareEvent = async (eventData, source, ackPort) => {
         await handleShareTarget(payload);
         // Даваме време на модала да се покаже, преди да кажем на SW, че е прието
         await new Promise(r => setTimeout(r, 900));
-        if (ackPort) { try { ackPort.postMessage({ type: 'SHARE_TARGET_ACK', sid: payload.sid }); } catch (e) {} }
+        if (ackPort) { try { ackPort.postMessage({ type: 'SHARE_TARGET_ACK', sid: payload.sid }); } catch (e) { } }
     } catch (e) {
         console.error('[Main] Share handling failed:', e);
         await restorePendingShare(payload); // остава за следващия прозорец
@@ -17653,7 +17653,7 @@ async function findGDFileByNameDetailed(folderId, fileName) {
 }
 
 async function findGDFileByName(folderId, fileName) {
-    if (isOffline || !folderId) return null;    const sendRequest = async (token) => {
+    if (isOffline || !folderId) return null; const sendRequest = async (token) => {
         const query = encodeURIComponent(`'${folderId}' in parents and name = '${fileName}' and trashed = false`);
         const isAppDataChild = folderId === 'appDataFolder' ||
             (cachedFolderIdsByName['appDataFolder:AppSettings'] && folderId === cachedFolderIdsByName['appDataFolder:AppSettings']);
@@ -22465,7 +22465,7 @@ function hydrateInlineImages(rootEl) {
                 // който не рисува в откачена карта.
                 const info = await resolveNoteImageSrc(fileName, mode, box.dataset.nmFileId || '',
                     isRetry ? { size: INLINE_IMAGE_INLINE_SIZE, skipThumb: true }
-                            : { size: INLINE_IMAGE_INLINE_SIZE, fallbackFull: true });
+                        : { size: INLINE_IMAGE_INLINE_SIZE, fallbackFull: true });
                 if (info.status !== 'ok') {
                     if (!isRetry && info.status === 'unavailable') {
                         setTimeout(() => attempt(true), 1200);
@@ -25564,11 +25564,11 @@ function ensureKBAssistant() {
     // Класът остава дефиниран след първото зареждане - скриптът не се добавя втори път
     const js = typeof KBAssistant !== 'undefined'
         ? Promise.resolve()
-        : loadKBAssistantFile('script', { src: 'kb-assistant.js' });
+        : loadKBAssistantFile('script', { src: 'kb-assistantt.js' });
     kbAssistantLoadPromise = Promise.all([css, js])
         .then(() => {
             if (!window.kbAssistant || typeof window.kbAssistant.getText !== 'function') {
-                throw new Error('kb-assistant.js did not define the assistant');
+                throw new Error('kb-assistantt.js did not define the assistant');
             }
             return window.kbAssistant.init();
         })

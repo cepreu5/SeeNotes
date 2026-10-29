@@ -1,5 +1,10 @@
-const CACHE_NAME = 'cx-notes-b2.21';
+const CACHE_NAME = 'cx-notes-b1.01';
 const OFFLINE_PAGE = 'index.html';
+// Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
+// (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
+// а демото не прави такива — така че кешът не пречи на отварянето на демото. При напълно
+// първо отваряне без мрежа (преди който и да е онлайн старт) страницата не е в кеша, но това
+// важи за приложението като цяло, не само за демото.
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -87,11 +92,14 @@ const ASSETS_TO_CACHE = [
 // Асистентът се зарежда при първо отваряне (ensureKBAssistant в main.js), затова
 // файловете му не са в предкеша, а влизат в кеша при първото ползване.
 const LAZY_ASSETS = [
-  './kb-assistantt.js',
+  './kb-assistant.js',
   './kb-assistant.css',
   './lang/kb-core.json',
   './lang/kb-bg.json',
   './lang/kb-en.json',
+  './lang/kb-tour-core.json',
+  './lang/kb-tour-bg.json',
+  './lang/kb-tour-en.json',
 ];
 const LAZY_ASSET_URLS = LAZY_ASSETS.map(url => new URL(url, self.location.href).href);
 
@@ -173,93 +181,103 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   // --- Share Target POST handler ---
+  // Ред: първо записваме споделеното в кеша (трайно), после пробваме да го дадем на
+  // отворен прозорец. Прозорецът на споделянето се затваря САМО след като приложението
+  // потвърди, че е приело данните. Ако потвърждение няма (замразен или убит фон), отваряме
+  // приложението с ?share_id=<id> и то взима данните от кеша. Така линк или снимка не се губи.
   if (event.request.method === 'POST') {
     const url = new URL(event.request.url);
     if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
-      swLog('[SW] Share Target POST request intercepted:', url.href);
-
       event.respondWith((async () => {
+        const redirectToApp = (sid) => {
+          const target = new URL(url.pathname || './index.html', self.location.origin);
+          if (sid) target.searchParams.set('share_id', sid);
+          return Response.redirect(target.toString(), 303);
+        };
         try {
           const formData = await event.request.formData();
-          const title = formData.get('shared_title') || '';
-          const text = formData.get('shared_text') || '';
-          const sharedUrl = formData.get('shared_url') || '';
-          const imageFiles = formData.getAll('shared_image');
+          const title = (formData.get('shared_title') || '').toString();
+          const text = (formData.get('shared_text') || '').toString();
+          const sharedUrl = (formData.get('shared_url') || '').toString();
+          const imageFiles = formData.getAll('shared_image').filter(f => f && f.size > 0);
+          const sid = 'sh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
 
-          // Build redirect URL for fallback
-          const redirectUrl = new URL(url.pathname, self.location.origin);
-          if (title) redirectUrl.searchParams.set('shared_title', title);
-          if (text) redirectUrl.searchParams.set('shared_text', text);
-          if (sharedUrl) redirectUrl.searchParams.set('shared_url', sharedUrl);
+          const cache = await caches.open('share-target-image');
+          const staleKeys = await cache.keys();
+          await Promise.all(staleKeys.map(k => cache.delete(k)));
 
-          // Store all shared files in cache with indexed keys
-          const validFiles = imageFiles.filter(f => f && f.size > 0);
-          if (validFiles.length > 0) {
-            swLog('[SW] Processing shared files...', validFiles.length);
-            const cache = await caches.open('share-target-image');
-            // Изчистваме стари файлове от предишен share
-            const existingKeys = await cache.keys();
-            await Promise.all(existingKeys.map(k => cache.delete(k)));
-            for (let i = 0; i < validFiles.length; i++) {
-              const f = validFiles[i];
-              const headers = new Headers({
-                'Content-Type': f.type || 'image/jpeg',
-                'X-Filename': f.name || `shared_${Date.now()}_${i}.jpg`
-              });
-              await cache.put(`shared-image-${i}`, new Response(f, { headers }));
-            }
-            redirectUrl.searchParams.set('shared_image', String(validFiles.length));
+          const files = [];
+          for (let i = 0; i < imageFiles.length; i++) {
+            const f = imageFiles[i];
+            const key = 'shared-file-' + i;
+            const name = f.name || ('shared_' + Date.now() + '_' + i);
+            const headers = new Headers({
+              'Content-Type': f.type || 'application/octet-stream',
+              'X-Filename': encodeURIComponent(name)
+            });
+            await cache.put(key, new Response(f, { headers }));
+            files.push({ key: key, name: name, type: f.type || 'application/octet-stream' });
           }
 
-          const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-          swLog('[SW] Found active clients:', clients.length);
+          const payload = { sid: sid, title: title, text: text, url: sharedUrl, files: files, ts: Date.now() };
+          await cache.put('share-payload', new Response(JSON.stringify(payload), {
+            headers: { 'Content-Type': 'application/json' }
+          }));
+          swLog('[SW] Share stored:', sid, files.length, 'file(s)');
 
+          // Колко чакаме отворен прозорец да потвърди, че е приел споделеното.
+          const ACK_TIMEOUT_MS = 3000;
+          const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
           let existingClient = clients.find(c => {
             const clientUrl = new URL(c.url);
             const reqPath = url.pathname.replace(/\/+$/, '');
             const cPath = clientUrl.pathname.replace(/\/+$/, '').replace(/\/index\.html$/, '');
             return clientUrl.origin === self.location.origin && reqPath.includes(cPath);
           });
-
           if (!existingClient && clients.length > 0) existingClient = clients[0];
 
-          if (existingClient) {
-            swLog('[SW] Targeting client:', existingClient.url);
-
-            // Пробваме да фокусираме, но ако браузърът го блокира - не сриваме целия процес
-            try {
-              await existingClient.focus();
-            } catch (focusErr) {
-              swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
-            }
-
-            const shareData = {
-              type: 'SHARE_TARGET_EVENT',
-              data: {
-                shared_title: title,
-                shared_text: text,
-                shared_url: sharedUrl,
-                shared_image: validFiles.length > 0 ? String(validFiles.length) : '0'
+          if (existingClient && existingClient.postMessage) {
+            const acked = await new Promise((resolve) => {
+              let settled = false;
+              const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
+              const timer = setTimeout(() => finish(false), ACK_TIMEOUT_MS);
+              const channel = new MessageChannel();
+              channel.port1.onmessage = (msg) => {
+                if (msg.data && msg.data.type === 'SHARE_TARGET_ACK') {
+                  clearTimeout(timer);
+                  finish(msg.data.sid === sid || !msg.data.sid);
+                }
+              };
+              try {
+                existingClient.postMessage({ type: 'SHARE_TARGET_EVENT', data: { sid: sid } }, [channel.port2]);
+              } catch (postErr) {
+                swLog('[SW] postMessage to client failed:', postErr.message);
+                clearTimeout(timer);
+                finish(false);
               }
-            };
-            existingClient.postMessage(shareData);
-            // const bc = new BroadcastChannel('share_target_channel');
-            // bc.postMessage(shareData);
-            // bc.close();
-
-            // Вместо 204 (което на Desktop оставя празен прозорец), връщаме скрипт за самозатваряне
-            return new Response('<script>window.close()</script>', {
-              headers: { 'Content-Type': 'text/html' }
             });
+
+            if (acked) {
+              try {
+                await existingClient.focus();
+              } catch (focusErr) {
+                swLog('[SW] Focus blocked by browser (continuing anyway):', focusErr.message);
+              }
+              return new Response(
+                '<!doctype html><meta charset="utf-8"><title>CX Notes</title>' +
+                '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;' +
+                'background:#000;color:#eee;font:16px system-ui,sans-serif"><div>Записано в CX Notes</div>' +
+                '<script>setTimeout(function(){try{window.close()}catch(e){}},250)<\/script>',
+                { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+              );
+            }
+            swLog('[SW] No confirmation from the open window - opening the app instead.');
           }
 
-          swLog('[SW] Redirecting to new instance.');
-          return Response.redirect(redirectUrl.toString(), 303);
-
+          return redirectToApp(sid);
         } catch (err) {
           swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
-          // Failsafe: just redirect to index without shared data rather than showing error page
-          return Response.redirect('./index.html', 303);
+          return redirectToApp(null);
         }
       })());
       return;
@@ -271,9 +289,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   const isNavigation = event.request.mode === 'navigate';
+  // Адресът на споделянето носи ?share_id= - кешът да го търси без параметрите.
+  const hasShareId = new URL(event.request.url).searchParams.has('share_id');
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(event.request, { ignoreSearch: hasShareId }).then((cachedResponse) => {
       // 1. If match in cache, return it
       if (cachedResponse) {
         return cachedResponse;
