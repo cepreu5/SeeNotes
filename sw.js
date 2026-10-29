@@ -11,7 +11,7 @@ const ASSETS_TO_CACHE = [
   './set.html',
   './manifest.webmanifest',
   './style.css',
-  './main.js',
+  './mainn.js',
   './fs.js',
   './languages.json',
   './lang/i18n-bg.json',
@@ -47,7 +47,7 @@ const ASSETS_TO_CACHE = [
   './wg1_1.png',
   './wr1_1.png',
   './msmstyle.css',
-  './msm.js',
+  './msmrtt.js',
   './msm/msm-assist.png',
   './user-icon.png',
   './msm/1.png',
@@ -92,7 +92,7 @@ const ASSETS_TO_CACHE = [
 // Асистентът се зарежда при първо отваряне (ensureKBAssistant в main.js), затова
 // файловете му не са в предкеша, а влизат в кеша при първото ползване.
 const LAZY_ASSETS = [
-  './kb-assistant.js',
+  './kb-assistantt.js',
   './kb-assistant.css',
   './lang/kb-core.json',
   './lang/kb-bg.json',
