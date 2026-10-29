@@ -2210,6 +2210,8 @@ code {
     margin-bottom: 20px;
     font-size: 1.1em;
     color: #333;
+    /* Съобщението за изтриване на базата идва на две части с празен ред (\n\n от JS, b1.72). */
+    white-space: pre-line;
 }
 
 .folder-id-prompt-popup input {
