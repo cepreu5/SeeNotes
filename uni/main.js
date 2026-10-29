@@ -3803,10 +3803,20 @@ function initDemoModeUI() {
     const startBtn = document.getElementById('demo-start-btn');
     const banner = document.getElementById('demo-banner');
 
-    // Потвърждение от самия браузър: демото не носи свой прозорец.
+    // Потвърждението минава през попъпа на приложението (showConfirmation), не през
+    // confirm на браузъра: същият прозорец, с който се потвърждава триене на бележка.
     if (startBtn) {
-        startBtn.addEventListener('click', () => {
-            if (!confirm(_('demoConfirm'))) return;
+        startBtn.addEventListener('click', async () => {
+            // Второ натискане, докато попъпът е отворен, не отваря втори.
+            if (startBtn.dataset.demoStarting === '1') return;
+            startBtn.dataset.demoStarting = '1';
+            let confirmed = false;
+            try {
+                confirmed = await showConfirmation(_('demoConfirm'));
+            } finally {
+                delete startBtn.dataset.demoStarting;
+            }
+            if (!confirmed) return;
             try { localStorage.setItem(DEMO_MODE_STORAGE_KEY, '1'); } catch (e) { }
             const url = new URL(window.location.href);
             url.searchParams.set('demo', '1');
@@ -6552,6 +6562,8 @@ function showConfirmation(message, options = {}) {
             popupContent.style.maxWidth = '90vw';
         }
         messagePara.textContent = message;
+        // Съобщение с празни редове (демо режимът) се показва както е написано, не на един ред.
+        messagePara.style.whiteSpace = /\n/.test(message) ? 'pre-line' : '';
         folderIdInput.style.display = 'none';
         okButton.textContent = _('confirmCreateDbYes');
         noButton.textContent = _('confirmCreateDbNo');
