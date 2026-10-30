@@ -307,6 +307,31 @@ ok(String(counter2) === String(START_COUNT) && cards2.visible === START_COUNT,
     `секунда и половина по-късно броячът още показва ${START_COUNT} (няма презапис след зареждането)`,
     { counter: counter2, cards: cards2 });
 
+// --- 4b) ВТОРИ ПЪЛЕН render със същата стартова папка (както след запис/синхронизация) ------------
+// Това е трайната форма на бъга: при първото зареждане uni цъка стартовия борд сам и броячът се
+// поправя след има-няма 50 мс, затова презаписът се вижда само като мигане. При всеки СЛЕДВАЩ
+// пълен renderUI() (запис на бележка, синхронизация, презареждане на данните) такова цъкане няма
+// и старият ред оставяше общия брой в хедъра, докато човекът не цъкне папката — точно оплакването
+// „показва 530, а в папката има 5“. Тук renderUI() се вика наистина, върху истинското приложение.
+const fullRender2 = await page.evaluate(async () => {
+    if (typeof renderUI !== 'function') return { ok: false, reason: 'renderUI липсва' };
+    const before = (document.getElementById('note-counter') || {}).textContent;
+    await renderUI({ boardParseError: false });
+    await new Promise(r => setTimeout(r, 700));
+    return {
+        ok: true,
+        before,
+        after: (document.getElementById('note-counter') || {}).textContent,
+        filter: String(typeof currentBoardFilter === 'undefined' ? '?' : currentBoardFilter),
+        total: typeof allNotesData === 'undefined' ? null : allNotesData.length
+    };
+});
+const counter3 = await stableCounter();
+const cards3 = await readCards(START_BOARD);
+ok(fullRender2.ok && fullRender2.filter === START_BOARD && String(counter3) === String(START_COUNT),
+    `след ВТОРИ пълен render (както при запис/синхронизация) броячът пак показва стартовата папка (${START_COUNT}), не общия брой`,
+    { render: fullRender2, counter: counter3, cards: cards3 });
+
 // --- 5) Клик по другия борд и обратно: броячът следва борда ---------------------------------------
 const clickBoard = async (boardId) => {
     const sel = `.board-menu-container .board-filter-link[data-boardid="${boardId}"]`;
