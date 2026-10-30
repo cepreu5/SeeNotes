@@ -25341,14 +25341,33 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         boardsNoteElement = await createBoardsUI(boardsData, boardParseError, extraCounts);
     }
     // Винаги премахваме старото меню, за да го заменим с новото
+    // b3.19: пресглобяването на менюто не бива да мести лентата. Пазим позицията на старата лента
+    // и я връщаме веднага след сглобяването — иначе тя скача в началото и после пак плъзва до
+    // избраната папка, което на телефона се вижда като второ превъртане около секунда след първото.
     const oldBoardsNote = document.querySelector('header .boards-note');
+    const oldHeaderMenu = oldBoardsNote ? oldBoardsNote.querySelector('.board-menu-container') : null;
+    const headerMenuScrollLeft = oldHeaderMenu ? oldHeaderMenu.scrollLeft : 0;
     if (oldBoardsNote) {
         oldBoardsNote.remove();
     }
+    const restoreHeaderMenuScroll = () => {
+        const menu = document.querySelector('header .board-menu-container');
+        if (!menu || !headerMenuScrollLeft) return;
+        // Четем scrollWidth, за да е сигурно, че браузърът вече е изчислил ширината на новата
+        // лента: иначе задаването на scrollLeft се заклещва на 0 и лентата пак скача в началото.
+        // Изключваме плавното скролиране за мига: с него задаването на scrollLeft само стартира
+        // анимация от нулата и лентата пак се вижда как плъзва.
+        const prevBehavior = menu.style.scrollBehavior;
+        menu.style.scrollBehavior = 'auto';
+        void menu.scrollWidth;
+        menu.scrollLeft = headerMenuScrollLeft;
+        menu.style.scrollBehavior = prevBehavior;
+    };
     // Ако само презареждаме менюто, добавяме новото и спираме дотук.
     if (rerenderOnlyMenu) {
         if (boardsNoteElement) {
             document.querySelector('header').appendChild(boardsNoteElement);
+            restoreHeaderMenuScroll();
             // Синхронизираме визуалното състояние на менюто и скролираме до активния бутон
             // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
             setTimeout(() => {
@@ -25362,14 +25381,10 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                     link.classList.toggle('selected-board', isSelected);
                     link.classList.toggle('active', isSelected);
                     link.style.height = isSelected ? '39px' : '35px';
-                    if (isSelected) {
-                        link.scrollIntoView({
-                            behavior: 'smooth',
-                            inline: 'center',
-                            block: 'nearest'
-                        });
-                    }
                 });
+                // b3.19: връщаме лентата при избрания борд само ако той наистина не се вижда.
+                // Иначе всяко пресглобяване на менюто подкарва поредно плавно превъртане.
+                revealBoardInHeaderMenu(activeIdForUI);
             }, 50);
         }
         return; // КЛЮЧОВА СТЪПКА: Прекратяваме функцията тук
@@ -25442,6 +25457,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
 
     if (boardsNoteElement && !delayMenuRender) {
         document.querySelector('header').appendChild(boardsNoteElement);
+        restoreHeaderMenuScroll();
     }
     // Прилагаме филтъра и скролираме менюто само при първоначално зареждане.
     if (isInitialLoad && localStorage.getItem('checkEmptyBoards') === 'true') {
@@ -25520,7 +25536,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         } else {
             startBoardBtn.classList.add('selected-board', 'active');
             startBoardBtn.style.height = '39px';
-            startBoardBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            // b3.19: без безусловно плавно превъртане при всяко пресглобяване на менюто —
+            // лентата вече е върната там, където е била, и бутонът се вижда.
+            revealBoardInHeaderMenu(currentBoardFilter);
         }
     } else if (isInitialLoad && (currentBoardFilter === 'calendar' || currentBoardFilter === 'calendar_monthly' || currentBoardFilter === 'calendar_weekly')) {
         // Fallback for cases where the button might be missing from the menu
