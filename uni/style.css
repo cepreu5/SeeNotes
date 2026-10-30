@@ -4314,8 +4314,13 @@ body.selection-locked .note.active-selection-note .note-content {
 /* The strip is one row at every width (see flex-wrap: nowrap above), so ▦ keeps its place on the
    same row on phones too and the narrow-width gap override is no longer needed. */
 
+/* --- Редактор: отстъпът отгоре следва реалната височина на хедъра (30.10.2026) --------------------
+   Досега лентата пазеше 100px за хедъра, независимо колко е висок той: на телефон хедърът е 60-99px
+   според това дали редът с форматиране е отворен, и разликата оставаше празна ивица между лентата и
+   полето за редактиране. --nw-header-h се мери в main.js (wireNoteWindow) и се обновява при всяка
+   промяна на хедъра. */
 .modal-content-box.has-edit-toolbar {
-    padding-top: 100px;
+    padding-top: calc(var(--nw-header-h, 100px) + 2px);
 }
 
 /* Adjustments for :is(#modal-board-name, .nw-modal-board-name) when in toolbar */
@@ -4860,16 +4865,19 @@ body.selection-locked .note.active-selection-note .note-content {
     transition: none;
     user-select: none;
 }
-/* --- Мобилна клавиатура (b2.89) ------------------------------------------------------------------
-   Докато полето за текст в бележката е на фокус на телефон, бележката застава на най-горния ръб и
-   се скъсява до 55vh - толкова остава над клавиатурата и на ниските телефони, така че и долният ред
-   с бутони остава над нея. Класът слага само !important правила: инлайн top/left, които местенето
+/* --- Мобилна клавиатура (2.0x) -------------------------------------------------------------------
+   При фокус в поле на бележката тя застава на горния ръб и се скъсява до мястото, което реално се
+   вижда над клавиатурата. Досега таванът беше 55vh - число, което не знае колко е висока клавиатурата:
+   на телефон с 844px екран 55vh = 464px, а над клавиатурата остават около 520px, значи близо 60px
+   стояха празни. Сега височината идва от --nw-kb-visible: тя се пише в main.js от visualViewport
+   (колко пиксела от страницата се виждат над клавиатурата) и от височината на екрана, когато
+   видимата площ е цялата. Класът слага само !important правила: инлайн top/left, които местенето
    пише, остават непокътнати, значи запомненото място не се променя и щом клавиатурата се затвори,
-   бележката се връща точно там, където е била. Нормалната височина (max-height: 95vh) се връща със
-   снемането на класа. */
+   бележката се връща точно там, където е била. */
 .note-window.note-window-kb-top .modal-content-box {
     top: 0 !important;
-    max-height: 55vh !important;
+    height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
+    max-height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
 }
 /* The quiet trace after a background sync took the new text in, and the question when it could not. */
 .note-window-sync-trace {
