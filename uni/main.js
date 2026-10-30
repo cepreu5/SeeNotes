@@ -13335,40 +13335,83 @@ function setNoteKeyboardDock(win, on) {
     el.classList.toggle('note-window-kb-top', !!on);
     // Таванът на височината се сменя заедно с класа: слагането на класа при вече измерена стойност
     // не би преизчислило нищо, затова стойността се пише преди класа и се маха след него.
-    if (!on) el.style.removeProperty('--nw-kb-visible');
+    if (!on) {
+        el.style.removeProperty('--nw-kb-visible');
+        win.kbInsetSeen = false;
+    }
 }
 
 // Колко високо е мястото, което се вижда над клавиатурата. visualViewport знае точния отговор, докато
 // клавиатурата е отворена (на Android тя не свива window.innerHeight, значи 100vh остава цялата
 // страница). Когато видимата площ е цялата, остава височината на екрана - тогава клавиатурата или я
 // няма, или е сгъната, и бележката не бива да расте извън екрана заради стара стойност.
-function applyNoteKeyboardVisibleHeight(el) {
+// Колко от екрана трябва да липсва, за да се брои, че клавиатурата наистина заема място: по-малко от
+// това е адресната лента или разместване на изгледа, не клавиатура.
+const NOTE_KB_MIN_INSET = 80;
+
+function noteKeyboardVisibleHeight() {
     const vv = window.visualViewport;
     const screenH = window.innerHeight || document.documentElement.clientHeight;
-    const visible = vv && vv.height ? Math.min(Math.round(vv.height), screenH) : screenH;
-    el.style.setProperty('--nw-kb-visible', visible + 'px');
+    return vv && vv.height ? Math.min(Math.round(vv.height), screenH) : screenH;
+}
+
+// Видимата площ е по-малка от екрана само докато клавиатурата е тук.
+function noteKeyboardTakesSpace() {
+    const screenH = window.innerHeight || document.documentElement.clientHeight;
+    return screenH - noteKeyboardVisibleHeight() >= NOTE_KB_MIN_INSET;
+}
+
+function applyNoteKeyboardVisibleHeight(el) {
+    if (noteKeyboardTakesSpace()) {
+        el.style.setProperty('--nw-kb-visible', noteKeyboardVisibleHeight() + 'px');
+        return;
+    }
+    // Фокусът идва преди клавиатурата да е заела място (тя се отваря с анимация). Дотогава бележката
+    // пази височината, която вече има - иначе за миг се разпъва на целия екран.
+    const box = el.querySelector('.modal-content-box');
+    const held = box ? Math.round(box.getBoundingClientRect().height) : 0;
+    if (held > 0) el.style.setProperty('--nw-kb-visible', held + 'px');
+    else el.style.removeProperty('--nw-kb-visible');
+}
+
+function noteKeyboardFocusInside(el) {
+    const a = document.activeElement;
+    return !!(a && el.contains(a) && isNoteKeyboardField(a));
+}
+
+// Клавиатурата се скрива и със стрелката от навигацията на Android: фокусът остава в полето, значи
+// focusout не идва, а видимата площ пак е цялата. Без тази проверка бележката остава залепена най-горе
+// и се разпъва на целия екран, вместо да се върне на височината и мястото си.
+function syncNoteKeyboardDock() {
+    if (!noteKeyboardDockApplies()) {
+        noteWindows.forEach(w => setNoteKeyboardDock(w, false));
+        return;
+    }
+    const takes = noteKeyboardTakesSpace();
+    noteWindows.forEach(w => {
+        const el = w.el;
+        if (!el.classList.contains('note-window-kb-top')) {
+            // Скриване с стрелката и после пак натискане в полето: фокусът не е мърдал, значи няма
+            // focusin, който да вдигне бележката - вдига я новата клавиатура.
+            if (takes && noteKeyboardFocusInside(el)) setNoteKeyboardDock(w, true);
+            return;
+        }
+        if (takes) { w.kbInsetSeen = true; applyNoteKeyboardVisibleHeight(el); return; }
+        // Клавиатурата е била тук и я няма: бележката се връща на мястото си. Само след като
+        // свиването е било наистина видяно - иначе едно разместване на изгледа, преди клавиатурата да
+        // се отвори, би свалило бележката точно когато тя трябва да се качи.
+        if (w.kbInsetSeen) setNoteKeyboardDock(w, false);
+    });
 }
 
 // Завъртане на телефона или разширяване на прозореца, докато полето е на фокус: ако мястото вече не
 // е мобилно, бележката слиза от горния ръб. Ако още е мобилно, височината се преизчислява: клавиатурата
 // се отваря с анимация, а при завъртане се променя и височината ѝ.
-window.addEventListener('resize', () => {
-    if (!noteKeyboardDockApplies()) {
-        noteWindows.forEach(w => setNoteKeyboardDock(w, false));
-        return;
-    }
-    noteWindows.forEach(w => {
-        if (w.el.classList.contains('note-window-kb-top')) applyNoteKeyboardVisibleHeight(w.el);
-    });
-});
+window.addEventListener('resize', syncNoteKeyboardDock);
 // Същото и при самия visualViewport: Android известява тук при отваряне и затваряне на клавиатурата,
-// без да пипа window.innerHeight.
+// без да пипа window.innerHeight. Затова и двете посоки минават през една и съща проверка.
 if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
-        noteWindows.forEach(w => {
-            if (w.el.classList.contains('note-window-kb-top')) applyNoteKeyboardVisibleHeight(w.el);
-        });
-    });
+    window.visualViewport.addEventListener('resize', syncNoteKeyboardDock);
 }
 
 function wireNoteWindow(win) {
