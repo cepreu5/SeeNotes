@@ -154,7 +154,9 @@ The **Trash** tile shows deleted notes. It has a search field (switched on in Se
 
 The **✎ Reorder** square opens the board window: pick a board to edit, **Delete**, **Title**, **Colour**, **Font**, **Background** (including a custom picture up to 3 MB), **Reorder**, and a switch for a custom note order per board. An empty title is refused, and so is a duplicate name.
 
-The all-boards menu (`08-boards-menu.png`) shows the tiles in one grid — convenient on a phone, where the bar does not fit.
+The all-boards menu shows the tiles in one grid — convenient on a phone, where the bar does not fit.
+
+![The all-boards menu](images/en/08-boards-menu.png)
 
 ---
 
@@ -204,9 +206,7 @@ Rows in the main part:
 
 In the advanced part: **Local folder** (with **Update**), **Archive**, folder pickers, **Active folder** (including a new folder in Google Drive), **Delete folder** (with emptying its contents), **Read from GD before edit**, and **Check for empty boards**.
 
-At the bottom:
-
-![Bottom of Settings](images/en/10b-settings-bottom.png)
+Also in the same section:
 
 - **Markdown symbols** — your own characters for bold, italic, strike, underline, clear and bullet.
 - **Save Archive**, **Save Local folder**, **Sync unsaved changes**, **Save DB to folder** — manual writes per source (with safety checks, e.g. "The folder is not empty").
@@ -217,7 +217,7 @@ At the bottom:
 
 ![Assistant](images/en/15-assistant.png)
 
-The round button in the bottom right corner opens a chat with the assistant: you ask in words, it answers from the app's knowledge base and can carry out an action (open a setting, change a row, and so on). Its title bar holds **↻** reload the knowledge base, **📑** all questions, **−** minimise; at the bottom, clear and send.
+The round button in the bottom right corner opens a chat with the assistant: you ask in words, it answers from the app's knowledge base and can carry out an action (open a setting, change a row, and so on). Its title bar holds **↻** reload the knowledge base, **📑** all questions, **−** minimise; at the bottom, clear and send. A **Ctrl+click** on the round button (a half-second hold on a phone) makes it see-through so it does not cover the board; the same again brings it back.
 
 The **▶** square in the board bar restarts the guided tour; during the tour an overlay with instructions appears on the screen. It closes when Settings is opened or the tour is dismissed.
 
@@ -225,7 +225,7 @@ The **▶** square in the board bar restarts the guided tour; during the tour an
 
 ![Full screen](images/en/16-fullscreen.png)
 
-The **⛶** square hides the header and the bar so that only the board is left; the same button brings the header back. The commands `/7` and `/6` do the same.
+The **⛶** square hides the header and the bar so that only the board is left; the same button brings the header back. The commands `/7` and `/6` do the same. So does a **Ctrl+click** on the floating square with the boards icon — it switches the mode without opening the menu.
 
 ## 14. On a phone
 
@@ -249,6 +249,12 @@ On a narrow screen the header folds, the board bar scrolls sideways, and the not
 - **Dragging a card** moves the note within the board; **dragging a board** in the reorder window reorders the boards.
 - **The handle in the note's bottom right corner** sets the size of new notes; with **Ctrl** it resizes only this one.
 - **The commands in the search field** (`/?` for the list).
+- **Ctrl+click on "+"** — a new board instead of a new note.
+- **Ctrl+click (or a hold) on "calculate expression"** in a note — works only on lines marked **☑**.
+- **Ctrl+click on the scale slider** in Settings — moves the value to the next round number (10, 20, 30 …).
+- **Ctrl+click on a note's title** on the board — deletes the note; it asks for confirmation and moves it to the Trash.
+- **Ctrl+click (or a hold) on the assistant's round button** — makes it see-through.
+- **Ctrl+click on the floating boards square** — full screen without opening the menu.
 - **Demo mode** — `?demo=1` in the address; `?demo=0` turns it off.
 - **Offline start** — with no network the app offers to work from the data already loaded.
 
