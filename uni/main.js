@@ -16046,7 +16046,11 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const weeklyCalendarContainer = document.getElementById('weekly-calendar-container');
         if (weeklyCalendarContainer) weeklyCalendarContainer.style.display = 'none';
         // Възстановяваме видимостта на основните елементи
-        document.querySelector('header').style.display = 'flex';
+        const headerEl = document.querySelector('header');
+        // b3.18: хедърът беше ли скрит (значи идваме от календара)? Само тогава скролирането в
+        // boardClick не е имало какво да измери и менюто трябва да се върне при борда допълнително.
+        const headerWasHidden = !!headerEl && getComputedStyle(headerEl).display === 'none';
+        if (headerEl) headerEl.style.display = 'flex';
         notesContainer.style.display = 'flex';
         // scrollTopBtn visibility is handled by the scroll event
         // scrollTopBtn.style.display = 'block';
@@ -16055,7 +16059,9 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         adjustFullscreenSearchLayout();
         // b2.35: хедърът тъкмо е станал видим — връщаме менюто при избрания борд (при отворен календар
         // кликът е минал, докато менюто беше скрито, и скролирането в boardClick не е имало какво да мери).
-        requestAnimationFrame(() => revealBoardInHeaderMenu(buttonBoardId));
+        // b3.18: само когато хедърът наистина е бил скрит. Иначе boardClick вече е подкарал плавно
+        // скролиране към същия бутон, а това второ прекъсва първото и менюто се премества два пъти.
+        if (headerWasHidden) requestAnimationFrame(() => revealBoardInHeaderMenu(buttonBoardId));
     }
     // Add or remove a class from the container to control child visibility
     // This part is no longer needed as calendar has its own view
