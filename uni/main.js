@@ -17818,6 +17818,41 @@ const appSettingsKeys = [
     'gdrive_folder_names', 'deviceName',
     'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
 ];
+// --- Видимост на допълнителните бордове (Настройки) -------------------------------------------
+// „Със снимки", „С видео", „Със звуци", „Други прикачени", „Напомняния" и „Всички" се показват и
+// скриват от Настройки. Изборът стига до профила веднага: иначе при следващ старт
+// loadSettingsFromGDrive прилага стария профил върху localStorage, бордът се връща в менюто и
+// чекбоксът пак е отметнат. Докато записът в профила не е потвърден, ключът стои в
+// PENDING_BOARD_VISIBILITY_KEY и профилът не го презаписва — така изборът не се губи и когато
+// записът се провали (няма мрежа, няма токен) или още не е пристигнал.
+const PENDING_BOARD_VISIBILITY_KEY = 'pendingBoardVisibility';
+function getPendingBoardVisibility() {
+    try {
+        const raw = localStorage.getItem(PENDING_BOARD_VISIBILITY_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+}
+function clearPendingBoardVisibility() {
+    if (localStorage.getItem(PENDING_BOARD_VISIBILITY_KEY) !== null) {
+        localStorage.removeItem(PENDING_BOARD_VISIBILITY_KEY);
+    }
+}
+async function setBoardVisibilitySetting(key, visible) {
+    localStorage.setItem(key, visible ? 'true' : 'false');
+    const pending = getPendingBoardVisibility();
+    if (!pending.includes(key)) pending.push(key);
+    localStorage.setItem(PENDING_BOARD_VISIBILITY_KEY, JSON.stringify(pending));
+    showToast(_('settingSaved'), 2000);
+    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+    if (typeof saveSettingsToGDrive === 'function') {
+        try {
+            await saveSettingsToGDrive(true);
+        } catch (e) {
+            console.warn('Board visibility settings sync failed:', e);
+        }
+    }
+}
 // --- Файл по име с разлика между "няма го" и "не знам" ---------------------------------------
 // findGDFileByName връща null и когато Drive отговори "няма такъв файл", и когато мрежата падне,
 // токенът липсва или сървърът върне 5xx. За вградените картинки тази разлика е всичко: "няма"
@@ -19043,6 +19078,9 @@ async function saveSettingsToGDrive(silent = false) {
     }
     const contentLocal = JSON.stringify(settings, null, 2);
     localStorage.setItem('settings_multinotes_data', contentLocal);
+    // Офлайн локалното копие е профилът; онлайн се чака успешен запис в Drive, за да се махне
+    // бележката „чака запис" от изборите за видимост на бордовете.
+    let profileSaved = isOffline;
     if (!isOffline) {
         const folderId = await getAppSettingsFolderId();
         if (folderId) {
@@ -19088,11 +19126,13 @@ async function saveSettingsToGDrive(silent = false) {
                 }
                 // Записът е минал: маркерът за смяна на езика се чисти, само ако още отговаря на избора
                 if (localStorage.getItem(PENDING_LANG_SYNC_KEY) === localStorage.getItem('language')) localStorage.removeItem(PENDING_LANG_SYNC_KEY);
+                profileSaved = true;
             } catch (err) {
                 console.error("Save settings to GDrive error:", err);
             }
         }
     }
+    if (profileSaved) clearPendingBoardVisibility();
     if (!silent) showToast(_('settingsSavedSuccess'));
 }
 
@@ -19138,10 +19178,14 @@ async function loadSettingsFromGDrive(silent = false) {
             }
             const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id', 'folderId', 'deviceName'];
             if (window.hasUrlLanguage || pendingLang) preservedKeys.push('language');
+            // Ключове, сменени от Настройки и още не записани в профила: профилът не ги презаписва,
+            // иначе изключен борд се връща в менюто при следващия старт.
+            const pendingVisibility = getPendingBoardVisibility();
             Object.keys(settings).forEach(key => {
                 const isBoardKey = key.startsWith('board_');
                 if (appSettingsKeys.includes(key) || isBoardKey) {
                     if (!preservedKeys.includes(key)) {
+                        if (pendingVisibility.includes(key)) return;
                         let val = settings[key];
                         if (key === 'boardMenuOrder' && (!val || (Array.isArray(val) && val.length === 0))) return;
                         if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
@@ -19926,55 +19970,43 @@ async function createSettingsUI(boardsData, boardParseError) {
     // Show 'All' Board Checkbox
     if (showBoardAllCheckbox) {
         showBoardAllCheckbox.checked = localStorage.getItem('showBoardAll') !== 'false'; // Default to true
-        showBoardAllCheckbox.addEventListener('change', () => {
-            localStorage.setItem('showBoardAll', showBoardAllCheckbox.checked.toString());
-            showToast(_('settingSaved'), 2000);
-            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        showBoardAllCheckbox.addEventListener('change', async () => {
+            await setBoardVisibilitySetting('showBoardAll', showBoardAllCheckbox.checked);
         });
     }
     // Show 'Reminders' Board Checkbox
     if (showBoardRemindCheckbox) {
         showBoardRemindCheckbox.checked = localStorage.getItem('showBoardRemind') !== 'false'; // Default to true
-        showBoardRemindCheckbox.addEventListener('change', () => {
-            localStorage.setItem('showBoardRemind', showBoardRemindCheckbox.checked.toString());
-            showToast(_('settingSaved'), 2000);
-            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        showBoardRemindCheckbox.addEventListener('change', async () => {
+            await setBoardVisibilitySetting('showBoardRemind', showBoardRemindCheckbox.checked);
         });
     }
     // Show 'Photos' Board Checkbox
     if (showPhotosBoardCheckbox) {
         showPhotosBoardCheckbox.checked = localStorage.getItem('showPhotosBoard') === 'true';
-        showPhotosBoardCheckbox.addEventListener('change', () => {
-            localStorage.setItem('showPhotosBoard', showPhotosBoardCheckbox.checked.toString());
-            showToast(_('settingSaved'), 2000);
-            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        showPhotosBoardCheckbox.addEventListener('change', async () => {
+            await setBoardVisibilitySetting('showPhotosBoard', showPhotosBoardCheckbox.checked);
         });
     }
     // Show 'Videos' Board Checkbox
     if (showVideosBoardCheckbox) {
         showVideosBoardCheckbox.checked = localStorage.getItem('showVideosBoard') === 'true';
-        showVideosBoardCheckbox.addEventListener('change', () => {
-            localStorage.setItem('showVideosBoard', showVideosBoardCheckbox.checked.toString());
-            showToast(_('settingSaved'), 2000);
-            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        showVideosBoardCheckbox.addEventListener('change', async () => {
+            await setBoardVisibilitySetting('showVideosBoard', showVideosBoardCheckbox.checked);
         });
     }
     // Show 'Sounds' Board Checkbox
     if (showSoundsBoardCheckbox) {
         showSoundsBoardCheckbox.checked = localStorage.getItem('showSoundsBoard') === 'true';
-        showSoundsBoardCheckbox.addEventListener('change', () => {
-            localStorage.setItem('showSoundsBoard', showSoundsBoardCheckbox.checked.toString());
-            showToast(_('settingSaved'), 2000);
-            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        showSoundsBoardCheckbox.addEventListener('change', async () => {
+            await setBoardVisibilitySetting('showSoundsBoard', showSoundsBoardCheckbox.checked);
         });
     }
     // Show 'Other' Board Checkbox
     if (showOtherBoardCheckbox) {
         showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
-        showOtherBoardCheckbox.addEventListener('change', () => {
-            localStorage.setItem('showOtherBoard', showOtherBoardCheckbox.checked.toString());
-            showToast(_('settingSaved'), 2000);
-            renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+        showOtherBoardCheckbox.addEventListener('change', async () => {
+            await setBoardVisibilitySetting('showOtherBoard', showOtherBoardCheckbox.checked);
         });
     }
     // Weekly Calendar Checkbox
