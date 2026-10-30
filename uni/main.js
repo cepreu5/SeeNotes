@@ -13331,15 +13331,45 @@ function setNoteKeyboardDock(win, on) {
     const el = win && win.el;
     if (!el) return;
     if (on && !noteKeyboardDockApplies()) on = false;
+    if (on) applyNoteKeyboardVisibleHeight(el);
     el.classList.toggle('note-window-kb-top', !!on);
+    // Таванът на височината се сменя заедно с класа: слагането на класа при вече измерена стойност
+    // не би преизчислило нищо, затова стойността се пише преди класа и се маха след него.
+    if (!on) el.style.removeProperty('--nw-kb-visible');
+}
+
+// Колко високо е мястото, което се вижда над клавиатурата. visualViewport знае точния отговор, докато
+// клавиатурата е отворена (на Android тя не свива window.innerHeight, значи 100vh остава цялата
+// страница). Когато видимата площ е цялата, остава височината на екрана - тогава клавиатурата или я
+// няма, или е сгъната, и бележката не бива да расте извън екрана заради стара стойност.
+function applyNoteKeyboardVisibleHeight(el) {
+    const vv = window.visualViewport;
+    const screenH = window.innerHeight || document.documentElement.clientHeight;
+    const visible = vv && vv.height ? Math.min(Math.round(vv.height), screenH) : screenH;
+    el.style.setProperty('--nw-kb-visible', visible + 'px');
 }
 
 // Завъртане на телефона или разширяване на прозореца, докато полето е на фокус: ако мястото вече не
-// е мобилно, бележката слиза от горния ръб веднага.
+// е мобилно, бележката слиза от горния ръб. Ако още е мобилно, височината се преизчислява: клавиатурата
+// се отваря с анимация, а при завъртане се променя и височината ѝ.
 window.addEventListener('resize', () => {
-    if (noteKeyboardDockApplies()) return;
-    noteWindows.forEach(w => setNoteKeyboardDock(w, false));
+    if (!noteKeyboardDockApplies()) {
+        noteWindows.forEach(w => setNoteKeyboardDock(w, false));
+        return;
+    }
+    noteWindows.forEach(w => {
+        if (w.el.classList.contains('note-window-kb-top')) applyNoteKeyboardVisibleHeight(w.el);
+    });
 });
+// Същото и при самия visualViewport: Android известява тук при отваряне и затваряне на клавиатурата,
+// без да пипа window.innerHeight.
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+        noteWindows.forEach(w => {
+            if (w.el.classList.contains('note-window-kb-top')) applyNoteKeyboardVisibleHeight(w.el);
+        });
+    });
+}
 
 function wireNoteWindow(win) {
     const { el, box, body } = win;
@@ -13350,6 +13380,30 @@ function wireNoteWindow(win) {
     el.addEventListener('mousedown', activate, true);
     el.addEventListener('touchstart', activate, { capture: true, passive: true });
     el.addEventListener('focusin', activate, true);
+    // Височината на хедъра се мери и се дава на стиловете като --nw-header-h: в режим Редактиране
+    // кутията пази точно толкова отгоре, колкото лентата наистина заема (на телефон тя е два реда,
+    // когато редът с форматиране е отворен, и един, когато не е). Без това числото беше фиксирано и
+    // разликата оставаше празна ивица между лентата и полето за редактиране.
+    const headerBar = box.querySelector('.modal-header-toolbar');
+    const measureHeader = () => {
+        const h = headerBar ? Math.round(headerBar.getBoundingClientRect().height) : 0;
+        if (h > 0) box.style.setProperty('--nw-header-h', h + 'px');
+    };
+    measureHeader();
+    // Първото мерене може да хване лентата преди шрифтовете и редовете да са се наместили (тогава тя
+    // е по-ниска, отколкото ще остане). Затова се мери пак в следващия кадър, когато оформлението е
+    // готово - стойността е само отстъп, така че късното записване не мести нищо друго.
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+            if (!el.isConnected) return;
+            measureHeader();
+        });
+    }
+    if (headerBar && typeof ResizeObserver === 'function') {
+        const headerRO = new ResizeObserver(measureHeader);
+        headerRO.observe(headerBar);
+        win.headerRO = headerRO;
+    }
     // --- Натискане по средата на местенето (b2.96) -------------------------------------------
     // На телефон, докато клавиатурата е тук, бележката стои най-горе. Когато фокусът излезе, без да
     // отиде в друг елемент от бележката (на докосване relatedTarget е null - така изглежда
