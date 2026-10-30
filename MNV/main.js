@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.72'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.72)
+const version = 'Beta 1.73'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.73)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -526,7 +526,7 @@ async function refreshAuthToken() {
                     return;
                 }
                 let attempts = 0;
-                const maxAttempts = 150; // 15 seconds total (150 * 100ms)
+                const maxAttempts = 50; // 5 секунди (50 * 100ms) — толкова чакаме GIS, преди да покажем логина
                 const checkInterval = setInterval(() => {
                     attempts++;
                     if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
@@ -534,7 +534,7 @@ async function refreshAuthToken() {
                         res(true);
                     } else if (attempts >= maxAttempts) {
                         clearInterval(checkInterval);
-                        rej(new Error("Google Identity Services not loaded after 15 seconds."));
+                        rej(new Error("Google Identity Services not loaded after 5 seconds."));
                     }
                 }, 100);
             });
@@ -579,10 +579,12 @@ async function refreshAuthToken() {
                 },
             });
 
-            // Таймер за безопасност: ако Google не отговори до 30 секунди
+            // Таймер за безопасност: ако Google не отговори до 5 секунди
+            // (b1.73: беше 30 секунди — при изтекла сесия приложението висеше
+            // половин минута, преди да покаже логин страницата)
             const requestTimeout = setTimeout(() => {
-                reject(new Error("Token refresh request timed out after 30s."));
-            }, 30000);
+                reject(new Error("Token refresh request timed out after 5s."));
+            }, 5000);
 
             // Request the token (silent refresh using login_hint)
             // Важно: Ако няма login_hint, това ще покаже прозорец (което не искаме при silent refresh),
@@ -3767,9 +3769,18 @@ function initLoginPage() {
         });
     }
     // Event listener за authorize бутона
+    // b1.73: слушателят се закача само веднъж — initLoginPage се вика и от
+    // пътя за изтекла сесия, а втори слушател пускаше по две заявки на клик.
     const authorizeBtn = document.getElementById('authorize_button');
     if (authorizeBtn) {
-        authorizeBtn.addEventListener('click', handleAuthClick);
+        // b1.73: бутонът има disabled в HTML и се включваше само в gisLoaded().
+        // При изтекла сесия gisLoaded минава по другия път и бутонът оставаше
+        // мъртъв до презареждане на страницата.
+        authorizeBtn.disabled = false;
+        if (!authorizeBtn.dataset.authListenerAdded) {
+            authorizeBtn.addEventListener('click', handleAuthClick);
+            authorizeBtn.dataset.authListenerAdded = 'true';
+        }
     }
 }
 
@@ -3967,7 +3978,9 @@ async function checkAuth() {
         localStorage.removeItem('google_auth_token');
         // Показваме login страницата вместо безкраен reload
         initLoginPage();
-        alert(_('errorSessionExpired'));
+        // b1.73: беше alert() — блокиращ прозорец точно когато човекът иска
+        // да натисне Authorize. Съобщението минава през тоста.
+        if (typeof showToast === 'function') showToast(_('errorSessionExpired'));
         return null; // Stop execution
     }
     // --- 🔐 Проверка на лиценз (използва кеширана функция) ---
