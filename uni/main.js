@@ -25528,10 +25528,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     // за да може асистентът (промо снимката) да се появи плавно и на правилното място.
     applyFilters();
 
-    const counterEl = document.getElementById('note-counter');
-    if (counterEl) {
-        counterEl.textContent = notesCount;
-    }
+    // Броячът в хедъра НЕ се пипа тук: applyFilters() вече е сложил видимия брой за
+    // стартовия борд. Презаписването с notesCount (общия брой) показва всички бележки
+    // при зададена стартова папка, докато не се цъкне папката.
     populateStartBoardSelect();
     showAppUI();
     updateReloadButtonState();
