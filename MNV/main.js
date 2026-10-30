@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.73'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.73)
+const version = 'Beta 1.74'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.74)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -12942,10 +12942,9 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
     // След първото зареждане, флагът става false.
     isInitialLoad = false;
-    const counterEl = document.getElementById('note-counter');
-    if (counterEl) {
-        counterEl.textContent = notesCount;
-    }
+    // Броячът в хедъра НЕ се пипа тук: applyFilters() вече е сложил видимия брой за
+    // стартовия борд. Ако го презапишем с notesCount (общия брой бележки), при зададена
+    // стартова папка хедърът показва всички бележки, докато не се цъкне папката.
     populateStartBoardSelect();
 }
 
