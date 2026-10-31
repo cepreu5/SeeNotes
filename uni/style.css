@@ -3313,8 +3313,10 @@ code {
     border: 1px solid rgba(0, 0, 0, 0.1);
     width: calc(50% - 2px);
     /* Two notes per row with a 4px gap */
-    height: 55px;
-    /* Fixed height to create a square-like shape */
+    /* Квадратче: височината е колкото ширината, за да се вижда цяло в клетката.
+       Преди беше фиксирани 55px и в ниска клетка се показваше само горната ивица. */
+    aspect-ratio: 1 / 1;
+    height: auto;
     box-sizing: border-box;
     display: -webkit-box;
     -webkit-line-clamp: 5;
@@ -3324,6 +3326,18 @@ code {
     white-space: pre-wrap;
     /* Respect newlines */
     word-break: break-word;
+}
+
+/* На телефон клетката се вдига толкова, че първият ред от две бележки да е цял:
+   43px за числото и отстъпите + височината на бележката (половината ширина на
+   клетката минус отстъпите), плюс 3px запас. Ширината не се пипа — седем колони. */
+@media (max-width: 520px) {
+    .calendar-cell {
+        aspect-ratio: auto;
+        /* Фиксирана височина, не min-height: иначе клетката расте по съдържание и
+           мрежата става неравна. Останалото слиза в скрола на контейнера. */
+        height: calc(37px + (100vw - 40px) / 14);
+    }
 }
 
 @media (hover: hover) {
@@ -5970,19 +5984,48 @@ header.title-hidden > div:first-child {
 
 .privacy-cal-day {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 2px;
     font-size: 13px;
     line-height: 1;
-    border-radius: 50%;
     height: 100%;
+    /* Точките са процент от ширината на деня, затова денят е контейнер. */
+    container-type: inline-size;
 }
 
-.privacy-cal-day.is-today {
+.privacy-cal-num {
+    display: grid;
+    place-items: center;
+    width: 1.5em;
+    height: 1.5em;
+    border-radius: 50%;
+    font-style: normal;
+}
+
+.privacy-cal-day.is-today .privacy-cal-num {
     background: #1df52f;
     color: #07130a;
     font-weight: 700;
     box-shadow: 0 0 12px rgba(29, 245, 47, 0.45);
+}
+
+/* Две точки на един ред, цели: 28% от ширината на деня. Мястото им е запазено и в
+   дните без бележки, за да не мърдат числата нагоре-надолу в редицата. */
+.privacy-cal-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    height: 28cqw;
+}
+
+.privacy-cal-dots i {
+    width: 28cqw;
+    height: 28cqw;
+    border-radius: 50%;
 }
 
 .privacy-close {
