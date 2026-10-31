@@ -17694,25 +17694,37 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         }
     } catch (e) { console.error("Error sorting board buttons:", e); }
     maxWidthForButtons = 0;
+    // Ширините се мерят върху КОПИЯ на всеки бутон, в контейнер с нулев размер.
+    // Причината: докато живите бутони стояха в контейнер inline-block + nowrap, 13-те бутона
+    // го правеха по-широк от екрана. На телефон това разширяваше страницата и браузърът
+    // нулеше скрола на отворения панел — Настройки скачаше в началото при чек на борд.
+    // Копие в нулев контейнер дава същата мярка (същите класове и текст), но живите бутони
+    // остават на мястото си и страницата не става по-широка.
     const tempContainer = document.createElement('div');
     tempContainer.style.position = 'absolute';
+    tempContainer.style.top = '0';
+    tempContainer.style.left = '0';
+    tempContainer.style.width = '0';
+    tempContainer.style.height = '0';
+    tempContainer.style.overflow = 'hidden';
     tempContainer.style.visibility = 'hidden';
     tempContainer.style.whiteSpace = 'nowrap';
-    tempContainer.style.display = 'inline-block';
     document.body.appendChild(tempContainer);
     allButtonLinks.forEach(link => {
         const isUtil = isBoardMenuUtilId(link.dataset.boardid);
         const isSearchResults = link.dataset.boardid === 'search-results';
+        const probe = link.cloneNode(true);
+        probe.removeAttribute('id');
         if (!isUtil) {
-            link.style.width = 'auto';
+            probe.style.width = 'auto';
             // Results е временен борд: остава скрит, докато няма заявка за търсене.
-            if (!isSearchResults) link.style.display = 'inline-block';
-            link.style.whiteSpace = 'nowrap';
-            tempContainer.appendChild(link);
-            const w = Math.ceil(link.getBoundingClientRect().width || link.offsetWidth || link.scrollWidth);
+            if (!isSearchResults) probe.style.display = 'inline-block';
+            probe.style.whiteSpace = 'nowrap';
+            tempContainer.appendChild(probe);
+            const w = Math.ceil(probe.getBoundingClientRect().width || probe.offsetWidth || probe.scrollWidth);
             maxWidthForButtons = Math.max(maxWidthForButtons, w);
         } else {
-            tempContainer.appendChild(link);
+            tempContainer.appendChild(probe);
         }
     });
 
@@ -17855,66 +17867,6 @@ function firstVisibleBoard() {
     return first ? String(first.gdid || first.id) : 'all';
 }
 
-// --- Настройки: панелът да не скача в началото при прерисуване --------------------------------
-// Пълното renderUI строи менюто с бордовете наново и браузърът нулира скрола на панела с
-// настройките (измерено в истински Chromium: 660 -> 0). Човекът е с пръст върху чекбокса и
-// изведнъж гледа началото на Настройки. Затова пазим какво вижда и му го връщаме веднага след
-// прерисуването: скрола на панела, отворената секция (стрелките) и фокуса.
-const SETTINGS_ACCORDIONS = [
-    ['sorting-options-section', 'sorting-arrow'],
-    ['boards-options-section', 'boards-arrow']
-];
-function captureSettingsPanelView() {
-    const body = document.getElementById('settings-modal-body');
-    if (!body) return null;
-    const active = document.activeElement;
-    return {
-        scrollTop: body.scrollTop,
-        // Радио бутоните в Настройки нямат id — за тях пазим името на групата.
-        activeId: active && active.id ? active.id : null,
-        activeName: active && active.name ? active.name : null,
-        accordions: SETTINGS_ACCORDIONS.map(([sectionId, arrowId]) => {
-            const section = document.getElementById(sectionId);
-            const arrow = document.getElementById(arrowId);
-            return {
-                sectionId, arrowId,
-                display: section ? section.style.display : '',
-                arrowTransform: arrow ? arrow.style.transform : '',
-                arrowTransition: arrow ? arrow.style.transition : ''
-            };
-        })
-    };
-}
-function restoreSettingsPanelView(view) {
-    if (!view) return;
-    for (const a of view.accordions) {
-        const section = document.getElementById(a.sectionId);
-        if (section) section.style.display = a.display;
-        const arrow = document.getElementById(a.arrowId);
-        if (arrow) {
-            arrow.style.transition = a.arrowTransition;
-            arrow.style.transform = a.arrowTransform;
-        }
-    }
-    const body = document.getElementById('settings-modal-body');
-    if (body) {
-        // Между записа и преизчисляването браузърът може да държи по-къса височина (прерисуването
-        // още върви) и записът се отсича по средата, затова се записва и на следващия кадър.
-        const put = () => {
-            body.scrollTop = view.scrollTop;
-            void body.scrollHeight;
-            body.scrollTop = view.scrollTop;
-        };
-        put();
-        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(put);
-    }
-    const el = view.activeId
-        ? document.getElementById(view.activeId)
-        : (view.activeName ? document.querySelector(`input[name="${view.activeName}"]:checked`) : null);
-    if (el && document.activeElement !== el) {
-        try { el.focus({ preventScroll: true }); } catch (e) { /* фокусът не е задължителен */ }
-    }
-}
 async function setBoardVisibilitySetting(key, visible) {
     localStorage.setItem(key, visible ? 'true' : 'false');
     const pending = getPendingBoardVisibility();
@@ -17931,10 +17883,7 @@ async function setBoardVisibilitySetting(key, visible) {
     } else if (!visible && String(currentBoardFilter) === boardId) {
         currentBoardFilter = firstVisibleBoard();
     }
-    // Прерисуването е нужно (менюто и бележките), но не бива да мести панела под пръста.
-    const panelView = captureSettingsPanelView();
     await renderUI({ boardParseError: false });
-    restoreSettingsPanelView(panelView);
     if (typeof saveSettingsToGDrive === 'function') {
         try {
             await saveSettingsToGDrive(true);
