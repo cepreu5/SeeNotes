@@ -34372,25 +34372,9 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
-    let privacyLocked = false;       // вдигнати при истинско напускане: махат се само със Затвори
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
-    let privacyShownAt = 0;          // кога са вдигнати: жест веднага след това не ги маха
-    let privacyLastVp = { vw: 0, vh: 0 }; // последният разумен размер на екрана (виж privacyViewport)
-    let privacyMaxVp = { vh: 0 };    // най-голямата разумна височина, виждана някога: покритието на overlay-а
-    let privacyCloseBtn = null;
-    let privacyBlurred = false;      // прозорецът е загубил фокус: приложението излиза, не е клавиатура
-    let privacyArmedAt = 0;          // вдигнати предварително, още преди излизането (жест от долния ръб)
-    let privacyArmTimer = null;
-    let privacyHiddenAt = 0;         // кога жест ги е махнал: същият жест не бива да ги вдига пак
-    const PRIVACY_GESTURE_GUARD = 400; // колко трябва да са стояли, преди жест да ги маха
-    /* Android снима кадъра за списъка с приложенията от последния кадър, който приложението е
-       успяло да нарисува. Затова плочките, вдигнати при blur, често изобщо не влизат в него:
-       екранът вече е замразен. Единственото сигурно място е жестът, който започва излизането:
-       пръстът пада в долната ивица (жест за „начало“/„скорошни“) или пълзи нагоре, докато
-       приложението още е активно — тогава един кадър с плочките стига. */
-    const PRIVACY_ARM_BAND = 60;     // px от долния ръб, където започва жестът за излизане
-    const PRIVACY_ARM_UP = 18;       // px нагоре от мястото на докосването = излизане, не докосване
-    const PRIVACY_BUILD = 'b3.34';   // кой файл върви на телефона (вижда се в диагностиката)
+    let privacyLastVp = { vw: 0, vh: 0 };  // последният разумен размер на екрана (виж privacyViewport)
+    let privacyMaxVp = { vh: 0 };          // най-голямата разумна височина, виждана някога
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34455,14 +34439,13 @@ initNoteWindows();
         privacyOverlay.appendChild(privacyStack);
 
         const closeBtn = document.createElement('button');
-        privacyCloseBtn = closeBtn;
         closeBtn.type = 'button';
         closeBtn.className = 'privacy-close';
         closeBtn.textContent = privacyIsBg() ? 'Затвори' : 'Close';
         closeBtn.addEventListener('click', function (ev) {
             ev.stopPropagation();
             ev.preventDefault();
-            privacyHide(true);
+            privacyHide();
         });
         closeBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
         privacyOverlay.appendChild(closeBtn);
@@ -34532,13 +34515,11 @@ initNoteWindows();
 
     // Реално видимата част на екрана: при мобилен браузър window.innerHeight може да е
     // по-голям от видимото (напр. 608 срещу 568), затова се взима най-малката стойност.
-    // По време на излизането от приложението Android за миг връща 0 (или шепа пиксели) от
-    // innerWidth/innerHeight/visualViewport и точно тогава идва resize. Такива числа се
-    // подминават: иначе overlay-ът се свива до 0x0, той си остава „показан“, но в кадъра за
-    // списъка се виждат бележките, а плочките се връщат на място едва при следващия resize,
-    // тоест чак когато човек се върне в приложението.
+    // По време на излизането Android за миг връща 0 (или шепа пиксели) и точно тогава идва
+    // resize; такива числа се подминават, иначе overlay-ът остава "показан" с размер 0x0 и в
+    // кадъра за списъка се виждат бележките.
     function privacySane(v) {
-        return typeof v === 'number' && isFinite(v) && v >= 100; // под 100 px не е екран, а преходно състояние
+        return typeof v === 'number' && isFinite(v) && v >= 100;
     }
 
     function privacyViewport() {
@@ -34559,9 +34540,9 @@ initNoteWindows();
         return { vw: vw, vh: vh };
     }
 
-    // Най-голямото разумно число от трите източника: това е физическият екран. Докато има
-    // отворена бележка с клавиатура, видимата част е само тази над клавиатурата (напр. 520 от
-    // 844), затова за покритие не може да се взема privacyViewport().
+    // Най-голямото разумно число от трите източника: това е физическият екран. С отворена
+    // бележка и клавиатура видимата част е само тази над клавиатурата (напр. 520 от 844),
+    // затова за покритие не може да се взима privacyViewport().
     function privacyScreenBox() {
         let vw = 0, vh = 0;
         const take = (w, h) => {
@@ -34578,26 +34559,21 @@ initNoteWindows();
         return { vw: vw, vh: vh };
     }
 
-    // Двете неща се смятат отделно и това е целият смисъл на поправката:
-    //  - overlay-ът покрива ЦЕЛИЯ екран (най-голямото виждано число, никога надолу) — иначе при
-    //    отворена бележка с клавиатура той е висок само колкото частта над клавиатурата (520 от
-    //    844); клавиатурата се прибира при излизане, прозорецът не праща resize (сменя се само
-    //    visualViewport), overlay-ът си остава 520 и долната част на бележката влиза в кадъра за
-    //    списъка с приложенията.
-    //  - плочките се побират във ВИДИМАТА част и се центрират в нея (padding-bottom), за да не
-    //    изчезнат зад клавиатурата, докато човек е в приложението.
+    // Две неща се смятат отделно:
+    //  - overlay-ът покрива ЦЕЛИЯ екран (най-голямото виждано число, никога надолу), защото
+    //    клавиатурата се прибира при излизане без resize на прозореца и иначе долната част на
+    //    бележката влиза в кадъра за списъка с приложенията;
+    //  - плочките се побират във ВИДИМАТА част и се центрират в нея, за да не изчезнат зад
+    //    клавиатурата, докато човек е в приложението.
     function privacyFit() {
         if (!privacyStack) return;
-        const v = privacyViewport(); // видимата част: клавиатурата я намалява
-        if (!v.vw || !v.vh) return;  // няма разумни числа: остава както е, до следващия resize
+        const v = privacyViewport();  // видимата част: клавиатурата я намалява
+        if (!v.vw || !v.vh) return;   // няма разумни числа: остава както е, до следващия resize
         const box = privacyScreenBox();
-        // Държи се само най-голямата ВИСОЧИНА: клавиатурата я намалява, а покритието трябва да
-        // стига до края на екрана. Ширината се взима каквато е сега — клавиатурата не я пипа, а
-        // ако се помни най-голямата, след завъртане плочките излизат извън екрана.
         if (box.vh > privacyMaxVp.vh) privacyMaxVp.vh = box.vh;
+        privacyLastVp = { vw: v.vw, vh: v.vh };
         const boxW = box.vw;
         const boxH = Math.max(box.vh, privacyMaxVp.vh);
-        privacyLastVp = { vw: v.vw, vh: v.vh };
         const gap = Math.max(0, boxH - v.vh); // колкото е скрито зад клавиатурата
         if (privacyOverlay) {
             privacyOverlay.style.width = boxW + 'px';
@@ -34607,8 +34583,7 @@ initNoteWindows();
         }
         const availW = v.vw - 24;
         // Групата е центрирана вертикално във видимата част, значи отдолу остава толкова място,
-        // колкото отгоре. Затова се отделя място за бутона Затвори и отгоре, и отдолу, за да не
-        // застъпва календара.
+        // колкото отгоре. Затова се отделя място за бутона Затвори и отгоре, и отдолу.
         const availH = v.vh - PRIVACY_CLOSE_ZONE * 2;
         const scale = Math.min(1, availW / TILE, availH / (TILE * 2 + TILE_GAP));
         privacyStack.style.transform = 'scale(' + (scale > 0 ? scale.toFixed(4) : 1) + ')';
@@ -34624,156 +34599,19 @@ initNoteWindows();
         privacyFit();
         privacyOverlay.classList.add('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'false');
-        privacyShownAt = Date.now();
-        privacyNote('плочките са на екрана');
         if (privacyTimer) clearInterval(privacyTimer);
         privacyTimer = setInterval(privacyTick, 1000);
     }
 
-    function privacyHide(force) {
+    function privacyHide() {
         if (!privacyOverlay) return;
-        /* Скрито приложение не може да „върне“ бележките: Android снима екрана за списъка с
-           приложенията тъкмо когато страницата е скрита, а всяко махане на плочките в този
-           момент дава кадър с бележките. Плочки, вдигнати при истинско напускане, се махат
-           само със Затвори. */
-        if (!force && (document.hidden || privacyLocked)) return;
-        if (force) privacyLocked = false;
-        privacyNote('махнати от жест');
-        privacyOverlay.classList.remove('is-visible');
-        privacyOverlay.setAttribute('aria-hidden', 'true');
-        privacyHiddenAt = Date.now();
-        if (privacyTimer) {
-            clearInterval(privacyTimer);
-            privacyTimer = null;
-        }
-    }
-
-    /* Диагностика за телефона: какво точно се е случило, докато приложението излизаше.
-       Пише се на екрана след връщане, за да може да се снима — в конзолата на телефона
-       никой не гледа. Задържа се само няколко секунди, не пипа нищо друго. */
-    const privacyEvents = [];
-    let privacyDebugEl = null;
-    let privacyDebugUntil = 0;
-
-    function privacyNote(text) {
-        const d = new Date();
-        const p = function (n, w) { return String(n).padStart(w, '0'); };
-        privacyEvents.push(p(d.getHours(), 2) + ':' + p(d.getMinutes(), 2) + ':' + p(d.getSeconds(), 2)
-            + '.' + p(d.getMilliseconds(), 3) + ' ' + text);
-        if (privacyEvents.length > 40) privacyEvents.shift();
-        if (privacyDebugEl) privacyDebugPaint();
-    }
-
-    function privacyDebugPaint() {
-        if (!privacyDebugEl) return;
-        if (!privacyDebugUntil || Date.now() > privacyDebugUntil || document.hidden) {
-            privacyDebugEl.style.display = 'none';
-            return;
-        }
-        privacyDebugEl.style.display = 'block';
-        privacyDebugEl.textContent = 'b' + PRIVACY_BUILD
-            + ' ' + (privacyAppScreenMode() ? 'app' : 'tab')
-            + ' ' + document.visibilityState
-            + ' ' + (document.hasFocus() ? 'focus' : 'no-focus')
-            + ' ' + Math.round(window.innerHeight || 0) + 'x' + Math.round(window.innerWidth || 0)
-            + '\n' + privacyEvents.slice(-16).join('\n');
-    }
-
-    function privacyDebugPanel() {
-        if (privacyDebugEl || !document.body) return privacyDebugEl;
-        const el = document.createElement('div');
-        el.id = 'privacy-debug';
-        el.style.cssText = 'position:fixed;left:6px;top:6px;right:6px;z-index:2147482999;'
-            + 'max-height:60vh;overflow:hidden;background:rgba(0,0,0,0.86);color:#7dfba0;'
-            + 'font:10px/1.35 monospace;white-space:pre-wrap;word-break:break-word;'
-            + 'padding:6px 8px;border-radius:8px;display:none;pointer-events:none;';
-        document.body.appendChild(el);
-        privacyDebugEl = el;
-        return el;
-    }
-
-    /* Жест, който извежда от приложението: пръстът пада в долната ивица или пълзи нагоре.
-       Плочките се вдигат веднага, докато приложението още рисува, и се махат сами, ако
-       човекът остане в приложението (никакъв blur/скриване). */
-    function privacyArm(reason) {
-        if (!privacyAppScreenMode()) return;
-        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) return;
-        if (privacyHiddenAt && Date.now() - privacyHiddenAt < PRIVACY_GESTURE_GUARD * 2) return;
-        if (!document.body) return;
-        privacyShow();
-        privacyArmedAt = Date.now();
-        privacyNote('arm ' + reason);
-        if (privacyArmTimer) clearTimeout(privacyArmTimer);
-        privacyArmTimer = setTimeout(privacyDisarmIfHome, 420);
-    }
-
-    function privacyDisarmIfHome() {
-        privacyArmTimer = null;
-        if (!privacyArmedAt) return;
-        if (!privacyOverlay) return;
-        if (document.hidden || !document.hasFocus()) {
-            /* Излезе: плочките остават. Оттук нататък ги маха само Затвори или жест. */
-            privacyArmedAt = 0;
-            privacyNote('armed -> излезе, остава');
-            return;
-        }
         privacyOverlay.classList.remove('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'true');
         if (privacyTimer) {
             clearInterval(privacyTimer);
             privacyTimer = null;
         }
-        privacyHiddenAt = 0;
-        privacyArmedAt = 0;
-        privacyNote('disarm (остана в приложението)');
     }
-
-    function privacyArmFromTouch(ev) {
-        if (!privacyAppScreenMode()) return;
-        if (!ev.touches || !ev.touches.length) return;
-        const t = ev.touches[0];
-        const h = window.innerHeight || 0;
-        if (!h) return;
-        const fromBottom = h - t.clientY;
-        if (ev.type === 'touchstart' && fromBottom <= 200) {
-            privacyNote('touch долу ' + Math.round(fromBottom) + 'px');
-        }
-        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) return;
-        if (fromBottom <= PRIVACY_ARM_BAND) {
-            privacyArm('ръб ' + Math.round(fromBottom) + 'px');
-            return;
-        }
-        if (ev.type === 'touchend' || ev.type === 'touchcancel') return;
-        /* Пълзене нагоре, започнало ниско: системният жест за начало/скорошни започва така. */
-        const st = privacyTouchStart;
-        if (!st) return;
-        if (Date.now() - st.at > 600) return;
-        if (st.y - t.clientY < PRIVACY_ARM_UP) return;
-        if (h - st.y > 240) return;
-        privacyArm('плъзгане нагоре от ' + Math.round(h - st.y) + 'px');
-    }
-
-    let privacyTouchStart = null;
-
-    document.addEventListener('touchstart', function (ev) {
-        if (!ev.touches || !ev.touches.length) return;
-        privacyTouchStart = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, at: Date.now() };
-    }, true);
-
-    document.addEventListener('touchstart', function (ev) {
-        privacyArmFromTouch(ev);
-        if (!privacyArmedAt) return;
-        /* Пръстът се вдигна, а приложението още е на екрана: значи не е било излизане. */
-        const once = function () {
-            document.removeEventListener('touchend', once, true);
-            document.removeEventListener('touchcancel', once, true);
-            setTimeout(privacyDisarmIfHome, 120);
-        };
-        document.addEventListener('touchend', once, true);
-        document.addEventListener('touchcancel', once, true);
-    }, true);
-
-    document.addEventListener('touchmove', privacyArmFromTouch, { capture: true, passive: true });
 
     /* Системният избор на файл е отделен екран: той вдига blur и често скрива страницата.
        Ако го вземем за напускане на приложението, плочките остават върху редактора, след
@@ -34797,86 +34635,40 @@ initNoteWindows();
        екрана. Затова не чакаме visibilitychange (тогава кадърът вече е снет и се виждат
        бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
        на екрана, значи следващият кадър вече е с часовника и календара. */
-    // hiddenNow = страницата наистина е скрита: това е истинско напускане, не системен диалог.
-    function privacyDepart(hiddenNow) {
-        if (privacyExpectingSystemUI()) { privacyNote('depart пропуснат (системен избор на файл)'); return; }
-        if (!privacyAppScreenMode()) return;
-        if (hiddenNow) privacyLocked = true;
-        privacyNote('depart ' + (hiddenNow ? 'скрито' : 'blur'));
-        /* Истинско излизане: предварително вдигнатите плочки остават, няма кой да ги махне. */
-        if (privacyArmTimer) { clearTimeout(privacyArmTimer); privacyArmTimer = null; }
-        privacyArmedAt = 0;
-        privacyDebugUntil = Date.now() + 12000;
-        if (privacyDebugEl) privacyDebugEl.style.display = 'none';
-        privacyShow();
-    }
-
-    /* Връщане: плочките НЕ се махат сами — нито по focus, нито по таймер. Причината е, че
-       Android (и още повече MIUI) не дава blur, focus и visibilitychange в гарантиран ред:
-       когато приложението има отворена бележка с клавиатура, при натискане на „скорошни“
-       клавиатурата се прибира, идва focus и страницата още се води видима — таймерът махаше
-       плочките точно преди снимката за списъка. Сега ги маха само истински жест от човека
-       (докосване или клавиш) след като са стояли поне PRIVACY_GESTURE_GUARD, за да не ги
-       махне същият жест, който тъкмо ги е вдигнал. Жестът се поема от плочките, значи не
-       натиска нищо отдолу. */
-    function privacyUserBack() {
-        if (!privacyOverlay || !privacyOverlay.classList.contains('is-visible')) return;
-        if (document.hidden) return;
-        if (Date.now() - privacyShownAt < PRIVACY_GESTURE_GUARD) return;
-        privacyHide(true);
-    }
-
     window.addEventListener('blur', function () {
-        privacyBlurred = true;
-        privacyNote('blur');
-        if (privacyArmTimer) { clearTimeout(privacyArmTimer); privacyArmTimer = null; }
-        privacyDepart(false);
+        if (privacyExpectingSystemUI()) return;
+        if (!privacyAppScreenMode()) return;
+        privacyShow();
     });
 
     document.addEventListener('visibilitychange', function () {
-        privacyNote('visibility ' + document.visibilityState);
         if (document.hidden) {
-            privacyDepart(true);
-        } else if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) {
-            /* Връщане в приложението: размерите се взимат наново. По време на излизането
-               прозорецът може да е отчитал смален размер, а плочките трябва да покриват целия
-               екран, докато човек не ги махне с истински жест. */
+            if (privacyExpectingSystemUI()) return;
+            if (!privacyAppScreenMode()) return;
+            privacyShow();
+            return;
+        }
+        // Върнали сме се в приложението: няма какво да пазим, бележките се виждат веднага.
+        // Кадърът за списъка с приложенията е снет, докато страницата беше скрита.
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) {
+            privacyHide();
             privacyFit();
             if (typeof requestAnimationFrame === 'function') requestAnimationFrame(privacyFit);
-        } else {
-            privacyArmedAt = 0;
         }
-        if (!document.hidden) privacyDebugChain();
     });
 
-    /* След връщане от списъка с приложенията: показва какво се е случило, докато приложението
-       излизаше, за няколко секунди. */
-    function privacyDebugChain() {
-        privacyDebugPanel();
-        privacyDebugUntil = Date.now() + 12000;
-        privacyDebugPaint();
-        setTimeout(privacyDebugPaint, 200);
-        setTimeout(privacyDebugPaint, 1500);
-        setTimeout(privacyDebugPaint, 6000);
-    }
-
-
-    document.addEventListener('pointerdown', privacyUserBack, true);    document.addEventListener('touchstart', privacyUserBack, true);
-    document.addEventListener('keydown', privacyUserBack, true);
-
     window.addEventListener('focus', function () {
-        privacyBlurred = false;
         privacyExpectUntil = 0;
-        privacyNote('focus');
-        if (privacyDebugUntil) privacyDebugChain();
+        // Blur без истинско скриване (системен диалог, известие, избор на час, падащо меню):
+        // приложението не е напускало екрана, затова бележките се връщат веднага. Ако страницата
+        // е скрита, плочките остават — точно тогава Android снима кадъра за списъка.
+        if (!document.hidden) privacyHide();
     });
 
     window.addEventListener('resize', function () {
         if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
     });
 
-    /* Клавиатурата сменя само visualViewport: докато прозорецът не се смени, resize на window
-       няма. Затова покритието се смята наново и оттам, докато плочките стоят. */
     if (window.visualViewport && window.visualViewport.addEventListener) {
         window.visualViewport.addEventListener('resize', function () {
             if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
@@ -34884,6 +34676,5 @@ initNoteWindows();
     }
 
     window.privacyOverlayShow = privacyShow;
-    // Ръчна проверка от конзолата: тук Затвори се подразбира, затова се маха принудително.
-    window.privacyOverlayHide = function () { privacyHide(true); };
+    window.privacyOverlayHide = privacyHide;
 })();
