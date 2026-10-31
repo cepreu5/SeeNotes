@@ -147,8 +147,10 @@ await page.waitForTimeout(150);
 b = await box();
 ok(covers(b, W, H), '5 след връщане в приложението плочките са цели, без жест не се махат', b);
 
-// 6) Клавиатура, докато прозорецът е на фокус: истинско смаляване се прилага (за да не се
-//    счупи работата с отворена клавиатура — там overlay-ът трябва да стига до клавиатурата).
+// 6) Клавиатура, докато прозорецът е на фокус: овърлеят пак покрива ЦЕЛИЯ екран, а съдържанието
+//    се побира във видимата част над клавиатурата. (Преди b3.33 овърлеят взимаше височината на
+//    видимата част — 520 от 844 — и когато клавиатурата се прибере без resize, долната част на
+//    екрана оставаше без плочки.)
 await page.bringToFront();
 await page.focus('body').catch(() => { });
 const focused = await page.evaluate(() => document.hasFocus());
@@ -156,7 +158,15 @@ await setViewport({ w: W, h: KEYBOARD_VH });
 await page.waitForTimeout(150);
 b = await box();
 if (focused) {
-    ok(b.visible && Math.abs(b.h - KEYBOARD_VH) <= 1, '6 с клавиатура (прозорецът е на фокус) плочките се свиват до видимата част', b);
+    ok(covers(b, W, H), '6.1 с клавиатура (прозорецът е на фокус) овърлеят пак покрива целия екран', b);
+    const strip = await page.evaluate(() => {
+        const ov = document.getElementById('privacy-overlay');
+        const el = ov && (ov.querySelector('.privacy-stack') || ov.querySelector('.privacy-close'));
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom) };
+    });
+    ok(strip === null || strip.bottom <= KEYBOARD_VH + 2, '6.2 с клавиатура плочките остават във видимата част над клавиатурата', strip);
 } else {
     console.log('SKIP 6 прозорецът не е на фокус в този пуск, проверката за клавиатура не се прави');
 }

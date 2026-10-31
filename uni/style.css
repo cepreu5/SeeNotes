@@ -5939,6 +5939,7 @@ header.title-hidden > div:first-child {
     display: none;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
     background: rgba(8, 10, 14, 0.55);
     -webkit-backdrop-filter: blur(20px) saturate(120%);
     backdrop-filter: blur(20px) saturate(120%);
@@ -6069,7 +6070,8 @@ header.title-hidden > div:first-child {
 .privacy-close {
     position: absolute;
     right: 16px;
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    /* --privacy-gap е колкото е скрито зад клавиатурата: бутонът остава в видимата част. */
+    bottom: calc(var(--privacy-gap, 0px) + 16px + env(safe-area-inset-bottom, 0px));
     z-index: 2;
     padding: 8px 16px;
     min-height: 36px;

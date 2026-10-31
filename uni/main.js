@@ -34376,6 +34376,8 @@ initNoteWindows();
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
     let privacyShownAt = 0;          // кога са вдигнати: жест веднага след това не ги маха
     let privacyLastVp = { vw: 0, vh: 0 }; // последният разумен размер на екрана (виж privacyViewport)
+    let privacyMaxVp = { vh: 0 };    // най-голямата разумна височина, виждана някога: покритието на overlay-а
+    let privacyCloseBtn = null;
     let privacyBlurred = false;      // прозорецът е загубил фокус: приложението излиза, не е клавиатура
     const PRIVACY_GESTURE_GUARD = 400; // колко трябва да са стояли, преди жест да ги маха
 
@@ -34442,6 +34444,7 @@ initNoteWindows();
         privacyOverlay.appendChild(privacyStack);
 
         const closeBtn = document.createElement('button');
+        privacyCloseBtn = closeBtn;
         closeBtn.type = 'button';
         closeBtn.className = 'privacy-close';
         closeBtn.textContent = privacyIsBg() ? 'Затвори' : 'Close';
@@ -34545,27 +34548,56 @@ initNoteWindows();
         return { vw: vw, vh: vh };
     }
 
-    // Двете плочки остават 300x300; ако екранът е по-малък, цялата група се смалява,
-    // за да не се реже нищо (и overlay-ът се свива до видимата част).
+    // Най-голямото разумно число от трите източника: това е физическият екран. Докато има
+    // отворена бележка с клавиатура, видимата част е само тази над клавиатурата (напр. 520 от
+    // 844), затова за покритие не може да се взема privacyViewport().
+    function privacyScreenBox() {
+        let vw = 0, vh = 0;
+        const take = (w, h) => {
+            if (privacySane(w)) vw = Math.max(vw, w);
+            if (privacySane(h)) vh = Math.max(vh, h);
+        };
+        take(window.innerWidth, window.innerHeight);
+        if (window.visualViewport) {
+            take(Math.round(window.visualViewport.width), Math.round(window.visualViewport.height));
+        }
+        if (document.documentElement) {
+            take(document.documentElement.clientWidth, document.documentElement.clientHeight);
+        }
+        return { vw: vw, vh: vh };
+    }
+
+    // Двете неща се смятат отделно и това е целият смисъл на поправката:
+    //  - overlay-ът покрива ЦЕЛИЯ екран (най-голямото виждано число, никога надолу) — иначе при
+    //    отворена бележка с клавиатура той е висок само колкото частта над клавиатурата (520 от
+    //    844); клавиатурата се прибира при излизане, прозорецът не праща resize (сменя се само
+    //    visualViewport), overlay-ът си остава 520 и долната част на бележката влиза в кадъра за
+    //    списъка с приложенията.
+    //  - плочките се побират във ВИДИМАТА част и се центрират в нея (padding-bottom), за да не
+    //    изчезнат зад клавиатурата, докато човек е в приложението.
     function privacyFit() {
         if (!privacyStack) return;
-        const v = privacyViewport();
-        if (!v.vw || !v.vh) return; // няма разумни числа: остава както е, до следващия resize
-        const focused = !(privacyBlurred || document.hidden);
-        const shrinking = privacyLastVp.vw && (v.vw < privacyLastVp.vw || v.vh < privacyLastVp.vh);
-        if (privacyOverlay && privacyOverlay.classList.contains('is-visible') && shrinking && !focused) {
-            /* Прозорецът не е на фокус и се свива: това е анимацията за излизане, не клавиатура.
-               Ако overlay-ът се смали сега, част от бележките остава на екрана в кадъра за списъка. */
-            return;
-        }
+        const v = privacyViewport(); // видимата част: клавиатурата я намалява
+        if (!v.vw || !v.vh) return;  // няма разумни числа: остава както е, до следващия resize
+        const box = privacyScreenBox();
+        // Държи се само най-голямата ВИСОЧИНА: клавиатурата я намалява, а покритието трябва да
+        // стига до края на екрана. Ширината се взима каквато е сега — клавиатурата не я пипа, а
+        // ако се помни най-голямата, след завъртане плочките излизат извън екрана.
+        if (box.vh > privacyMaxVp.vh) privacyMaxVp.vh = box.vh;
+        const boxW = box.vw;
+        const boxH = Math.max(box.vh, privacyMaxVp.vh);
         privacyLastVp = { vw: v.vw, vh: v.vh };
+        const gap = Math.max(0, boxH - v.vh); // колкото е скрито зад клавиатурата
         if (privacyOverlay) {
-            privacyOverlay.style.width = v.vw + 'px';
-            privacyOverlay.style.height = v.vh + 'px';
+            privacyOverlay.style.width = boxW + 'px';
+            privacyOverlay.style.height = boxH + 'px';
+            privacyOverlay.style.paddingBottom = gap + 'px';
+            privacyOverlay.style.setProperty('--privacy-gap', gap + 'px');
         }
         const availW = v.vw - 24;
-        // Групата е центрирана вертикално, значи отдолу остава толкова място, колкото отгоре.
-        // Затова се отделя място за бутона Затвори и отгоре, и отдолу, за да не застъпва календара.
+        // Групата е центрирана вертикално във видимата част, значи отдолу остава толкова място,
+        // колкото отгоре. Затова се отделя място за бутона Затвори и отгоре, и отдолу, за да не
+        // застъпва календара.
         const availH = v.vh - PRIVACY_CLOSE_ZONE * 2;
         const scale = Math.min(1, availW / TILE, availH / (TILE * 2 + TILE_GAP));
         privacyStack.style.transform = 'scale(' + (scale > 0 ? scale.toFixed(4) : 1) + ')';
@@ -34673,6 +34705,14 @@ initNoteWindows();
     window.addEventListener('resize', function () {
         if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
     });
+
+    /* Клавиатурата сменя само visualViewport: докато прозорецът не се смени, resize на window
+       няма. Затова покритието се смята наново и оттам, докато плочките стоят. */
+    if (window.visualViewport && window.visualViewport.addEventListener) {
+        window.visualViewport.addEventListener('resize', function () {
+            if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
+        });
+    }
 
     window.privacyOverlayShow = privacyShow;
     // Ръчна проверка от конзолата: тук Затвори се подразбира, затова се маха принудително.
