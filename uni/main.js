@@ -17838,13 +17838,35 @@ function clearPendingBoardVisibility() {
         localStorage.removeItem(PENDING_BOARD_VISIBILITY_KEY);
     }
 }
+// Кой борд от менюто скрива всеки ключ от Настройки. „Нови" (showNewBoard) не е тук: той се
+// включва само докато има нови бележки, а обработчикът му не пипа менюто.
+const BOARD_VISIBILITY_BOARD_IDS = {
+    showBoardAll: 'all',
+    showBoardRemind: 'reminder',
+    showPhotosBoard: 'with-photos',
+    showVideosBoard: 'with-videos',
+    showSoundsBoard: 'with-sounds',
+    showOtherBoard: 'with-other'
+};
+// Първият видим борд в менюто: „Всички", ако е включен, иначе първият от списъка.
+function firstVisibleBoard() {
+    if (localStorage.getItem('showBoardAll') !== 'false') return 'all';
+    const first = (typeof boardsData !== 'undefined' && boardsData) ? boardsData[0] : null;
+    return first ? String(first.gdid || first.id) : 'all';
+}
+
 async function setBoardVisibilitySetting(key, visible) {
     localStorage.setItem(key, visible ? 'true' : 'false');
     const pending = getPendingBoardVisibility();
     if (!pending.includes(key)) pending.push(key);
     localStorage.setItem(PENDING_BOARD_VISIBILITY_KEY, JSON.stringify(pending));
     showToast(_('settingSaved'), 2000);
-    renderUI({ boardParseError: false, rerenderOnlyMenu: true });
+    // Изключеният борд слиза от екрана: ако точно него гледаме, минаваме на първия борд от
+    // списъка, и прерисуваме бележките — само менюто не стига, бележките му стоят.
+    if (!visible && String(currentBoardFilter) === BOARD_VISIBILITY_BOARD_IDS[key]) {
+        currentBoardFilter = firstVisibleBoard();
+    }
+    await renderUI({ boardParseError: false });
     if (typeof saveSettingsToGDrive === 'function') {
         try {
             await saveSettingsToGDrive(true);
