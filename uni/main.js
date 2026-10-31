@@ -17863,7 +17863,12 @@ async function setBoardVisibilitySetting(key, visible) {
     showToast(_('settingSaved'), 2000);
     // Изключеният борд слиза от екрана: ако точно него гледаме, минаваме на първия борд от
     // списъка, и прерисуваме бележките — само менюто не стига, бележките му стоят.
-    if (!visible && String(currentBoardFilter) === BOARD_VISIBILITY_BOARD_IDS[key]) {
+    // Включеният борд идва на екрана: влизаме направо в него, вместо да го търсим в менюто.
+    // Търсенето не се пипа — то е временен изглед и не бива да изчезва под ръката.
+    const boardId = BOARD_VISIBILITY_BOARD_IDS[key];
+    if (visible && boardId && String(currentBoardFilter) !== 'search-results') {
+        currentBoardFilter = boardId;
+    } else if (!visible && String(currentBoardFilter) === boardId) {
         currentBoardFilter = firstVisibleBoard();
     }
     await renderUI({ boardParseError: false });
