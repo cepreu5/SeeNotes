@@ -13282,14 +13282,16 @@ function onNoteWindowClosed(win) {
 }
 
 // "Close all notes" in the boards menu: one question for all the windows with unsaved changes.
+// Връща false само когато човекът избере „Отказ" — тогава викащият (например отварянето на
+// календара) не продължава, за да не изчезнат бележките под календара.
 async function closeAllNoteWindows() {
     const open = getOpenNoteWindows();
-    if (!open.length) return;
+    if (!open.length) return true;
     const dirty = open.filter(w => withNoteWindow(w, () => !!getNoteUnsavedKind()));
     if (dirty.length) {
         const msg = (_('closeAllNotesConfirm') || 'Unsaved changes in {count} notes. Save them before closing?').replace('{count}', dirty.length);
         const answer = await showConfirmation(msg, { showCancel: true });
-        if (answer === 'cancel') return;
+        if (answer === 'cancel') return false;
         if (answer === true) {
             dirty.forEach(w => {
                 if (!w.open) return;
@@ -13301,6 +13303,7 @@ async function closeAllNoteWindows() {
         }
     }
     getOpenNoteWindows().forEach(closeNoteWindow);
+    return true;
 }
 window.closeAllNoteWindows = closeAllNoteWindows;
 
@@ -16063,6 +16066,12 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
         // Масовият избор (b2.36) не живее в календара — изчистваме го при отваряне.
         if (selectionState.active) exitSelectionMode();
+        /* Календарът заема целия екран, а прозорците на бележките живеят в #note-windows-layer
+           над всичко останало — затова отворените бележки оставаха да плават върху календара.
+           Затваряме ги преди рисуването, по същия път като „Затвори всички бележки": ако някоя
+           има незаписани промени, въпросът е един, а „Отказ" връща приложението там, където е
+           било, без да отваря календара. */
+        if (!(await closeAllNoteWindows())) return;
         // Проверяваме коя версия на календара да покажем
         if (boardId === 'calendar_weekly') {
             renderWeeklyCalendarView();
