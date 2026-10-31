@@ -13282,14 +13282,16 @@ function onNoteWindowClosed(win) {
 }
 
 // "Close all notes" in the boards menu: one question for all the windows with unsaved changes.
+// Връща false само когато човекът избере „Отказ" — тогава викащият (например отварянето на
+// календара) не продължава, за да не изчезнат бележките под календара.
 async function closeAllNoteWindows() {
     const open = getOpenNoteWindows();
-    if (!open.length) return;
+    if (!open.length) return true;
     const dirty = open.filter(w => withNoteWindow(w, () => !!getNoteUnsavedKind()));
     if (dirty.length) {
         const msg = (_('closeAllNotesConfirm') || 'Unsaved changes in {count} notes. Save them before closing?').replace('{count}', dirty.length);
         const answer = await showConfirmation(msg, { showCancel: true });
-        if (answer === 'cancel') return;
+        if (answer === 'cancel') return false;
         if (answer === true) {
             dirty.forEach(w => {
                 if (!w.open) return;
@@ -13301,6 +13303,7 @@ async function closeAllNoteWindows() {
         }
     }
     getOpenNoteWindows().forEach(closeNoteWindow);
+    return true;
 }
 window.closeAllNoteWindows = closeAllNoteWindows;
 
@@ -16063,6 +16066,12 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
         // Масовият избор (b2.36) не живее в календара — изчистваме го при отваряне.
         if (selectionState.active) exitSelectionMode();
+        /* Календарът заема целия екран, а прозорците на бележките живеят в #note-windows-layer
+           над всичко останало — затова отворените бележки оставаха да плават върху календара.
+           Затваряме ги преди рисуването, по същия път като „Затвори всички бележки": ако някоя
+           има незаписани промени, въпросът е един, а „Отказ" връща приложението там, където е
+           било, без да отваря календара. */
+        if (!(await closeAllNoteWindows())) return;
         // Проверяваме коя версия на календара да покажем
         if (boardId === 'calendar_weekly') {
             renderWeeklyCalendarView();
@@ -34363,10 +34372,10 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
-    let privacyReturnTimer = null;   // отложено решение за връщане (focus не се вярва веднага)
     let privacyLocked = false;       // вдигнати при истинско напускане: махат се само със Затвори
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
-    const PRIVACY_RETURN_DELAY = 350; // колко се чака, преди един focus да се брои за връщане
+    let privacyShownAt = 0;          // кога са вдигнати: жест веднага след това не ги маха
+    const PRIVACY_GESTURE_GUARD = 400; // колко трябва да са стояли, преди жест да ги маха
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34548,6 +34557,7 @@ initNoteWindows();
         privacyFit();
         privacyOverlay.classList.add('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'false');
+        privacyShownAt = Date.now();
         if (privacyTimer) clearInterval(privacyTimer);
         privacyTimer = setInterval(privacyTick, 1000);
     }
@@ -34590,47 +34600,41 @@ initNoteWindows();
        екрана. Затова не чакаме visibilitychange (тогава кадърът вече е снет и се виждат
        бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
        на екрана, значи следващият кадър вече е с часовника и календара. */
-    function privacyCancelReturn() {
-        if (privacyReturnTimer) {
-            clearTimeout(privacyReturnTimer);
-            privacyReturnTimer = null;
-        }
-    }
-
     // hiddenNow = страницата наистина е скрита: това е истинско напускане, не системен диалог.
     function privacyDepart(hiddenNow) {
-        privacyCancelReturn();
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
         if (hiddenNow) privacyLocked = true;
         privacyShow();
     }
 
-    /* Връщане: blur без истинско скриване (системен диалог, избор на час, падащо меню) се
-       отменя само. Но не веднага: при преминаване към списъка с приложенията Android понякога
-       дава focus за миг, преди да отчете скриването, и тогава плочките изчезваха точно когато
-       се снима кадърът за списъка. Затова решението се взема след PRIVACY_RETURN_DELAY и само
-       ако страницата още е видима. */
-    function privacyMaybeReturn() {
-        if (document.hidden) { privacyCancelReturn(); return; }
-        if (privacyReturnTimer) return;
-        privacyReturnTimer = setTimeout(function () {
-            privacyReturnTimer = null;
-            if (document.hidden) return;
-            privacyHide();
-        }, PRIVACY_RETURN_DELAY);
+    /* Връщане: плочките НЕ се махат сами — нито по focus, нито по таймер. Причината е, че
+       Android (и още повече MIUI) не дава blur, focus и visibilitychange в гарантиран ред:
+       когато приложението има отворена бележка с клавиатура, при натискане на „скорошни“
+       клавиатурата се прибира, идва focus и страницата още се води видима — таймерът махаше
+       плочките точно преди снимката за списъка. Сега ги маха само истински жест от човека
+       (докосване или клавиш) след като са стояли поне PRIVACY_GESTURE_GUARD, за да не ги
+       махне същият жест, който тъкмо ги е вдигнал. Жестът се поема от плочките, значи не
+       натиска нищо отдолу. */
+    function privacyUserBack() {
+        if (!privacyOverlay || !privacyOverlay.classList.contains('is-visible')) return;
+        if (document.hidden) return;
+        if (Date.now() - privacyShownAt < PRIVACY_GESTURE_GUARD) return;
+        privacyHide(true);
     }
 
     window.addEventListener('blur', function () { privacyDepart(false); });
 
     document.addEventListener('visibilitychange', function () {
         if (document.hidden) privacyDepart(true);
-        else privacyMaybeReturn();
     });
+
+    document.addEventListener('pointerdown', privacyUserBack, true);
+    document.addEventListener('touchstart', privacyUserBack, true);
+    document.addEventListener('keydown', privacyUserBack, true);
 
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
-        privacyMaybeReturn();
     });
 
     window.addEventListener('resize', function () {
