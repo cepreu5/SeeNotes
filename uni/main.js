@@ -34203,3 +34203,204 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
 
 // The first (idle) note window, so #content-modal and #modal-body exist from the start.
 initNoteWindows();
+
+/* ===== Екран за поверителност: blur overlay при излизане от приложението =====
+   Показва се, когато приложението (в режим на екран на приложението) отиде във фона.
+   Две плочки 300x300, една под друга, центрирани: часовник (като при натискане на
+   часа на бележка) отгоре и месечен календар отдолу. Малък бутон Затвори долу вдясно. */
+(function () {
+    const TILE = 300;
+    const TILE_GAP = 12;
+    const PRIVACY_CLOSE_ZONE = 56; // място за бутона Затвори долу вдясно (височина + отстъп + въздух)
+    let privacyOverlay = null;
+    let privacyStack = null;
+    let privacyClock = null;
+    let privacyCal = null;
+    let privacyTimer = null;
+
+    function privacyIsBg() {
+        return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
+    }
+
+    // Режим на екран на приложението (инсталирано приложение / fullscreen), не обикновен таб
+    function privacyAppScreenMode() {
+        try {
+            if (window.matchMedia) {
+                if (window.matchMedia('(display-mode: standalone)').matches) return true;
+                if (window.matchMedia('(display-mode: fullscreen)').matches) return true;
+                if (window.matchMedia('(display-mode: minimal-ui)').matches) return true;
+            }
+        } catch (e) { /* ignore */ }
+        return navigator.standalone === true;
+    }
+
+    function privacyBuildClock() {
+        const clock = document.createElement('div');
+        clock.className = 'clock privacy-clock';
+        clock.innerHTML = '<div class="center"></div>'
+            + '<div class="number n12">12</div>'
+            + '<div class="number n3">3</div>'
+            + '<div class="number n6">6</div>'
+            + '<div class="number n9">9</div>'
+            + '<div class="hand hour"></div>'
+            + '<div class="hand minute"></div>'
+            + '<div class="hand second"></div>';
+        for (let i = 0; i < 12; i++) {
+            if (i % 3 === 0) continue;
+            const m = document.createElement('div');
+            m.className = 'mark';
+            m.style.transform = 'translateX(-50%) rotate(' + (i * 30) + 'deg)';
+            clock.appendChild(m);
+        }
+        return clock;
+    }
+
+    function privacyBuild() {
+        if (privacyOverlay) return;
+        privacyOverlay = document.createElement('div');
+        privacyOverlay.id = 'privacy-overlay';
+        privacyOverlay.className = 'privacy-overlay';
+        privacyOverlay.setAttribute('aria-hidden', 'true');
+
+        privacyStack = document.createElement('div');
+        privacyStack.className = 'privacy-stack';
+
+        const clockTile = document.createElement('div');
+        clockTile.className = 'privacy-tile privacy-tile-clock';
+        privacyClock = privacyBuildClock();
+        clockTile.appendChild(privacyClock);
+
+        const calTile = document.createElement('div');
+        calTile.className = 'privacy-tile privacy-tile-calendar';
+        privacyCal = document.createElement('div');
+        privacyCal.className = 'privacy-cal';
+        calTile.appendChild(privacyCal);
+
+        privacyStack.appendChild(clockTile);
+        privacyStack.appendChild(calTile);
+        privacyOverlay.appendChild(privacyStack);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'privacy-close';
+        closeBtn.textContent = privacyIsBg() ? 'Затвори' : 'Close';
+        closeBtn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            privacyHide();
+        });
+        closeBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+        privacyOverlay.appendChild(closeBtn);
+
+        document.body.appendChild(privacyOverlay);
+    }
+
+    function privacyRenderCalendar() {
+        if (!privacyCal) return;
+        const now = new Date();
+        const bg = privacyIsBg();
+        const langCode = bg ? 'bg-BG' : 'en-GB';
+        const monthName = now.toLocaleDateString(langCode, { month: 'long' });
+        const weekdays = bg
+            ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд']
+            : ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+        const firstDow = (new Date(now.getFullYear(), now.getMonth(), 1).getDay() + 6) % 7; // понеделник = 0
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+        let html = '<div class="privacy-cal-month">' + monthName + ' ' + now.getFullYear() + '</div>';
+        html += '<div class="privacy-cal-grid privacy-cal-head">';
+        for (let i = 0; i < 7; i++) html += '<span>' + weekdays[i] + '</span>';
+        html += '</div><div class="privacy-cal-grid privacy-cal-days">';
+        for (let i = 0; i < firstDow; i++) html += '<span class="privacy-cal-day is-empty"></span>';
+        for (let d = 1; d <= daysInMonth; d++) {
+            const today = d === now.getDate();
+            html += '<span class="privacy-cal-day' + (today ? ' is-today' : '') + '">' + d + '</span>';
+        }
+        html += '</div>';
+        privacyCal.innerHTML = html;
+    }
+
+    function privacyTick() {
+        if (!privacyClock) return;
+        const now = new Date();
+        const s = now.getSeconds();
+        const m = now.getMinutes();
+        const h = now.getHours();
+        const hourHand = privacyClock.querySelector('.hour');
+        const minuteHand = privacyClock.querySelector('.minute');
+        const secondHand = privacyClock.querySelector('.second');
+        if (hourHand) hourHand.style.transform = 'translate(-50%, -100%) rotate(' + ((h % 12) * 30 + m * 0.5) + 'deg)';
+        if (minuteHand) minuteHand.style.transform = 'translate(-50%, -100%) rotate(' + (m * 6 + s * 0.1) + 'deg)';
+        if (secondHand) secondHand.style.transform = 'translate(-50%, -100%) rotate(' + (s * 6) + 'deg)';
+    }
+
+    // Реално видимата част на екрана: при мобилен браузър window.innerHeight може да е
+    // по-голям от видимото (напр. 608 срещу 568), затова се взима най-малката стойност.
+    function privacyViewport() {
+        let vw = window.innerWidth;
+        let vh = window.innerHeight;
+        if (window.visualViewport) {
+            vw = Math.min(vw, Math.round(window.visualViewport.width));
+            vh = Math.min(vh, Math.round(window.visualViewport.height));
+        }
+        if (document.documentElement) {
+            vw = Math.min(vw, document.documentElement.clientWidth);
+            vh = Math.min(vh, document.documentElement.clientHeight);
+        }
+        return { vw: vw, vh: vh };
+    }
+
+    // Двете плочки остават 300x300; ако екранът е по-малък, цялата група се смалява,
+    // за да не се реже нищо (и overlay-ът се свива до видимата част).
+    function privacyFit() {
+        if (!privacyStack) return;
+        const v = privacyViewport();
+        if (privacyOverlay) {
+            privacyOverlay.style.width = v.vw + 'px';
+            privacyOverlay.style.height = v.vh + 'px';
+        }
+        const availW = v.vw - 24;
+        // Групата е центрирана вертикално, значи отдолу остава толкова място, колкото отгоре.
+        // Затова се отделя място за бутона Затвори и отгоре, и отдолу, за да не застъпва календара.
+        const availH = v.vh - PRIVACY_CLOSE_ZONE * 2;
+        const scale = Math.min(1, availW / TILE, availH / (TILE * 2 + TILE_GAP));
+        privacyStack.style.transform = 'scale(' + (scale > 0 ? scale.toFixed(4) : 1) + ')';
+    }
+
+    function privacyShow() {
+        if (!privacyOverlay) privacyBuild();
+        if (!privacyOverlay || !privacyOverlay.parentNode) {
+            if (privacyOverlay && document.body) document.body.appendChild(privacyOverlay);
+        }
+        privacyRenderCalendar();
+        privacyTick();
+        privacyFit();
+        privacyOverlay.classList.add('is-visible');
+        privacyOverlay.setAttribute('aria-hidden', 'false');
+        if (privacyTimer) clearInterval(privacyTimer);
+        privacyTimer = setInterval(privacyTick, 1000);
+    }
+
+    function privacyHide() {
+        if (!privacyOverlay) return;
+        privacyOverlay.classList.remove('is-visible');
+        privacyOverlay.setAttribute('aria-hidden', 'true');
+        if (privacyTimer) {
+            clearInterval(privacyTimer);
+            privacyTimer = null;
+        }
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) return;
+        if (!privacyAppScreenMode()) return;
+        privacyShow();
+    });
+
+    window.addEventListener('resize', function () {
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
+    });
+
+    window.privacyOverlayShow = privacyShow;
+    window.privacyOverlayHide = privacyHide;
+})();
