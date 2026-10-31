@@ -34379,7 +34379,18 @@ initNoteWindows();
     let privacyMaxVp = { vh: 0 };    // най-голямата разумна височина, виждана някога: покритието на overlay-а
     let privacyCloseBtn = null;
     let privacyBlurred = false;      // прозорецът е загубил фокус: приложението излиза, не е клавиатура
+    let privacyArmedAt = 0;          // вдигнати предварително, още преди излизането (жест от долния ръб)
+    let privacyArmTimer = null;
+    let privacyHiddenAt = 0;         // кога жест ги е махнал: същият жест не бива да ги вдига пак
     const PRIVACY_GESTURE_GUARD = 400; // колко трябва да са стояли, преди жест да ги маха
+    /* Android снима кадъра за списъка с приложенията от последния кадър, който приложението е
+       успяло да нарисува. Затова плочките, вдигнати при blur, често изобщо не влизат в него:
+       екранът вече е замразен. Единственото сигурно място е жестът, който започва излизането:
+       пръстът пада в долната ивица (жест за „начало“/„скорошни“) или пълзи нагоре, докато
+       приложението още е активно — тогава един кадър с плочките стига. */
+    const PRIVACY_ARM_BAND = 60;     // px от долния ръб, където започва жестът за излизане
+    const PRIVACY_ARM_UP = 18;       // px нагоре от мястото на докосването = излизане, не докосване
+    const PRIVACY_BUILD = 'b3.34';   // кой файл върви на телефона (вижда се в диагностиката)
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34614,6 +34625,7 @@ initNoteWindows();
         privacyOverlay.classList.add('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'false');
         privacyShownAt = Date.now();
+        privacyNote('плочките са на екрана');
         if (privacyTimer) clearInterval(privacyTimer);
         privacyTimer = setInterval(privacyTick, 1000);
     }
@@ -34626,13 +34638,142 @@ initNoteWindows();
            само със Затвори. */
         if (!force && (document.hidden || privacyLocked)) return;
         if (force) privacyLocked = false;
+        privacyNote('махнати от жест');
+        privacyOverlay.classList.remove('is-visible');
+        privacyOverlay.setAttribute('aria-hidden', 'true');
+        privacyHiddenAt = Date.now();
+        if (privacyTimer) {
+            clearInterval(privacyTimer);
+            privacyTimer = null;
+        }
+    }
+
+    /* Диагностика за телефона: какво точно се е случило, докато приложението излизаше.
+       Пише се на екрана след връщане, за да може да се снима — в конзолата на телефона
+       никой не гледа. Задържа се само няколко секунди, не пипа нищо друго. */
+    const privacyEvents = [];
+    let privacyDebugEl = null;
+    let privacyDebugUntil = 0;
+
+    function privacyNote(text) {
+        const d = new Date();
+        const p = function (n, w) { return String(n).padStart(w, '0'); };
+        privacyEvents.push(p(d.getHours(), 2) + ':' + p(d.getMinutes(), 2) + ':' + p(d.getSeconds(), 2)
+            + '.' + p(d.getMilliseconds(), 3) + ' ' + text);
+        if (privacyEvents.length > 40) privacyEvents.shift();
+        if (privacyDebugEl) privacyDebugPaint();
+    }
+
+    function privacyDebugPaint() {
+        if (!privacyDebugEl) return;
+        if (!privacyDebugUntil || Date.now() > privacyDebugUntil || document.hidden) {
+            privacyDebugEl.style.display = 'none';
+            return;
+        }
+        privacyDebugEl.style.display = 'block';
+        privacyDebugEl.textContent = 'b' + PRIVACY_BUILD
+            + ' ' + (privacyAppScreenMode() ? 'app' : 'tab')
+            + ' ' + document.visibilityState
+            + ' ' + (document.hasFocus() ? 'focus' : 'no-focus')
+            + ' ' + Math.round(window.innerHeight || 0) + 'x' + Math.round(window.innerWidth || 0)
+            + '\n' + privacyEvents.slice(-16).join('\n');
+    }
+
+    function privacyDebugPanel() {
+        if (privacyDebugEl || !document.body) return privacyDebugEl;
+        const el = document.createElement('div');
+        el.id = 'privacy-debug';
+        el.style.cssText = 'position:fixed;left:6px;top:6px;right:6px;z-index:2147482999;'
+            + 'max-height:60vh;overflow:hidden;background:rgba(0,0,0,0.86);color:#7dfba0;'
+            + 'font:10px/1.35 monospace;white-space:pre-wrap;word-break:break-word;'
+            + 'padding:6px 8px;border-radius:8px;display:none;pointer-events:none;';
+        document.body.appendChild(el);
+        privacyDebugEl = el;
+        return el;
+    }
+
+    /* Жест, който извежда от приложението: пръстът пада в долната ивица или пълзи нагоре.
+       Плочките се вдигат веднага, докато приложението още рисува, и се махат сами, ако
+       човекът остане в приложението (никакъв blur/скриване). */
+    function privacyArm(reason) {
+        if (!privacyAppScreenMode()) return;
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) return;
+        if (privacyHiddenAt && Date.now() - privacyHiddenAt < PRIVACY_GESTURE_GUARD * 2) return;
+        if (!document.body) return;
+        privacyShow();
+        privacyArmedAt = Date.now();
+        privacyNote('arm ' + reason);
+        if (privacyArmTimer) clearTimeout(privacyArmTimer);
+        privacyArmTimer = setTimeout(privacyDisarmIfHome, 420);
+    }
+
+    function privacyDisarmIfHome() {
+        privacyArmTimer = null;
+        if (!privacyArmedAt) return;
+        if (!privacyOverlay) return;
+        if (document.hidden || !document.hasFocus()) {
+            /* Излезе: плочките остават. Оттук нататък ги маха само Затвори или жест. */
+            privacyArmedAt = 0;
+            privacyNote('armed -> излезе, остава');
+            return;
+        }
         privacyOverlay.classList.remove('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'true');
         if (privacyTimer) {
             clearInterval(privacyTimer);
             privacyTimer = null;
         }
+        privacyHiddenAt = 0;
+        privacyArmedAt = 0;
+        privacyNote('disarm (остана в приложението)');
     }
+
+    function privacyArmFromTouch(ev) {
+        if (!privacyAppScreenMode()) return;
+        if (!ev.touches || !ev.touches.length) return;
+        const t = ev.touches[0];
+        const h = window.innerHeight || 0;
+        if (!h) return;
+        const fromBottom = h - t.clientY;
+        if (ev.type === 'touchstart' && fromBottom <= 200) {
+            privacyNote('touch долу ' + Math.round(fromBottom) + 'px');
+        }
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) return;
+        if (fromBottom <= PRIVACY_ARM_BAND) {
+            privacyArm('ръб ' + Math.round(fromBottom) + 'px');
+            return;
+        }
+        if (ev.type === 'touchend' || ev.type === 'touchcancel') return;
+        /* Пълзене нагоре, започнало ниско: системният жест за начало/скорошни започва така. */
+        const st = privacyTouchStart;
+        if (!st) return;
+        if (Date.now() - st.at > 600) return;
+        if (st.y - t.clientY < PRIVACY_ARM_UP) return;
+        if (h - st.y > 240) return;
+        privacyArm('плъзгане нагоре от ' + Math.round(h - st.y) + 'px');
+    }
+
+    let privacyTouchStart = null;
+
+    document.addEventListener('touchstart', function (ev) {
+        if (!ev.touches || !ev.touches.length) return;
+        privacyTouchStart = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, at: Date.now() };
+    }, true);
+
+    document.addEventListener('touchstart', function (ev) {
+        privacyArmFromTouch(ev);
+        if (!privacyArmedAt) return;
+        /* Пръстът се вдигна, а приложението още е на екрана: значи не е било излизане. */
+        const once = function () {
+            document.removeEventListener('touchend', once, true);
+            document.removeEventListener('touchcancel', once, true);
+            setTimeout(privacyDisarmIfHome, 120);
+        };
+        document.addEventListener('touchend', once, true);
+        document.addEventListener('touchcancel', once, true);
+    }, true);
+
+    document.addEventListener('touchmove', privacyArmFromTouch, { capture: true, passive: true });
 
     /* Системният избор на файл е отделен екран: той вдига blur и често скрива страницата.
        Ако го вземем за напускане на приложението, плочките остават върху редактора, след
@@ -34658,9 +34799,15 @@ initNoteWindows();
        на екрана, значи следващият кадър вече е с часовника и календара. */
     // hiddenNow = страницата наистина е скрита: това е истинско напускане, не системен диалог.
     function privacyDepart(hiddenNow) {
-        if (privacyExpectingSystemUI()) return;
+        if (privacyExpectingSystemUI()) { privacyNote('depart пропуснат (системен избор на файл)'); return; }
         if (!privacyAppScreenMode()) return;
         if (hiddenNow) privacyLocked = true;
+        privacyNote('depart ' + (hiddenNow ? 'скрито' : 'blur'));
+        /* Истинско излизане: предварително вдигнатите плочки остават, няма кой да ги махне. */
+        if (privacyArmTimer) { clearTimeout(privacyArmTimer); privacyArmTimer = null; }
+        privacyArmedAt = 0;
+        privacyDebugUntil = Date.now() + 12000;
+        if (privacyDebugEl) privacyDebugEl.style.display = 'none';
         privacyShow();
     }
 
@@ -34679,9 +34826,15 @@ initNoteWindows();
         privacyHide(true);
     }
 
-    window.addEventListener('blur', function () { privacyBlurred = true; privacyDepart(false); });
+    window.addEventListener('blur', function () {
+        privacyBlurred = true;
+        privacyNote('blur');
+        if (privacyArmTimer) { clearTimeout(privacyArmTimer); privacyArmTimer = null; }
+        privacyDepart(false);
+    });
 
     document.addEventListener('visibilitychange', function () {
+        privacyNote('visibility ' + document.visibilityState);
         if (document.hidden) {
             privacyDepart(true);
         } else if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) {
@@ -34690,16 +34843,32 @@ initNoteWindows();
                екран, докато човек не ги махне с истински жест. */
             privacyFit();
             if (typeof requestAnimationFrame === 'function') requestAnimationFrame(privacyFit);
+        } else {
+            privacyArmedAt = 0;
         }
+        if (!document.hidden) privacyDebugChain();
     });
 
-    document.addEventListener('pointerdown', privacyUserBack, true);
-    document.addEventListener('touchstart', privacyUserBack, true);
+    /* След връщане от списъка с приложенията: показва какво се е случило, докато приложението
+       излизаше, за няколко секунди. */
+    function privacyDebugChain() {
+        privacyDebugPanel();
+        privacyDebugUntil = Date.now() + 12000;
+        privacyDebugPaint();
+        setTimeout(privacyDebugPaint, 200);
+        setTimeout(privacyDebugPaint, 1500);
+        setTimeout(privacyDebugPaint, 6000);
+    }
+
+
+    document.addEventListener('pointerdown', privacyUserBack, true);    document.addEventListener('touchstart', privacyUserBack, true);
     document.addEventListener('keydown', privacyUserBack, true);
 
     window.addEventListener('focus', function () {
         privacyBlurred = false;
         privacyExpectUntil = 0;
+        privacyNote('focus');
+        if (privacyDebugUntil) privacyDebugChain();
     });
 
     window.addEventListener('resize', function () {
