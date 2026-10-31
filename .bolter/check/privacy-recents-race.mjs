@@ -304,8 +304,15 @@ const tapNow = (page) => page.evaluate(() => {
     await goHidden(page);
     await page.waitForTimeout(200);
     ok(await visible(page), '8.3 в кадъра за списъка плочките са на екрана');
+    // Връщане в приложението: плочките пак чакат жест (докато страницата е скрита, жестове няма).
+    // Първите 120 мс те стоят, за да не ги махне същият жест, който тъкмо ги е вдигнал.
+    await goVisible(page);
+    await page.waitForTimeout(120);
+    ok(await visible(page), '8.4 след връщане плочките още са там, никой жест още не ги е махал');
+    ok(await tapNow(page), '8.5 жест веднага след вдигането не ги маха (защитата от 400 мс)');
+    await page.waitForTimeout(500);
     const stillThere = await tapNow(page);
-    ok(!stillThere, '8.4 докосване след връщане ги маха');
+    ok(!stillThere, '8.6 истинско докосване след защитата ги маха');
     await ctx.close();
 }
 
