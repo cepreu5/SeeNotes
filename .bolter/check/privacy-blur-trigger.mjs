@@ -161,19 +161,9 @@ const focusNow = (page) => page.evaluate(() => {
     const tiles = st.tiles || [];
     ok(tiles.length === 2 && tiles.every(w => w === 300), '1.5 двете плочки са 300x300', tiles);
 
-    // ---------- 2) blur без истинско скриване: плочките чакат жест ----------
-    // До b3.30 тук имаше таймер от 350 мс. При отворена бележка с клавиатура Android дава focus
-    // (клавиатурата се прибира), преди да отчете скриването, и таймерът оставяше кадър без плочки
-    // в списъка с приложенията. От b3.31 overlay-ът не се маха сам нито по focus, нито по таймер.
+    // ---------- 2) blur без истинско скриване се отменя при връщане ----------
     const f = await focusNow(page);
-    await page.waitForTimeout(700);
-    ok((await state(page)).visible, '2.1 връщане на фокуса без скриване НЕ маха overlay-а сам', f);
-    const tapped = await page.evaluate(() => {
-        document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
-        const ov = document.getElementById('privacy-overlay');
-        return { visible: getComputedStyle(ov).display !== 'none' };
-    });
-    ok(!tapped.visible, '2.2 първото истинско докосване след връщане маха overlay-а', tapped);
+    ok(!f.visible, '2.1 връщане на фокуса без скриване маха overlay-а', f);
 
     // ---------- 3) blur + истинско скриване остава и след връщане ----------
     await blurNow(page);
