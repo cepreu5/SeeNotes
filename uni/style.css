@@ -3182,6 +3182,44 @@ code {
     gap: 5px;
 }
 
+/* --- Месец в нисък (завъртян) екран: вариант B (b3.29) ----------------------------------------
+   В 844x390 месецът не се побира по височина, а досега авто-зумът го смаляваше целия до миниатюра.
+   Затова в нисък екран месецът минава в кутия: залепеният хедър (стрелки, днес, седмица/месец,
+   затваряне, името на месеца) и редът с имената на дните остават горе, а мрежата се скролира в
+   собствена кутия под тях. Клетките си остават квадратни - не се пипат. Класът се слага от
+   main.js (fitCalendarMonth) само когато екранът е нисък, значи портретът и компютърът не се менят. */
+#calendar-container.calendar-scroll-box {
+    /* display:flex се слага инлайн от main.js (виж toggleCalendarScrollBox): инлайн block/none от
+       рендера и от седмичния изглед трябва да може да надделява. */
+    flex-direction: column;
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 5px;
+}
+
+/* Хедърът и имената на дните не се свиват и не се скролират - те са постоянната рамка. */
+#calendar-container.calendar-scroll-box > div:first-child {
+    flex: 0 0 auto;
+}
+
+/* Мрежата се скролира в собствената си кутия и не се свива: обвивката е обикновен блок в портрет. */
+.calendar-grid-scroll {
+    display: block;
+}
+
+/* Мрежата живее в собствената си кутия и се скролира в нея, без да мърда страницата. */
+#calendar-container.calendar-scroll-box > .calendar-grid-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 5px;
+}
+
 .calendar-days-header {
     display: grid;
     grid-template-columns: repeat(7, 1fr);

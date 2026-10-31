@@ -3860,7 +3860,172 @@ if (document.readyState === 'loading') {
 })();
 
 // ---------- Calendar ----------------------------
+// --- Месечен изглед в нисък (завъртян) екран: вариант B (b3.29) --------------------------------
+// Авто-зумът смаляваше целия месец до миниатюра, щом не се побира по височина, а в 844x390 това
+// прави числата нечетливи. Затова в нисък екран месецът минава в кутия: хедърът и редът с имената
+// на дните остават залепени горе, а мрежата се скролира в собствена кутия под тях - клетките си
+// остават квадратни, както са. Във висок екран (портрет, компютър) нищо не се променя.
+const CALENDAR_SCROLL_MAX_HEIGHT = 500; // px: до тази височина месецът ползва кутия
+
+function calendarUsesScrollBox() {
+    return window.innerHeight <= CALENDAR_SCROLL_MAX_HEIGHT;
+}
+
+// Слага/маха кутията според височината на екрана. Връща true, когато кутията е сложена - тогава зум
+// не се смята, защото скролът върши същата работа, но числата остават четливи.
+function toggleCalendarScrollBox(container) {
+    if (!container) return false;
+    const on = calendarUsesScrollBox();
+    // display се пише и от самия рендер инлайн (block), а седмичният изглед слага none - затова
+    // кутията сменя инлайн стойността, а не я презаписва с !important от таблицата (иначе скритият
+    // месец остава в подредбата под седмичния изглед и страницата става двойно по-висока).
+    container.style.display = on ? 'flex' : 'block';
+    container.classList.toggle('calendar-scroll-box', on);
+    if (!on) {
+        container.style.removeProperty('height');
+        return false;
+    }
+    // Кутията заема точно остатъка от екрана, считано от мястото ѝ: 100vh не става, защото над
+    // календара има отстъп и долният ред излизаше 26px под екрана (мерено на 844x390).
+    const top = Math.round(container.getBoundingClientRect().top + (window.scrollY || 0));
+    const height = Math.max(180, window.innerHeight - top);
+    container.style.setProperty('height', `${height}px`, 'important');
+    return true;
+}
+
+// Смяната на изгледа връща страницата в началото на календара. Седмичният изглед е 614 висок,
+// месечният 827, значи скролът, останал от единия, винаги каца по средата на другия (b3.29).
+// Връща се само при СМЯНА на изгледа - стрелките за месец напред/назад прерисуват същия изглед и
+// нямат причина да местят страницата.
+let calendarLastView = null;
+
+function resetCalendarViewScroll(view) {
+    if (calendarLastView === view) return;
+    calendarLastView = view;
+    const scroller = document.scrollingElement || document.documentElement;
+    if (scroller) scroller.scrollTop = 0;
+    if (window.scrollY) window.scrollTo(0, 0);
+}
+
+// Квадратчетата на бележките се мерят, след като браузърът е наредил елементите, и се заковават
+// квадратни (височина = ширина).
+function squareCalendarMiniNotes() {
+    document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
+        const width = miniNote.getBoundingClientRect().width;
+        if (width > 0) miniNote.style.height = `${width}px`;
+    });
+}
+
+// Скролва до днес. В кутията този скрол НЕ се прави: там мрежата започва от началото на месеца,
+// за да се виждат хедърът и първите редове, а не само долната част (точно това беше оплакването).
+function scrollCalendarToToday(container) {
+    const grid = container && container.querySelector('.calendar-grid');
+    const todayEl = document.querySelector('.today-date');
+    if (!grid || !todayEl) return;
+    if (container.classList.contains('calendar-scroll-box')) return;
+    todayEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Подрежда месеца за текущия размер на екрана. Вика се след всеки рендер и при завъртане на телефона
+// (виж refitCalendarMonthAfterRotation): досега при завъртане нищо не се преизчисляваше, значи месец,
+// нареден в портрет, излизаше със 115px клетки и 724px мрежа в завъртян екран.
+function fitCalendarMonth(container) {
+    if (!container) return;
+    // --- АВТО-ЗУМ / КУТИЯ ---
+    // Нулираме zoom-а преди измерване
+    container.style.transform = 'none';
+    container.style.transformOrigin = 'top center';
+    container.style.width = ''; // Премахваме изрично зададената ширина
+    container.style.height = ''; // Премахваме изрично зададената височина
+    container.style.marginBottom = ''; // Нулираме марджина
+    container.style.overflow = ''; // Нулираме и преливането, оставено от предишен зум
+    // Кутията се решава преди меренето: тя сменя ширината на мрежата (скролбар), значи и ширината
+    // на квадратчетата.
+    const useScrollBox = toggleCalendarScrollBox(container);
+    squareCalendarMiniNotes();
+    // Кутията решава - зум не се смята (иначе числата пак се смаляват), а мрежата остава в началото
+    // на месеца: тя е нов елемент при всеки рендер, значи се виждат хедърът и първите редове.
+    if (useScrollBox) return;
+    const windowHeight = window.innerHeight;
+    // Използваме getBoundingClientRect за по-точни размери, включително padding/margin ако има
+    const rect = container.getBoundingClientRect();
+    const contentHeight = rect.height;
+    const contentWidth = rect.width;
+    // Оставяме малък буфер (напр. 20px)
+    const availableHeight = windowHeight - 20;
+    const availableWidth = window.innerWidth;
+    // Изчисляваме мащаба
+    let scaleH = availableHeight / contentHeight;
+    let scaleW = availableWidth / contentWidth;
+    // Избираме по-малкия мащаб, за да се побере всичко
+    let scale = Math.min(scaleH, scaleW, 1);
+    // Прилагаме мащаба само ако е нужно намаляване
+    if (scale < 0.99) {
+        container.style.transform = `scale(${scale})`;
+        // КОРЕКЦИЯ 2: Задаваме изрично височината на контейнера да е равна на новия визуален размер.
+        // Тъй като съдържанието е по-голямо, то ще прелее, но transform ще го свие обратно в тези граници.
+        container.style.height = `${contentHeight * scale}px`;
+        // Уверяваме се, че няма да се отреже нищо важно
+        container.style.overflow = 'visible';
+        // ОБРАТНО МАЩАБИРАНЕ: Увеличаваме font-size вместо transform, за да не се нарушава layout-а
+        const counterScale = 1 / scale;
+        // Увеличаваме font-size на бутоните в хедъра
+        const calendarHeader = container.querySelector('.calendar-header');
+        if (calendarHeader) {
+            const headerButtons = calendarHeader.querySelectorAll('button');
+            headerButtons.forEach(btn => {
+                const currentFontSize = parseFloat(window.getComputedStyle(btn).fontSize);
+                btn.style.fontSize = `${currentFontSize * counterScale}px`;
+                // Увеличаваме и размерите на бутона, за да се побират символите
+                const currentWidth = parseFloat(window.getComputedStyle(btn).width);
+                const currentHeight = parseFloat(window.getComputedStyle(btn).height);
+                btn.style.width = `${currentWidth * counterScale}px`;
+                btn.style.height = `${currentHeight * counterScale}px`;
+                // Гарантираме центриране на съдържанието
+                btn.style.display = 'flex';
+                btn.style.alignItems = 'center';
+                btn.style.justifyContent = 'center';
+                // Корекция за символите « и » - леко ги вдигаме нагоре
+                if (btn.id === 'prev-month-btn' || btn.id === 'next-month-btn') {
+                    btn.style.paddingTop = '0';
+                    btn.style.paddingBottom = `${4 * counterScale}px`;
+                }
+                // Специално мащабиране за бутона за седмичен изглед
+                if (btn.id === 'weekly-view-btn') {
+                    const svgIcon = btn.querySelector('svg');
+                    if (svgIcon) {
+                        svgIcon.style.transform = `scale(${counterScale})`;
+                        svgIcon.style.transformOrigin = 'center';
+                    }
+                }
+            });
+            const headerTitle = calendarHeader.querySelector('h2');
+            if (headerTitle) {
+                const currentFontSize = parseFloat(window.getComputedStyle(headerTitle).fontSize);
+                headerTitle.style.fontSize = `${currentFontSize * counterScale}px`;
+            }
+        }
+        // Увеличаваме font-size на имената на дните
+        const dayNames = container.querySelectorAll('.calendar-day-name');
+        dayNames.forEach(dayName => {
+            const currentFontSize = parseFloat(window.getComputedStyle(dayName).fontSize);
+            dayName.style.fontSize = `${currentFontSize * counterScale}px`;
+        });
+        // Увеличаваме font-size на номерата на датите
+        const dateNumbers = container.querySelectorAll('.calendar-date-number');
+        dateNumbers.forEach(dateNum => {
+            const currentFontSize = parseFloat(window.getComputedStyle(dateNum).fontSize);
+            dateNum.style.fontSize = `${currentFontSize * counterScale}px`;
+        });
+    }
+    // Ако не сме мащабирали (или малко), скролираме до днес
+    if (scale >= 0.99) {
+        scrollCalendarToToday(container);
+    }
+}
+
 function renderCalendarView() {
+    resetCalendarViewScroll('month');
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
     scrollTopBtn.style.display = 'none';
@@ -4048,101 +4213,15 @@ function renderCalendarView() {
             renderWeeklyCalendarView(selectedDate);
         }
     });
-    calendarContainer.appendChild(calendarGrid);
-    // Make mini-notes square by setting their height equal to their calculated width
-    // Use setTimeout to ensure the browser has rendered the elements before we measure them.
-    setTimeout(() => {
-        document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
-            const width = miniNote.getBoundingClientRect().width;
-            if (width > 0) miniNote.style.height = `${width}px`;
-        });
-        // --- AUTO ZOOM LOGIC ---
-        // Нулираме zoom-а преди измерване
-        calendarContainer.style.transform = 'none';
-        calendarContainer.style.transformOrigin = 'top center';
-        calendarContainer.style.width = ''; // Премахваме изрично зададената ширина
-        calendarContainer.style.height = ''; // Премахваме изрично зададената височина
-        calendarContainer.style.marginBottom = ''; // Нулираме марджина
-        const windowHeight = window.innerHeight;
-        // Използваме getBoundingClientRect за по-точни размери, включително padding/margin ако има
-        const rect = calendarContainer.getBoundingClientRect();
-        const contentHeight = rect.height;
-        const contentWidth = rect.width;
-        // Оставяме малък буфер (напр. 20px)
-        const availableHeight = windowHeight - 20;
-        const availableWidth = window.innerWidth;
-        // Изчисляваме мащаба
-        let scaleH = availableHeight / contentHeight;
-        let scaleW = availableWidth / contentWidth;
-        // Избираме по-малкия мащаб, за да се побере всичко
-        let scale = Math.min(scaleH, scaleW, 1);
-        // Прилагаме мащаба само ако е нужно намаляване
-        if (scale < 0.99) {
-            calendarContainer.style.transform = `scale(${scale})`;
-            // КОРЕКЦИЯ 2: Задаваме изрично височината на контейнера да е равна на новия визуален размер.
-            // Тъй като съдържанието е по-голямо, то ще прелее, но transform ще го свие обратно в тези граници.
-            calendarContainer.style.height = `${contentHeight * scale}px`;
-            // Уверяваме се, че няма да се отреже нищо важно
-            calendarContainer.style.overflow = 'visible';
-            // ОБРАТНО МАЩАБИРАНЕ: Увеличаваме font-size вместо transform, за да не се нарушава layout-а
-            const counterScale = 1 / scale;
-            // Увеличаваме font-size на бутоните в хедъра
-            const calendarHeader = calendarContainer.querySelector('.calendar-header');
-            if (calendarHeader) {
-                const headerButtons = calendarHeader.querySelectorAll('button');
-                headerButtons.forEach(btn => {
-                    const currentFontSize = parseFloat(window.getComputedStyle(btn).fontSize);
-                    btn.style.fontSize = `${currentFontSize * counterScale}px`;
-                    // Увеличаваме и размерите на бутона, за да се побират символите
-                    const currentWidth = parseFloat(window.getComputedStyle(btn).width);
-                    const currentHeight = parseFloat(window.getComputedStyle(btn).height);
-                    btn.style.width = `${currentWidth * counterScale}px`;
-                    btn.style.height = `${currentHeight * counterScale}px`;
-                    // Гарантираме центриране на съдържанието
-                    btn.style.display = 'flex';
-                    btn.style.alignItems = 'center';
-                    btn.style.justifyContent = 'center';
-                    // Корекция за символите « и » - леко ги вдигаме нагоре
-                    if (btn.id === 'prev-month-btn' || btn.id === 'next-month-btn') {
-                        btn.style.paddingTop = '0';
-                        btn.style.paddingBottom = `${4 * counterScale}px`;
-                    }
-                    // Специално мащабиране за бутона за седмичен изглед
-                    if (btn.id === 'weekly-view-btn') {
-                        const svgIcon = btn.querySelector('svg');
-                        if (svgIcon) {
-                            svgIcon.style.transform = `scale(${counterScale})`;
-                            svgIcon.style.transformOrigin = 'center';
-                        }
-                    }
-                });
-                const headerTitle = calendarHeader.querySelector('h2');
-                if (headerTitle) {
-                    const currentFontSize = parseFloat(window.getComputedStyle(headerTitle).fontSize);
-                    headerTitle.style.fontSize = `${currentFontSize * counterScale}px`;
-                }
-            }
-            // Увеличаваме font-size на имената на дните
-            const dayNames = calendarContainer.querySelectorAll('.calendar-day-name');
-            dayNames.forEach(dayName => {
-                const currentFontSize = parseFloat(window.getComputedStyle(dayName).fontSize);
-                dayName.style.fontSize = `${currentFontSize * counterScale}px`;
-            });
-            // Увеличаваме font-size на номерата на датите
-            const dateNumbers = calendarContainer.querySelectorAll('.calendar-date-number');
-            dateNumbers.forEach(dateNum => {
-                const currentFontSize = parseFloat(window.getComputedStyle(dateNum).fontSize);
-                dateNum.style.fontSize = `${currentFontSize * counterScale}px`;
-            });
-        }
-        // Ако не сме мащабирали (или малко), скролираме до днес
-        if (scale >= 0.99) {
-            const todayElement = document.querySelector('.today-date');
-            if (todayElement) {
-                todayElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-    }, 0);
+    // Мрежата стои в собствена обвивка: в нисък (завъртян) екран точно тя става кутията, която се
+    // скролира под залепения хедър, без клетките да се свиват. Във висок екран обвивката е обикновен
+    // блок и не се вижда в подредбата.
+    const gridScrollArea = document.createElement('div');
+    gridScrollArea.className = 'calendar-grid-scroll';
+    gridScrollArea.appendChild(calendarGrid);
+    calendarContainer.appendChild(gridScrollArea);
+    // Квадратчетата и зумът/кутията се смятат, след като браузърът е наредил елементите.
+    setTimeout(() => fitCalendarMonth(calendarContainer), 0);
     // Event Listeners
     document.getElementById('prev-month-btn').addEventListener('click', () => {
         currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
@@ -4227,6 +4306,7 @@ function renderCalendarView() {
 }
 
 function renderWeeklyCalendarView(dateForWeek) {
+    resetCalendarViewScroll('week');
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
     scrollTopBtn.style.display = 'none';
@@ -13004,6 +13084,72 @@ function placeNoteWindow(win, isExpanded, note) {
     box.style.left = clampNoteWindowAxis(x, w, vw) + 'px';
     box.style.top = clampNoteWindowAxis(y, h, vh) + 'px';
 }
+
+// --- Завъртане на телефона: отворената бележка се прибира в екрана (b3.29) -------------------------
+// Досега бележката се местеше само при отваряне, значи след завъртане оставаше извън екрана: 400
+// широка на x=222 излизаше 222px извън десния ръб, а на y=272 при 390 висок екран долният ръб падаше
+// 182px под екрана. Минава се по СЪЩИЯ път като при отваряне - placeNoteWindow: помненото място, ако
+// се побира цяло на новия екран, иначе обичайното центрирано с отстъпа. Размерът се смалява САМО ако
+// иначе не се побира (400x300 се побира в 844x390 без нито един пиксел смаляване).
+// Нищо от това не се записва: uiState.pos/size и modalWidth/modalHeight остават, значи като върнеш
+// телефона бележката отива там, където си я оставил, а не на мястото от другия екран.
+const NOTE_ROTATE_REFIT_DELAY = 120; // ms: завъртането пуска няколко resize-а, работата е веднъж
+
+// Размер, приложен от глобалния (не от бележката), не се свива от applyNoteWindowSize - тук се
+// досвива до екрана. Само на екрана, не в записа.
+function fitNoteWindowToScreen(win) {
+    const box = win && win.box;
+    if (!box) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const maxW = vw - 2 * NOTE_WINDOW_MARGIN, maxH = vh - 2 * NOTE_WINDOW_MARGIN;
+    if (maxW > 0 && box.offsetWidth > vw) box.style.width = `${maxW}px`;
+    if (maxH > 0 && box.offsetHeight > vh) box.style.height = `${maxH}px`;
+    if (win.geomSize) win.geomSize = { width: Math.round(box.offsetWidth), height: Math.round(box.offsetHeight) };
+}
+
+function refitOpenNoteWindowsAfterRotation() {
+    getOpenNoteWindows().forEach(win => {
+        if (!win.open || !win.box || !win.box.offsetWidth) return;
+        // Разпънатата (цял екран) бележка си остава цял екран - тя не се мести.
+        if (win.body.dataset.isExpanded === 'true') return;
+        // Докато се пише, бележката е качена най-горе и височината ѝ зависи от клавиатурата - това е
+        // редът на syncNoteKeyboardDock (PR #130/#131), не на завъртането.
+        if (win.el.classList.contains('note-window-kb-top') || noteKeyboardFocusInside(win.el)) return;
+        const note = findNoteForWindow(win);
+        const size = note ? getValidEditorSize(note.uiState) : null;
+        applyNoteWindowSize(win, win.box, size);
+        fitNoteWindowToScreen(win);
+        placeNoteWindow(win, false, note);
+    });
+}
+
+// Месецът се подрежда наново за новия размер: досега нищо не се преизчисляваше, значи месец, който е
+// бил наред в портрет, излизаше със 115px клетки и 724px мрежа, която вече не се побира.
+function refitCalendarMonthAfterRotation() {
+    const container = document.getElementById('calendar-container');
+    if (!container || getComputedStyle(container).display === 'none') return;
+    fitCalendarMonth(container);
+}
+
+// Завъртането е смяна на ШИРИНАТА или orientationchange. Клавиатурата променя само височината, значи
+// не влиза тук и подредбата при писане остава същата.
+let noteRotateRefitTimer = null;
+let noteRotateLastWidth = window.innerWidth;
+
+function scheduleRotationRefit(force) {
+    const width = window.innerWidth;
+    if (!force && width === noteRotateLastWidth) return;
+    noteRotateLastWidth = width;
+    clearTimeout(noteRotateRefitTimer);
+    noteRotateRefitTimer = setTimeout(() => {
+        noteRotateRefitTimer = null;
+        refitOpenNoteWindowsAfterRotation();
+        refitCalendarMonthAfterRotation();
+    }, NOTE_ROTATE_REFIT_DELAY);
+}
+
+window.addEventListener('resize', () => scheduleRotationRefit(false));
+window.addEventListener('orientationchange', () => scheduleRotationRefit(true));
 
 // The expand button: the full-size view fills the screen from the top-left corner (no frame); back to
 // normal puts it where it was.
