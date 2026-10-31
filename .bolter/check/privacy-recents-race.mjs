@@ -145,6 +145,33 @@ const closeOverlay = (page) => page.evaluate(() => {
     const ov = document.getElementById('privacy-overlay');
     return { clicked: true, visible: getComputedStyle(ov).display !== 'none' };
 });
+// Връщане в приложението + жестове, всичко в САМИЯ кадър. Двете неща трябва да са в един
+// evaluate: ако между тях мине връзката с браузъра (два-три кръга), жестът може да падне
+// след защитата от 400 мс и 8.5 да падне, без в кода да има проблем.
+const backAndTap = (page) => page.evaluate(async () => {
+    const ov = document.getElementById('privacy-overlay');
+    const up = () => !!ov && getComputedStyle(ov).display !== 'none';
+    const tap = () => document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    // Вдигането и жестовете в ЕДИН кадър: защитата се брои от момента на вдигане, а той не се
+    // знае отвън. Ако вдигането беше в предишен evaluate, между двата кръга може да минат стотици
+    // милисекунди и жестът на 250 мс да е извън 400-те милисекунди, без в кода да има проблем.
+    window.__vis.hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    const t0 = performance.now();
+    const raised = up();
+    window.__vis.hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    const before = up();
+    tap();
+    const afterImmediate = up();
+    const tImmediate = Math.round(performance.now() - t0);
+    await new Promise(r => setTimeout(r, 250));
+    const beforeMid = up();
+    const tMid = Math.round(performance.now() - t0);
+    tap();
+    const afterMid = up();
+    return { raised, before, afterImmediate, beforeMid, afterMid, tImmediate, tMid };
+});
 // Истински жест от човек: от b3.31 само той маха плочките (не focus, не таймер).
 const tapNow = (page) => page.evaluate(() => {
     document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
@@ -305,11 +332,11 @@ const tapNow = (page) => page.evaluate(() => {
     await page.waitForTimeout(200);
     ok(await visible(page), '8.3 в кадъра за списъка плочките са на екрана');
     // Връщане в приложението: плочките пак чакат жест (докато страницата е скрита, жестове няма).
-    // Първите 120 мс те стоят, за да не ги махне същият жест, който тъкмо ги е вдигнал.
-    await goVisible(page);
-    await page.waitForTimeout(120);
-    ok(await visible(page), '8.4 след връщане плочките още са там, никой жест още не ги е махал');
-    ok(await tapNow(page), '8.5 жест веднага след вдигането не ги маха (защитата от 400 мс)');
+    // Жестовете се пускат в същия кадър като връщането, за да е сигурно, че падат в защитата.
+    const back = await backAndTap(page);
+    ok(back.raised && back.before, '8.4 след вдигане и връщане плочките още са там, никой жест още не ги е махал');
+    ok(back.afterImmediate && back.beforeMid && back.afterMid,
+        '8.5 жест веднага и 250 мс след вдигането не ги маха (защитата от 400 мс)', back);
     await page.waitForTimeout(500);
     const stillThere = await tapNow(page);
     ok(!stillThere, '8.6 истинско докосване след защитата ги маха');
