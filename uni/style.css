@@ -2021,12 +2021,10 @@ code {
     margin-top: 5px;
 }
 
-/* Hide logo on small screens */
-@media (max-width: 480px) {
-    .header-logo {
-        display: none;
-    }
-}
+/* Логото НЕ се крие по ширина (31 Oct 2026, по решение на собственика): на телефон хедърът е в
+   колона от три реда, логото има място до заглавието и освен това е натискаемото място за
+   защитния овърлей. Крие се само в едноредовия хедър в завъртян екран — виж @media
+   (orientation: landscape) and (max-height: 500px) в края на файла. */
 
 #boards-table th,
 #boards-table td {
