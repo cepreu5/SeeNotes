@@ -34375,6 +34375,8 @@ initNoteWindows();
     let privacyLocked = false;       // вдигнати при истинско напускане: махат се само със Затвори
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
     let privacyShownAt = 0;          // кога са вдигнати: жест веднага след това не ги маха
+    let privacyLastVp = { vw: 0, vh: 0 }; // последният разумен размер на екрана (виж privacyViewport)
+    let privacyBlurred = false;      // прозорецът е загубил фокус: приложението излиза, не е клавиатура
     const PRIVACY_GESTURE_GUARD = 400; // колко трябва да са стояли, преди жест да ги маха
 
     function privacyIsBg() {
@@ -34516,17 +34518,30 @@ initNoteWindows();
 
     // Реално видимата част на екрана: при мобилен браузър window.innerHeight може да е
     // по-голям от видимото (напр. 608 срещу 568), затова се взима най-малката стойност.
+    // По време на излизането от приложението Android за миг връща 0 (или шепа пиксели) от
+    // innerWidth/innerHeight/visualViewport и точно тогава идва resize. Такива числа се
+    // подминават: иначе overlay-ът се свива до 0x0, той си остава „показан“, но в кадъра за
+    // списъка се виждат бележките, а плочките се връщат на място едва при следващия resize,
+    // тоест чак когато човек се върне в приложението.
+    function privacySane(v) {
+        return typeof v === 'number' && isFinite(v) && v >= 100; // под 100 px не е екран, а преходно състояние
+    }
+
     function privacyViewport() {
-        let vw = window.innerWidth;
-        let vh = window.innerHeight;
+        let vw = 0, vh = 0;
+        const take = (w, h) => {
+            if (privacySane(w)) vw = vw ? Math.min(vw, w) : w;
+            if (privacySane(h)) vh = vh ? Math.min(vh, h) : h;
+        };
+        take(window.innerWidth, window.innerHeight);
         if (window.visualViewport) {
-            vw = Math.min(vw, Math.round(window.visualViewport.width));
-            vh = Math.min(vh, Math.round(window.visualViewport.height));
+            take(Math.round(window.visualViewport.width), Math.round(window.visualViewport.height));
         }
         if (document.documentElement) {
-            vw = Math.min(vw, document.documentElement.clientWidth);
-            vh = Math.min(vh, document.documentElement.clientHeight);
+            take(document.documentElement.clientWidth, document.documentElement.clientHeight);
         }
+        if (!vw) vw = privacyLastVp.vw || (window.screen && window.screen.width) || 0;
+        if (!vh) vh = privacyLastVp.vh || (window.screen && window.screen.height) || 0;
         return { vw: vw, vh: vh };
     }
 
@@ -34535,6 +34550,15 @@ initNoteWindows();
     function privacyFit() {
         if (!privacyStack) return;
         const v = privacyViewport();
+        if (!v.vw || !v.vh) return; // няма разумни числа: остава както е, до следващия resize
+        const focused = !(privacyBlurred || document.hidden);
+        const shrinking = privacyLastVp.vw && (v.vw < privacyLastVp.vw || v.vh < privacyLastVp.vh);
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible') && shrinking && !focused) {
+            /* Прозорецът не е на фокус и се свива: това е анимацията за излизане, не клавиатура.
+               Ако overlay-ът се смали сега, част от бележките остава на екрана в кадъра за списъка. */
+            return;
+        }
+        privacyLastVp = { vw: v.vw, vh: v.vh };
         if (privacyOverlay) {
             privacyOverlay.style.width = v.vw + 'px';
             privacyOverlay.style.height = v.vh + 'px';
@@ -34623,10 +34647,18 @@ initNoteWindows();
         privacyHide(true);
     }
 
-    window.addEventListener('blur', function () { privacyDepart(false); });
+    window.addEventListener('blur', function () { privacyBlurred = true; privacyDepart(false); });
 
     document.addEventListener('visibilitychange', function () {
-        if (document.hidden) privacyDepart(true);
+        if (document.hidden) {
+            privacyDepart(true);
+        } else if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) {
+            /* Връщане в приложението: размерите се взимат наново. По време на излизането
+               прозорецът може да е отчитал смален размер, а плочките трябва да покриват целия
+               екран, докато човек не ги махне с истински жест. */
+            privacyFit();
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(privacyFit);
+        }
     });
 
     document.addEventListener('pointerdown', privacyUserBack, true);
@@ -34634,6 +34666,7 @@ initNoteWindows();
     document.addEventListener('keydown', privacyUserBack, true);
 
     window.addEventListener('focus', function () {
+        privacyBlurred = false;
         privacyExpectUntil = 0;
     });
 
