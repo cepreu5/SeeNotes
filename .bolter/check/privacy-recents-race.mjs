@@ -14,10 +14,15 @@
 //   1) blur -> скриване -> focus (focus, докато страницата е скрита) — плочките остават;
 //   2) скриване -> blur -> focus — плочките остават (blur не бива да трие „скрито е“);
 //   3) blur -> focus и скриване 100 мс по-късно — плочките не изчезват и за миг;
-//   4) blur -> focus без скриване (системен диалог) — бележките се връщат сами до 600 мс;
+//   4) blur -> focus без скриване (системен диалог) — плочките не се махат сами, чакат докосване;
 //   5) истинско напускане и връщане — плочките остават, искат Затвори, Затвори ги маха;
 //   6) системен диалог, докато плочките чакат Затвори — пак остават (не се махат сами);
 //   7) след Затвори следващият blur пак вдига плочките.
+//
+// b3.31: собственикът видя на MIUI, че при ОТВОРЕНА бележка (с клавиатура) плочките пак липсват
+// в списъка. Причината беше таймерът от 350 мс: при натискане на „скорошни" клавиатурата се
+// прибира, Android дава focus, страницата още се води видима и таймерът махаше плочките точно
+// преди снимката. Сега няма нито таймер, нито махане по focus: маха само истински жест.
 //
 // Пускане от корена на хранилището: node .bolter/check/privacy-recents-race.mjs   (exit 1 при провал)
 // ROOT=… сочи друга папка на приложението (за да се провери, че тестът хваща липсващата поправка).
@@ -140,6 +145,12 @@ const closeOverlay = (page) => page.evaluate(() => {
     const ov = document.getElementById('privacy-overlay');
     return { clicked: true, visible: getComputedStyle(ov).display !== 'none' };
 });
+// Истински жест от човек: от b3.31 само той маха плочките (не focus, не таймер).
+const tapNow = (page) => page.evaluate(() => {
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+    const ov = document.getElementById('privacy-overlay');
+    return !!ov && getComputedStyle(ov).display !== 'none';
+});
 
 // ---------- 1) blur -> скриване -> focus, докато страницата е скрита ----------
 {
@@ -187,15 +198,17 @@ const closeOverlay = (page) => page.evaluate(() => {
     await ctx.close();
 }
 
-// ---------- 4) blur -> focus без скриване (системен диалог) ----------
+// ---------- 4) blur -> focus без скриване (системен диалог): плочките чакат жест ----------
 {
     const { ctx, page, ready } = await openApp();
     ok(ready, '4. приложението тръгна');
     await blurNow(page);
     ok(await visible(page), '4.1 blur вдига плочките');
     await focusNow(page);
-    await page.waitForTimeout(600);
-    ok(!(await visible(page)), '4.2 при връщане без скриване бележките се връщат сами до 600 мс');
+    await page.waitForTimeout(700);
+    ok(await visible(page), '4.2 връщането на фокуса НЕ ги маха само (нито веднага, нито след 700 мс)');
+    const stillThere = await tapNow(page);
+    ok(!stillThere, '4.3 първото истинско докосване ги маха');
     await ctx.close();
 }
 
@@ -249,7 +262,57 @@ const closeOverlay = (page) => page.evaluate(() => {
     ok(await visible(page), '7.1 след Затвори следващият blur пак вдига плочките');
     await focusNow(page);
     await page.waitForTimeout(600);
-    ok(!(await visible(page)), '7.2 и този blur без скриване се отменя сам');
+    ok(await visible(page), '7.2 и този blur без скриване не се отменя сам');
+    const stillThere = await tapNow(page);
+    ok(!stillThere, '7.3 докосването го маха');
+    await ctx.close();
+}
+
+// ---------- 8) отворена бележка с клавиатура: случаят на собственика (MIUI, 31 Oct) ----------
+// При натискане на „скорошни" клавиатурата се прибира, Android дава focus, страницата още се
+// води видима. Старият таймер махаше плочките точно в този прозорец и снимката излизаше с
+// бележката. Сега нито един кадър между blur и скриването не бива да е без плочки.
+{
+    const { ctx, page, ready } = await openApp();
+    ok(ready, '8. приложението тръгна');
+    const noteOpen = await page.evaluate(() => {
+        const card = document.querySelector('#notes-container .note');
+        if (!card) return false;
+        card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+    });
+    await page.waitForTimeout(900);
+    const winVisible = await page.evaluate(() => {
+        const w = document.querySelector('.note-window.visible');
+        if (!w) return false;
+        const area = w.querySelector('textarea, [contenteditable="true"]');
+        if (area) { area.focus(); area.dispatchEvent(new Event('input', { bubbles: true })); }
+        return true;
+    });
+    ok(noteOpen && winVisible, '8.1 има отворена бележка с поле за писане (както при собственика)');
+
+    await blurNow(page);
+    const frames = [];
+    frames.push(await visible(page));
+    // клавиатурата се прибира: focus идва, а страницата още е видима
+    await focusNow(page);
+    for (let i = 0; i < 10; i++) {
+        await page.waitForTimeout(60);
+        frames.push(await visible(page));
+    }
+    ok(frames.every(Boolean), '8.2 между blur и скриването няма нито един кадър без плочки', frames);
+    await goHidden(page);
+    await page.waitForTimeout(200);
+    ok(await visible(page), '8.3 в кадъра за списъка плочките са на екрана');
+    // Връщане в приложението: плочките пак чакат жест (докато страницата е скрита, жестове няма).
+    // Първите 120 мс те стоят, за да не ги махне същият жест, който тъкмо ги е вдигнал.
+    await goVisible(page);
+    await page.waitForTimeout(120);
+    ok(await visible(page), '8.4 след връщане плочките още са там, никой жест още не ги е махал');
+    ok(await tapNow(page), '8.5 жест веднага след вдигането не ги маха (защитата от 400 мс)');
+    await page.waitForTimeout(500);
+    const stillThere = await tapNow(page);
+    ok(!stillThere, '8.6 истинско докосване след защитата ги маха');
     await ctx.close();
 }
 
