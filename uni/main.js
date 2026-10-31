@@ -34363,8 +34363,10 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
-    let privacyWentHidden = false;   // истинско скриване по време на текущия blur
+    let privacyReturnTimer = null;   // отложено решение за връщане (focus не се вярва веднага)
+    let privacyLocked = false;       // вдигнати при истинско напускане: махат се само със Затвори
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
+    const PRIVACY_RETURN_DELAY = 350; // колко се чака, преди един focus да се брои за връщане
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34435,7 +34437,7 @@ initNoteWindows();
         closeBtn.addEventListener('click', function (ev) {
             ev.stopPropagation();
             ev.preventDefault();
-            privacyHide();
+            privacyHide(true);
         });
         closeBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
         privacyOverlay.appendChild(closeBtn);
@@ -34550,8 +34552,14 @@ initNoteWindows();
         privacyTimer = setInterval(privacyTick, 1000);
     }
 
-    function privacyHide() {
+    function privacyHide(force) {
         if (!privacyOverlay) return;
+        /* Скрито приложение не може да „върне“ бележките: Android снима екрана за списъка с
+           приложенията тъкмо когато страницата е скрита, а всяко махане на плочките в този
+           момент дава кадър с бележките. Плочки, вдигнати при истинско напускане, се махат
+           само със Затвори. */
+        if (!force && (document.hidden || privacyLocked)) return;
+        if (force) privacyLocked = false;
         privacyOverlay.classList.remove('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'true');
         if (privacyTimer) {
@@ -34582,26 +34590,47 @@ initNoteWindows();
        екрана. Затова не чакаме visibilitychange (тогава кадърът вече е снет и се виждат
        бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
        на екрана, значи следващият кадър вече е с часовника и календара. */
-    window.addEventListener('blur', function () {
+    function privacyCancelReturn() {
+        if (privacyReturnTimer) {
+            clearTimeout(privacyReturnTimer);
+            privacyReturnTimer = null;
+        }
+    }
+
+    // hiddenNow = страницата наистина е скрита: това е истинско напускане, не системен диалог.
+    function privacyDepart(hiddenNow) {
+        privacyCancelReturn();
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
-        privacyWentHidden = false;
+        if (hiddenNow) privacyLocked = true;
         privacyShow();
-    });
+    }
+
+    /* Връщане: blur без истинско скриване (системен диалог, избор на час, падащо меню) се
+       отменя само. Но не веднага: при преминаване към списъка с приложенията Android понякога
+       дава focus за миг, преди да отчете скриването, и тогава плочките изчезваха точно когато
+       се снима кадърът за списъка. Затова решението се взема след PRIVACY_RETURN_DELAY и само
+       ако страницата още е видима. */
+    function privacyMaybeReturn() {
+        if (document.hidden) { privacyCancelReturn(); return; }
+        if (privacyReturnTimer) return;
+        privacyReturnTimer = setTimeout(function () {
+            privacyReturnTimer = null;
+            if (document.hidden) return;
+            privacyHide();
+        }, PRIVACY_RETURN_DELAY);
+    }
+
+    window.addEventListener('blur', function () { privacyDepart(false); });
 
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) return;
-        privacyWentHidden = true;
-        if (privacyExpectingSystemUI()) return;
-        if (!privacyAppScreenMode()) return;
-        privacyShow();
+        if (document.hidden) privacyDepart(true);
+        else privacyMaybeReturn();
     });
 
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
-        // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
-        // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
-        if (!privacyWentHidden) privacyHide();
+        privacyMaybeReturn();
     });
 
     window.addEventListener('resize', function () {
@@ -34609,5 +34638,6 @@ initNoteWindows();
     });
 
     window.privacyOverlayShow = privacyShow;
-    window.privacyOverlayHide = privacyHide;
+    // Ръчна проверка от конзолата: тук Затвори се подразбира, затова се маха принудително.
+    window.privacyOverlayHide = function () { privacyHide(true); };
 })();
