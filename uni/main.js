@@ -13282,16 +13282,14 @@ function onNoteWindowClosed(win) {
 }
 
 // "Close all notes" in the boards menu: one question for all the windows with unsaved changes.
-// Връща false само когато човекът избере „Отказ" — тогава викащият (например отварянето на
-// календара) не продължава, за да не изчезнат бележките под календара.
 async function closeAllNoteWindows() {
     const open = getOpenNoteWindows();
-    if (!open.length) return true;
+    if (!open.length) return;
     const dirty = open.filter(w => withNoteWindow(w, () => !!getNoteUnsavedKind()));
     if (dirty.length) {
         const msg = (_('closeAllNotesConfirm') || 'Unsaved changes in {count} notes. Save them before closing?').replace('{count}', dirty.length);
         const answer = await showConfirmation(msg, { showCancel: true });
-        if (answer === 'cancel') return false;
+        if (answer === 'cancel') return;
         if (answer === true) {
             dirty.forEach(w => {
                 if (!w.open) return;
@@ -13303,7 +13301,6 @@ async function closeAllNoteWindows() {
         }
     }
     getOpenNoteWindows().forEach(closeNoteWindow);
-    return true;
 }
 window.closeAllNoteWindows = closeAllNoteWindows;
 
@@ -16066,12 +16063,6 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
         // Масовият избор (b2.36) не живее в календара — изчистваме го при отваряне.
         if (selectionState.active) exitSelectionMode();
-        /* Календарът заема целия екран, а прозорците на бележките живеят в #note-windows-layer
-           над всичко останало — затова отворените бележки оставаха да плават върху календара.
-           Затваряме ги преди рисуването, по същия път като „Затвори всички бележки": ако някоя
-           има незаписани промени, въпросът е един, а „Отказ" връща приложението там, където е
-           било, без да отваря календара. */
-        if (!(await closeAllNoteWindows())) return;
         // Проверяваме коя версия на календара да покажем
         if (boardId === 'calendar_weekly') {
             renderWeeklyCalendarView();
@@ -34372,9 +34363,8 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
+    let privacyWentHidden = false;   // истинско скриване по време на текущия blur
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
-    let privacyLastVp = { vw: 0, vh: 0 };  // последният разумен размер на екрана (виж privacyViewport)
-    let privacyMaxVp = { vh: 0 };          // най-голямата разумна височина, виждана някога
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34515,75 +34505,32 @@ initNoteWindows();
 
     // Реално видимата част на екрана: при мобилен браузър window.innerHeight може да е
     // по-голям от видимото (напр. 608 срещу 568), затова се взима най-малката стойност.
-    // По време на излизането Android за миг връща 0 (или шепа пиксели) и точно тогава идва
-    // resize; такива числа се подминават, иначе overlay-ът остава "показан" с размер 0x0 и в
-    // кадъра за списъка се виждат бележките.
-    function privacySane(v) {
-        return typeof v === 'number' && isFinite(v) && v >= 100;
-    }
-
     function privacyViewport() {
-        let vw = 0, vh = 0;
-        const take = (w, h) => {
-            if (privacySane(w)) vw = vw ? Math.min(vw, w) : w;
-            if (privacySane(h)) vh = vh ? Math.min(vh, h) : h;
-        };
-        take(window.innerWidth, window.innerHeight);
+        let vw = window.innerWidth;
+        let vh = window.innerHeight;
         if (window.visualViewport) {
-            take(Math.round(window.visualViewport.width), Math.round(window.visualViewport.height));
+            vw = Math.min(vw, Math.round(window.visualViewport.width));
+            vh = Math.min(vh, Math.round(window.visualViewport.height));
         }
         if (document.documentElement) {
-            take(document.documentElement.clientWidth, document.documentElement.clientHeight);
-        }
-        if (!vw) vw = privacyLastVp.vw || (window.screen && window.screen.width) || 0;
-        if (!vh) vh = privacyLastVp.vh || (window.screen && window.screen.height) || 0;
-        return { vw: vw, vh: vh };
-    }
-
-    // Най-голямото разумно число от трите източника: това е физическият екран. С отворена
-    // бележка и клавиатура видимата част е само тази над клавиатурата (напр. 520 от 844),
-    // затова за покритие не може да се взима privacyViewport().
-    function privacyScreenBox() {
-        let vw = 0, vh = 0;
-        const take = (w, h) => {
-            if (privacySane(w)) vw = Math.max(vw, w);
-            if (privacySane(h)) vh = Math.max(vh, h);
-        };
-        take(window.innerWidth, window.innerHeight);
-        if (window.visualViewport) {
-            take(Math.round(window.visualViewport.width), Math.round(window.visualViewport.height));
-        }
-        if (document.documentElement) {
-            take(document.documentElement.clientWidth, document.documentElement.clientHeight);
+            vw = Math.min(vw, document.documentElement.clientWidth);
+            vh = Math.min(vh, document.documentElement.clientHeight);
         }
         return { vw: vw, vh: vh };
     }
 
-    // Две неща се смятат отделно:
-    //  - overlay-ът покрива ЦЕЛИЯ екран (най-голямото виждано число, никога надолу), защото
-    //    клавиатурата се прибира при излизане без resize на прозореца и иначе долната част на
-    //    бележката влиза в кадъра за списъка с приложенията;
-    //  - плочките се побират във ВИДИМАТА част и се центрират в нея, за да не изчезнат зад
-    //    клавиатурата, докато човек е в приложението.
+    // Двете плочки остават 300x300; ако екранът е по-малък, цялата група се смалява,
+    // за да не се реже нищо (и overlay-ът се свива до видимата част).
     function privacyFit() {
         if (!privacyStack) return;
-        const v = privacyViewport();  // видимата част: клавиатурата я намалява
-        if (!v.vw || !v.vh) return;   // няма разумни числа: остава както е, до следващия resize
-        const box = privacyScreenBox();
-        if (box.vh > privacyMaxVp.vh) privacyMaxVp.vh = box.vh;
-        privacyLastVp = { vw: v.vw, vh: v.vh };
-        const boxW = box.vw;
-        const boxH = Math.max(box.vh, privacyMaxVp.vh);
-        const gap = Math.max(0, boxH - v.vh); // колкото е скрито зад клавиатурата
+        const v = privacyViewport();
         if (privacyOverlay) {
-            privacyOverlay.style.width = boxW + 'px';
-            privacyOverlay.style.height = boxH + 'px';
-            privacyOverlay.style.paddingBottom = gap + 'px';
-            privacyOverlay.style.setProperty('--privacy-gap', gap + 'px');
+            privacyOverlay.style.width = v.vw + 'px';
+            privacyOverlay.style.height = v.vh + 'px';
         }
         const availW = v.vw - 24;
-        // Групата е центрирана вертикално във видимата част, значи отдолу остава толкова място,
-        // колкото отгоре. Затова се отделя място за бутона Затвори и отгоре, и отдолу.
+        // Групата е центрирана вертикално, значи отдолу остава толкова място, колкото отгоре.
+        // Затова се отделя място за бутона Затвори и отгоре, и отдолу, за да не застъпва календара.
         const availH = v.vh - PRIVACY_CLOSE_ZONE * 2;
         const scale = Math.min(1, availW / TILE, availH / (TILE * 2 + TILE_GAP));
         privacyStack.style.transform = 'scale(' + (scale > 0 ? scale.toFixed(4) : 1) + ')';
@@ -34638,42 +34585,28 @@ initNoteWindows();
     window.addEventListener('blur', function () {
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
+        privacyWentHidden = false;
         privacyShow();
     });
 
     document.addEventListener('visibilitychange', function () {
-        if (document.hidden) {
-            if (privacyExpectingSystemUI()) return;
-            if (!privacyAppScreenMode()) return;
-            privacyShow();
-            return;
-        }
-        // Върнали сме се в приложението: няма какво да пазим, бележките се виждат веднага.
-        // Кадърът за списъка с приложенията е снет, докато страницата беше скрита.
-        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) {
-            privacyHide();
-            privacyFit();
-            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(privacyFit);
-        }
+        if (!document.hidden) return;
+        privacyWentHidden = true;
+        if (privacyExpectingSystemUI()) return;
+        if (!privacyAppScreenMode()) return;
+        privacyShow();
     });
 
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
-        // Blur без истинско скриване (системен диалог, известие, избор на час, падащо меню):
-        // приложението не е напускало екрана, затова бележките се връщат веднага. Ако страницата
-        // е скрита, плочките остават — точно тогава Android снима кадъра за списъка.
-        if (!document.hidden) privacyHide();
+        // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
+        // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
+        if (!privacyWentHidden) privacyHide();
     });
 
     window.addEventListener('resize', function () {
         if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
     });
-
-    if (window.visualViewport && window.visualViewport.addEventListener) {
-        window.visualViewport.addEventListener('resize', function () {
-            if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
-        });
-    }
 
     window.privacyOverlayShow = privacyShow;
     window.privacyOverlayHide = privacyHide;
