@@ -15812,6 +15812,31 @@ document.querySelectorAll('.modal-close').forEach(btn => {
 // При отворен календар хедърът е display:none, така че scrollIntoView в boardClick не може да измери
 // нищо; след връщането към бележките менюто остава там, където е било, а избраният борд е извън екрана.
 // Скролира се само когато бордът наистина не се вижда, за да не мести менюто при обикновен клик.
+// Кой борд е избран, изразен като стойността на data-boardid: специалните изгледи се подават
+// както са, а бордът — по gdid (в режим „Архив“ по id), точно както го търси менюто.
+function boardMenuActiveId() {
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const current = currentBoardFilter;
+    if (specialBoards.includes(current)) return current;
+    const list = (typeof boardsData !== 'undefined' && boardsData) ? boardsData : [];
+    const board = list.find(b => b.gdid == current || b.id == current);
+    return board ? (board.gdid || board.id) : current;
+}
+
+// Едно място за вида на избрания борд: класовете и височината. Вика се и при строежа на менюто,
+// тоест преди първата картина. Иначе менюто се показва за миг без избран борд и бутонът после
+// „щраква“ сам — на телефона това прилича на излишно кликване върху него.
+function markBoardMenuSelection(activeId, links) {
+    const list = links || document.querySelectorAll('.board-filter-link');
+    const id = (activeId === undefined || activeId === null) ? '' : String(activeId);
+    list.forEach(link => {
+        const isSelected = String(link.dataset.boardid) === id;
+        link.classList.toggle('selected-board', isSelected);
+        link.classList.toggle('active', isSelected);
+        link.style.height = isSelected ? '39px' : '35px';
+    });
+}
+
 function revealBoardInHeaderMenu(boardId) {
     if (boardId === undefined || boardId === null) return;
     const menu = document.querySelector('header .board-menu-container');
@@ -15924,13 +15949,8 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
     currentBoardFilter = specialBoards.includes(boardId) ? boardId : (useIdFilter ? boardsData.find(b => b.gdid == boardId || b.id == boardId)?.id : boardId);
     // --- Скриваме контейнера с бележки преди смяна на борда, за да избегнем мигане ---
     notesContainer.style.visibility = 'hidden';
-    // --- Маркираме избрания бутон и задаваме визуалното състояние (active + height). ---
-    document.querySelectorAll('.board-filter-link').forEach(link => {
-        const isSelected = link.dataset.boardid === String(buttonBoardId);
-        link.classList.toggle('selected-board', isSelected);
-        link.classList.toggle('active', isSelected);
-        link.style.height = isSelected ? '39px' : '35px';
-    });
+    // --- Маркираме избрания борд и задаваме визуалното състояние (active + height). ---
+    markBoardMenuSelection(buttonBoardId);
     // Обновяваме етикета за борд във fullscreen mode
     const fsBoardLabel = document.getElementById('fullscreen-board-label');
     if (fsBoardLabel) {
@@ -17750,6 +17770,10 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         }
         contentEl.appendChild(link);
     });
+    // Менюто излиза с вече избран борд. Иначе първата картина го показва без нито един натиснат
+    // бутон, а след това бутонът се оцветява и расте сам — на телефона това изглежда като
+    // излишно кликване върху него, докато лентата пълзи към него.
+    markBoardMenuSelection(boardMenuActiveId(), allButtonLinks);
     updateHeaderFullscreenUI();
     const scrollWrapper = document.createElement('div');
     scrollWrapper.className = 'scrolling-menu-wrapper';
@@ -25447,12 +25471,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 const targetBoard = specialBoards.includes(currentBoardFilter) ? null : boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
                 const activeIdForUI = targetBoard ? (targetBoard.gdid || targetBoard.id) : currentBoardFilter;
 
-                document.querySelectorAll('.board-filter-link').forEach(link => {
-                    const isSelected = link.dataset.boardid === String(activeIdForUI);
-                    link.classList.toggle('selected-board', isSelected);
-                    link.classList.toggle('active', isSelected);
-                    link.style.height = isSelected ? '39px' : '35px';
-                });
+                markBoardMenuSelection(activeIdForUI);
                 // b3.19: връщаме лентата при избрания борд само ако той наистина не се вижда.
                 // Иначе всяко пресглобяване на менюто подкарва поредно плавно превъртане.
                 revealBoardInHeaderMenu(activeIdForUI);
@@ -25605,8 +25624,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
                 startBoardBtn.click();
             }, 50);
         } else {
-            startBoardBtn.classList.add('selected-board', 'active');
-            startBoardBtn.style.height = '39px';
+            markBoardMenuSelection(currentBoardFilter);
             // b3.19: без безусловно плавно превъртане при всяко пресглобяване на менюто —
             // лентата вече е върната там, където е била, и бутонът се вижда.
             revealBoardInHeaderMenu(currentBoardFilter);
