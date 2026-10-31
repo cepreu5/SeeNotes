@@ -3896,7 +3896,10 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
    Часовник, седмичен мини календар и закачане на бележка (порт от клон cx-notes).
    Часовникът е ограничен до .note, за да не пипа едноименни класове из страницата.
    ===================================================================================== */
-.note .clock {
+/* Часовникът на защитния овърлей (порт от uni): същите правила, за да изглежда като часовника на
+   бележка. Вторият селектор е добавен към съществуващите, вместо правилата да се дублират - така
+   една промяна във вида на часовника важи и за двете места. */
+.note .clock, .privacy-clock {
     width: 200px;
     height: 200px;
     border-radius: 50%;
@@ -3906,7 +3909,7 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     box-sizing: border-box;
 }
 
-.note .clock .center {
+.note .clock .center, .privacy-clock .center {
     position: absolute;
     width: 12px;
     height: 12px;
@@ -3918,28 +3921,28 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     z-index: 10;
 }
 
-.note .clock .hand {
+.note .clock .hand, .privacy-clock .hand {
     position: absolute;
     top: 50%;
     left: 50%;
     transform-origin: bottom center;
 }
 
-.note .clock .hour {
+.note .clock .hour, .privacy-clock .hour {
     width: 6px;
     height: 50px;
     background: #fff;
     border-radius: 3px;
 }
 
-.note .clock .minute {
+.note .clock .minute, .privacy-clock .minute {
     width: 4px;
     height: 70px;
     background: #1df52f;
     border-radius: 2px;
 }
 
-.note .clock .second {
+.note .clock .second, .privacy-clock .second {
     width: 2px;
     height: 80px;
     background: #ff3b3b;
@@ -3947,7 +3950,7 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     box-shadow: 0 0 6px #ff3b3b;
 }
 
-.note .clock .mark {
+.note .clock .mark, .privacy-clock .mark {
     position: absolute;
     width: 4px;
     height: 12px;
@@ -3957,7 +3960,7 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     transform-origin: center 96px;
 }
 
-.note .clock .number {
+.note .clock .number, .privacy-clock .number {
     position: absolute;
     color: #fff;
     font-size: 16px;
@@ -3969,25 +3972,25 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
     justify-content: center;
 }
 
-.note .clock .n12 {
+.note .clock .n12, .privacy-clock .n12 {
     top: 4px;
     left: 50%;
     transform: translateX(-50%);
 }
 
-.note .clock .n3 {
+.note .clock .n3, .privacy-clock .n3 {
     right: 4px;
     top: 50%;
     transform: translateY(-50%);
 }
 
-.note .clock .n6 {
+.note .clock .n6, .privacy-clock .n6 {
     bottom: 4px;
     left: 50%;
     transform: translateX(-50%);
 }
 
-.note .clock .n9 {
+.note .clock .n9, .privacy-clock .n9 {
     left: 4px;
     top: 50%;
     transform: translateY(-50%);
@@ -4266,4 +4269,203 @@ body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
 header.title-hidden > div:first-child {
     /* !important, защото блокът на заглавието носи inline style="display:flex" в HTML-а */
     display: none !important;
+}
+
+/* ===== Месец в нисък (завъртян) екран: кутия със скрол (порт от uni b3.29 / PR #146) ============
+   В 844x390 месецът не се побира по височина, а авто-зумът (AUTO ZOOM в renderCalendarView) го
+   смаляваше целия до миниатюра. Затова в нисък екран месецът минава в кутия: залепеният хедър
+   (стрелки, днес, седмица/месец, затваряне, името на месеца) и редът с имената на дните остават
+   горе, а мрежата се скролира в собствена кутия под тях. Клетките си остават квадратни - не се
+   пипат. Класът се слага от main.js (toggleCalendarScrollBox) само когато екранът е нисък, значи
+   портретът и компютърът не се менят. */
+#calendar-container.calendar-scroll-box {
+    /* display: flex се слага инлайн от main.js (виж toggleCalendarScrollBox): инлайн block/none от
+       рендера и от седмичния изглед трябва да може да надделява. */
+    flex-direction: column;
+    /* Височината се дава инлайн (истинският остатък от екрана): 100vh/dvh тук е само резерва. */
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 5px;
+}
+
+/* Хедърът и имената на дните не се свиват и не се скролват - те са постоянната рамка. */
+#calendar-container.calendar-scroll-box > div:first-child {
+    flex: 0 0 auto;
+}
+
+/* Мрежата се скролира в собствената си кутия и не се свива: обвивката е обикновен блок в портрет. */
+.calendar-grid-scroll {
+    display: block;
+}
+
+#calendar-container.calendar-scroll-box > .calendar-grid-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 5px;
+}
+
+/* ===== Екран за поверителност (blur overlay при излизане от приложението) =====
+   Порт от uni/style.css. Овърлеят е собствена тъмна повърхност (не хартията на борда), затова
+   цветовете тук са негови, както са в uni - същата визия и в двете приложения. */
+.privacy-overlay {
+    position: fixed;
+    inset: 0;
+    /* MNV: най-високият слой в style.css е 20000 (настройки) - 2147483000 е над всичко. */
+    z-index: 2147483000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 10, 14, 0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(120%);
+    backdrop-filter: blur(20px) saturate(120%);
+    overscroll-behavior: contain;
+    touch-action: none;
+}
+
+.privacy-overlay.is-visible {
+    display: flex;
+}
+
+.privacy-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    transform-origin: center center;
+}
+
+.privacy-tile {
+    width: 300px;
+    height: 300px;
+    box-sizing: border-box;
+    border-radius: 22px;
+    background: linear-gradient(160deg, rgba(30, 34, 42, 0.86), rgba(13, 15, 19, 0.92));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.privacy-tile-clock .privacy-clock {
+    flex: 0 0 auto;
+    transform: scale(1.35);
+}
+
+.privacy-tile-calendar {
+    padding: 14px 14px 12px;
+    color: #e9edf2;
+}
+
+.privacy-cal {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.privacy-cal-month {
+    font-size: 17px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 8px;
+    text-transform: capitalize;
+    letter-spacing: 0.2px;
+    color: #f2f6fa;
+}
+
+.privacy-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+
+.privacy-cal-head span {
+    font-size: 11px;
+    text-align: center;
+    padding-bottom: 6px;
+    opacity: 0.55;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.privacy-cal-days {
+    flex: 1 1 auto;
+    grid-auto-rows: 1fr;
+    row-gap: 2px;
+}
+
+.privacy-cal-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 13px;
+    line-height: 1;
+    height: 100%;
+    /* Точките са процент от ширината на деня, затова денят е контейнер. */
+    container-type: inline-size;
+}
+
+.privacy-cal-num {
+    display: grid;
+    place-items: center;
+    width: 1.5em;
+    height: 1.5em;
+    border-radius: 50%;
+    font-style: normal;
+}
+
+.privacy-cal-day.is-today .privacy-cal-num {
+    background: #1df52f;
+    color: #07130a;
+    font-weight: 700;
+    box-shadow: 0 0 12px rgba(29, 245, 47, 0.45);
+}
+
+/* Две точки на един ред, цели: 28% от ширината на деня. Мястото им е запазено и в
+   дните без бележки, за да не мърдат числата нагоре-надолу в редицата. */
+.privacy-cal-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    height: 28cqw;
+}
+
+.privacy-cal-dots i {
+    width: 28cqw;
+    height: 28cqw;
+    border-radius: 50%;
+}
+
+.privacy-close {
+    position: absolute;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 2;
+    padding: 8px 16px;
+    min-height: 36px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+}
+
+.privacy-close:active {
+    background: rgba(255, 255, 255, 0.24);
 }
