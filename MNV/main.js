@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.74'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.74)
+const version = 'Beta 1.75'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.75)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -960,7 +960,167 @@ function loadGoogleIdentityServices(retries = 3) {
 loadGoogleIdentityServices();
 
 // ---------- Calendar ----------------------------
+// --- Месечен изглед в нисък (завъртян) екран: кутия със скрол (порт от uni b3.29) --------------
+// Авто-зумът смаляваше целия месец до миниатюра, щом не се побира по височина, а в 844x390 това
+// прави числата нечетливи. Затова в нисък екран месецът минава в кутия: хедърът и редът с имената
+// на дните остават горе, а мрежата се скролира в собствена кутия под тях - клетките си остават
+// квадратни, както са. Във висок екран (портрет, компютър) нищо не се променя.
+const CALENDAR_SCROLL_MAX_HEIGHT = 500; // px: до тази височина месецът ползва кутия
+
+function calendarUsesScrollBox() {
+    return window.innerHeight <= CALENDAR_SCROLL_MAX_HEIGHT;
+}
+
+// Слага/маха кутията според височината на екрана. Връща true, когато кутията е сложена - тогава зум
+// не се смята, защото скролът върши същата работа, но числата остават четливи.
+function toggleCalendarScrollBox(container) {
+    if (!container) return false;
+    const on = calendarUsesScrollBox();
+    // display се пише и от самия рендер инлайн (block), а седмичният изглед слага none - затова
+    // кутията сменя инлайн стойността, а не я презаписва с !important от таблицата (иначе скритият
+    // месец остава в подредбата под седмичния изглед и страницата става двойно по-висока).
+    container.style.display = on ? 'flex' : 'block';
+    container.classList.toggle('calendar-scroll-box', on);
+    if (!on) {
+        container.style.removeProperty('height');
+        return false;
+    }
+    // Кутията заема точно остатъка от екрана, считано от мястото ѝ: 100vh не става, защото над
+    // календара има отстъп и долният ред излизаше под екрана.
+    const top = Math.round(container.getBoundingClientRect().top + (window.scrollY || 0));
+    const height = Math.max(180, window.innerHeight - top);
+    container.style.setProperty('height', `${height}px`, 'important');
+    return true;
+}
+
+// Смяната на изгледа връща страницата в началото на календара: седмичният и месечният изглед са с
+// различна височина, значи скролът, останал от единия, винаги каца по средата на другия.
+// Връща се само при СМЯНА на изгледа - стрелките за месец напред/назад прерисуват същия изглед и
+// нямат причина да местят страницата.
+let calendarLastView = null;
+
+function resetCalendarViewScroll(view) {
+    if (calendarLastView === view) return;
+    calendarLastView = view;
+    const scroller = document.scrollingElement || document.documentElement;
+    if (scroller) scroller.scrollTop = 0;
+    if (window.scrollY) window.scrollTo(0, 0);
+}
+
+// Квадратчетата на бележките се мерят, след като браузърът е наредил елементите, и се заковават
+// квадратни (височина = ширина).
+function squareCalendarMiniNotes() {
+    document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
+        const width = miniNote.getBoundingClientRect().width;
+        if (width > 0) miniNote.style.height = `${width}px`;
+    });
+}
+
+// Подрежда месеца за текущия размер на екрана. Вика се след всеки рендер и при завъртане на
+// телефона (виж scheduleRotationRefit): иначе месец, нареден в портрет, излизаше със 115px клетки и
+// 724px мрежа в завъртян екран.
+function fitCalendarMonth(container) {
+    if (!container) return;
+    // Нулираме зума и всичко, оставено от предишен рендер, преди да мерим.
+    container.style.transform = 'none';
+    container.style.transformOrigin = 'top center';
+    container.style.width = '';
+    container.style.height = ''; // height пак се дава инлайн, но от toggleCalendarScrollBox
+    container.style.marginBottom = '';
+    container.style.overflow = '';
+    // Кутията се решава преди меренето: тя сменя ширината на мрежата (скролбар), значи и ширината
+    // на квадратчетата.
+    const useScrollBox = toggleCalendarScrollBox(container);
+    squareCalendarMiniNotes();
+    // Кутията решава - зум не се смята (иначе числата пак се смаляват), а мрежата остава в началото
+    // на месеца: тя е нов елемент при всеки рендер, значи се виждат хедърът и първите редове.
+    if (useScrollBox) return;
+    // --- AUTO ZOOM LOGIC (както досега, само че в собствена функция) ---
+    const windowHeight = window.innerHeight;
+    // Използваме getBoundingClientRect за по-точни размери, включително padding/margin ако има
+    const rect = container.getBoundingClientRect();
+    const contentHeight = rect.height;
+    const contentWidth = rect.width;
+    // Оставяме малък буфер (напр. 20px)
+    const availableHeight = windowHeight - 20;
+    const availableWidth = window.innerWidth;
+    // Изчисляваме мащаба
+    let scaleH = availableHeight / contentHeight;
+    let scaleW = availableWidth / contentWidth;
+    // Избираме по-малкия мащаб, за да се побере всичко
+    let scale = Math.min(scaleH, scaleW, 1);
+    // Прилагаме мащаба само ако е нужно намаляване
+    if (scale < 0.99) {
+        container.style.transform = `scale(${scale})`;
+        // КОРЕКЦИЯ 2: Задаваме изрично височината на контейнера да е равна на новия визуален размер.
+        // Тъй като съдържанието е по-голямо, то ще прелее, но transform ще го свие обратно в тези граници.
+        container.style.height = `${contentHeight * scale}px`;
+        // Уверяваме се, че няма да се отреже нищо важно
+        container.style.overflow = 'visible';
+        // ОБРАТНО МАЩАБИРАНЕ: Увеличаваме font-size вместо transform, за да не се нарушава layout-а
+        const counterScale = 1 / scale;
+        // Увеличаваме font-size на бутоните в хедъра
+        const calendarHeader = container.querySelector('.calendar-header');
+        if (calendarHeader) {
+            const headerButtons = calendarHeader.querySelectorAll('button');
+            headerButtons.forEach(btn => {
+                const currentFontSize = parseFloat(window.getComputedStyle(btn).fontSize);
+                btn.style.fontSize = `${currentFontSize * counterScale}px`;
+                // Увеличаваме и размерите на бутона, за да се побират символите
+                const currentWidth = parseFloat(window.getComputedStyle(btn).width);
+                const currentHeight = parseFloat(window.getComputedStyle(btn).height);
+                btn.style.width = `${currentWidth * counterScale}px`;
+                btn.style.height = `${currentHeight * counterScale}px`;
+                // Гарантираме центриране на съдържанието
+                btn.style.display = 'flex';
+                btn.style.alignItems = 'center';
+                btn.style.justifyContent = 'center';
+                // Корекция за символите « и » - леко ги вдигаме нагоре
+                if (btn.id === 'prev-month-btn' || btn.id === 'next-month-btn') {
+                    btn.style.paddingTop = '0';
+                    btn.style.paddingBottom = `${4 * counterScale}px`;
+                }
+                // Специално мащабиране за бутона за седмичен изглед
+                if (btn.id === 'weekly-view-btn') {
+                    const svgIcon = btn.querySelector('svg');
+                    if (svgIcon) {
+                        svgIcon.style.transform = `scale(${counterScale})`;
+                        svgIcon.style.transformOrigin = 'center';
+                    }
+                }
+            });
+            const headerTitle = calendarHeader.querySelector('h2');
+            if (headerTitle) {
+                const currentFontSize = parseFloat(window.getComputedStyle(headerTitle).fontSize);
+                headerTitle.style.fontSize = `${currentFontSize * counterScale}px`;
+            }
+        }
+        // Увеличаваме font-size на имената на дните
+        const dayNames = container.querySelectorAll('.calendar-day-name');
+        dayNames.forEach(dayName => {
+            const currentFontSize = parseFloat(window.getComputedStyle(dayName).fontSize);
+            dayName.style.fontSize = `${currentFontSize * counterScale}px`;
+        });
+        // Увеличаваме font-size на номерата на датите
+        const dateNumbers = container.querySelectorAll('.calendar-date-number');
+        dateNumbers.forEach(dateNum => {
+            const currentFontSize = parseFloat(window.getComputedStyle(dateNum).fontSize);
+            dateNum.style.fontSize = `${currentFontSize * counterScale}px`;
+        });
+    }
+    // Ако не сме мащабирали (или малко), скролираме до днес
+    if (scale >= 0.99) {
+        const todayElement = document.querySelector('.today-date');
+        if (todayElement) {
+            todayElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+}
+
 function renderCalendarView() {
+    // Смяна на изгледа: страницата се връща в началото на календара (само при смяна).
+    resetCalendarViewScroll('month');
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
     scrollTopBtn.style.display = 'none';
@@ -1112,101 +1272,15 @@ function renderCalendarView() {
         cell.appendChild(notesForDayContainer);
         calendarGrid.appendChild(cell);
     }
-    calendarContainer.appendChild(calendarGrid);
-    // Make mini-notes square by setting their height equal to their calculated width
-    // Use setTimeout to ensure the browser has rendered the elements before we measure them.
-    setTimeout(() => {
-        document.querySelectorAll('.calendar-mini-note').forEach(miniNote => {
-            const width = miniNote.getBoundingClientRect().width;
-            if (width > 0) miniNote.style.height = `${width}px`;
-        });
-        // --- AUTO ZOOM LOGIC ---
-        // Нулираме zoom-а преди измерване
-        calendarContainer.style.transform = 'none';
-        calendarContainer.style.transformOrigin = 'top center';
-        calendarContainer.style.width = ''; // Премахваме изрично зададената ширина
-        calendarContainer.style.height = ''; // Премахваме изрично зададената височина
-        calendarContainer.style.marginBottom = ''; // Нулираме марджина
-        const windowHeight = window.innerHeight;
-        // Използваме getBoundingClientRect за по-точни размери, включително padding/margin ако има
-        const rect = calendarContainer.getBoundingClientRect();
-        const contentHeight = rect.height;
-        const contentWidth = rect.width;
-        // Оставяме малък буфер (напр. 20px)
-        const availableHeight = windowHeight - 20;
-        const availableWidth = window.innerWidth;
-        // Изчисляваме мащаба
-        let scaleH = availableHeight / contentHeight;
-        let scaleW = availableWidth / contentWidth;
-        // Избираме по-малкия мащаб, за да се побере всичко
-        let scale = Math.min(scaleH, scaleW, 1);
-        // Прилагаме мащаба само ако е нужно намаляване
-        if (scale < 0.99) {
-            calendarContainer.style.transform = `scale(${scale})`;
-            // КОРЕКЦИЯ 2: Задаваме изрично височината на контейнера да е равна на новия визуален размер.
-            // Тъй като съдържанието е по-голямо, то ще прелее, но transform ще го свие обратно в тези граници.
-            calendarContainer.style.height = `${contentHeight * scale}px`;
-            // Уверяваме се, че няма да се отреже нищо важно
-            calendarContainer.style.overflow = 'visible';
-            // ОБРАТНО МАЩАБИРАНЕ: Увеличаваме font-size вместо transform, за да не се нарушава layout-а
-            const counterScale = 1 / scale;
-            // Увеличаваме font-size на бутоните в хедъра
-            const calendarHeader = calendarContainer.querySelector('.calendar-header');
-            if (calendarHeader) {
-                const headerButtons = calendarHeader.querySelectorAll('button');
-                headerButtons.forEach(btn => {
-                    const currentFontSize = parseFloat(window.getComputedStyle(btn).fontSize);
-                    btn.style.fontSize = `${currentFontSize * counterScale}px`;
-                    // Увеличаваме и размерите на бутона, за да се побират символите
-                    const currentWidth = parseFloat(window.getComputedStyle(btn).width);
-                    const currentHeight = parseFloat(window.getComputedStyle(btn).height);
-                    btn.style.width = `${currentWidth * counterScale}px`;
-                    btn.style.height = `${currentHeight * counterScale}px`;
-                    // Гарантираме центриране на съдържанието
-                    btn.style.display = 'flex';
-                    btn.style.alignItems = 'center';
-                    btn.style.justifyContent = 'center';
-                    // Корекция за символите « и » - леко ги вдигаме нагоре
-                    if (btn.id === 'prev-month-btn' || btn.id === 'next-month-btn') {
-                        btn.style.paddingTop = '0';
-                        btn.style.paddingBottom = `${4 * counterScale}px`;
-                    }
-                    // Специално мащабиране за бутона за седмичен изглед
-                    if (btn.id === 'weekly-view-btn') {
-                        const svgIcon = btn.querySelector('svg');
-                        if (svgIcon) {
-                            svgIcon.style.transform = `scale(${counterScale})`;
-                            svgIcon.style.transformOrigin = 'center';
-                        }
-                    }
-                });
-                const headerTitle = calendarHeader.querySelector('h2');
-                if (headerTitle) {
-                    const currentFontSize = parseFloat(window.getComputedStyle(headerTitle).fontSize);
-                    headerTitle.style.fontSize = `${currentFontSize * counterScale}px`;
-                }
-            }
-            // Увеличаваме font-size на имената на дните
-            const dayNames = calendarContainer.querySelectorAll('.calendar-day-name');
-            dayNames.forEach(dayName => {
-                const currentFontSize = parseFloat(window.getComputedStyle(dayName).fontSize);
-                dayName.style.fontSize = `${currentFontSize * counterScale}px`;
-            });
-            // Увеличаваме font-size на номерата на датите
-            const dateNumbers = calendarContainer.querySelectorAll('.calendar-date-number');
-            dateNumbers.forEach(dateNum => {
-                const currentFontSize = parseFloat(window.getComputedStyle(dateNum).fontSize);
-                dateNum.style.fontSize = `${currentFontSize * counterScale}px`;
-            });
-        }
-        // Ако не сме мащабирали (или малко), скролираме до днес
-        if (scale >= 0.99) {
-            const todayElement = document.querySelector('.today-date');
-            if (todayElement) {
-                todayElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-    }, 0);
+    // Мрежата живее в собствена обвивка: в нисък екран тя се скролира в нея (calendar-scroll-box),
+    // в портрет обвивката е обикновен блок и нищо не се променя.
+    const gridScrollArea = document.createElement('div');
+    gridScrollArea.className = 'calendar-grid-scroll';
+    gridScrollArea.appendChild(calendarGrid);
+    calendarContainer.appendChild(gridScrollArea);
+    // Подреждане на месеца за текущия размер на екрана: квадратчета, кутия със скрол в нисък
+    // екран (иначе авто-зумът смалява целия месец до миниатюра) и едва после авто-зум.
+    setTimeout(() => fitCalendarMonth(calendarContainer), 0);
     // Event Listeners
     document.getElementById('prev-month-btn').addEventListener('click', () => {
         currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
@@ -1272,6 +1346,8 @@ function renderCalendarView() {
 }
 
 function renderWeeklyCalendarView(dateForWeek) {
+    // Смяна на изгледа: страницата се връща в началото на календара (само при смяна).
+    resetCalendarViewScroll('week');
     document.querySelector('header').style.display = 'none';
     notesContainer.style.display = 'none';
     scrollTopBtn.style.display = 'none';
@@ -7415,6 +7491,79 @@ function placeNoteWindowInCascade(win, w, h, vw, vh) {
     win.box.style.top = clampNoteWindowAxis(y, h, vh) + 'px';
 }
 
+// --- Завъртане на телефона: отворените бележки се прибират в екрана (порт от uni b3.29) -------
+// Досега бележката се местеше само при отваряне, значи след завъртане оставаше извън екрана: 400
+// широка на x=222 излизаше 222px извън десния ръб, а на y=272 при 390 висок екран долният ръб
+// падаше 182px под екрана. Минава се по СЪЩИЯ път като при отваряне: помненото място, ако се побира
+// цяло на новия екран, иначе стълбицата. Размерът се смалява САМО ако иначе не се побира.
+// Нищо от това не се записва: записът (noteWindowGeometry) пази мястото от екрана, на който е
+// оставено, значи като върнеш телефона бележката отива там, където си я оставил. Флагът geomDirty
+// не се вдига - иначе завъртането щеше да е „пипане" и да презапише мястото.
+const NOTE_ROTATE_REFIT_DELAY = 120; // ms: завъртането пуска няколко resize-а, работата е веднъж
+
+// Размер, приложен от глобалната настройка (не от бележката), не се свива никъде другаде - тук се
+// досвива до екрана. Само на екрана, не в записа.
+function fitNoteWindowToScreen(win) {
+    const box = win && win.box;
+    if (!box) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const maxW = vw - 2 * NOTE_WINDOW_MARGIN, maxH = vh - 2 * NOTE_WINDOW_MARGIN;
+    if (maxW > 0 && box.offsetWidth > vw) box.style.width = `${maxW}px`;
+    if (maxH > 0 && box.offsetHeight > vh) box.style.height = `${maxH}px`;
+}
+
+function refitOpenNoteWindowsAfterRotation() {
+    getOpenNoteWindows().forEach(win => {
+        if (!win || !win.box || !win.box.offsetWidth) return;
+        // Разпънатата (цял екран) бележка си остава цял екран - тя не се мести.
+        if (win.expanded) return;
+        // Размерът се връща към запомнения за бележката (ако има запис): прозорец, преоразмерен на
+        // широката страна, иначе оставаше 700 широк върху 390 екран.
+        const saved = savedNoteWindowGeometry(win.key);
+        if (saved) {
+            win.box.style.width = saved.w + 'px';
+            win.box.style.height = saved.h + 'px';
+        }
+        fitNoteWindowToScreen(win);
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const bw = win.box.offsetWidth || 400, bh = win.box.offsetHeight || 300;
+        if (saved && windowPositionFits(saved, bw, bh, vw, vh)) {
+            win.slot = -1;
+            win.box.style.left = saved.x + 'px';
+            win.box.style.top = saved.y + 'px';
+            return;
+        }
+        placeNoteWindowInCascade(win, bw, bh, vw, vh);
+    });
+}
+
+// Месецът се подрежда наново за новия размер: кутията със скрол се слага/маха според височината.
+function refitCalendarMonthAfterRotation() {
+    const container = document.getElementById('calendar-container');
+    if (!container || getComputedStyle(container).display === 'none') return;
+    fitCalendarMonth(container);
+}
+
+// Завъртането е смяна на ШИРИНАТА или orientationchange. Клавиатурата променя само височината,
+// значи не влиза тук и подредбата при писане остава същата.
+let noteRotateRefitTimer = null;
+let noteRotateLastWidth = window.innerWidth;
+
+function scheduleRotationRefit(force) {
+    const width = window.innerWidth;
+    if (!force && width === noteRotateLastWidth) return;
+    noteRotateLastWidth = width;
+    clearTimeout(noteRotateRefitTimer);
+    noteRotateRefitTimer = setTimeout(() => {
+        noteRotateRefitTimer = null;
+        refitOpenNoteWindowsAfterRotation();
+        refitCalendarMonthAfterRotation();
+    }, NOTE_ROTATE_REFIT_DELAY);
+}
+
+window.addEventListener('resize', () => scheduleRotationRefit(false));
+window.addEventListener('orientationchange', () => scheduleRotationRefit(true));
+
 // Размер и място на прозореца при рисуване: размерът от options (демо бележка), иначе запомненият
 // за бележката, иначе глобалният (плъзгане на дръжката без Ctrl), иначе 400x300. Място се слага
 // само когато прозорецът се отваря (fresh) - пре-рисуване не мести нищо.
@@ -8565,6 +8714,12 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         });
     }
     if (boardId === 'calendar' || boardId === 'calendar_monthly' || boardId === 'calendar_weekly') {
+        /* Календарът заема целия екран, а прозорците на бележките живеят в #note-windows-layer
+           над всичко останало - затова отворените бележки оставаха да плават върху календара.
+           Затваряме ги преди рисуването, по същия път като „Затвори всички" на лентата.
+           В MNV няма режим на редактиране, значи незаписани промени няма и closeAllNoteWindows()
+           не пита нищо - затова и не се чака отговор, който да отмени отварянето. */
+        closeAllNoteWindows();
         // Проверяваме коя версия на календара да покажем
         if (boardId === 'calendar_weekly') {
             renderWeeklyCalendarView();
@@ -13628,3 +13783,282 @@ if (window.ResizeObserver) {
 }
 
 window.syncHeaderTitleFit = syncHeaderTitleFit;
+
+/* ===== Екран за поверителност: blur overlay при излизане от приложението =====
+   Порт от uni/main.js (PR #146/#150/#151/#152/#153/#160). Показва се, когато приложението (в режим
+   на екран на приложението) отиде във фона.
+   Две плочки 300x300, една под друга, центрирани: часовник (като при натискане на часа на бележка)
+   отгоре и месечен календар отдолу. Малък бутон Затвори долу вдясно.
+   Разлика с uni: езикът тук е currentLang (MNV го държи в localStorage['language']), затова
+   privacyIsBg() гледа него; всичко останало е същото поведение. */
+(function () {
+    const TILE = 300;
+    const TILE_GAP = 12;
+    const PRIVACY_CLOSE_ZONE = 56; // място за бутона Затвори долу вдясно (височина + отстъп + въздух)
+    let privacyOverlay = null;
+    let privacyStack = null;
+    let privacyClock = null;
+    let privacyCal = null;
+    let privacyTimer = null;
+    let privacyWentHidden = false;   // истинско скриване по време на текущия blur
+    let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
+
+    function privacyIsBg() {
+        return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
+    }
+
+    // Режим на екран на приложението (инсталирано приложение / fullscreen), не обикновен таб
+    function privacyAppScreenMode() {
+        try {
+            if (window.matchMedia) {
+                if (window.matchMedia('(display-mode: standalone)').matches) return true;
+                if (window.matchMedia('(display-mode: fullscreen)').matches) return true;
+                if (window.matchMedia('(display-mode: minimal-ui)').matches) return true;
+            }
+        } catch (e) { /* ignore */ }
+        return navigator.standalone === true;
+    }
+
+    function privacyBuildClock() {
+        const clock = document.createElement('div');
+        clock.className = 'clock privacy-clock';
+        clock.innerHTML = '<div class="center"></div>'
+            + '<div class="number n12">12</div>'
+            + '<div class="number n3">3</div>'
+            + '<div class="number n6">6</div>'
+            + '<div class="number n9">9</div>'
+            + '<div class="hand hour"></div>'
+            + '<div class="hand minute"></div>'
+            + '<div class="hand second"></div>';
+        for (let i = 0; i < 12; i++) {
+            if (i % 3 === 0) continue;
+            const m = document.createElement('div');
+            m.className = 'mark';
+            m.style.transform = 'translateX(-50%) rotate(' + (i * 30) + 'deg)';
+            clock.appendChild(m);
+        }
+        return clock;
+    }
+
+    function privacyBuild() {
+        if (privacyOverlay) return;
+        privacyOverlay = document.createElement('div');
+        privacyOverlay.id = 'privacy-overlay';
+        privacyOverlay.className = 'privacy-overlay';
+        privacyOverlay.setAttribute('aria-hidden', 'true');
+
+        privacyStack = document.createElement('div');
+        privacyStack.className = 'privacy-stack';
+
+        const clockTile = document.createElement('div');
+        clockTile.className = 'privacy-tile privacy-tile-clock';
+        privacyClock = privacyBuildClock();
+        clockTile.appendChild(privacyClock);
+
+        const calTile = document.createElement('div');
+        calTile.className = 'privacy-tile privacy-tile-calendar';
+        privacyCal = document.createElement('div');
+        privacyCal.className = 'privacy-cal';
+        calTile.appendChild(privacyCal);
+
+        privacyStack.appendChild(clockTile);
+        privacyStack.appendChild(calTile);
+        privacyOverlay.appendChild(privacyStack);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'privacy-close';
+        closeBtn.textContent = privacyIsBg() ? 'Затвори' : 'Close';
+        closeBtn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            privacyHide();
+        });
+        closeBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+        privacyOverlay.appendChild(closeBtn);
+
+        document.body.appendChild(privacyOverlay);
+    }
+
+    function privacyRenderCalendar() {
+        if (!privacyCal) return;
+        const now = new Date();
+        const bg = privacyIsBg();
+        const langCode = bg ? 'bg-BG' : 'en-GB';
+        const monthName = now.toLocaleDateString(langCode, { month: 'long' });
+        const weekdays = bg
+            ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд']
+            : ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+        const firstDow = (new Date(now.getFullYear(), now.getMonth(), 1).getDay() + 6) % 7; // понеделник = 0
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+        // Кои дни имат бележка — за цветните точки. Същото правило като в месечния изглед:
+        // бележка с дата в този месец, която не е скрита (status !== 1). Без текст и без брой.
+        const notesPerDay = {};
+        if (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) {
+            allNotesData.forEach(n => {
+                if (!n.calendarDate || n.status === 1) return;
+                const nd = new Date(n.calendarDate);
+                if (nd.getFullYear() !== now.getFullYear() || nd.getMonth() !== now.getMonth()) return;
+                (notesPerDay[nd.getDate()] = notesPerDay[nd.getDate()] || []).push(n);
+            });
+        }
+
+        let html = '<div class="privacy-cal-month">' + monthName + ' ' + now.getFullYear() + '</div>';
+        html += '<div class="privacy-cal-grid privacy-cal-head">';
+        for (let i = 0; i < 7; i++) html += '<span>' + weekdays[i] + '</span>';
+        html += '</div><div class="privacy-cal-grid privacy-cal-days">';
+        for (let i = 0; i < firstDow; i++) html += '<span class="privacy-cal-day is-empty"></span>';
+        for (let d = 1; d <= daysInMonth; d++) {
+            const today = d === now.getDate();
+            const dayNotes = notesPerDay[d] || [];
+            html += '<span class="privacy-cal-day' + (today ? ' is-today' : '') + '">';
+            html += '<i class="privacy-cal-num">' + d + '</i>';
+            // Две точки на ред, цели. Мястото е запазено и в дните без бележки.
+            html += '<span class="privacy-cal-dots">';
+            dayNotes.slice(0, 2).forEach(n => {
+                const ci = (typeof n.color === 'number' && n.color >= 0 && n.color <= 9) ? n.color : 0;
+                html += '<i style="background: var(--note-bg-' + ci + ')"></i>';
+            });
+            html += '</span></span>';
+        }
+        html += '</div>';
+        privacyCal.innerHTML = html;
+    }
+
+    function privacyTick() {
+        if (!privacyClock) return;
+        const now = new Date();
+        const s = now.getSeconds();
+        const m = now.getMinutes();
+        const h = now.getHours();
+        const hourHand = privacyClock.querySelector('.hour');
+        const minuteHand = privacyClock.querySelector('.minute');
+        const secondHand = privacyClock.querySelector('.second');
+        if (hourHand) hourHand.style.transform = 'translate(-50%, -100%) rotate(' + ((h % 12) * 30 + m * 0.5) + 'deg)';
+        if (minuteHand) minuteHand.style.transform = 'translate(-50%, -100%) rotate(' + (m * 6 + s * 0.1) + 'deg)';
+        if (secondHand) secondHand.style.transform = 'translate(-50%, -100%) rotate(' + (s * 6) + 'deg)';
+    }
+
+    // Реално видимата част на екрана: при мобилен браузър window.innerHeight може да е
+    // по-голям от видимото (напр. 608 срещу 568), затова се взима най-малката стойност.
+    function privacyViewport() {
+        let vw = window.innerWidth;
+        let vh = window.innerHeight;
+        if (window.visualViewport) {
+            vw = Math.min(vw, Math.round(window.visualViewport.width));
+            vh = Math.min(vh, Math.round(window.visualViewport.height));
+        }
+        if (document.documentElement) {
+            vw = Math.min(vw, document.documentElement.clientWidth);
+            vh = Math.min(vh, document.documentElement.clientHeight);
+        }
+        return { vw: vw, vh: vh };
+    }
+
+    // Двете плочки остават 300x300; ако екранът е по-малък, цялата група се смалява,
+    // за да не се реже нищо (и overlay-ът се свива до видимата част).
+    function privacyFit() {
+        if (!privacyStack) return;
+        const v = privacyViewport();
+        if (privacyOverlay) {
+            privacyOverlay.style.width = v.vw + 'px';
+            privacyOverlay.style.height = v.vh + 'px';
+        }
+        const availW = v.vw - 24;
+        // Групата е центрирана вертикално, значи отдолу остава толкова място, колкото отгоре.
+        // Затова се отделя място за бутона Затвори и отгоре, и отдолу, за да не застъпва календара.
+        const availH = v.vh - PRIVACY_CLOSE_ZONE * 2;
+        const scale = Math.min(1, availW / TILE, availH / (TILE * 2 + TILE_GAP));
+        privacyStack.style.transform = 'scale(' + (scale > 0 ? scale.toFixed(4) : 1) + ')';
+    }
+
+    function privacyShow() {
+        if (!privacyOverlay) privacyBuild();
+        if (!privacyOverlay || !privacyOverlay.parentNode) {
+            if (privacyOverlay && document.body) document.body.appendChild(privacyOverlay);
+        }
+        privacyRenderCalendar();
+        privacyTick();
+        privacyFit();
+        privacyOverlay.classList.add('is-visible');
+        privacyOverlay.setAttribute('aria-hidden', 'false');
+        if (privacyTimer) clearInterval(privacyTimer);
+        privacyTimer = setInterval(privacyTick, 1000);
+    }
+
+    function privacyHide() {
+        if (!privacyOverlay) return;
+        privacyOverlay.classList.remove('is-visible');
+        privacyOverlay.setAttribute('aria-hidden', 'true');
+        if (privacyTimer) {
+            clearInterval(privacyTimer);
+            privacyTimer = null;
+        }
+    }
+
+    /* Системният избор на файл е отделен екран: той вдига blur и често скрива страницата.
+       Ако го вземем за напускане на приложението, плочките остават върху екрана, след като файлът
+       е избран. Затова всеки клик върху поле за файл бележи, че следващият blur/скриване не е
+       напускане. */
+    function privacyExpectSystemUI() {
+        privacyExpectUntil = Date.now() + 10000;
+    }
+
+    function privacyExpectingSystemUI() {
+        return Date.now() < privacyExpectUntil;
+    }
+
+    document.addEventListener('click', function (ev) {
+        const el = ev.target;
+        if (!el || el.tagName !== 'INPUT') return;
+        if (String(el.type || '').toLowerCase() === 'file') privacyExpectSystemUI();
+    }, true);
+
+    /* Android снима екрана за списъка с приложенията, докато приложението още излиза от
+       екрана. Затова не чакаме visibilitychange (тогава кадърът вече е снет и се виждат
+       бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
+       на екрана, значи следващият кадър вече е с часовника и календара. */
+    window.addEventListener('blur', function () {
+        if (privacyExpectingSystemUI()) return;
+        if (!privacyAppScreenMode()) return;
+        privacyWentHidden = false;
+        privacyShow();
+    });
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) return;
+        privacyWentHidden = true;
+        if (privacyExpectingSystemUI()) return;
+        if (!privacyAppScreenMode()) return;
+        privacyShow();
+    });
+
+    window.addEventListener('focus', function () {
+        privacyExpectUntil = 0;
+        // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
+        // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
+        if (!privacyWentHidden) privacyHide();
+    });
+
+    window.addEventListener('resize', function () {
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
+    });
+
+    /* Собственикът (31.10.2026): „покажи защитния овърлей при клик на логото на приложението в
+       хедъра“. Логото е първото нещо на екрана и се натиска за секунда, когато някой погледне
+       през рамо - същият овърлей с часовника и календара, който излиза при излизане от приложението,
+       без да се чака blur. Кликът се хваща във фаза прихващане, за да не стигне до нищо друго, и се
+       отменя (preventDefault), за да не отваря нищо. Затваря се с бутона „Затвори“ на овърлея. */
+    document.addEventListener('click', function (ev) {
+        const el = ev.target;
+        if (!el || !el.closest) return;
+        if (!el.closest('.header-logo')) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        privacyShow();
+    }, true);
+
+    window.privacyOverlayShow = privacyShow;
+    window.privacyOverlayHide = privacyHide;
+})();
