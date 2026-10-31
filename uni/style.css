@@ -98,12 +98,10 @@ body:has(#login-page:not([hidden])) #kb-fab {
     display: none !important;
 }
 
-/* Keep the Assistant clear of an expanded note's bottom toolbar — the row of round buttons sits on the
-   note's bottom edge, which lands either on the screen edge or right above the open-notes bar, so the
-   60px clearance is needed in BOTH cases (owner, 31.10.2026). The bar lifts the button by its own
-   height along `bottom`, this is a `translate`, so the two add up without fighting each other. The
-   class is set by syncExpandedFabLift, which checks that the button still stands on the bottom edge
-   (a button the owner has dragged elsewhere is left alone). */
+/* Keep the Assistant clear of an expanded note's bottom toolbar — but only while nothing else has
+   already lifted it. The open-notes bar lifts the same button by exactly the same 60px, so adding this
+   on top moved it twice as high (b2.74). The class is set by syncExpandedFabLift, which checks that the
+   button still stands on the bottom edge. */
 body.modal-note-expanded-fab-lift #kb-fab {
     translate: 0 -60px;
 }
