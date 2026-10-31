@@ -34622,6 +34622,20 @@ initNoteWindows();
         if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
     });
 
+    /* Собственикът (31.10.2026): „покажи защитния овърлей при клик на логото на приложението в
+       хедъра“. Логото е първото нещо на екрана и се натиска за секунда, когато някой погледне
+       през рамо - същият овърлей с часовника и календара, който излиза при излизане от приложението,
+       без да се чака blur. Кликът се хваща в фаза прихващане, за да не стигне до нищо друго, и се
+       отменя (preventDefault), за да не отваря нищо. Затваря се с бутона „Затвори“ на овърлея. */
+    document.addEventListener('click', function (ev) {
+        const el = ev.target;
+        if (!el || !el.closest) return;
+        if (!el.closest('.header-logo')) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        privacyShow();
+    }, true);
+
     window.privacyOverlayShow = privacyShow;
     window.privacyOverlayHide = privacyHide;
 })();
