@@ -13582,8 +13582,14 @@ function wireNoteWindow(win) {
     // когато редът с форматиране е отворен, и един, когато не е). Без това числото беше фиксирано и
     // разликата оставаше празна ивица между лентата и полето за редактиране.
     const headerBar = box.querySelector('.modal-header-toolbar');
+    // Мери се до ВИДИМАТА линия под лентата, не до ръба на кутията на лентата: лентата има долен
+    // отстъп 10px, значи с цялата ѝ височина полето за редактиране започваше 12px под линията и над
+    // текста оставаше празна ивица (собственик, 31.10.2026: „в режим Редактиране текста да приближава
+    // плътно до линиите... има неизползвано пространство“). Отстъпът се вади от височината.
     const measureHeader = () => {
-        const h = headerBar ? Math.round(headerBar.getBoundingClientRect().height) : 0;
+        if (!headerBar) return;
+        const cs = getComputedStyle(headerBar);
+        const h = Math.round(headerBar.getBoundingClientRect().height - (parseFloat(cs.paddingBottom) || 0));
         if (h > 0) box.style.setProperty('--nw-header-h', h + 'px');
     };
     measureHeader();
@@ -28667,7 +28673,10 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             color: 'transparent',
             caretColor: getComputedStyle(modalBodyElem).color,
             resize: 'none',
-            padding: '10px',
+            // Вертикалните отстъпи са малки (b3.40): собственикът поиска текстът в режим
+            // Редактиране да стои плътно до линиите на горния и долния хедър. Страничните остават
+            // 10px, за да не стига текстът до ръба на бележката. Същото важи и за backdrop-а.
+            padding: '3px 10px',
             boxSizing: 'border-box',
             overflowY: 'auto',
             whiteSpace: 'pre-wrap',
@@ -28684,7 +28693,7 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             left: '0',
             width: '100%',
             height: 'auto',
-            padding: '10px',
+            padding: '3px 10px',
             boxSizing: 'border-box',
             fontFamily: textarea.style.fontFamily,
             fontSize: textarea.style.fontSize,
