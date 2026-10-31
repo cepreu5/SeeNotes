@@ -34217,6 +34217,8 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
+    let privacyWentHidden = false;   // истинско скриване по време на текущия blur
+    let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34391,10 +34393,48 @@ initNoteWindows();
         }
     }
 
+    /* Системният избор на файл е отделен екран: той вдига blur и често скрива страницата.
+       Ако го вземем за напускане на приложението, плочките остават върху редактора, след
+       като файлът е избран. Затова всеки клик върху поле за файл бележи, че следващият
+       blur/скриване не е напускане. */
+    function privacyExpectSystemUI() {
+        privacyExpectUntil = Date.now() + 10000;
+    }
+
+    function privacyExpectingSystemUI() {
+        return Date.now() < privacyExpectUntil;
+    }
+
+    document.addEventListener('click', function (ev) {
+        const el = ev.target;
+        if (!el || el.tagName !== 'INPUT') return;
+        if (String(el.type || '').toLowerCase() === 'file') privacyExpectSystemUI();
+    }, true);
+
+    /* Android снима екрана за списъка с приложенията, докато приложението още излиза от
+       екрана. Затова не чакаме visibilitychange (тогава кадърът вече е снет и се виждат
+       бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
+       на екрана, значи следващият кадър вече е с часовника и календара. */
+    window.addEventListener('blur', function () {
+        if (privacyExpectingSystemUI()) return;
+        if (!privacyAppScreenMode()) return;
+        privacyWentHidden = false;
+        privacyShow();
+    });
+
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) return;
+        privacyWentHidden = true;
+        if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
         privacyShow();
+    });
+
+    window.addEventListener('focus', function () {
+        privacyExpectUntil = 0;
+        // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
+        // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
+        if (!privacyWentHidden) privacyHide();
     });
 
     window.addEventListener('resize', function () {
