@@ -1,11 +1,13 @@
-// Разпъната бележка при отворена лента на бележките: хартията да стига до долния ръб (b3.38)
+// Разпъната бележка при отворена лента: разпъва се ДО лентата, другата бележка не стърчи под нея (b3.40)
 //
 // Симптомът на собственика (31.10.2026): „отварям две бележки, максимизирам горната, текста на долната
-// се появява под лентата, която е прозрачна“. Причината беше в style.css: разпънатата кутия се скъсяваше
-// с височината на лентата (100% - --open-notes-bar-h - 8px), значи хартията свършваше 8px над лентата и
-// под нея се виждаше каквото е отдолу - бордът с плочките и другата отворена бележка. Освен това
-// правилото хващаше ВСИЧКИ прозорци: при две отворени бележки втората (несвита) ставаше 784 висока
-// (100% от целия екран) и излизаше под екрана, точно под лентата.
+// се появява под лентата, която е прозрачна“. Причината беше в style.css: правилото за разпънатата
+// бележка (100% - --open-notes-bar-h - 8px) хващаше ВСИЧКИ прозорци, значи при две отворени бележки
+// втората (несвита) ставаше 784 висока - 100% от целия екран - излизаше под екрана и текстът ѝ се
+// показваше под полупрозрачната лента.
+// Собственикът после поиска точно това поведение: „когато има лента, бележката да се разпъва до нея и
+// бутоните й да не се местят“. Затова разпънатата бележка спира 8px над лентата, а правилото важи само
+// за прозореца, който наистина е разпънат.
 //
 // Какво проверява (истински Chromium, истинският uni код, засята IndexedDB, ?demo=1, мобилен контекст
 // с докосване):
@@ -252,17 +254,19 @@ const openTwoNotes = async (page) => {
 };
 
 // Проверките за „хартията стига до долния ръб“ - едни и същи за 390 и за 1280.
-const checkPaperCoversBar = (g, tag) => {
+const checkStopsAtBar = (g, tag) => {
     const paper = g.paperWin;
     ok(!!paper, `${tag}: има разпъната бележка`, g.wins.map(w => w.expanded));
     if (!paper) return;
-    ok(Math.abs(paper.box.bottom - g.vh) <= 1, `${tag}: хартията на разпънатата бележка стига до долния ръб`, { bottom: paper.box.bottom, vh: g.vh });
-    ok(paper.padBottom >= g.barH + 8 - 1, `${tag}: долният отстъп е поне височината на лентата + 8`, { padBottom: paper.padBottom, barH: g.barH });
-    ok(g.barShown && !!paper.foot && paper.foot.bottom <= g.barRect.top + 1, `${tag}: редът с кръглите бутони е над лентата`, { foot: paper.foot, bar: g.barRect });
-    // Под лентата: само хартията на разпънатата бележка, нищо от борда и нищо от друга бележка.
+    ok(g.barShown, `${tag}: лентата е на екрана`, g.barShown);
+    ok(Math.abs(paper.box.bottom - (g.barRect.top - 8)) <= 1, `${tag}: хартията свършва 8px над лентата`, { bottom: paper.box.bottom, barTop: g.barRect.top });
+    ok(paper.padBottom === 0, `${tag}: няма долен отстъп - вътрешността не се мести`, paper.padBottom);
+    ok(!!paper.foot && paper.foot.bottom <= g.barRect.top + 1, `${tag}: редът с кръглите бутони е над лентата`, { foot: paper.foot, bar: g.barRect });
+    // Под лентата НЕ бива да има нищо от друга бележка (бордът отдолу се вижда през лентата - това е
+    // обичайният вид на лентата и не е бъг).
     const stacks = Object.entries(g.underBar || {});
-    const bad = stacks.filter(([, st]) => !(st[0] && st[0].isPaper && st[0].inExpandedWin));
-    ok(stacks.length > 0 && bad.length === 0, `${tag}: под лентата стои само хартията на разпънатата бележка`, bad.slice(0, 2));
+    const bad = stacks.filter(([, st]) => st.some(e => e.inWindow && !e.inExpandedWin));
+    ok(stacks.length > 0 && bad.length === 0, `${tag}: под лентата не се показва друга бележка`, bad.slice(0, 2));
     // Иконата на асистента: отстъп при разпъната бележка и без застъпване с реда с бутоните.
     ok(g.fabLiftClass, `${tag}: иконата на асистента е с отстъп при разпъната бележка`, { cls: g.bodyCls, fab: g.fab });
     ok(!!g.fab && !!paper.foot && g.fab.bottom <= paper.foot.top + 1, `${tag}: иконата не застава върху реда с бутоните на бележката`, { fab: g.fab, foot: paper.foot });
@@ -284,7 +288,7 @@ const checkPaperCoversBar = (g, tag) => {
     await page.waitForTimeout(900);
     const after = await geo(page);
     ok(after.bodyCls.includes('modal-note-expanded'), '1: тялото е с класа за разпъната бележка', after.bodyCls);
-    checkPaperCoversBar(after, '1');
+    checkStopsAtBar(after, '1');
 
     // Другата бележка не се разтяга до екрана (на b3.36 ставаше 784 висока и излизаше под екрана).
     const other = after.wins.find(w => !w.expanded);
@@ -332,7 +336,7 @@ const checkPaperCoversBar = (g, tag) => {
     ok(await expandActive(page), '3: бутонът за разпъване е намерен и натиснат');
     await page.waitForTimeout(900);
     const g = await geo(page);
-    checkPaperCoversBar(g, '3');
+    checkStopsAtBar(g, '3');
     await page.screenshot({ path: path.join('.bolter/check', 'expanded-note-covers-bar-1280.png') });
     ok(errs.length === 0, '3: няма изключения в конзолата', errs.slice(0, 3));
     await ctx.close();
