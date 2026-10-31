@@ -34309,6 +34309,18 @@ initNoteWindows();
         const firstDow = (new Date(now.getFullYear(), now.getMonth(), 1).getDay() + 6) % 7; // понеделник = 0
         const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
+        // Кои дни имат бележка — за цветните точки. Същото правило като в месечния изглед:
+        // бележка с дата в този месец, която не е скрита (status !== 1). Без текст и без брой.
+        const notesPerDay = {};
+        if (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) {
+            allNotesData.forEach(n => {
+                if (!n.calendarDate || n.status === 1) return;
+                const nd = new Date(n.calendarDate);
+                if (nd.getFullYear() !== now.getFullYear() || nd.getMonth() !== now.getMonth()) return;
+                (notesPerDay[nd.getDate()] = notesPerDay[nd.getDate()] || []).push(n);
+            });
+        }
+
         let html = '<div class="privacy-cal-month">' + monthName + ' ' + now.getFullYear() + '</div>';
         html += '<div class="privacy-cal-grid privacy-cal-head">';
         for (let i = 0; i < 7; i++) html += '<span>' + weekdays[i] + '</span>';
@@ -34316,7 +34328,16 @@ initNoteWindows();
         for (let i = 0; i < firstDow; i++) html += '<span class="privacy-cal-day is-empty"></span>';
         for (let d = 1; d <= daysInMonth; d++) {
             const today = d === now.getDate();
-            html += '<span class="privacy-cal-day' + (today ? ' is-today' : '') + '">' + d + '</span>';
+            const dayNotes = notesPerDay[d] || [];
+            html += '<span class="privacy-cal-day' + (today ? ' is-today' : '') + '">';
+            html += '<i class="privacy-cal-num">' + d + '</i>';
+            // Две точки на ред, цели. Мястото е запазено и в дните без бележки.
+            html += '<span class="privacy-cal-dots">';
+            dayNotes.slice(0, 2).forEach(n => {
+                const ci = (typeof n.color === 'number' && n.color >= 0 && n.color <= 9) ? n.color : 0;
+                html += '<i style="background: var(--note-bg-' + ci + ')"></i>';
+            });
+            html += '</span></span>';
         }
         html += '</div>';
         privacyCal.innerHTML = html;
