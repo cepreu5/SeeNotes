@@ -18007,7 +18007,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 // Езикът е сменен, но профилът в Drive още не е обновен: при старта изборът печели пред профилната снимка
 const PENDING_LANG_SYNC_KEY = 'pending_language_sync';
 const appSettingsKeys = [
-    'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'hideToast', 'trashSearch',
+    'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'privacyAutoProtect', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'singleNoteMode', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg',
     'gcalNotes', 'gcalCalendarId', 'gcalState',
@@ -19885,6 +19885,19 @@ async function createSettingsUI(boardsData, boardParseError) {
                         localStorage.removeItem(key);
                     }
                 });
+            }
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    // Автоматична защита: защитният екран излиза сам, когато приложението излезе от екрана.
+    const autoProtectCheckbox = document.getElementById('auto-protect-checkbox');
+    if (autoProtectCheckbox) {
+        autoProtectCheckbox.checked = localStorage.getItem('privacyAutoProtect') !== 'false';
+        autoProtectCheckbox.addEventListener('change', () => {
+            localStorage.setItem('privacyAutoProtect', autoProtectCheckbox.checked);
+            // Изключване, докато екранът е вдигнат: махаме го веднага.
+            if (!autoProtectCheckbox.checked && typeof window.privacyOverlayHide === 'function') {
+                window.privacyOverlayHide();
             }
             showToast(_('settingSaved'), 2000);
         });
@@ -34381,6 +34394,7 @@ initNoteWindows();
     const TILE = 300;
     const TILE_GAP = 12;
     const PRIVACY_CLOSE_ZONE = 56; // място за бутона Затвори долу вдясно (височина + отстъп + въздух)
+    const PRIVACY_SETTLE_MS = 800;
     let privacyOverlay = null;
     let privacyStack = null;
     let privacyClock = null;
@@ -34388,6 +34402,8 @@ initNoteWindows();
     let privacyTimer = null;
     let privacyWentHidden = false;   // истинско скриване по време на текущия blur
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
+    let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
+    let privacyArmedAt = 0;
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34403,6 +34419,29 @@ initNoteWindows();
             }
         } catch (e) { /* ignore */ }
         return navigator.standalone === true;
+    }
+
+    // Защитата се включва само след като приложението е било наистина на екрана и на фокус, и то
+    // след кратко изчакване: при пускане Android още мести прозореца и blur/visibilitychange идват,
+    // докато приложението още излиза на екрана. Иначе защитният екран излиза още при старт.
+    function privacyArm() {
+        if (privacyArmed) return;
+        if (document.hidden) return;
+        if (typeof document.hasFocus === 'function' && !document.hasFocus()) return;
+        privacyArmed = true;
+        privacyArmedAt = Date.now();
+    }
+
+    // Настройка „Автоматична защита“: по подразбиране е включена, значи ключът липсва.
+    function privacyAutoProtectOn() {
+        try { return localStorage.getItem('privacyAutoProtect') !== 'false'; } catch (e) { return true; }
+    }
+
+    // Готово ли е приложението да се пази: пускането е отминало и настройката е включена.
+    function privacyProtectReady() {
+        privacyArm();
+        if (!privacyAutoProtectOn()) return false;
+        return privacyArmed && (Date.now() - privacyArmedAt) >= PRIVACY_SETTLE_MS;
     }
 
     function privacyBuildClock() {
@@ -34606,6 +34645,7 @@ initNoteWindows();
        бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
        на екрана, значи следващият кадър вече е с часовника и календара. */
     window.addEventListener('blur', function () {
+        if (!privacyProtectReady()) return;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
         privacyWentHidden = false;
@@ -34613,7 +34653,8 @@ initNoteWindows();
     });
 
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) return;
+        if (!document.hidden) { privacyArm(); return; }
+        if (!privacyProtectReady()) return;
         privacyWentHidden = true;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
@@ -34622,6 +34663,7 @@ initNoteWindows();
 
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
+        privacyArm();
         // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
         // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
         if (!privacyWentHidden) privacyHide();
@@ -34645,6 +34687,7 @@ initNoteWindows();
         privacyShow();
     }, true);
 
+    privacyArm();
     window.privacyOverlayShow = privacyShow;
     window.privacyOverlayHide = privacyHide;
 })();

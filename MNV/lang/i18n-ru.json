@@ -193,6 +193,7 @@
   "importSettingsBtn": "Загрузить настройки",
   "oneTapLinkLabel": "Ссылки в один клик:",
   "hideAssistantLabel": "Скрыть Ассистента:",
+  "autoProtectLabel": "Автоматическая защита:",
   "notesBgrdLabel": "Графический фон (заметки в доске):",
   "imgBgrdLabel": "Графический фон (заметка):",
   "feedbackButtonTooltip": "Обратная связь: multinotes.web@gmail.com",
