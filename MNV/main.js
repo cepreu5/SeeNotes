@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.76'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.76)
+const version = 'Beta 1.77'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.77)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -3409,6 +3409,12 @@ function initApp() {
     }
     if (calendarButton) {
         calendarButton.addEventListener('click', () => {
+            /* Календарът заема целия екран, а прозорците на бележките живеят в #note-windows-layer
+               над всичко останало - затова отворените бележки оставаха да плават върху календара.
+               Затваряме ги преди рисуването, по същия път, по който го прави и изборът на борд
+               „Календар" (filterNotesByBoard). В MNV няма режим на редактиране, значи незаписани
+               промени няма и closeAllNoteWindows() не пита нищо. */
+            closeAllNoteWindows();
             renderCalendarView();
         });
 
