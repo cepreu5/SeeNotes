@@ -193,6 +193,7 @@
   "importSettingsBtn": "Read Settings",
   "oneTapLinkLabel": "One-click links:",
   "hideAssistantLabel": "Hide Assistant:",
+  "autoProtectLabel": "Automatic protection:",
   "notesBgrdLabel": "Graphical background (board notes):",
   "imgBgrdLabel": "Graphical background (note):",
   "feedbackButtonTooltip": "Feedback: multinotes.web@gmail.com",
