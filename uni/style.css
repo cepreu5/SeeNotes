@@ -6102,7 +6102,9 @@ header.title-hidden > div:first-child {
    многоточие, вместо да вдигне картата. */
 .note-expired-badge {
     flex: 0 0 auto;
-    margin: 0 10% 8px 8%;
+    /* 13px = 8px + 5px: собственикът поиска (2 Nov 2026) информацията да стои 5px по-високо над
+       долния ръб на картата. */
+    margin: 0 10% 13px 8%;
     padding: 1px 7px;
     border-radius: 7px;
     background: rgba(0, 0, 0, 0.10);
