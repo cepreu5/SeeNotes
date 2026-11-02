@@ -7310,6 +7310,8 @@ function initApp() {
         return false;
     });
     reloadButton.addEventListener('click', (e) => {
+        // Бордът, от който е натиснат Refresh, остава активен и след презареждането (b3.56).
+        wantKeepBoardAfterRefresh(currentBoardFilter);
         const isForceSync = Boolean(e && (e.ctrlKey || e.shiftKey));
         // При спряна синхронизация първо възстановяваме входа (както иконата на източника) — без токен
         // синхронизацията не може да тръгне, значи преди клона за мръсни бележки; важи и при Ctrl/Shift.
@@ -9609,6 +9611,8 @@ async function mainLogic(forceFullSync = false) {
         } catch (e) {
             console.error("Error loading local data in offline mode:", e);
         }
+        // Офлайн зареждането също връща борда, от който е натиснат Refresh.
+        await applyBoardAfterRefresh();
         // Офлайн акаунтът не може да се потвърди: само се записва pendingAccountReset, нищо не се трие
         verifyAccountInBackground();
 
@@ -10049,6 +10053,9 @@ async function mainLogic(forceFullSync = false) {
             // renderUI() показва бележките едва след като фоновете им са готови.
             // Не отменяме това тук, за да не се види текстът преди изображенията.
             isMainLogicRunning = false;
+
+            // Бордът, от който е натиснат Refresh, се връща и след онлайн зареждането (b3.56).
+            await applyBoardAfterRefresh();
 
             if (currentBoardFilter !== 'calendar' && currentBoardFilter !== 'calendar_monthly' && currentBoardFilter !== 'calendar_weekly') {
                 const addNoteFab = document.getElementById('add-note-fab');
@@ -17619,6 +17626,34 @@ async function runBulkMove(keys, newBoardId) {
 /* --- КРАЙ НА ДЕЙСТВИЯТА ПО ПАРТИДА --- */
 
 // --- GDrive Fetch & ID logic moved to load.js ---
+
+/* --- b3.56: СЛЕД REFRESH ОСТАВАМЕ НА СЪЩИЯ БОРД ---
+ * Презареждането нулираше изгледа и приложението падаше на стартовия борд, дори човекът да е бил
+ * в друг (искане на собственика, 2 Nov 2026). Бутонът Refresh тук записва от кой борд е натиснат,
+ * initializeLoad() го взима за първата картина, а applyBoardAfterRefresh() след края на
+ * зареждането минава през filterNotesByBoard() - тоест през същия път като клик по реда в менюто,
+ * който вече знае какво да прави, ако бордът вече го няма или е скрит.
+ * Временният изглед „Резултати от търсене“ не се връща: той не е борд и след презареждане няма
+ * какво да показва.
+ */
+let boardAfterRefresh = null;
+
+function wantKeepBoardAfterRefresh(boardId) {
+    const id = (boardId === undefined || boardId === null) ? '' : String(boardId);
+    boardAfterRefresh = (!id || id === 'search-results') ? null : id;
+}
+
+async function applyBoardAfterRefresh() {
+    const target = boardAfterRefresh;
+    boardAfterRefresh = null;
+    if (!target) return;
+    try {
+        await filterNotesByBoard(target);
+    } catch (e) {
+        console.warn('[Refresh] Връщането на борда след презареждане не мина:', e);
+    }
+}
+
 /**
  * Initializes the loading process by resetting state and showing the loader.
  */
@@ -17631,7 +17666,8 @@ function initializeLoad(showLoader = true) {
     }
     const loaderTitle = document.getElementById('loader-title');
     if (loaderTitle) loaderTitle.textContent = '';
-    currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
+    // След Refresh първата картина е вече на борда, от който е натиснат бутонът; иначе стартовият.
+    currentBoardFilter = boardAfterRefresh || localStorage.getItem('startBoard') || 'Main';
     const popup = document.getElementById('board-filter-popup');
     if (popup) {
         popup.classList.remove('visible');
