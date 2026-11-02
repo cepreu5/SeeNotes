@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.77'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.77)
+const version = 'Beta 1.78'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.78)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -3032,7 +3032,11 @@ function initApp() {
         });
 
     }
-    reloadButton.addEventListener('click', () => mainLogic());
+    reloadButton.addEventListener('click', () => {
+        // Бордът, от който е натиснат Reload, остава активен и след презареждането (b1.78).
+        wantKeepBoardAfterReload(currentBoardFilter);
+        mainLogic();
+    });
     settingsButton.addEventListener('click', () => {
         // Запомняме началното състояние на чекбоксовете при отваряне на настройките
         // Първо обновяваме състоянието на чекбоксовете, после го запазваме ---
@@ -9112,6 +9116,31 @@ function applyFilters() {
 }
 
 // --- GDrive Fetch & ID logic moved to load.js ---
+
+/* --- b1.78: СЛЕД RELOAD ОСТАВАМЕ НА СЪЩИЯ БОРД ---
+ * Презареждането нулираше изгледа и приложението падаше на стартовия борд, дори човекът да е бил
+ * в друг (искане на собственика, 2 Nov 2026 — същото като в uni, b3.56). Бутонът Reload тук записва
+ * от кой борд е натиснат, а initializeLoad() го взима за първата картина; по-нататък renderUI()
+ * минава през filterNotesByBoard() — същия път като клик по ред в менюто, който вече знае какво да
+ * прави, ако бордът вече го няма или е скрит.
+ * Не се връщат: временният изглед „Резултати от търсене“ и календарът — те не са борд, а календарът
+ * дори не може да е стартов (приложението го превръща във „Всички“); след Reload там остава
+ * стартовият борд, както досега.
+ */
+let boardAfterReload = null;
+
+function wantKeepBoardAfterReload(boardId) {
+    const id = (boardId === undefined || boardId === null) ? '' : String(boardId);
+    const notABoard = !id || id === 'search-results' || id === 'calendar' || id === 'calendar_monthly' || id === 'calendar_weekly';
+    boardAfterReload = notABoard ? null : id;
+}
+
+function takeBoardAfterReload() {
+    const id = boardAfterReload;
+    boardAfterReload = null;
+    return id;
+}
+
 /**
  * Initializes the loading process by resetting state and showing the loader.
  */
@@ -9123,7 +9152,8 @@ function initializeLoad() {
     // Задаваме първоначален текст, за да избегнем "премигване" на празен панел
     const loaderTitle = document.getElementById('loader-title');
     if (loaderTitle) loaderTitle.textContent = _('initialDataLoad');
-    currentBoardFilter = localStorage.getItem('startBoard') || 'Main';
+    // След Reload първата картина е вече на борда, от който е натиснат бутонът; иначе стартовият.
+    currentBoardFilter = takeBoardAfterReload() || localStorage.getItem('startBoard') || 'Main';
     const popup = document.getElementById('board-filter-popup');
     if (popup) {
         popup.classList.remove('visible');
