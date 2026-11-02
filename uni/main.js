@@ -17718,6 +17718,78 @@ function boardFontColorValue(board) {
     return text.startsWith('#') ? text : null;
 }
 
+/* --- b3.57: ТЕКСТЪТ НА БУТОНА НА БОРД СЕ ЧЕТЕ ВЪРХУ ЦВЕТА НА БОРДА ---
+ * Досега текстът беше черен по подразбиране, значи тъмен борд (например цвят, избран от Windows
+ * приложението) даваше черно върху тъмно — нечетимо. Цветът, който бордът иска, се запазва, стига
+ * да се чете на този фон; иначе текстът става бял или черен, което от двете е по-контрастно.
+ * Сметките са по WCAG: относителна яркост и отношение на контраста (4.5:1 е за обикновен текст).
+ */
+let cssColorProbe = null;
+function cssColorToRgb(color) {
+    if (!color) return null;
+    const raw = String(color).trim();
+    if (!raw) return null;
+    // Цветът минава през истински елемент: така се разпознават и имена ('black', 'red'),
+    // и цветовете от темата (var(--board-bg-3)), които иначе не се смятат.
+    if (!cssColorProbe) {
+        cssColorProbe = document.createElement('span');
+        cssColorProbe.setAttribute('aria-hidden', 'true');
+        cssColorProbe.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:0;height:0;overflow:hidden';
+        (document.body || document.documentElement).appendChild(cssColorProbe);
+    }
+    cssColorProbe.style.color = 'rgba(0, 0, 0, 0)';
+    cssColorProbe.style.color = raw;
+    const m = String(getComputedStyle(cssColorProbe).color).match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/i);
+    if (!m) return null;
+    const alpha = m[4] === undefined ? 1 : Number(m[4]);
+    if (!alpha) return null; // непознат цвят оставя прозрачния маркер
+    return [Math.round(Number(m[1])), Math.round(Number(m[2])), Math.round(Number(m[3]))];
+}
+
+function relativeLuminanceOf(rgb) {
+    const channel = (v) => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+}
+
+function contrastRatioBetween(a, b) {
+    const la = relativeLuminanceOf(a), lb = relativeLuminanceOf(b);
+    const light = Math.max(la, lb), dark = Math.min(la, lb);
+    return (light + 0.05) / (dark + 0.05);
+}
+
+function rgbToHex(rgb) {
+    return '#' + rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function isBlackOrWhite(rgb) {
+    return rgb.every(v => v < 40) || rgb.every(v => v > 215);
+}
+
+// Цветът за текста върху даден фон. Исканият цвят се запазва, ако се чете (>= 4.5:1). Иначе черното
+// и бялото се обръщат едно в друго, а истински цвят (червеното за изтрит борд например) се изсветлява
+// или затъмнява, докато се чете — така смисълът на цвета остава. Без разпознат фон се връща
+// желаният цвят, за да не се променя нищо при борд без собствен цвят.
+function boardTextColorOn(background, preferred) {
+    const bg = cssColorToRgb(background);
+    const want = preferred || 'black';
+    if (!bg) return want;
+    const wantRgb = cssColorToRgb(want);
+    if (!wantRgb) return want;
+    if (contrastRatioBetween(wantRgb, bg) >= 4.5) return want;
+    const best = contrastRatioBetween([255, 255, 255], bg) >= contrastRatioBetween([0, 0, 0], bg) ? '#FFFFFF' : '#000000';
+    if (isBlackOrWhite(wantRgb)) return best;
+    for (const t of [0.35, 0.5, 0.65, 0.8]) {
+        const lighter = rgbToHex(wantRgb.map(v => v + (255 - v) * t));
+        if (contrastRatioBetween(cssColorToRgb(lighter), bg) >= 4.5) return lighter;
+        const darker = rgbToHex(wantRgb.map(v => v * (1 - t)));
+        if (contrastRatioBetween(cssColorToRgb(darker), bg) >= 4.5) return darker;
+    }
+    return best;
+}
+
 async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
     const { boardCounts = new Map(), reminderCount = 0, calendarCount = 0, expiredCount = 0 } = extraCounts;
     const boardsNote = document.createElement('div');
@@ -17942,9 +18014,9 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         link.dataset.boardid = boardId;
         const boardBg = boardBackgroundValue(board.color);
         if (boardBg) link.style.backgroundColor = boardBg;
-        link.style.color = 'black';
-        const boardFont = boardFontColorValue(board);
-        if (boardFont) link.style.color = boardFont;
+        // Текстът се избира по фона: запазва цвета на борда, ако се чете, иначе бяло или черно.
+        const boardFont = boardFontColorValue(board) || 'black';
+        link.style.color = boardBg ? boardTextColorOn(boardBg, boardFont) : boardFont;
         addBoardButtonEvents(link, boardId);
         allButtonLinks.push(link);
     });
@@ -33086,9 +33158,10 @@ function showBoardReorderPopup() {
             // Same rules as the menu button for a real board. A system square (Reminder, Trash, ...)
             // keeps the text colour its own CSS class gives it unless the entry names one.
             if (entry.color) {
-                text.style.color = entry.color;
+                text.style.color = rowBackground ? boardTextColorOn(rowBackground, entry.color) : entry.color;
             } else if (board) {
-                text.style.color = boardFontColorValue(board) || 'black';
+                const wantedFont = boardFontColorValue(board) || 'black';
+                text.style.color = rowBackground ? boardTextColorOn(rowBackground, wantedFont) : wantedFont;
             }
             item.appendChild(text);
             const handle = document.createElement('div');

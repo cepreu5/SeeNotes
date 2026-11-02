@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.78'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.78)
+const version = 'Beta 1.79'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.79)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -9173,6 +9173,78 @@ function initializeLoad() {
 const BOARD_MENU_UTIL_IDS = ['reorder-boards', 'fullscreen'];
 function isBoardMenuUtilId(id) { return BOARD_MENU_UTIL_IDS.includes(String(id === undefined ? '' : id)); }
 
+/* --- b1.79: ТЕКСТЪТ НА БУТОНА НА БОРД СЕ ЧЕТЕ ВЪРХУ ЦВЕТА НА БОРДА ---
+ * Досега текстът беше черен по подразбиране (или червен при изтрит борд), значи тъмен борд даваше
+ * черно върху тъмно — нечетимо. Цветът, който бордът иска, се запазва, стига да се чете на този фон;
+ * иначе текстът става бял или черен, което от двете е по-контрастно. Сметките са по WCAG:
+ * относителна яркост и отношение на контраста (4.5:1 е за обикновен текст).
+ */
+let cssColorProbe = null;
+function cssColorToRgb(color) {
+    if (!color) return null;
+    const raw = String(color).trim();
+    if (!raw) return null;
+    // Цветът минава през истински елемент: така се разпознават и имена ('black', 'red'),
+    // и цветовете от темата (var(--board-bg-3)), които иначе не се смятат.
+    if (!cssColorProbe) {
+        cssColorProbe = document.createElement('span');
+        cssColorProbe.setAttribute('aria-hidden', 'true');
+        cssColorProbe.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:0;height:0;overflow:hidden';
+        (document.body || document.documentElement).appendChild(cssColorProbe);
+    }
+    cssColorProbe.style.color = 'rgba(0, 0, 0, 0)';
+    cssColorProbe.style.color = raw;
+    const m = String(getComputedStyle(cssColorProbe).color).match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/i);
+    if (!m) return null;
+    const alpha = m[4] === undefined ? 1 : Number(m[4]);
+    if (!alpha) return null; // непознат цвят оставя прозрачния маркер
+    return [Math.round(Number(m[1])), Math.round(Number(m[2])), Math.round(Number(m[3]))];
+}
+
+function relativeLuminanceOf(rgb) {
+    const channel = (v) => {
+        const c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+}
+
+function contrastRatioBetween(a, b) {
+    const la = relativeLuminanceOf(a), lb = relativeLuminanceOf(b);
+    const light = Math.max(la, lb), dark = Math.min(la, lb);
+    return (light + 0.05) / (dark + 0.05);
+}
+
+function rgbToHex(rgb) {
+    return '#' + rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function isBlackOrWhite(rgb) {
+    return rgb.every(v => v < 40) || rgb.every(v => v > 215);
+}
+
+// Цветът за текста върху даден фон. Исканият цвят се запазва, ако се чете (>= 4.5:1). Иначе черното
+// и бялото се обръщат едно в друго, а истински цвят (червеното за изтрит борд например) се изсветлява
+// или затъмнява, докато се чете — така смисълът на цвета остава. Без разпознат фон се връща
+// желаният цвят, за да не се променя нищо при борд без собствен цвят.
+function boardTextColorOn(background, preferred) {
+    const bg = cssColorToRgb(background);
+    const want = preferred || 'black';
+    if (!bg) return want;
+    const wantRgb = cssColorToRgb(want);
+    if (!wantRgb) return want;
+    if (contrastRatioBetween(wantRgb, bg) >= 4.5) return want;
+    const best = contrastRatioBetween([255, 255, 255], bg) >= contrastRatioBetween([0, 0, 0], bg) ? '#FFFFFF' : '#000000';
+    if (isBlackOrWhite(wantRgb)) return best;
+    for (const t of [0.35, 0.5, 0.65, 0.8]) {
+        const lighter = rgbToHex(wantRgb.map(v => v + (255 - v) * t));
+        if (contrastRatioBetween(cssColorToRgb(lighter), bg) >= 4.5) return lighter;
+        const darker = rgbToHex(wantRgb.map(v => v * (1 - t)));
+        if (contrastRatioBetween(cssColorToRgb(darker), bg) >= 4.5) return darker;
+    }
+    return best;
+}
+
 async function createBoardsUI(boardsData, boardParseError) {
     const boardsNote = document.createElement('div');
     boardsNote.className = 'boards-note';
@@ -9382,20 +9454,27 @@ async function createBoardsUI(boardsData, boardParseError) {
         link.textContent = (showCount && noteCount > 0) ? `${board.title} (${noteCount})` : board.title;
         link.classList.add('board-filter-link');
         link.dataset.boardid = boardId;
+        let boardBg = null;
         if (board.color !== undefined && !isNaN(board.color)) {
             if (board.color >= 0 && board.color <= 6) {
-                link.style.backgroundColor = `var(--board-bg-${board.color})`;
+                boardBg = `var(--board-bg-${board.color})`;
             } else if (board.color < 0) {
-                const hexColor = '#' + (board.color >>> 0).toString(16).slice(-6);
-                link.style.backgroundColor = hexColor;
+                boardBg = '#' + (board.color >>> 0).toString(16).slice(-6);
             }
         }
-        link.style.color = 'black';
+        if (boardBg) link.style.backgroundColor = boardBg;
+        // Текстът се избира по фона: запазва цвета на борда (червен за изтрит), ако се чете, иначе
+        // бяло или черно. Без собствен цвят на борда остава както досега.
+        let boardFont = null;
         if (board.status === 1) {
-            link.style.color = 'red';
+            boardFont = 'red';
         } else if (board.colorfont !== undefined && !isNaN(board.colorfont) && board.colorfont < 0) {
-            const hexFontColor = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
-            link.style.color = hexFontColor;
+            boardFont = '#' + (board.colorfont >>> 0).toString(16).slice(-6);
+        }
+        if (boardBg) {
+            link.style.color = boardTextColorOn(boardBg, boardFont || 'black');
+        } else {
+            link.style.color = boardFont || 'black';
         }
         addBoardButtonEvents(link, boardId);
         allButtonLinks.push(link);
