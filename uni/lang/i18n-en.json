@@ -248,8 +248,6 @@
     "oneTapLinkLabel": "One-click links:",
     "hideAssistantLabel": "Hide Assistant:",
     "autoProtectLabel": "Automatic protection:",
-    "privacyDebugLabel": "Privacy screen log (debug):",
-    "privacyDebugHint": "Records every event that raises or drops the privacy screen and what the code decided. This device only. Open the log with the Debug button on that screen (or by tapping the logo).",
     "hideToastLabel": "Hide info messages:",
     "notesBgrdLabel": "Graphical background (board notes):",
     "imgBgrdLabel": "Graphical background (note):",
