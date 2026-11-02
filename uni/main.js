@@ -19903,10 +19903,11 @@ async function createSettingsUI(boardsData, boardParseError) {
         });
     }
     // Заключване след бездействие (b3.48): колко секунди без докосване, преди защитният екран.
+    // Стъпките са 10 / 15 / 30 / 60 (10 s от b3.51).
     // Един ключ, не два: изключената „Автоматична защита“ изключва и това заключване.
     const idleLockSelect = document.getElementById('idle-lock-select');
     if (idleLockSelect) {
-        const idleSteps = ['15', '30', '60'];
+        const idleSteps = ['10', '15', '30', '60'];
         const idleSaved = localStorage.getItem('privacyIdleLock');
         idleLockSelect.value = idleSteps.indexOf(idleSaved) >= 0 ? idleSaved : '30';
         idleLockSelect.addEventListener('change', () => {
@@ -34417,14 +34418,12 @@ initNoteWindows();
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
     let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
     let privacyArmedAt = 0;
-    // Заключване след бездействие (b3.48): брояч до защитния екран и флаг, че екранът е вдигнат
-    // именно от брояча. Вдигнатият от blur екран се държи точно както в b3.43.
+    // Заключване след бездействие (b3.48): брояч до защитния екран.
     const PRIVACY_IDLE_KEY = 'privacyIdleLock';
     const PRIVACY_IDLE_DEFAULT = 30;
-    const PRIVACY_IDLE_STEPS = [15, 30, 60];
+    const PRIVACY_IDLE_STEPS = [10, 15, 30, 60];
     let privacyIdleTimer = null;     // броячът: проверка през секунда
     let privacyIdleFrom = 0;         // откога тече бездействие
-    let privacyIdleRaised = false;   // екранът е вдигнат от брояча, не от blur
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34465,7 +34464,7 @@ initNoteWindows();
        не в мига на излизане. Броячът стъпва върху защитата от b3.43 и не променя нищо в нея:
        blur, visibilitychange и focus остават същите, броячът стои до тях. */
 
-    // Колко секунди бездействие (15 / 30 / 60, по подразбиране 30).
+    // Колко секунди бездействие (10 / 15 / 30 / 60, по подразбиране 30).
     function privacyIdleSeconds() {
         let v = 0;
         try { v = parseInt(localStorage.getItem(PRIVACY_IDLE_KEY), 10); } catch (e) { v = 0; }
@@ -34494,7 +34493,6 @@ initNoteWindows();
         // излезе още при пускане.
         const from = Math.max(privacyIdleFrom, privacyArmedAt + PRIVACY_SETTLE_MS);
         if (Date.now() - from < privacyIdleSeconds() * 1000) return;
-        privacyIdleRaised = true;
         privacyShow();
     }
 
@@ -34672,8 +34670,7 @@ initNoteWindows();
     }
 
     function privacyHide() {
-        // Екранът вече не е вдигнат от брояча, а броячът тръгва наново от затварянето.
-        privacyIdleRaised = false;
+        // Броячът тръгва наново от затварянето, за да не излезе екранът веднага пак.
         privacyIdleFrom = Date.now();
         if (!privacyOverlay) return;
         privacyOverlay.classList.remove('is-visible');
@@ -34708,30 +34705,23 @@ initNoteWindows();
        вдига нищо: Android снима кадъра за списъка с приложенията преди поправката да стигне до
        екрана, значи плочките само примигваха и не пазеха нищо. Защитата идва от брояча за
        бездействие (Настройки → „Заключване след“, b3.49) и от клика върху логото — те вдигат
-       екрана, докато приложението още е на екрана. Връщането пък само маха екран, вдигнат от
-       клик върху логото, за да не остане върху бележките. */
+       екрана, докато приложението още е на екрана.
+       Собственикът (02.11.2026, по-късно): „Когато овърлея се е включил автоматично, активирането
+       на приложението от task list-а не го скрива и чака натискане на Затвори. Ако обаче съм
+       показал overlay-я ръчно от логото, активирането автоматично го затваря. Направи го и в двата
+       случая да чака натискане на Затвори.“ Затова връщането на приложението (focus и
+       visibilitychange) вече не маха нищо: вдигнатият екран, по какъвто и път да е излязъл, се
+       сваля само с бутона „Затвори“. */
     document.addEventListener('visibilitychange', function () {
         if (document.hidden) return;
         privacyArm();
         privacyIdleFrom = Date.now();
-        /* Екранът, вдигнат от брояча, се маха само с бутона „Затвори“ (b3.49). */
-        if (!privacyIdleRaised) privacyHide();
     });
 
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
         privacyArm();
         privacyIdleFrom = Date.now();
-        /* Екранът, вдигнат от брояча, се маха само с бутона „Затвори“ (b3.49): връщането на фокуса
-           не го пипа, иначе всяко докосване до заключения екран го сваля. */
-        if (privacyIdleRaised) return;
-        /* Собственикът (02.11.2026): „при връщане от таск мениджъра (активиране на приложение) да не
-           се показва овърлеят“. Затова при фокус плочките се махат винаги, щом страницата е видима —
-           и след истинско скриване, не само при blur без скриване (системен диалог, избор на час,
-           падащо меню, където приложението не е напускало екрана). Докато document.hidden още е в
-           сила, фокусът не пипа нищо: ранен фокус точно преди скриването показваше бележките в
-           снимката, която Android прави за списъка с приложенията. */
-        if (!document.hidden) privacyHide();
     });
 
     window.addEventListener('resize', function () {

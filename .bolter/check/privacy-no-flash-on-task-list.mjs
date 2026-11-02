@@ -16,10 +16,12 @@
 //   3) връщане (страницата пак е видима + фокус) не вдига нищо;
 //   4) три пълни излизания и връщания подред — овърлеят никога не се появява;
 //   5) в обикновен таб също нищо;
-//   6) клик върху логото в хедъра пак вдига овърлея (той се маха с „Затвори“);
+//   6) клик върху логото в хедъра пак вдига овърлея и той чака „Затвори“ — излизане, скриване,
+//      връщане и фокус не го махат (собственикът, 02.11.2026: и ръчно вдигнатият чака „Затвори“);
 //   7) броячът за бездействие пак вдига овърлея (15 s без докосване) и той остава, докато
 //      приложението излиза и се връща — защитата не е изчезнала, само се вдига по-рано;
-//   8) няма изключения в конзолата.
+//   8) „Заключване след“ 10 s: опцията я има, избира се и овърлеят излиза след 10 s;
+//   9) няма изключения в конзолата.
 //
 // Пускане от корена на хранилището: node .bolter/check/privacy-no-flash-on-task-list.mjs   (exit 1 при провал)
 // UNI_ROOT=… сочи друга папка на приложението (контролно пускане върху кода без поправката;
@@ -235,9 +237,19 @@ const CLIP = { x: 20, y: 300, width: 120, height: 120 };
     if (box) await page.mouse.click(box.x, box.y);
     const s = await state(page);
     ok(s.visible, '5.2 клик върху логото вдига overlay-а', s);
+    const shotLogo = await page.screenshot({ clip: CLIP });
+    await blurNow(page);
+    ok((await state(page)).visible, '5.3 излизането към списъка не маха екран, вдигнат от логото');
+    await goHidden(page);
+    ok((await state(page)).visible, '5.4 скриването на страницата не го маха');
+    await goVisible(page);
+    ok((await state(page)).visible, '5.5 връщането в приложението не го маха');
+    await focusNow(page);
+    ok((await state(page)).visible, '5.6 фокусът не го маха — чака „Затвори“');
+    ok(Buffer.compare(await page.screenshot({ clip: CLIP }), shotLogo) === 0, '5.7 екранът е същият след цялата обиколка');
     const c = await closeNow(page);
-    ok(c.clicked && !c.visible, '5.3 бутонът „Затвори“ го маха', c);
-    ok(errs.length === 0, '5.4 няма изключения в конзолата', errs.slice(0, 3));
+    ok(c.clicked && !c.visible, '5.8 бутонът „Затвори“ го маха', c);
+    ok(errs.length === 0, '5.9 няма изключения в конзолата', errs.slice(0, 3));
     await ctx.close();
 }
 
@@ -260,6 +272,31 @@ const CLIP = { x: 20, y: 300, width: 120, height: 120 };
     const c = await closeNow(page);
     ok(c.clicked && !c.visible, '6.4 „Затвори“ го маха', c);
     ok(errs.length === 0, '6.5 няма изключения в конзолата', errs.slice(0, 3));
+    await ctx.close();
+}
+
+// ---------- 7) „Заключване след“ 10 s (b3.51) ----------
+{
+    const { ctx, page, errs, ready } = await openApp(true, 10);
+    ok(ready, '7. приложението тръгна с „Заключване след“ 10 s');
+    const sel = await page.evaluate(() => {
+        const s = document.getElementById('idle-lock-select');
+        return s ? { opts: [...s.options].map(o => o.value), value: s.value } : null;
+    });
+    ok(!!sel && sel.opts.includes('10'), '7.1 в списъка има опция 10 s', sel);
+    ok(!!sel && sel.value === '10', '7.2 запазените 10 s се показват избрани', sel);
+    await page.waitForTimeout(6000);
+    ok(!(await state(page)).visible, '7.3 преди 10 s овърлей няма');
+    await page.waitForTimeout(6000);
+    ok((await state(page)).visible, '7.4 след 10 s без докосване овърлеят е на екрана');
+    await blurNow(page);
+    await goHidden(page);
+    await goVisible(page);
+    await focusNow(page);
+    ok((await state(page)).visible, '7.5 остава след излизане и връщане — чака „Затвори“');
+    const c = await closeNow(page);
+    ok(c.clicked && !c.visible, '7.6 „Затвори“ го маха', c);
+    ok(errs.length === 0, '7.7 няма изключения в конзолата', errs.slice(0, 3));
     await ctx.close();
 }
 
