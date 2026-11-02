@@ -34458,13 +34458,6 @@ initNoteWindows();
         try { return localStorage.getItem('privacyAutoProtect') !== 'false'; } catch (e) { return true; }
     }
 
-    // Готово ли е приложението да се пази: пускането е отминало и настройката е включена.
-    function privacyProtectReady() {
-        privacyArm();
-        if (!privacyAutoProtectOn()) return false;
-        return privacyArmed && (Date.now() - privacyArmedAt) >= PRIVACY_SETTLE_MS;
-    }
-
     /* ===== Заключване след бездействие (b3.48) =====
        Същият защитен екран, но вдигнат от брояч: след N секунди без докосване, клавиш или
        скролване (Настройки → „Заключване след“, по подразбиране 30 s). Причината: Android
@@ -34709,34 +34702,20 @@ initNoteWindows();
         if (String(el.type || '').toLowerCase() === 'file') privacyExpectSystemUI();
     }, true);
 
-    /* Android снима екрана за списъка с приложенията, докато приложението още излиза от
-       екрана. Затова не чакаме visibilitychange (тогава кадърът вече е снет и се виждат
-       бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
-       на екрана, значи следващият кадър вече е с часовника и календара. */
-    window.addEventListener('blur', function () {
-        if (!privacyProtectReady()) return;
-        if (privacyExpectingSystemUI()) return;
-        if (!privacyAppScreenMode()) return;
-        privacyShow();
-    });
-
-    /* Собственикът (02.11.2026): „при връщане от таск мениджъра (активиране на приложение) да не
-       се показва овърлеят“. Щом страницата отново е видима, плочките се махат веднага — без да се
-       чака докосване и без бутон „Затвори“. */
+    /* Собственикът (02.11.2026): „Когато приложението не е показало овърлея и го пратим в task
+       list-а, овърлеят примигва за кратко. При излизане от task list-а ще се случва същото —
+       махни го.“ Затова при напускане на приложението (blur, скриване на страницата) вече НЕ се
+       вдига нищо: Android снима кадъра за списъка с приложенията преди поправката да стигне до
+       екрана, значи плочките само примигваха и не пазеха нищо. Защитата идва от брояча за
+       бездействие (Настройки → „Заключване след“, b3.49) и от клика върху логото — те вдигат
+       екрана, докато приложението още е на екрана. Връщането пък само маха екран, вдигнат от
+       клик върху логото, за да не остане върху бележките. */
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) {
-            privacyArm();
-            privacyIdleFrom = Date.now();
-            /* Екранът, вдигнат от брояча, се маха само с бутона „Затвори“ (b3.49). Всяко друго
-               вдигане (blur, смяна на приложение) се маха веднага, без докосване и без бутон —
-               иначе плочките остават след връщане от списъка с приложенията (b3.48). */
-            if (!privacyIdleRaised) privacyHide();
-            return;
-        }
-        if (!privacyProtectReady()) return;
-        if (privacyExpectingSystemUI()) return;
-        if (!privacyAppScreenMode()) return;
-        privacyShow();
+        if (document.hidden) return;
+        privacyArm();
+        privacyIdleFrom = Date.now();
+        /* Екранът, вдигнат от брояча, се маха само с бутона „Затвори“ (b3.49). */
+        if (!privacyIdleRaised) privacyHide();
     });
 
     window.addEventListener('focus', function () {

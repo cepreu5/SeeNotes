@@ -1,29 +1,29 @@
-// Защитен екран: при връщане от списъка със задачи (активиране на приложението) овърлеят го няма.
+// Защитен екран: при излизане към списъка със задачи (и при връщане) НЕ се показва нищо.
 //
-// Собственикът (02.11.2026): „При връщане от таск мениджъра (активиране на приложение) да не се
-// показва овърлеят“.
+// Собственикът (02.11.2026): „Когато приложението не е показало овърлея и го пратим в task list-а,
+// овърлеят примигва за кратко. При излизане от task list-а ще се случва същото — махни го“ и
+// „махни показването на овърлея при скриване на приложението“.
 //
-// Какво трябва да се пази, а не само да се поправи:
-//   - овърлеят излиза ОЩЕ при blur (Android снима екрана за списъка с приложенията, докато
-//     приложението още излиза от екрана) и остава при скриване на страницата - това е снимката,
-//     която не бива да показва бележките;
-//   - при връщане в приложението овърлеят се маха веднага, без да се чака докосване и без
-//     бутон „Затвори“;
-//   - blur без истинско скриване (системен диалог, падащо меню) пак се отменя при фокус;
-//   - клик върху логото в хедъра вдига овърлея и той остава до бутона „Затвори“.
+// Защо: Android снима кадъра за списъка с приложенията преди поправката да стигне до екрана, значи
+// плочките, вдигнати в мига на излизане, само примигваха и не пазеха нищо. Затова вдигането при
+// blur и при скриване на страницата отпада. Защитата идва от брояча за бездействие (Настройки →
+// „Заключване след“) и от клика върху логото — те вдигат екрана, докато приложението е на екрана.
 //
 // Какво проверява (истински Chromium, истинският uni код, ?demo=1, мобилен контекст 390x844):
-//   1) излизане през списъка със задачи: blur -> овърлеят е на екрана в СЪЩИЯ кадър, после
-//      скриване на страницата -> овърлеят е още там (моментът на снимката);
-//   2) връщане: страницата пак е видима -> овърлеят го няма ВЕДНАГА (без изчакване, без докосване),
-//      после фокус -> пак го няма;
-//   3) blur без истинско скриване, после фокус -> овърлеят го няма;
-//   4) клик върху логото -> овърлеят е на екрана и остава до бутона „Затвори“;
-//   5) няма изключения в конзолата.
+//   1) в режим на екран на приложението: blur не вдига нищо и екранът е байт-за-байт същият
+//      (това е „примигването“ — то трябва да го няма);
+//   2) скриване на страницата (снимката за списъка) не вдига нищо;
+//   3) връщане (страницата пак е видима + фокус) не вдига нищо;
+//   4) три пълни излизания и връщания подред — овърлеят никога не се появява;
+//   5) в обикновен таб също нищо;
+//   6) клик върху логото в хедъра пак вдига овърлея (той се маха с „Затвори“);
+//   7) броячът за бездействие пак вдига овърлея (15 s без докосване) и той остава, докато
+//      приложението излиза и се връща — защитата не е изчезнала, само се вдига по-рано;
+//   8) няма изключения в конзолата.
 //
-// Пускане от корена на хранилището: node .bolter/check/privacy-return-no-overlay.mjs   (exit 1 при провал)
+// Пускане от корена на хранилището: node .bolter/check/privacy-no-flash-on-task-list.mjs   (exit 1 при провал)
 // UNI_ROOT=… сочи друга папка на приложението (контролно пускане върху кода без поправката;
-// приема и корена на хранилището, в който има uni/). ROOT=… е същото, за съвместимост със старите тестове.
+// приема и корена на хранилището, в който има uni/). ROOT=… е същото.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -44,7 +44,6 @@ const CHROME = [
 const PAGE = process.env.UNI_PAGE || 'index.html';
 const W = 390, H = 844;
 
-// Папката на приложението: UNI_ROOT може да е самата uni/ папка или коренът на хранилището.
 let root = path.resolve(process.env.UNI_ROOT || process.env.ROOT || 'uni');
 if (!existsSync(path.join(root, PAGE)) && existsSync(path.join(root, 'uni', PAGE))) {
     root = path.join(root, 'uni');
@@ -81,9 +80,9 @@ const browser = await chromium.launch({ executablePath: CHROME });
 
 // appScreen=true подменя само display-mode заявките, за да се държи страницата като инсталирано
 // приложение (Playwright не пуска истински standalone прозорец).
-const openApp = async (appScreen, vw = W, vh = H) => {
+const openApp = async (appScreen, idleSeconds) => {
     const ctx = await browser.newContext({
-        viewport: { width: vw, height: vh }, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
+        viewport: { width: W, height: H }, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
         userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
         serviceWorkers: 'block'
     });
@@ -92,7 +91,7 @@ const openApp = async (appScreen, vw = W, vh = H) => {
     const errs = [];
     page.on('pageerror', e => errs.push(String(e.message).slice(0, 300)));
     page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
-    await page.addInitScript(({ appScreen }) => {
+    await page.addInitScript(({ appScreen, idleSeconds }) => {
         const oauth2 = { initTokenClient() { return { requestAccessToken() { }, callback: null }; }, hasGrantedAllScopes() { return false; } };
         window.google = { accounts: { id: { initialize() { }, renderButton() { }, prompt() { }, disableAutoSelect() { } }, oauth2 }, oauth2 };
         window.gapi = window.gapi || { client: { setToken() { } }, load() { } };
@@ -106,6 +105,7 @@ const openApp = async (appScreen, vw = W, vh = H) => {
         localStorage.setItem('updateFromSource', 'false');
         localStorage.setItem('language', 'bg');
         localStorage.setItem('hideAssistant', 'true');
+        if (idleSeconds) localStorage.setItem('privacyIdleLock', String(idleSeconds));
         const orig = window.matchMedia.bind(window);
         window.matchMedia = (q) => {
             if (appScreen && /display-mode:\s*(standalone|fullscreen|minimal-ui)/.test(String(q))) {
@@ -113,7 +113,7 @@ const openApp = async (appScreen, vw = W, vh = H) => {
             }
             return orig(q);
         };
-    }, { appScreen });
+    }, { appScreen, idleSeconds });
     await page.goto(`${ORIGIN}/${PAGE}?demo=1`, { waitUntil: 'load' });
     const ready = await page.waitForFunction(() => document.body.classList.contains('app-ready')
         || document.querySelectorAll('#notes-container .note').length > 0, null, { timeout: 30000 })
@@ -172,64 +172,100 @@ const logoBox = (page) => page.evaluate(() => {
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), w: Math.round(r.width), h: Math.round(r.height) };
 });
 
-// ---------- 1) излизане през списъка със задачи и връщане ----------
+// Област от дъската с бележки: тук плочките биха се видели, ако овърлеят примигне.
+const CLIP = { x: 20, y: 300, width: 120, height: 120 };
+
+// ---------- 1) излизане към списъка със задачи: нищо не примигва ----------
 {
     const { ctx, page, errs, ready } = await openApp(true);
     ok(ready, '1. приложението тръгна');
     ok(!(await state(page)).visible, '1.1 преди излизането няма overlay');
 
-    // Моментът, в който Android прави снимката за списъка със задачи: blur, още преди скриването.
+    const before = await page.screenshot({ clip: CLIP });
     const b = await blurNow(page);
-    ok(b.visible, '1.2 blur при излизане показва overlay-а веднага, без изчакване', b);
-    ok(b.opacity === '1', '1.3 overlay-ът е с пълна непрозрачност (без преход)', { opacity: b.opacity });
+    ok(!b.visible, '1.2 blur при излизане не вдига overlay (няма примигване)', b);
+
+    // Същият кадър, байт-за-байт: нищо не е покрило бележките за миг.
+    const afterBlur = await page.screenshot({ clip: CLIP });
+    ok(Buffer.compare(before, afterBlur) === 0, '1.3 екранът след blur е същият като преди него (нищо не е примигнало)');
 
     const h = await goHidden(page);
-    ok(h.visible, '1.4 след скриването overlay-ът е още на екрана (снимката за списъка е чиста)', h);
+    ok(!h.visible, '1.4 скриването на страницата (снимката за списъка) не вдига overlay', h);
+    const afterHidden = await page.screenshot({ clip: CLIP });
+    ok(Buffer.compare(before, afterHidden) === 0, '1.5 екранът при скриване е същият като преди излизането');
 
-    // ---------- 2) връщане от таск мениджъра: овърлеят го няма веднага ----------
+    // ---------- 2) връщане от списъка със задачи ----------
     const v = await goVisible(page);
-    ok(v.present && !v.visible, '2.1 при връщане (страницата пак е видима) overlay-ът го няма веднага', v);
-
+    ok(!v.visible, '2.1 при връщане (страницата пак е видима) няма overlay', v);
     const f = await focusNow(page);
-    ok(!f.visible, '2.2 фокусът след връщането също не връща overlay-а', f);
+    ok(!f.visible, '2.2 фокусът след връщането също не вдига overlay', f);
 
-    await page.waitForTimeout(400);
-    ok(!(await state(page)).visible, '2.3 overlay-ът не се появява и след това (нищо не го вдига отново)');
-
-    // ---------- 3) blur без истинско скриване (системен диалог, падащо меню) ----------
-    const b2 = await blurNow(page);
-    ok(b2.visible, '3.1 blur без скриване пак показва overlay-а', b2);
-    const f2 = await focusNow(page);
-    ok(!f2.visible, '3.2 фокусът маха overlay-а от blur без истинско скриване', f2);
+    // ---------- 3) три пълни излизания и връщания подред ----------
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+        seen.push((await blurNow(page)).visible);
+        seen.push((await goHidden(page)).visible);
+        seen.push((await goVisible(page)).visible);
+        seen.push((await focusNow(page)).visible);
+    }
+    ok(seen.every(x => x === false), '3.1 при три излизания и връщания овърлеят не се показва нито веднъж', seen);
+    ok(Buffer.compare(await page.screenshot({ clip: CLIP }), before) === 0, '3.2 екранът е същият и след трите обиколки');
 
     ok(errs.length === 0, '3.3 няма изключения в конзолата', errs.slice(0, 3));
     await ctx.close();
 }
 
-// ---------- 4) клик върху логото в хедъра: овърлеят остава до „Затвори“ ----------
-// Логото е скрито от CSS в нисък landscape екран, затова тази част върви в широк контекст,
-// както в logo-shows-privacy-overlay.mjs.
+// ---------- 4) обикновен таб: също нищо ----------
 {
-    const { ctx, page, errs, ready } = await openApp(false, 1280, 900);
-    ok(ready, '4. приложението тръгна');
+    const { ctx, page, errs, ready } = await openApp(false);
+    ok(ready, '4. приложението тръгна в обикновен таб');
+    ok(!(await blurNow(page)).visible, '4.1 в обикновен таб blur не показва overlay');
+    ok(!(await goHidden(page)).visible, '4.2 в обикновен таб скриването не показва overlay');
+    ok(!(await goVisible(page)).visible, '4.3 връщането не показва overlay');
+    ok(errs.length === 0, '4.4 няма изключения в конзолата', errs.slice(0, 3));
+    await ctx.close();
+}
+
+// ---------- 5) клик върху логото: ръчният начин остава ----------
+{
+    const { ctx, page, errs, ready } = await openApp(true);
+    ok(ready, '5. приложението тръгна');
     const box = await logoBox(page);
-    ok(!!box, '4.1 логото се вижда в хедъра', box);
-    ok(await (async () => { if (!box) return false; await page.mouse.click(box.x, box.y); return true; })(), '4.2 кликнато е върху логото');
-
+    ok(!!box, '5.1 логото се вижда в хедъра', box);
+    if (box) await page.mouse.click(box.x, box.y);
     const s = await state(page);
-    ok(s.present && s.visible, '4.3 след клик върху логото overlay-ът е на екрана', s);
-
-    await page.waitForTimeout(500);
-    ok((await state(page)).visible, '4.4 overlay-ът от логото остава на екрана (не се маха сам)');
-
+    ok(s.visible, '5.2 клик върху логото вдига overlay-а', s);
     const c = await closeNow(page);
-    ok(c.clicked && !c.visible, '4.5 бутонът „Затвори“ маха overlay-а', c);
+    ok(c.clicked && !c.visible, '5.3 бутонът „Затвори“ го маха', c);
+    ok(errs.length === 0, '5.4 няма изключения в конзолата', errs.slice(0, 3));
+    await ctx.close();
+}
 
-    ok(errs.length === 0, '4.6 няма изключения в конзолата', errs.slice(0, 3));
+// ---------- 6) броячът за бездействие: защитата не е изчезнала, само се вдига по-рано ----------
+{
+    const { ctx, page, errs, ready } = await openApp(true, 15);
+    ok(ready, '6. приложението тръгна с „Заключване след“ 15 s');
+    await page.waitForTimeout(3000);
+    ok(!(await state(page)).visible, '6.1 преди 15 s овърлей няма');
+    await page.waitForTimeout(14000);
+    const idle = await state(page);
+    ok(idle.visible, '6.2 след 15 s без докосване овърлеят е на екрана', idle);
+
+    // Екранът от брояча остава и след излизане и връщане (иска „Затвори“).
+    await blurNow(page);
+    await goHidden(page);
+    await goVisible(page);
+    await focusNow(page);
+    ok((await state(page)).visible, '6.3 екранът от брояча остава след излизане и връщане');
+    const c = await closeNow(page);
+    ok(c.clicked && !c.visible, '6.4 „Затвори“ го маха', c);
+    ok(errs.length === 0, '6.5 няма изключения в конзолата', errs.slice(0, 3));
     await ctx.close();
 }
 
 await browser.close();
 srv.close();
-console.log(`${fails ? 'FAILED' : 'OK'} ${n - fails}/${n}`);
-process.exit(fails ? 1 : 0);
+
+console.log('');
+console.log(fails === 0 ? `ALL OK (${n})` : `FAILED: ${fails} от ${n}`);
+process.exit(fails === 0 ? 0 : 1);
