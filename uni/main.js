@@ -34400,7 +34400,6 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
-    let privacyWentHidden = false;   // истинско скриване по време на текущия blur
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
     let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
     let privacyArmedAt = 0;
@@ -34648,25 +34647,26 @@ initNoteWindows();
         if (!privacyProtectReady()) return;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
-        privacyWentHidden = false;
         privacyShow();
     });
 
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) { privacyArm(); return; }
         if (!privacyProtectReady()) return;
-        privacyWentHidden = true;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
         privacyShow();
     });
 
+    /* Собственикът (2.11.2026): „Само бутонът Затвори. Мигането изчезва напълно.“
+       Досега фокусът махаше плочките, когато blur не е бил истинско скриване. Android обаче дава
+       кратък фокус, преди да отчете скриване, и точно тогава плочките падаха - в кадъра за
+       списъка с приложенията се виждаха бележките. Затова фокусът вече не крие нищо: екранът се
+       маха само с бутона „Затвори“. Цената, приета от собственика: след системен диалог, избор на
+       дата/час или падащо меню плочките стоят, докато човекът не натисне „Затвори“. */
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
         privacyArm();
-        // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
-        // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
-        if (!privacyWentHidden) privacyHide();
     });
 
     window.addEventListener('resize', function () {
