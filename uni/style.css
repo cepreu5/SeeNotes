@@ -3322,27 +3322,18 @@ code {
     gap: 4px;
     /* Creates space between the notes */
     padding-right: 4px;
-    /* Space between notes and scrollbar */
+    /* Скролбарът в клетката с дата се маха (2 Nov 2026, по заявка на собственика): в 50-пикселова
+       клетка сивата ивица беше по-забележима от самите бележки. Скролът остава — бележките се
+       плъзгат с пръст или колелце, само лентата не се вижда и не заема място. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
-/* Custom scrollbar for calendar cells */
 .calendar-notes-container::-webkit-scrollbar {
-    width: 5px;
-}
-
-.calendar-notes-container::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.calendar-notes-container::-webkit-scrollbar-thumb {
-    background: #aaa;
-    border-radius: 3px;
-}
-
-@media (hover: hover) {
-    .calendar-notes-container::-webkit-scrollbar-thumb:hover {
-        background: #888;
-    }
+    width: 0;
+    height: 0;
+    display: none;
+    /* Chromium: без лента и без място за нея */
 }
 
 .calendar-mini-note {
@@ -6062,8 +6053,9 @@ header.title-hidden > div:first-child {
     box-shadow: 0 0 12px rgba(29, 245, 47, 0.45);
 }
 
-/* Две точки на един ред, цели: 28% от ширината на деня. Мястото им е запазено и в
-   дните без бележки, за да не мърдат числата нагоре-надолу в редицата. */
+/* Две точки на един ред, цели: 24% от ширината на деня (бяха 28%, 2 Nov 2026 — по заявка
+   „една идея по-малки“). Мястото им е запазено и в дните без бележки, за да не мърдат числата
+   нагоре-надолу в редицата, затова слотът остава 28cqw, а точките в него са по-малки. */
 .privacy-cal-dots {
     display: flex;
     justify-content: center;
@@ -6074,8 +6066,8 @@ header.title-hidden > div:first-child {
 }
 
 .privacy-cal-dots i {
-    width: 28cqw;
-    height: 28cqw;
+    width: 24cqw;
+    height: 24cqw;
     border-radius: 50%;
 }
 
