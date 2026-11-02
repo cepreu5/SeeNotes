@@ -322,16 +322,14 @@ const idleRow = (page) => page.evaluate(() => {
     await advance(page, 25000);
     ok(!(await state(page)).visible, '4.5 скролът също нулира брояча (слушател във фаза прихващане)');
 
-    // ---------- b3.43 остава: екранът от blur се маха при фокус ----------
+    // ---------- b3.50: при излизане не се вдига нищо (само броячът и логото вдигат) ----------
     await closeOverlay(page);
     const b1 = await blurNow(page);
-    ok(b1.visible, '9.1 blur вдига защитния екран както досега');
-    const f1 = await focusNow(page);
-    ok(!f1.visible, '9.2 blur без истинско скриване се маха при връщане на фокуса (b3.43)', f1);
-    await blurNow(page);
+    ok(!b1.visible, '9.1 blur не вдига защитния екран (b3.50: няма го примигването при излизане)', b1);
     await goHidden(page);
-    const f2 = await focusNow(page);
-    ok(f2.visible, '9.3 след истинско скриване екранът остава и иска „Затвори“ (b3.43)', f2);
+    ok(!(await state(page)).visible, '9.2 скриването на страницата също не вдига екран (b3.50)');
+    const f1 = await focusNow(page);
+    ok(!f1.visible, '9.3 фокусът не вдига нищо', f1);
     await goVisible(page);
     await closeOverlay(page);
 

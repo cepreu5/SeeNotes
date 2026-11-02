@@ -218,11 +218,14 @@ const openMnv = async (opts = {}) => {
     });
     ok(!look.overlay && look.note, '1.6 uni: бележките са на екрана, без плочки отгоре', look);
 
-    // След пускането защитата работи както преди.
+    // След пускането защитата работи, но по свой път (b3.50): blur и скриване не вдигат нищо,
+    // екранът идва от брояча за бездействие и от клика върху логото.
     await page.waitForTimeout(900);
     await launchBlur(page);
+    ok(!(await overlayState(page)).visible, '1.7 uni: след пускането blur не вдига екрана (b3.50)', await overlayState(page));
+    await page.evaluate(() => window.privacyOverlayShow());
     const shown = await overlayState(page);
-    ok(shown.visible, '1.7 uni: след пускането истински blur пак вдига екрана', shown);
+    ok(shown.visible, '1.7б uni: екранът се вдига по своя път (лого/брояч)', shown);
     const tiles = await page.evaluate(() => [...document.querySelectorAll('#privacy-overlay .privacy-tile')].map(t => Math.round(t.getBoundingClientRect().width)));
     ok(tiles.length === 2 && tiles.every(w => w === 300), '1.8 uni: двете плочки са 300px', tiles);
     const closed = await page.evaluate(() => { document.querySelector('#privacy-overlay .privacy-close').click(); const ov = document.getElementById('privacy-overlay'); return getComputedStyle(ov).display !== 'none'; });
@@ -240,7 +243,8 @@ const openMnv = async (opts = {}) => {
 
     // ---------- 3) изключване, докато екранът е вдигнат ----------
     await page.waitForTimeout(400);
-    await launchBlur(page);
+    await page.evaluate(() => window.privacyOverlayShow());
+    await page.waitForTimeout(200);
     ok((await overlayState(page)).visible, '3.1 uni: екранът е вдигнат преди изключването');
     const off = await page.evaluate(() => {
         document.getElementById('auto-protect-checkbox').click();
@@ -297,7 +301,7 @@ const openMnv = async (opts = {}) => {
     ok(on.stored === 'true' && on.checked, '4.9 uni: включването се записва', on);
     await page.waitForTimeout(900);
     await launchBlur(page);
-    ok((await overlayState(page)).visible, '4.10 uni: след включване blur пак вдига екрана', await overlayState(page));
+    ok(!(await overlayState(page)).visible, '4.10 uni: след включване blur не вдига екрана (b3.50: вдига го броячът)', await overlayState(page));
     ok(errs.length === 0, '4.11 uni: няма изключения в конзолата', errs);
     await ctx.close();
 }

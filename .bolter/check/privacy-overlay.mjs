@@ -1,8 +1,9 @@
-// Екран за поверителност: blur overlay при излизане от приложението (режим на екран на приложението).
+// Екран за поверителност: как изглежда overlay-ът (режим на екран на приложението).
 //
 // Какво проверява (истински Chromium, истинският uni код, ?demo=1, мобилен контекст с докосване 390x844):
-//   1) в режим на екран на приложението, при скриване на страницата (visibilitychange + hidden)
-//      overlay-ът се показва и покрива целия екран, с истински blur отзад;
+//   1) в режим на екран на приложението overlay-ът се вдига и покрива целия екран, с истински
+//      blur отзад (b3.50: вдига се направо с window.privacyOverlayShow() — при скриване на
+//      приложението вече не излиза нищо, за да не примигва при излизане към списъка със задачи);
 //   2) двете плочки са точно 300x300, една под друга, центрирани хоризонтално и вертикално;
 //   3) горната плочка показва същия часовник като при натискане на часа на бележка (12/3/6/9,
 //      9 междинни маркера, три стрелки) и стрелките наистина вървят;
@@ -180,7 +181,7 @@ const measure = (page) => page.evaluate(() => {
     const before = await page.evaluate(() => !!document.querySelector('.privacy-overlay.is-visible'));
     ok(before === false, 'A: преди скриването overlay-ът го няма на екрана');
 
-    await goHidden(page);
+    await page.evaluate(() => window.privacyOverlayShow());
     await page.waitForTimeout(400);
     const m = await measure(page);
 
@@ -246,7 +247,7 @@ const measure = (page) => page.evaluate(() => {
     });
     ok(after === 'none', 'A: Затвори скрива overlay-а', { display: after });
 
-    // Връщане на екрана: overlay-ът не изчезва сам, чака Затвори.
+    // b3.50: следващо скриване не вдига overlay-а — вдигат го само логото и броячът.
     await page.evaluate(() => {
         Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
         document.dispatchEvent(new Event('visibilitychange'));
@@ -256,7 +257,15 @@ const measure = (page) => page.evaluate(() => {
         const ov = document.getElementById('privacy-overlay');
         return ov ? getComputedStyle(ov).display : 'missing';
     });
-    ok(shownAgain === 'flex', 'A: при следващо скриване overlay-ът пак се показва', { display: shownAgain });
+    ok(shownAgain === 'none', 'A: при следващо скриване overlay-ът не се вдига сам (b3.50)', { display: shownAgain });
+    await page.evaluate(() => window.privacyOverlayShow());
+    await page.waitForTimeout(200);
+    const shownByLogo = await page.evaluate(() => {
+        const ov = document.getElementById('privacy-overlay');
+        return ov ? getComputedStyle(ov).display : 'missing';
+    });
+    ok(shownByLogo === 'flex', 'A: логото/броячът вдигат overlay-а и след Затвори', { display: shownByLogo });
+    await page.evaluate(() => { const b = document.querySelector('#privacy-overlay .privacy-close'); if (b) b.click(); });
 
     ok(errs.length === 0, 'A: няма изключения в конзолата', errs.slice(0, 3));
     await ctx.close();
@@ -279,7 +288,7 @@ const measure = (page) => page.evaluate(() => {
 {
     const { ctx, page, errs, ready } = await openApp(true, 320, 568);
     ok(ready, 'C: приложението се зарежда на малък екран (320x568)');
-    await goHidden(page);
+    await page.evaluate(() => window.privacyOverlayShow());
     await page.waitForTimeout(400);
     const m = await measure(page);
     const [t0, t1] = m.tiles;
