@@ -654,6 +654,18 @@
                     <input type="checkbox" id="auto-protect-checkbox" class="settings-checkbox">
                 </div>
 
+                <div class="settings-mobile-row zoom-control-wrapper" id="idle-lock" style="margin-top: 10px;">
+                    <label for="idle-lock-select"
+                        style="margin-right: 10px; flex-basis: 200px; flex-shrink: 0; text-align: left;"
+                        data-key="idleLockLabel">Lock after:</label>
+                    <select id="idle-lock-select" class="zoom-input-select" style="width: 80px;"
+                        data-key-title="idleLockHint" title="Locks the screen when you stop touching the app.">
+                        <option value="15">15 s</option>
+                        <option value="30" selected>30 s</option>
+                        <option value="60">60 s</option>
+                    </select>
+                </div>
+
                 <div class="settings-mobile-row zoom-control-wrapper" id="hide-toast" style="margin-top: 10px;">
                     <label for="hide-toast-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"

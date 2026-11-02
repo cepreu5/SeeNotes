@@ -18007,7 +18007,7 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
 // Езикът е сменен, но профилът в Drive още не е обновен: при старта изборът печели пред профилната снимка
 const PENDING_LANG_SYNC_KEY = 'pending_language_sync';
 const appSettingsKeys = [
-    'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'privacyAutoProtect', 'hideToast', 'trashSearch',
+    'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'privacyAutoProtect', 'privacyIdleLock', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'singleNoteMode', 'showNewBoard', 'oneTapLink',
     'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg',
     'gcalNotes', 'gcalCalendarId', 'gcalState',
@@ -19899,6 +19899,20 @@ async function createSettingsUI(boardsData, boardParseError) {
             if (!autoProtectCheckbox.checked && typeof window.privacyOverlayHide === 'function') {
                 window.privacyOverlayHide();
             }
+            showToast(_('settingSaved'), 2000);
+        });
+    }
+    // Заключване след бездействие (b3.48): колко секунди без докосване, преди защитният екран.
+    // Един ключ, не два: изключената „Автоматична защита“ изключва и това заключване.
+    const idleLockSelect = document.getElementById('idle-lock-select');
+    if (idleLockSelect) {
+        const idleSteps = ['15', '30', '60'];
+        const idleSaved = localStorage.getItem('privacyIdleLock');
+        idleLockSelect.value = idleSteps.indexOf(idleSaved) >= 0 ? idleSaved : '30';
+        idleLockSelect.addEventListener('change', () => {
+            localStorage.setItem('privacyIdleLock', idleLockSelect.value);
+            // Новото време се брои от смяната, не от предишната активност.
+            if (typeof window.privacyIdleReset === 'function') window.privacyIdleReset();
             showToast(_('settingSaved'), 2000);
         });
     }
@@ -34403,6 +34417,14 @@ initNoteWindows();
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
     let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
     let privacyArmedAt = 0;
+    // Заключване след бездействие (b3.48): брояч до защитния екран и флаг, че екранът е вдигнат
+    // именно от брояча. Вдигнатият от blur екран се държи точно както в b3.43.
+    const PRIVACY_IDLE_KEY = 'privacyIdleLock';
+    const PRIVACY_IDLE_DEFAULT = 30;
+    const PRIVACY_IDLE_STEPS = [15, 30, 60];
+    let privacyIdleTimer = null;     // броячът: проверка през секунда
+    let privacyIdleFrom = 0;         // откога тече бездействие
+    let privacyIdleRaised = false;   // екранът е вдигнат от брояча, не от blur
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -34441,6 +34463,51 @@ initNoteWindows();
         privacyArm();
         if (!privacyAutoProtectOn()) return false;
         return privacyArmed && (Date.now() - privacyArmedAt) >= PRIVACY_SETTLE_MS;
+    }
+
+    /* ===== Заключване след бездействие (b3.48) =====
+       Същият защитен екран, но вдигнат от брояч: след N секунди без докосване, клавиш или
+       скролване (Настройки → „Заключване след“, по подразбиране 30 s). Причината: Android
+       снима кадъра за списъка с приложенията, затова екранът трябва да е вдигнат по-рано,
+       не в мига на излизане. Броячът стъпва върху защитата от b3.43 и не променя нищо в нея:
+       blur, visibilitychange и focus остават същите, броячът стои до тях. */
+
+    // Колко секунди бездействие (15 / 30 / 60, по подразбиране 30).
+    function privacyIdleSeconds() {
+        let v = 0;
+        try { v = parseInt(localStorage.getItem(PRIVACY_IDLE_KEY), 10); } catch (e) { v = 0; }
+        return PRIVACY_IDLE_STEPS.indexOf(v) >= 0 ? v : PRIVACY_IDLE_DEFAULT;
+    }
+
+    // Позволено ли е заключване по брояч сега: същата настройка, режим на приложението и
+    // флаг за системен избор като при blur. Докато прозорецът не е на фокус (системен избор,
+    // друг екран) броячът не заключва — тогава приложението не е това, което е на екрана.
+    function privacyIdleAllowed() {
+        if (!privacyArmed || !privacyAutoProtectOn()) return false;
+        if (!privacyAppScreenMode()) return false;
+        if (privacyExpectingSystemUI()) return false;
+        if (document.hidden) return false;
+        if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
+        return true;
+    }
+
+    function privacyIdleTick() {
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) return;
+        if (!privacyIdleAllowed()) {
+            privacyIdleFrom = Date.now();
+            return;
+        }
+        // Броячът тръгва 0,8 s след старт — същото изчакване, което вече пази екрана да не
+        // излезе още при пускане.
+        const from = Math.max(privacyIdleFrom, privacyArmedAt + PRIVACY_SETTLE_MS);
+        if (Date.now() - from < privacyIdleSeconds() * 1000) return;
+        privacyIdleRaised = true;
+        privacyShow();
+    }
+
+    // Докосване, клавиш или скролване: четенето на дълга бележка не е бездействие.
+    function privacyIdleReset() {
+        privacyIdleFrom = Date.now();
     }
 
     function privacyBuildClock() {
@@ -34612,6 +34679,9 @@ initNoteWindows();
     }
 
     function privacyHide() {
+        // Екранът вече не е вдигнат от брояча, а броячът тръгва наново от затварянето.
+        privacyIdleRaised = false;
+        privacyIdleFrom = Date.now();
         if (!privacyOverlay) return;
         privacyOverlay.classList.remove('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'true');
@@ -34654,7 +34724,15 @@ initNoteWindows();
        се показва овърлеят“. Щом страницата отново е видима, плочките се махат веднага — без да се
        чака докосване и без бутон „Затвори“. */
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) { privacyArm(); privacyHide(); return; }
+        if (!document.hidden) {
+            privacyArm();
+            privacyIdleFrom = Date.now();
+            /* Екранът, вдигнат от брояча, се маха само с бутона „Затвори“ (b3.49). Всяко друго
+               вдигане (blur, смяна на приложение) се маха веднага, без докосване и без бутон —
+               иначе плочките остават след връщане от списъка с приложенията (b3.48). */
+            if (!privacyIdleRaised) privacyHide();
+            return;
+        }
         if (!privacyProtectReady()) return;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
@@ -34664,6 +34742,10 @@ initNoteWindows();
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
         privacyArm();
+        privacyIdleFrom = Date.now();
+        /* Екранът, вдигнат от брояча, се маха само с бутона „Затвори“ (b3.49): връщането на фокуса
+           не го пипа, иначе всяко докосване до заключения екран го сваля. */
+        if (privacyIdleRaised) return;
         /* Собственикът (02.11.2026): „при връщане от таск мениджъра (активиране на приложение) да не
            се показва овърлеят“. Затова при фокус плочките се махат винаги, щом страницата е видима —
            и след истинско скриване, не само при blur без скриване (системен диалог, избор на час,
@@ -34692,6 +34774,18 @@ initNoteWindows();
     }, true);
 
     privacyArm();
+
+    /* Броячът на бездействието: нулира се при докосване, клавиш и скролване и проверява през
+       секунда. Слушателите са в фаза прихващане, за да виждат и скрола на вътрешни елементи,
+       който не изплува до документа. */
+    ['touchstart', 'touchmove', 'pointerdown', 'mousedown', 'keydown', 'wheel', 'scroll'].forEach(function (type) {
+        document.addEventListener(type, privacyIdleReset, { passive: true, capture: true });
+    });
+    privacyIdleFrom = Date.now();
+    if (privacyIdleTimer) clearInterval(privacyIdleTimer);
+    privacyIdleTimer = setInterval(privacyIdleTick, 1000);
+
     window.privacyOverlayShow = privacyShow;
     window.privacyOverlayHide = privacyHide;
+    window.privacyIdleReset = privacyIdleReset;
 })();
