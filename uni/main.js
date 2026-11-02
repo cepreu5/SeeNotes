@@ -19902,6 +19902,24 @@ async function createSettingsUI(boardsData, boardParseError) {
             showToast(_('settingSaved'), 2000);
         });
     }
+    // Запис на защитния екран (debug): кое събитие какво е направило. Пази се само на това
+    // устройство и не влиза в профила в Drive — това е диагностика, не настройка.
+    const privacyDebugCheckbox = document.getElementById('privacy-debug-checkbox');
+    if (privacyDebugCheckbox) {
+        privacyDebugCheckbox.checked = localStorage.getItem('privacyDebug') === 'true';
+        privacyDebugCheckbox.addEventListener('change', () => {
+            const on = privacyDebugCheckbox.checked;
+            if (typeof window.privacyDebugSet === 'function') {
+                window.privacyDebugSet(on);
+            } else if (on) {
+                localStorage.setItem('privacyDebug', 'true');
+            } else {
+                localStorage.removeItem('privacyDebug');
+                localStorage.removeItem('privacyDebugLog');
+            }
+            showToast(_('settingSaved'), 2000);
+        });
+    }
     const trashSearchCheckbox = document.getElementById('trash-search-checkbox');
     if (trashSearchCheckbox) {
         trashSearchCheckbox.checked = localStorage.getItem('trashSearch') === 'true';
@@ -34405,6 +34423,243 @@ initNoteWindows();
     let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
     let privacyArmedAt = 0;
 
+    /* ===== Debug запис ============================================================
+       Собственик, 2.11.2026: „Сложи debug записа да проследим детайлно процеса, кое
+       събитие активира защитния екран, какво се случва при пращане в task list-а и кога
+       получава фокус, който вдига overlay-а.“
+
+       Затова всяко от тези събития (blur, visibilitychange, pagehide/pageshow,
+       freeze/resume, focus, показване и скриване на екрана) оставя ред с това какво е
+       видял браузърът в онзи момент и какво е решил кодът — показва, прескача, защо.
+       Редовете се пазят в localStorage, значи оживяват и след като Android убие
+       страницата. Включва се от Настройки („Запис на защитния екран“) или с
+       ?privacydebug=1 в адреса; изключва се с ?privacydebug=0.                    */
+    const PRIVACY_DEBUG_KEY = 'privacyDebug';
+    const PRIVACY_LOG_KEY = 'privacyDebugLog';
+    const PRIVACY_LOG_MAX = 240;     // колко реда се пазят общо
+    const PRIVACY_LOG_SHOWN = 60;    // колко от тях се виждат в панела
+    let privacyLogLines = null;
+    let privacyDebugView = null;
+
+    function privacyDebugOn() {
+        try { return localStorage.getItem(PRIVACY_DEBUG_KEY) === 'true'; } catch (e) { return false; }
+    }
+
+    function privacyLogLoad() {
+        if (privacyLogLines) return privacyLogLines;
+        let lines = [];
+        try {
+            const raw = localStorage.getItem(PRIVACY_LOG_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) lines = parsed.filter(l => typeof l === 'string');
+            }
+        } catch (e) { lines = []; }
+        privacyLogLines = lines;
+        return privacyLogLines;
+    }
+
+    function privacyLogSave() {
+        try { localStorage.setItem(PRIVACY_LOG_KEY, JSON.stringify(privacyLogLines || [])); } catch (e) { /* ignore */ }
+    }
+
+    function privacyLogClear() {
+        privacyLogLines = [];
+        privacyLogSave();
+        privacyRefreshDebugView();
+    }
+
+    // Включване/изключване от Настройки. Изключването трие и паметта в страницата, не само
+    // записаното в localStorage — иначе панелът показва стари редове.
+    function privacyDebugSet(on) {
+        try {
+            if (on) {
+                localStorage.setItem(PRIVACY_DEBUG_KEY, 'true');
+            } else {
+                localStorage.removeItem(PRIVACY_DEBUG_KEY);
+                localStorage.removeItem(PRIVACY_LOG_KEY);
+            }
+        } catch (e) { /* ignore */ }
+        privacyLogLines = on ? null : [];
+        privacyRefreshDebugView();
+        if (on) privacyLog('debug-on', 'recording started from Settings');
+    }
+
+    function privacyClockText(t) {
+        const d = new Date(t);
+        const p = (n, w) => String(n).padStart(w || 2, '0');
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + p(d.getMilliseconds(), 3);
+    }
+
+    function privacyVisible() {
+        return !!(privacyOverlay && privacyOverlay.classList.contains('is-visible'));
+    }
+
+    // Какво вижда браузърът точно в този момент — това липсва, когато се гадае по описание.
+    function privacyEnv() {
+        const vv = window.visualViewport;
+        const de = document.documentElement;
+        const foc = (typeof document.hasFocus === 'function') ? document.hasFocus() : null;
+        const exp = privacyExpectUntil - Date.now();
+        return 'hid=' + (document.hidden ? 1 : 0) + '/' + (document.visibilityState || '?')
+            + ' foc=' + (foc === null ? '?' : (foc ? 1 : 0))
+            + ' win=' + window.innerWidth + 'x' + window.innerHeight
+            + ' vv=' + (vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) : '-')
+            + ' de=' + (de ? de.clientWidth + 'x' + de.clientHeight : '-')
+            + ' app=' + (privacyAppScreenMode() ? 1 : 0)
+            + ' arm=' + (privacyArmed ? '1(' + Math.round(Date.now() - privacyArmedAt) + 'ms)' : '0')
+            + ' cfg=' + (privacyAutoProtectOn() ? 1 : 0)
+            + ' ovl=' + (privacyVisible() ? 1 : 0)
+            + ' went=' + (privacyWentHidden ? 1 : 0)
+            + ' exp=' + (exp > 0 ? Math.round(exp) + 'ms' : '0');
+    }
+
+    // Защо защитата не е готова — точната причина, не „понякога работи“.
+    function privacyReadyReason() {
+        if (!privacyAutoProtectOn()) return 'setting-off';
+        if (!privacyArmed) return 'not-armed';
+        const left = PRIVACY_SETTLE_MS - (Date.now() - privacyArmedAt);
+        if (left > 0) return 'settle-left-' + Math.round(left) + 'ms';
+        return 'ready';
+    }
+
+    function privacyLog(kind, decision) {
+        if (!privacyDebugOn()) return;
+        const lines = privacyLogLoad();
+        lines.push(privacyClockText(Date.now()) + ' ' + kind + ' [' + (decision || '') + '] ' + privacyEnv());
+        while (lines.length > PRIVACY_LOG_MAX) lines.shift();
+        privacyLogSave();
+        if (privacyDebugView && privacyDebugView.classList.contains('is-open')) privacyRefreshDebugView();
+    }
+
+    function privacyLogText() {
+        return privacyLogLoad().join('\n');
+    }
+
+    function privacyBuildDebugView() {
+        if (privacyDebugView) return privacyDebugView;
+        const bg = privacyIsBg();
+        const view = document.createElement('div');
+        view.className = 'privacy-debug-view';
+        view.id = 'privacy-debug-view';
+
+        const head = document.createElement('div');
+        head.className = 'privacy-debug-head';
+
+        const title = document.createElement('span');
+        title.className = 'privacy-debug-title';
+        title.textContent = bg ? 'Запис на защитния екран' : 'Privacy screen log';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'privacy-debug-action';
+        copyBtn.textContent = bg ? 'Копирай' : 'Copy';
+        copyBtn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            privacyCopyLog(copyBtn, bg);
+        });
+
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'privacy-debug-action';
+        clearBtn.textContent = bg ? 'Изчисти' : 'Clear';
+        clearBtn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            privacyLogClear();
+            privacyLog('cleared', 'log cleared by hand');
+        });
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'privacy-debug-action';
+        closeBtn.textContent = bg ? 'Затвори' : 'Close';
+        closeBtn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            view.classList.remove('is-open');
+        });
+
+        head.appendChild(title);
+        head.appendChild(copyBtn);
+        head.appendChild(clearBtn);
+        head.appendChild(closeBtn);
+
+        const pre = document.createElement('pre');
+        pre.className = 'privacy-debug-log';
+
+        const hint = document.createElement('div');
+        hint.className = 'privacy-debug-hint';
+        hint.textContent = bg
+            ? 'Новите редове са най-отдолу. «Копирай» ги слага в клипборда, за да ги пратиш.'
+            : 'Newest lines are at the bottom. «Copy» puts them on the clipboard so you can send them.';
+
+        view.appendChild(head);
+        view.appendChild(hint);
+        view.appendChild(pre);
+        document.body.appendChild(view);
+        view.addEventListener('click', function (ev) { ev.stopPropagation(); });
+        privacyDebugView = view;
+        return view;
+    }
+
+    function privacyCopyLog(btn, bg) {
+        const text = privacyLogText();
+        const done = () => {
+            btn.textContent = bg ? 'Копирано' : 'Copied';
+            setTimeout(() => { btn.textContent = bg ? 'Копирай' : 'Copy'; }, 1500);
+        };
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, () => privacyCopyFallback(text, done));
+                return;
+            }
+        } catch (e) { /* ignore */ }
+        privacyCopyFallback(text, done);
+    }
+
+    function privacyCopyFallback(text, done) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', 'readonly');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            done();
+        } catch (e) { /* ignore */ }
+    }
+
+    function privacyRefreshDebugView() {
+        if (!privacyDebugView) return;
+        const pre = privacyDebugView.querySelector('.privacy-debug-log');
+        if (!pre) return;
+        const lines = privacyLogLoad().slice(-PRIVACY_LOG_SHOWN);
+        pre.textContent = lines.length ? lines.join('\n') : (privacyIsBg() ? '(няма записани събития)' : '(no events recorded)');
+        pre.scrollTop = pre.scrollHeight;
+    }
+
+    function privacyOpenDebugView() {
+        privacyBuildDebugView();
+        privacyRefreshDebugView();
+        privacyDebugView.classList.add('is-open');
+        privacyLog('debug-view', 'opened by hand');
+    }
+
+    // Ръчно включване/изключване от адреса: ?privacydebug=1 и ?privacydebug=0.
+    try {
+        const url = String(location.search || '') + String(location.hash || '');
+        if (url.indexOf('privacydebug=1') >= 0) localStorage.setItem(PRIVACY_DEBUG_KEY, 'true');
+        if (url.indexOf('privacydebug=0') >= 0) {
+            localStorage.removeItem(PRIVACY_DEBUG_KEY);
+            localStorage.removeItem(PRIVACY_LOG_KEY);
+        }
+    } catch (e) { /* ignore */ }
+
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
     }
@@ -34501,6 +34756,19 @@ initNoteWindows();
         });
         closeBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
         privacyOverlay.appendChild(closeBtn);
+
+        // Бутонът за записа стои до „Затвори“ и се вижда само когато записът е включен.
+        const debugBtn = document.createElement('button');
+        debugBtn.type = 'button';
+        debugBtn.className = 'privacy-debug-open';
+        debugBtn.textContent = 'Debug';
+        debugBtn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            privacyOpenDebugView();
+        });
+        debugBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+        privacyOverlay.appendChild(debugBtn);
 
         document.body.appendChild(privacyOverlay);
     }
@@ -34607,19 +34875,23 @@ initNoteWindows();
         privacyTick();
         privacyFit();
         privacyOverlay.classList.add('is-visible');
+        privacyOverlay.classList.toggle('has-debug', privacyDebugOn());
         privacyOverlay.setAttribute('aria-hidden', 'false');
         if (privacyTimer) clearInterval(privacyTimer);
         privacyTimer = setInterval(privacyTick, 1000);
+        privacyLog('show', 'overlay visible');
     }
 
     function privacyHide() {
         if (!privacyOverlay) return;
+        const wasVisible = privacyVisible();
         privacyOverlay.classList.remove('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'true');
         if (privacyTimer) {
             clearInterval(privacyTimer);
             privacyTimer = null;
         }
+        if (wasVisible) privacyLog('hide', 'overlay hidden');
     }
 
     /* Системният избор на файл е отделен екран: той вдига blur и често скрива страницата.
@@ -34645,19 +34917,27 @@ initNoteWindows();
        бележките), а показваме плочките още при blur: прозорецът е изгубил фокус, но още е
        на екрана, значи следващият кадър вече е с часовника и календара. */
     window.addEventListener('blur', function () {
-        if (!privacyProtectReady()) return;
-        if (privacyExpectingSystemUI()) return;
-        if (!privacyAppScreenMode()) return;
+        const ready = privacyProtectReady();
+        if (!ready) { privacyLog('blur', 'skip: ' + privacyReadyReason()); return; }
+        if (privacyExpectingSystemUI()) { privacyLog('blur', 'skip: system UI (file picker)'); return; }
+        if (!privacyAppScreenMode()) { privacyLog('blur', 'skip: not installed app mode'); return; }
         privacyWentHidden = false;
+        privacyLog('blur', 'SHOW');
         privacyShow();
     });
 
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) { privacyArm(); return; }
-        if (!privacyProtectReady()) return;
+        if (!document.hidden) {
+            privacyArm();
+            privacyLog('visibilitychange', 'visible -> arm');
+            return;
+        }
+        const ready = privacyProtectReady();
+        if (!ready) { privacyLog('visibilitychange', 'hidden, skip: ' + privacyReadyReason()); return; }
         privacyWentHidden = true;
-        if (privacyExpectingSystemUI()) return;
-        if (!privacyAppScreenMode()) return;
+        if (privacyExpectingSystemUI()) { privacyLog('visibilitychange', 'hidden, skip: system UI (went=1)'); return; }
+        if (!privacyAppScreenMode()) { privacyLog('visibilitychange', 'hidden, skip: not installed app mode'); return; }
+        privacyLog('visibilitychange', 'hidden SHOW');
         privacyShow();
     });
 
@@ -34666,11 +34946,32 @@ initNoteWindows();
         privacyArm();
         // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
         // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
-        if (!privacyWentHidden) privacyHide();
+        if (!privacyWentHidden) {
+            const wasVisible = privacyVisible();
+            privacyHide();
+            privacyLog('focus', wasVisible ? 'HIDE (blur without hiding)' : 'nothing to hide');
+        } else {
+            privacyLog('focus', 'keep overlay (went=1)');
+        }
     });
 
+    /* Събитията на самата страница: при пращане в списъка с приложенията Chrome може да
+       замрази страницата, без да пусне blur. Затова се записват и те — по тях се вижда
+       точно какво е станало, когато в списъка няма плочки. */
+    window.addEventListener('pagehide', function () { privacyLog('pagehide', 'page going away'); });
+    window.addEventListener('pageshow', function (ev) { privacyLog('pageshow', 'persisted=' + (ev && ev.persisted ? 1 : 0)); });
+    document.addEventListener('freeze', function () { privacyLog('freeze', 'page frozen by the system'); });
+    document.addEventListener('resume', function () { privacyLog('resume', 'page resumed'); });
+
+    /* Промяна на размера: при отваряне на клавиатурата идват десетки събития, затова се
+       записва най-много по един ред на 400 мс — иначе записките на blur се изтласкват. */
+    let privacyResizeLoggedAt = 0;
     window.addEventListener('resize', function () {
-        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
+        if (privacyVisible()) privacyFit();
+        const now = Date.now();
+        if (now - privacyResizeLoggedAt < 400) return;
+        privacyResizeLoggedAt = now;
+        privacyLog('resize', privacyVisible() ? 'refit' : 'not visible');
     });
 
     /* Собственикът (31.10.2026): „покажи защитния овърлей при клик на логото на приложението в
@@ -34685,9 +34986,16 @@ initNoteWindows();
         ev.preventDefault();
         ev.stopPropagation();
         privacyShow();
+        privacyLog('logo-click', 'SHOW by hand');
     }, true);
 
     privacyArm();
+    privacyLog('start', 'page loaded, arm=' + (privacyArmed ? 1 : 0) + ' ua=' + (navigator.userAgent || ''));
     window.privacyOverlayShow = privacyShow;
     window.privacyOverlayHide = privacyHide;
+    window.privacyDebugOn = privacyDebugOn;
+    window.privacyDebugSet = privacyDebugSet;
+    window.privacyDebugText = privacyLogText;
+    window.privacyDebugClear = privacyLogClear;
+    window.privacyDebugOpen = privacyOpenDebugView;
 })();
