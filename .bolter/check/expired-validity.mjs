@@ -326,6 +326,17 @@ const badgeDay = await badgeOf('ИЗТЕКЛА БЕЗ ЧАС');
 ok(badgeDay && badgeDay.hasBadge && /^изтекла /.test(badgeDay.text) && badgeDay.text.includes('Работа') && !badgeDay.text.includes(':'),
     'без час значката няма час: „изтекла <дата> · Работа“', badgeDay);
 ok(badgeHour.xv === '1' && badgeDay.xv === '1', 'картите носят белега dataset.xv (изтекла)', { a: badgeHour.xv, b: badgeDay.xv });
+// Значката трябва да е ИЗЦЯЛО в картата: wrapper-ът е с height: 100% и без поправката
+// (has-expired-badge) тя излиза под долния ръб и се реже от overflow: hidden на картата.
+const badgeInside = await page.evaluate(() => {
+    const card = Array.from(document.querySelectorAll('#notes-container .note'))
+        .find(c => (c.querySelector('.note-title-truncated')?.textContent || '').trim() === 'ИЗТЕКЛА ЧАСОВА');
+    const badge = card && card.querySelector('.note-expired-badge');
+    if (!badge) return { err: 'няма значка' };
+    const c = card.getBoundingClientRect(), b = badge.getBoundingClientRect();
+    return { gap: Math.round(c.bottom - b.bottom), cardBottom: Math.round(c.bottom), badgeBottom: Math.round(b.bottom) };
+});
+ok(badgeInside.gap >= 4, 'значката е изцяло в картата (не се реже от долния ръб)', badgeInside);
 // Снимка само при поискване (SHOT=/път.png) - в хранилището не влизат снимки.
 if (process.env.SHOT) {
     await page.screenshot({ path: process.env.SHOT });
