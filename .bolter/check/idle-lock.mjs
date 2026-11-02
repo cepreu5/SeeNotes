@@ -270,7 +270,7 @@ const idleRow = (page) => page.evaluate(() => {
     ok(row.prevId === 'auto-protect', '1.2 редът е точно под „Автоматична защита“', row);
     ok(row.dataKey === 'idleLockLabel' && /Заключване след/.test(row.label || ''), '1.3 етикетът е преведен на български', row);
     ok(/заключва/.test(row.title || ''), '1.4 подсказката е преведена (вторият i18n ключ)', { title: row.title });
-    ok(JSON.stringify(row.options) === JSON.stringify(['15', '30', '60']), '1.5 изборът е 15 / 30 / 60', { options: row.options });
+    ok(JSON.stringify(row.options) === JSON.stringify(['10', '15', '30', '60']), '1.5 изборът е 10 / 15 / 30 / 60', { options: row.options });
     ok(row.value === '30', '1.6 по подразбиране е 30 секунди', { value: row.value });
     ok(row.labelShown && row.overflow <= 1 && row.selectInside, '1.7 редът се побира в Настройки на 390 px', row);
 
