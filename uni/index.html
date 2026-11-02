@@ -820,6 +820,16 @@
                                 data-key="showNewBoardLabel"><strong><i>New</i></strong>:</label>
                             <input type="checkbox" id="show-new-board-checkbox" class="settings-checkbox">
                         </div>
+
+                        <!-- b3.54: „Невалидни“ (Expired) - филтърът за изтекли бележки. Изключен, той
+                             само скрива реда в менюто; бележките не се връщат в бордовете си. -->
+                        <div class="settings-mobile-row zoom-control-wrapper" id="show-expired-board"
+                            style="margin-top: 10px; padding-bottom: 5px;">
+                            <label for="show-expired-board-checkbox"
+                                style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
+                                data-key="expiredBoardTitle"><strong><i>Невалидни (Expired)</i></strong>:</label>
+                            <input type="checkbox" id="show-expired-board-checkbox" class="settings-checkbox">
+                        </div>
                     </div>
                     <hr class="accordion-line" style="flex-grow: 1; margin-left: 0px;">
                 </div>
