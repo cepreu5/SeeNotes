@@ -34400,7 +34400,6 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
-    let privacyWentHidden = false;   // истинско скриване по време на текущия blur
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
     let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
     let privacyArmedAt = 0;
@@ -34648,14 +34647,15 @@ initNoteWindows();
         if (!privacyProtectReady()) return;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
-        privacyWentHidden = false;
         privacyShow();
     });
 
+    /* Собственикът (02.11.2026): „при връщане от таск мениджъра (активиране на приложение) да не
+       се показва овърлеят“. Щом страницата отново е видима, плочките се махат веднага — без да се
+       чака докосване и без бутон „Затвори“. */
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) { privacyArm(); return; }
+        if (!document.hidden) { privacyArm(); privacyHide(); return; }
         if (!privacyProtectReady()) return;
-        privacyWentHidden = true;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
         privacyShow();
@@ -34664,9 +34664,13 @@ initNoteWindows();
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
         privacyArm();
-        // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
-        // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
-        if (!privacyWentHidden) privacyHide();
+        /* Собственикът (02.11.2026): „при връщане от таск мениджъра (активиране на приложение) да не
+           се показва овърлеят“. Затова при фокус плочките се махат винаги, щом страницата е видима —
+           и след истинско скриване, не само при blur без скриване (системен диалог, избор на час,
+           падащо меню, където приложението не е напускало екрана). Докато document.hidden още е в
+           сила, фокусът не пипа нищо: ранен фокус точно преди скриването показваше бележките в
+           снимката, която Android прави за списъка с приложенията. */
+        if (!document.hidden) privacyHide();
     });
 
     window.addEventListener('resize', function () {
