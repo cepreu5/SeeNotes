@@ -34400,8 +34400,8 @@ initNoteWindows();
     let privacyClock = null;
     let privacyCal = null;
     let privacyTimer = null;
+    let privacyWentHidden = false;   // истинско скриване по време на текущия blur
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
-    let privacySwallowClickUntil = 0; // до кога кликът след докосването, което маха екрана, се поглъща
     let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
     let privacyArmedAt = 0;
 
@@ -34648,12 +34648,14 @@ initNoteWindows();
         if (!privacyProtectReady()) return;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
+        privacyWentHidden = false;
         privacyShow();
     });
 
     document.addEventListener('visibilitychange', function () {
         if (!document.hidden) { privacyArm(); return; }
         if (!privacyProtectReady()) return;
+        privacyWentHidden = true;
         if (privacyExpectingSystemUI()) return;
         if (!privacyAppScreenMode()) return;
         privacyShow();
@@ -34662,44 +34664,10 @@ initNoteWindows();
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
         privacyArm();
-        /* Собственикът (1.11.2026): „сваляне при първото докосване, не при фокус“. Затова
-           връщането на фокуса вече НЕ маха плочките: фокус идва и когато системен панел
-           (час, дата, избор на файл, падащо меню) се затвори, значи същинското връщане в
-           приложението се вземаше за връщане на бележките. Приетата цена: след връщане
-           екранът стои, докато човекът не пипне нещо. */
+        // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
+        // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
+        if (!privacyWentHidden) privacyHide();
     });
-
-    // Плочките са на екрана ли (заредени и показани)?
-    function privacyIsShown() {
-        return !!(privacyOverlay && privacyOverlay.classList.contains('is-visible'));
-    }
-
-    /* Първото докосване (или натискане на клавиш) маха екрана. Иначе то щеше да натисне
-       каквото е под пръста — бележка, бутон, поле — и човекът щеше да отвори нещо, докато
-       още гледа часовника. Затова жестът само вдига екрана: той се отменя, а кликът след
-       него се поглъща за половин секунда (на части от системата идва и без pointerdown). */
-    function privacyDismissByGesture(ev) {
-        if (!privacyIsShown()) return false;
-        if (document.hidden) return false;
-        privacyHide();
-        privacySwallowClickUntil = Date.now() + 500;
-        if (ev && ev.cancelable) ev.preventDefault();
-        return true;
-    }
-
-    ['pointerdown', 'touchstart', 'keydown', 'input'].forEach(function (type) {
-        document.addEventListener(type, function (ev) {
-            if (!privacyDismissByGesture(ev)) return;
-            ev.stopPropagation();
-        }, { capture: true, passive: false });
-    });
-
-    document.addEventListener('click', function (ev) {
-        if (Date.now() > privacySwallowClickUntil) return;
-        privacySwallowClickUntil = 0;
-        ev.preventDefault();
-        ev.stopPropagation();
-    }, true);
 
     window.addEventListener('resize', function () {
         if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) privacyFit();
