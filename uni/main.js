@@ -653,7 +653,8 @@ function showNoteWeekCalendar(noteElement, anchorDateTimestamp) {
 
     const notesByDay = new Map();
     allNotesData.forEach(noteData => {
-        if (!noteData.calendarDate || noteData.status === 1) return;
+        // b3.54: „Валидност“ не прави запис в календара, значи не влиза и в седмичната лента.
+        if (!noteShowsInCalendar(noteData)) return;
         const noteDate = new Date(noteData.calendarDate);
         if (Number.isNaN(noteDate.getTime())) return;
         noteDate.setHours(0, 0, 0, 0);
@@ -4139,8 +4140,9 @@ function renderCalendarView() {
         // Find and render notes for this day 
         const dayDate = new Date(year, month, day);
         allNotesData.forEach(noteData => {
-            // Прескачаме скрити бележки (status === 1)
-            if (noteData.calendarDate && noteData.status !== 1) {
+            // Прескачаме скрити бележки (status === 1) и бележките с „Валидност“ - те не правят
+            // запис в календара (b3.54).
+            if (noteShowsInCalendar(noteData)) {
                 const noteDate = new Date(noteData.calendarDate);
                 if (noteDate.getFullYear() === dayDate.getFullYear() &&
                     noteDate.getMonth() === dayDate.getMonth() &&
@@ -4467,8 +4469,8 @@ function renderWeeklyCalendarView(dateForWeek) {
     // Групираме бележките по дата
     const notesByDate = new Map();
     allNotesData.forEach(noteData => {
-        // Прескачаме скрити бележки (status === 1)
-        if (noteData.calendarDate && noteData.status !== 1) {
+        // Прескачаме скрити бележки (status === 1) и бележките с „Валидност“ (b3.54)
+        if (noteShowsInCalendar(noteData)) {
             // --- КОРЕКЦИЯ: Преобразуваме датата към UTC, за да избегнем проблеми с часовите зони ---
             const noteDate = new Date(noteData.calendarDate);
             // Създаваме нова дата, използвайки UTC компонентите на оригиналната дата.
@@ -5421,12 +5423,25 @@ function updateBoardCounterUI(boardIdOrGdid) {
         }
         return;
     }
+    // b3.54: „Невалидни“ - същият вид брояч като „Напомняния“: показва се само при включен брояч
+    // (Настройки → „Покажи броя на бележките“) и само когато има изтекли.
+    if (boardIdOrGdid === 'expired') {
+        const expiredLink = document.querySelector('.board-filter-link[data-boardid="expired"]');
+        if (expiredLink) {
+            const title = _('expiredBoardTitle') || 'Невалидни';
+            const expiredNoteCount = allNotesData.filter(n => n.status !== 1 && noteValidityExpired(n)).length;
+            expiredLink.textContent = (showCount && expiredNoteCount > 0) ? `${title} (${expiredNoteCount})` : title;
+        }
+        return;
+    }
     const boardData = boardsData.find(b => b.gdid == boardIdOrGdid || b.id == boardIdOrGdid);
     if (!boardData) return;
     const key = boardData.gdid || boardData.id;
     const boardButton = document.querySelector(`.board-filter-link[data-boardid="${key}"]`);
     if (boardButton) {
-        const noteCount = allNotesData.filter(n => String(n.boardid) === String(key) && n.status !== 1).length;
+        // Изтекла бележка не се показва в борда си, значи не бива да влиза и в броя му (b3.54) -
+        // иначе броят на борда не съвпада с картите, които той показва.
+        const noteCount = allNotesData.filter(n => String(n.boardid) === String(key) && n.status !== 1 && !noteValidityExpired(n)).length;
         const title = boardData.title;
         boardButton.textContent = (showCount && noteCount > 0) ? `${title} (${noteCount})` : title;
     }
@@ -11203,7 +11218,12 @@ function normalizeNoteUiStateInMemory(noteObj) {
 // ключът липсва). В модала чернова стои в dataset.cTime / dataset.cRepeat, а dataset.calBase е
 // стойността от бележката при отваряне. Без редакция смяната в реда се записва веднага, както датата от
 // бутона (b2.16); при редакция / преглед чака обикновения запис на бележката.
-const NOTE_CAL_REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly'];
+// b3.54: шестият избор „Валидност“ не е повторение за календара. Пази се в СЪЩОТО поле като
+// честотата (uiState.cRepeat.f), за да не се добавя нов ключ в бележката и да не се пипа вече
+// записаното: бележка с него НЕ прави запис в Google Календар, а щом датата ѝ (и часът, ако има)
+// отмине, бордът просто спира да я показва. „До“ при него няма смисъл - то е край на повторение.
+const NOTE_CAL_VALIDITY_FREQ = 'validity';
+const NOTE_CAL_REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly', NOTE_CAL_VALIDITY_FREQ];
 
 function getNoteCalTime(uiState) {
     const t = getNoteUiState(uiState).cTime;
@@ -11213,7 +11233,46 @@ function getNoteCalTime(uiState) {
 function getNoteCalRepeat(uiState) {
     const r = getNoteUiState(uiState).cRepeat;
     if (!r || typeof r !== 'object' || !NOTE_CAL_REPEAT_FREQS.includes(r.f)) return null;
+    // „Валидност“ не повтаря: „до“ се изхвърля, за да не носи бележката безсмислена стойност.
+    if (r.f === NOTE_CAL_VALIDITY_FREQ) return { f: r.f, u: null };
     return { f: r.f, u: typeof r.u === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.u) ? r.u : null };
+}
+
+// Моментът, в който бележка с „Валидност“ изтича; 0 = няма какво да изтече (друго повторение или
+// няма дата). С час - датата в този час, минута 0, секунда 0. БЕЗ час - КРАЯТ на деня: бележка с
+// дата и без час е „цял ден“, значи датираната за днес е валидна до края на днес, а не от полунощ
+// (иначе сутринта на самата си дата тя вече щеше да е изтекла).
+function noteValidityExpiryMoment(note) {
+    if (!note) return 0;
+    const repeat = getNoteCalRepeat(note.uiState);
+    if (!repeat || repeat.f !== NOTE_CAL_VALIDITY_FREQ) return 0;
+    const calDate = Number(note.calendarDate) || 0;
+    if (!(calDate > 0)) return 0;
+    const d = new Date(calDate);
+    if (Number.isNaN(d.getTime())) return 0;
+    const time = getNoteCalTime(note.uiState);
+    if (time) {
+        const [h, m] = time.split(':').map(Number);
+        d.setHours(h, m, 0, 0);
+    } else {
+        d.setHours(23, 59, 59, 999);
+    }
+    return d.getTime();
+}
+
+// Изтекла ли е бележката към момента now. Нищо не се записва - решението се взема при всяко
+// рисуване от самата бележка, затова бъдеща дата я връща в борда без ничия намеса.
+function noteValidityExpired(note, now = Date.now()) {
+    const moment = noteValidityExpiryMoment(note);
+    return moment > 0 && moment < now;
+}
+
+// Има ли бележката запис в календара (месечен изглед, седмична лента, камбанка, Google Календар)?
+// „Валидност“ не прави такъв запис никъде - датата ѝ е срок, а не събитие.
+function noteShowsInCalendar(note) {
+    if (!note || Number(note.status) === 1 || !(Number(note.calendarDate) > 0)) return false;
+    const repeat = getNoteCalRepeat(note.uiState);
+    return !(repeat && repeat.f === NOTE_CAL_VALIDITY_FREQ);
 }
 
 function noteCalStateKey(time, repeat) {
@@ -11312,7 +11371,10 @@ function buildNoteCalRow(modalBodyElem) {
     const repeatSelect = document.createElement('select');
     repeatSelect.className = 'note-cal-repeat-select';
     [['', 'noteCalRepeatNone', 'none'], ['daily', 'noteCalRepeatDaily', 'every day'], ['weekly', 'noteCalRepeatWeekly', 'every week'],
-    ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year']].forEach(([value, key, fallback]) => {
+    ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year'],
+    // b3.54: шестият избор. С него датата е срок, а не събитие - бележката не влиза в календара,
+    // а след като датата ѝ отмине, не се показва в борда си, а само в „Невалидни“.
+    [NOTE_CAL_VALIDITY_FREQ, 'noteCalRepeatValidity', 'Валидност']].forEach(([value, key, fallback]) => {
         const opt = document.createElement('option');
         opt.value = value;
         opt.textContent = _(key) || fallback;
@@ -11353,6 +11415,9 @@ function buildNoteCalRow(modalBodyElem) {
         const draft = getModalCalDraft(modalBodyElem);
         const editing = showEmpty();
         const hasUntil = !!(draft.repeat && draft.repeat.u);
+        // „Валидност“ не се повтаря, значи няма край на повторението (b3.54): полето „До“ се
+        // скрива винаги и не се избира, вместо да стои празно и да подвежда.
+        const isValidity = !!(draft.repeat && draft.repeat.f === NOTE_CAL_VALIDITY_FREQ);
         row._noteCalEditing = editing;
         // Без редакция (и в прегледа с окото) ред без нищо за показване не стои като празна ивица (b2.17, b2.18).
         row.hidden = !(calDate > 0) || (!editing && !draft.time && !draft.repeat);
@@ -11364,10 +11429,10 @@ function buildNoteCalRow(modalBodyElem) {
         repeatSelect.value = draft.repeat ? draft.repeat.f : '';
         repeatChip.hidden = !editing && !draft.repeat;
         repeatChip.classList.toggle('is-empty', !draft.repeat);
-        untilChip.hidden = !editing && !hasUntil;
+        untilChip.hidden = isValidity || (!editing && !hasUntil);
         untilChip.classList.toggle('is-empty', !hasUntil);
         // „До“ има смисъл само при повторение: без него полето се вижда (в редакция), но не се избира.
-        untilInput.disabled = !draft.repeat;
+        untilInput.disabled = !draft.repeat || isValidity;
         untilInput.value = hasUntil ? draft.repeat.u : '';
         untilText.textContent = hasUntil ? formatDeviceDate(untilInput.value) : '';
         untilClear.hidden = !hasUntil;
@@ -15909,7 +15974,8 @@ function calendarBellTick(now = Date.now()) {
         if (!Array.isArray(allNotesData) || !allNotesData.length) return 0;
         const due = [];
         allNotesData.forEach(note => {
-            if (!note || Number(note.status) === 1 || !(Number(note.calendarDate) > 0)) return;
+            // b3.54: бележка с „Валидност“ не влиза и в камбанката - датата ѝ е срок, не събитие.
+            if (!noteShowsInCalendar(note)) return;
             const moment = getNoteCalDateTimeTimestamp(note);
             if (!moment || now < moment) return;
             const key = calBellNoteKey(note) + '@' + moment;
@@ -15979,7 +16045,7 @@ document.querySelectorAll('.modal-close').forEach(btn => {
 // Кой борд е избран, изразен като стойността на data-boardid: специалните изгледи се подават
 // както са, а бордът — по gdid (в режим „Архив“ по id), точно както го търси менюто.
 function boardMenuActiveId() {
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'expired'];
     const current = currentBoardFilter;
     if (specialBoards.includes(current)) return current;
     const list = (typeof boardsData !== 'undefined' && boardsData) ? boardsData : [];
@@ -16033,7 +16099,7 @@ async function filterNotesByBoard(boardId, shouldScroll = false, clickedElement 
         const firstAvailableBoard = boardsData.find(b => b.gdid);
         boardId = firstAvailableBoard ? firstAvailableBoard.gdid : 'all';
     }
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'trash'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'expired', 'trash'];
     const targetBoard = specialBoards.includes(boardId) ? null : boardsData.find(b => b.gdid == boardId || b.id == boardId);
     const buttonBoardId = targetBoard ? (targetBoard.gdid || targetBoard.id) : boardId;
     // --- Проверка за съществуващ борд ---
@@ -16444,6 +16510,12 @@ function getSystemBoardOrderEntries(extraCounts = {}) {
     if (localStorage.getItem('showOtherBoard') === 'true') {
         entries.push({ key: 'system:with-other', title: _('otherBoardTitle') || "Other Attachments", boardId: 'with-other', className: 'other-filter-btn', backgroundColor: '#a6a6a6' });
     }
+    // b3.54: „Невалидни“ - редът между бордовете и Кошчето, както се вижда в менюто.
+    if (localStorage.getItem('showExpiredBoard') !== 'false') {
+        const count = extraCounts.expiredCount || 0;
+        const title = _('expiredBoardTitle') || 'Невалидни';
+        entries.push({ key: 'system:expired', title: showCount && count > 0 ? `${title} (${count})` : title, boardId: 'expired', className: 'expired-filter-btn' });
+    }
     if (localStorage.getItem('showTrashBoard') !== 'false') {
         const count = extraCounts.trashCount || 0;
         entries.push({ key: 'system:trash', title: showCount && count > 0 ? `${_('trashBoardTitle') || "Кошче"} (${count})` : (_('trashBoardTitle') || "Кошче"), boardId: 'trash', className: 'trash-filter-btn', backgroundColor: '#c00', color: '#fff' });
@@ -16583,6 +16655,83 @@ function parseSearchQuery(raw) {
     return { lex: true, query: value.slice(m[0].length) };
 }
 
+/* --- b3.54: ИЗТЕКЛИ БЕЛЕЖКИ („Валидност“) ---
+ * Бележка с повторение „Валидност“ не се мести и не се записва. Щом датата ѝ (и часът, ако има)
+ * отмине, бордът просто спира да я показва, а „Невалидни“ е единственият изглед, който я показва.
+ * Изтеклото се изчислява при всяко рисуване от самата бележка (noteValidityExpired): бъдеща дата я
+ * връща в борда без ничия намеса, а махането на датата е целият „път обратно“.
+ */
+
+// Текстът на значката: „изтекла <дата> [час] · <борд>“. Часът е само когато бележката го има -
+// цялодневната изтича в края на деня, а не в полунощ.
+function noteExpiredBadgeText(expiredNote) {
+    const dateText = formatDeviceDate(Number(expiredNote.calendarDate));
+    const timeText = getNoteCalTime(expiredNote.uiState) ? formatTime(noteValidityExpiryMoment(expiredNote)) : '';
+    const board = Array.isArray(boardsData)
+        ? boardsData.find(b => b.gdid == expiredNote.boardid || b.id == expiredNote.boardid)
+        : null;
+    const when = [(_('expiredOn') || 'изтекла'), dateText, timeText].filter(Boolean).join(' ');
+    return board && board.title ? `${when} · ${board.title}` : when;
+}
+
+// Значката се показва ВИНАГИ, когато бележката е изтекла, а не само в „Невалидни“: изтеклата бележка
+// я няма в борда си и в „Всички“, остават само „Невалидни“, Кошчето (ако е изтрита) и търсенето -
+// и точно в тези три места тя трябва да каже защо не е в борда си. Затова не питаме кой е филтърът.
+function syncNoteExpiredBadge(noteEl, expiredNote) {
+    let badge = noteEl.querySelector('.note-expired-badge');
+    if (!expiredNote) {
+        if (badge) badge.remove();
+        return;
+    }
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'note-expired-badge';
+        // Под тялото, над долната лента - там, където картата показва датата си в плана.
+        (noteEl.querySelector('.note-content-wrapper') || noteEl).appendChild(badge);
+    }
+    const text = noteExpiredBadgeText(expiredNote);
+    if (badge.textContent !== text) badge.textContent = text;
+}
+
+// Лентата над бележките се строи веднъж. Тя е единственото място, което казва как се връща бележка:
+// със същия бутон с календара в долната лента на бележката (със зададена дата той маха датата и редът
+// с датата изчезва). Бутоните носят data-key, за да сменят езика заедно с приложението.
+function ensureExpiredHintBar() {
+    let bar = document.getElementById('expired-hint');
+    if (bar) return bar;
+    const host = notesContainer ? notesContainer.parentNode : null;
+    if (!host) return null;
+    bar = document.createElement('div');
+    bar.id = 'expired-hint';
+    bar.hidden = true;
+    const head = document.createElement('div');
+    head.className = 'expired-hint-head';
+    const title = document.createElement('span');
+    title.className = 'expired-hint-title';
+    title.setAttribute('data-key', 'expiredBoardTitle');
+    title.textContent = _('expiredBoardTitle') || 'Невалидни';
+    const count = document.createElement('span');
+    count.className = 'expired-hint-count';
+    const line = document.createElement('div');
+    line.className = 'expired-hint-line';
+    line.setAttribute('data-key', 'expiredHint');
+    line.textContent = _('expiredHint') || 'Изчисти датата, да се върне в борда';
+    head.append(title, count);
+    bar.append(head, line);
+    host.insertBefore(bar, notesContainer);
+    return bar;
+}
+
+function updateExpiredHintBar(isExpired, visibleCount) {
+    const bar = ensureExpiredHintBar();
+    if (!bar) return;
+    // Лентата не бива да стои в друг изглед - нито празна, нито с броя от миналото рисуване.
+    bar.hidden = !isExpired;
+    if (!isExpired) return;
+    const count = bar.querySelector('.expired-hint-count');
+    if (count) count.textContent = `${visibleCount} ${_('expiredCountLabel') || 'бележки'}`;
+}
+
 function applyFilters() {
     const searchBox = document.getElementById('search-box');
     const parsedSearch = parseSearchQuery(searchBox ? searchBox.value : '');
@@ -16602,8 +16751,10 @@ function applyFilters() {
     const isWithSounds = currentBoardFilter === 'with-sounds';
     const isWithOther = currentBoardFilter === 'with-other';
     const isTrash = currentBoardFilter === 'trash';
+    // b3.54: „Невалидни“ - филтър, не папка: показва изтеклите бележки там, където си стоят.
+    const isExpired = currentBoardFilter === 'expired';
     // If none of the above special modes, it's a standard board filter (by ID)
-    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther && !isTrash;
+    const isStandard = !isAll && !isReminder && !isNewUpdates && !isWithPhotos && !isWithVideos && !isWithSounds && !isWithOther && !isTrash && !isExpired;
     // --- ENHANCED ID FILTERING (Pre-calc) ---
     // Handle scenarios where notes use legacy ID but filter uses GDID (or vice versa)
     let validBoardIds = [currentBoardFilter];
@@ -16629,11 +16780,28 @@ function applyFilters() {
         }
     }
 
+    // b3.54: изтеклите бележки за това рисуване, в едно минаване през данните - иначе за всяка карта
+    // се търси бележка в allNotesData. Ключът е същият като на картата (getNoteCardKey: gdid, после id).
+    const expiredByKey = new Map();
+    const expiredNow = Date.now();
+    if (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) {
+        allNotesData.forEach(n => {
+            if (!noteValidityExpired(n, expiredNow)) return;
+            if (n.gdid !== undefined && n.gdid !== null) expiredByKey.set(String(n.gdid), n);
+            if (n.id !== undefined && n.id !== null) expiredByKey.set(String(n.id), n);
+        });
+    }
+
     for (const note of notes) {
         if (note.classList.contains('boards-note') || note.classList.contains('promo-note')) {
             continue;
         }
         const isDeleted = (parseInt(note.dataset.s || '0', 10) === 1);
+        // b3.54: изтекла ли е картата - решава се от самата бележка при всяко рисуване. Белегът в
+        // dataset (xv) е това, което филтрите четат, както останалите къси белези (s, b, tm, cda).
+        const expiredNote = expiredByKey.get(getNoteCardKey(note)) || null;
+        if (expiredNote) note.dataset.xv = '1'; else delete note.dataset.xv;
+        syncNoteExpiredBadge(note, expiredNote);
         let isVisibleByBoard = false;
 
         // Optimized Branching
@@ -16659,7 +16827,14 @@ function applyFilters() {
             isVisibleByBoard = (note.dataset.hs === '1');
         } else if (isWithOther) {
             isVisibleByBoard = (note.dataset.ho === '1');
+        } else if (isExpired) {
+            // Изтритите са в Кошчето, не тук: там те са преди всичко изтрити, затова и броят им не влиза.
+            isVisibleByBoard = (note.dataset.xv === '1') && !isDeleted;
         }
+        // Избор A (планът): изтекла бележка се крие навсякъде извън „Невалидни“ - и в собствения си
+        // борд, и в „Всички“. Търсенето я намира (по-долу то не пита за борда), за да е достижима.
+        // Изтрита изтекла бележка не е изтекла, а изтрита - тя си стои в Кошчето.
+        if (note.dataset.xv === '1' && !isDeleted && !isExpired) isVisibleByBoard = false;
         // Filter by Search Term
         let matchesSearch = true;
         // OPTIMIZATION: Only access DOM textContent if there is a search term!
@@ -16807,6 +16982,21 @@ function applyFilters() {
         visibleNotes.forEach(note => notesContainer.appendChild(note));
     }
 
+    // --- b3.54: „Невалидни“ се подрежда по дата на изтичане, най-новата отгоре ---
+    // Независимо от настройката за подредба: в този изглед няма номера (numord), а целта е да се
+    // вижда кое е изтекло последно.
+    if (isExpired) {
+        const expiredVisible = Array.from(notesContainer.querySelectorAll('.note:not(.boards-note):not(.promo-note)'))
+            .filter(n => n.style.display !== 'none');
+        const calTimestamp = (el) => {
+            const v = el.dataset.cda || 0;
+            const num = isNaN(v) ? new Date(v).getTime() : Number(v);
+            return Number.isNaN(num) ? 0 : num;
+        };
+        expiredVisible.sort((a, b) => calTimestamp(b) - calTimestamp(a));
+        expiredVisible.forEach(note => notesContainer.appendChild(note));
+    }
+
     // --- PROMO NOTE LOGIC: INSERT AT RANDOM PLACE ---
     // Skip this entire logic during initial load to prevent flickering before UI is stable
     if (!isInitialLoad && localStorage.getItem('hideAssistant') !== 'true') {
@@ -16854,9 +17044,13 @@ function applyFilters() {
         noteCounter.textContent = visibleCount;
     }
 
+    // Лентата над бележките: стои само в „Невалидни“ и носи броя на показаните (b3.54).
+    updateExpiredHintBar(isExpired, visibleCount);
+
     if (typeof updateBoardCounterUI === 'function') {
         updateBoardCounterUI(currentBoardFilter);
         updateBoardCounterUI('reminder');
+        updateBoardCounterUI('expired');
     }
 
     // --- Покажи/Скрий бутона за изпразване на кошчето ---
@@ -17483,7 +17677,7 @@ function boardFontColorValue(board) {
 }
 
 async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
-    const { boardCounts = new Map(), reminderCount = 0, calendarCount = 0 } = extraCounts;
+    const { boardCounts = new Map(), reminderCount = 0, calendarCount = 0, expiredCount = 0 } = extraCounts;
     const boardsNote = document.createElement('div');
     boardsNote.className = 'boards-note';
     const contentWrapper = document.createElement('div');
@@ -17748,6 +17942,18 @@ async function createBoardsUI(boardsData, boardParseError, extraCounts = {}) {
         otherLink.style.backgroundColor = '#a6a6a6';
         addBoardButtonEvents(otherLink, 'with-other');
         allButtonLinks.push(otherLink);
+    }
+    // --- УСЛОВНО ДОБАВЯНЕ НА ФИЛТЪРА „НЕВАЛИДНИ“ (b3.54) ---
+    // Не е папка, а филтър: редовете на бележките и бордовете им не се пипат, тук само се вижда кой
+    // изглед ги събира. Броят е като при „Напомняния“ - само при включен брояч и само над нула.
+    if (localStorage.getItem('showExpiredBoard') !== 'false') {
+        const expiredLink = document.createElement('span');
+        const expiredTitle = _('expiredBoardTitle') || 'Невалидни';
+        expiredLink.textContent = (showCount && expiredCount > 0) ? `${expiredTitle} (${expiredCount})` : expiredTitle;
+        expiredLink.classList.add('board-filter-link', 'expired-filter-btn');
+        expiredLink.dataset.boardid = 'expired';
+        addBoardButtonEvents(expiredLink, 'expired');
+        allButtonLinks.push(expiredLink);
     }
     // --- ДОБАВЯНЕ НА ВРЕМЕНЕН БОРД "КОШЧЕ" ---
     if (localStorage.getItem('showTrashBoard') !== 'false') {
@@ -18019,7 +18225,7 @@ const appSettingsKeys = [
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
     'sortCriteria', 'sortInReverse', 'sortRemindersTop', 'savedSearches', 'maxSavedSearches',
     'folderId', 'language', 'rememberMe',
-    'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind',
+    'showBoardAll', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard', 'showOtherBoard', 'showBoardRemind', 'showExpiredBoard',
     'enableNoteSorting', 'guide', 'showAdvancedSettings', 'promoImageIndex', 'urlToken',
     'gdrive_folder_names', 'deviceName',
     'addNoteFabPosition', 'popupMenuBtnPosition', 'scrollTopBtnPosition', 'kbFabPosition'
@@ -18049,6 +18255,7 @@ function clearPendingBoardVisibility() {
 const BOARD_VISIBILITY_BOARD_IDS = {
     showBoardAll: 'all',
     showBoardRemind: 'reminder',
+    showExpiredBoard: 'expired',
     showPhotosBoard: 'with-photos',
     showVideosBoard: 'with-videos',
     showSoundsBoard: 'with-sounds',
@@ -18606,7 +18813,12 @@ function getGcalFolderKey() {
 }
 
 function isGcalNoteWanted(note) {
-    return !!note && Number(note.calendarDate) > 0 && note.status !== 1 && !!getGcalNoteKey(note);
+    if (!note || !(Number(note.calendarDate) > 0) || note.status === 1 || !getGcalNoteKey(note)) return false;
+    // b3.54: „Валидност“ не прави запис в календара. Бележката просто липсва в wanted и сверката
+    // трие събитието, което вече има - тъй преминаването „всяка седмица“ → „Валидност“ маха старото.
+    const repeat = getNoteCalRepeat(note.uiState);
+    if (repeat && repeat.f === NOTE_CAL_VALIDITY_FREQ) return false;
+    return true;
 }
 
 // Стара дата (CX, 2026-10-10): последната поява е преди днес — денят без повторение, или „до“ при
@@ -18614,7 +18826,9 @@ function isGcalNoteWanted(note) {
 function isGcalNoteOldDate(note, now = new Date()) {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const repeat = getNoteCalRepeat(note.uiState);
-    if (repeat) {
+    // „Валидност“ не се повтаря: сравнява се самият ден, както при бележка без повторение, а не
+    // като повторение без край (b3.54).
+    if (repeat && repeat.f !== NOTE_CAL_VALIDITY_FREQ) {
         if (!repeat.u) return false;
         const [y, mo, d] = repeat.u.split('-').map(Number);
         return new Date(y, mo - 1, d).getTime() < today;
@@ -18670,7 +18884,9 @@ function gcalLocalDateTime(d) { return `${gcalYmd(d)}T${gcalPad2(d.getHours())}:
 // RRULE: целодневно UNTIL=YYYYMMDD; с час — краят на деня „до“ в UTC (RFC 5545 при начало с часова зона).
 // Крайна дата преди началото → без повторение (само самото събитие).
 function buildGcalRecurrence(repeat, startDate, allDay) {
-    if (!repeat || !RRULE_FREQ[repeat.f]) return null;
+    // b3.54: „Валидност“ съзнателно липсва в RRULE_FREQ. Проверката е явна, за да не се появи
+    // събитие с правило, ако някой ден ключът влезе в картата по погрешка.
+    if (!repeat || repeat.f === NOTE_CAL_VALIDITY_FREQ || !RRULE_FREQ[repeat.f]) return null;
     let rule = `RRULE:FREQ=${RRULE_FREQ[repeat.f]}`;
     if (repeat.u) {
         const [y, mo, d] = repeat.u.split('-').map(Number);
@@ -19533,6 +19749,7 @@ async function createSettingsUI(boardsData, boardParseError) {
     const showVideosBoardCheckbox = document.getElementById('show-videos-board-checkbox');
     const showSoundsBoardCheckbox = document.getElementById('show-sounds-board-checkbox');
     const showOtherBoardCheckbox = document.getElementById('show-other-board-checkbox');
+    const showExpiredBoardCheckbox = document.getElementById('show-expired-board-checkbox');
     // const startBoardSelect = document.getElementById('start-board-select');
     const maxSearchesInput = document.getElementById('max-searches-input');
     const useGoogleDbCheckbox = document.getElementById('use-google-db-checkbox');
@@ -20268,6 +20485,14 @@ async function createSettingsUI(boardsData, boardParseError) {
         showOtherBoardCheckbox.checked = localStorage.getItem('showOtherBoard') === 'true';
         showOtherBoardCheckbox.addEventListener('change', async () => {
             await setBoardVisibilitySetting('showOtherBoard', showOtherBoardCheckbox.checked);
+        });
+    }
+    // Show 'Expired' (Невалидни) Checkbox (b3.54) - по подразбиране включен: първият изтекла бележка
+    // вече се вижда къде е, вместо да изчезне от борда си като грешка.
+    if (showExpiredBoardCheckbox) {
+        showExpiredBoardCheckbox.checked = localStorage.getItem('showExpiredBoard') !== 'false';
+        showExpiredBoardCheckbox.addEventListener('change', async () => {
+            await setBoardVisibilitySetting('showExpiredBoard', showExpiredBoardCheckbox.checked);
         });
     }
     // Weekly Calendar Checkbox
@@ -25577,7 +25802,8 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
         boardCounts: new Map(),
         reminderCount: 0,
         calendarCount: 0,
-        trashCount: 0
+        trashCount: 0,
+        expiredCount: 0
     };
 
     // --- OWNER CHECK ---
@@ -25600,7 +25826,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     }
 
     // Проверка за валидност на текущия филтър (ако е останало старо ID от друга папка)
-    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'trash'];
+    const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'expired', 'trash'];
     if (!specialBoards.includes(currentBoardFilter)) {
         const boardExists = boardsData.some(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
         if (!boardExists) {
@@ -25619,14 +25845,19 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
     if (boardsData.length > 0 || boardParseError) {
         const isArh = useArhDb || (useIndexedDb && dbSourceGlobal === 3);
         allNotesData.forEach(note => {
+            // b3.54: изтекла бележка не се показва в борда си, значи не влиза и в броя му - иначе
+            // броят на борда не съвпада с картите в него. „Невалидни“ ги брои отделно.
+            const isExpiredNote = note.status !== 1 && noteValidityExpired(note);
             if (note.status === 1) {
                 extraCounts.trashCount++;
-            } else {
+            } else if (!isExpiredNote) {
                 const boardId = String(note.boardid);
                 extraCounts.boardCounts.set(boardId, (extraCounts.boardCounts.get(boardId) || 0) + 1);
             }
-            if (note.timer && note.timer > 0) extraCounts.reminderCount++;
-            if (note.calendarDate) extraCounts.calendarCount++;
+            if (isExpiredNote) extraCounts.expiredCount++;
+            if (note.timer && note.timer > 0 && !isExpiredNote) extraCounts.reminderCount++;
+            // Календарният брой пази същото правило като изгледа: „Валидност“ не прави запис.
+            if (noteShowsInCalendar(note)) extraCounts.calendarCount++;
         });
         // Бордовете със status 1 са в кошчето: броят им вдига брояча и показва връзката „Кошче"
         // в менюто, дори когато в кошчето няма нито една бележка.
@@ -25665,7 +25896,7 @@ async function renderUI({ boardParseError, rerenderOnlyMenu = false }) {
             // Използваме setTimeout, за да сме сигурни, че DOM-ът е обновен
             setTimeout(() => {
                 // Използваме същата логика за маркуване като във filterNotesByBoard
-                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other'];
+                const specialBoards = ['all', 'calendar', 'calendar_monthly', 'calendar_weekly', 'reminder', 'new-updates', 'search-results', 'with-photos', 'with-videos', 'with-sounds', 'with-other', 'expired'];
                 const targetBoard = specialBoards.includes(currentBoardFilter) ? null : boardsData.find(b => b.gdid == currentBoardFilter || b.id == currentBoardFilter);
                 const activeIdForUI = targetBoard ? (targetBoard.gdid || targetBoard.id) : currentBoardFilter;
 
@@ -34583,7 +34814,8 @@ initNoteWindows();
         const notesPerDay = {};
         if (typeof allNotesData !== 'undefined' && Array.isArray(allNotesData)) {
             allNotesData.forEach(n => {
-                if (!n.calendarDate || n.status === 1) return;
+                // b3.54: „Валидност“ не прави запис в календара - без точка и на защитния екран.
+                if (!noteShowsInCalendar(n)) return;
                 const nd = new Date(n.calendarDate);
                 if (nd.getFullYear() !== now.getFullYear() || nd.getMonth() !== now.getMonth()) return;
                 (notesPerDay[nd.getDate()] = notesPerDay[nd.getDate()] || []).push(n);
