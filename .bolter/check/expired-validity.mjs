@@ -3,7 +3,7 @@
 // Какво проверява (истински Chromium, истинският uni код, засята IndexedDB, ?demo=1, 390x844):
 //   1) бележка с „Валидност“ и отминала дата НЕ е в борда си и НЕ е във „Всички“ (избор A);
 //   2) същата бележка Е в „Невалидни“ — с лентата над бележките, броя в нея и значката
-//      „изтекла <дата> · <борд>“; редът е по дата на изтичане, най-новата отгоре;
+//      „<борд> · изтекла <дата>“; редът е по дата на изтичане, най-новата отгоре;
 //   3) бележка с БЪДЕЩА дата и „Валидност“ си стои в борда;
 //   4) бележка с отминала дата и повторение „всяка седмица“ също си стои в борда (тя не изтича);
 //   5) махането на датата от долната лента на бележката (същият бутон с календара) я връща в борда
@@ -320,11 +320,11 @@ ok(hint.count === '2 бележки', 'лентата показва броя: �
 ok(hint.line === 'Изчисти датата, за да се върне в борда', 'лентата казва как се връща бележката', hint.line);
 ok(hint.overflowX === false, 'лентата не чупи layout-а на 390px (няма хоризонтален скрол)', hint);
 const badgeHour = await badgeOf('ИЗТЕКЛА ЧАСОВА');
-ok(badgeHour && badgeHour.hasBadge && /^изтекла /.test(badgeHour.text) && badgeHour.text.includes('Работа') && badgeHour.text.includes(':'),
-    'значката на изтеклата бележка: „изтекла <дата> <час> · Работа“', badgeHour);
+ok(badgeHour && badgeHour.hasBadge && /^Работа · изтекла /.test(badgeHour.text) && badgeHour.text.includes(':'),
+    'значката започва с името на борда: „Работа · изтекла <дата> <час>“', badgeHour);
 const badgeDay = await badgeOf('ИЗТЕКЛА БЕЗ ЧАС');
-ok(badgeDay && badgeDay.hasBadge && /^изтекла /.test(badgeDay.text) && badgeDay.text.includes('Работа') && !badgeDay.text.includes(':'),
-    'без час значката няма час: „изтекла <дата> · Работа“', badgeDay);
+ok(badgeDay && badgeDay.hasBadge && /^Работа · изтекла /.test(badgeDay.text) && !badgeDay.text.includes(':'),
+    'без час значката няма час: „Работа · изтекла <дата>“', badgeDay);
 ok(badgeHour.xv === '1' && badgeDay.xv === '1', 'картите носят белега dataset.xv (изтекла)', { a: badgeHour.xv, b: badgeDay.xv });
 // Значката трябва да е ИЗЦЯЛО в картата: wrapper-ът е с height: 100% и без поправката
 // (has-expired-badge) тя излиза под долния ръб и се реже от overflow: hidden на картата.
@@ -336,7 +336,7 @@ const badgeInside = await page.evaluate(() => {
     const c = card.getBoundingClientRect(), b = badge.getBoundingClientRect();
     return { gap: Math.round(c.bottom - b.bottom), cardBottom: Math.round(c.bottom), badgeBottom: Math.round(b.bottom) };
 });
-ok(badgeInside.gap >= 4, 'значката е изцяло в картата (не се реже от долния ръб)', badgeInside);
+ok(badgeInside.gap >= 12, 'значката е изцяло в картата и на 13px от долния ръб (5px по-високо от b3.54)', badgeInside);
 // Снимка само при поискване (SHOT=/път.png) - в хранилището не влизат снимки.
 if (process.env.SHOT) {
     await page.screenshot({ path: process.env.SHOT });
