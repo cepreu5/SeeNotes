@@ -145,6 +145,8 @@ const measure = (page) => page.evaluate(() => {
         opacity: cs.opacity,
         box: { x: Math.round(box.left), y: Math.round(box.top), w: Math.round(box.width), h: Math.round(box.height) },
         backdrop: cs.backdropFilter || cs.webkitBackdropFilter || '',
+        background: cs.backgroundColor,
+        backgroundImage: cs.backgroundImage,
         position: cs.position,
         vw: window.innerWidth, vh: window.innerHeight,
         visW: Math.min(window.innerWidth, document.documentElement.clientWidth, window.visualViewport ? Math.round(window.visualViewport.width) : window.innerWidth),
@@ -187,7 +189,18 @@ const measure = (page) => page.evaluate(() => {
     ok(m.present && m.visible, 'A: при скриване overlay-ът се показва', m && { present: m.present, visible: m.visible });
     ok(!!m.box && m.box.w === m.vw && m.box.h === m.vh && m.box.x === 0 && m.box.y === 0,
         'A: overlay-ът покрива целия екран', m.box && { box: m.box, vw: m.vw, vh: m.vh });
-    ok(/blur\(/.test(m.backdrop || ''), 'A: зад съдържанието има истински blur (backdrop-filter)', { backdrop: m.backdrop });
+    // 2 Nov 2026: blur е махнат нарочно. Кадърът за списъка с приложенията на Android се снима
+    // без ефектите на слоя и през полупрозрачен фон се виждаха бележките. Затова фонът е плътен,
+    // без backdrop-filter.
+    ok(!/blur\(/.test(m.backdrop || ''), 'A: фонът е плътен, без blur (blur не влиза в кадъра за списъка)', { backdrop: m.backdrop });
+    const bgAlpha = (() => {
+        const mm = /rgba?\(([^)]+)\)/.exec(m.background || '');
+        if (!mm) return 1;
+        const parts = mm[1].split(',').map(Number);
+        return parts.length === 4 ? parts[3] : 1;
+    })();
+    ok(bgAlpha === 1 && !/rgba\([^)]*,\s*0?\.\d+\s*\)/.test(m.backgroundImage || ''),
+        'A: фонът на overlay-а е напълно непрозрачен', { background: m.background, image: m.backgroundImage });
     ok(m.position === 'fixed', 'A: overlay-ът е fixed, не мърда при скрол', { position: m.position });
 
     // Две плочки 300x300, една под друга, центрирани.

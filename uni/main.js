@@ -34752,7 +34752,8 @@ initNoteWindows();
         closeBtn.addEventListener('click', function (ev) {
             ev.stopPropagation();
             ev.preventDefault();
-            privacyHide();
+            // Ръчен избор на човека: сваля се винаги, дори фокусът още да не е върнат в прозореца.
+            privacyHide(true);
         });
         closeBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
         privacyOverlay.appendChild(closeBtn);
@@ -34882,8 +34883,23 @@ initNoteWindows();
         privacyLog('show', 'overlay visible');
     }
 
-    function privacyHide() {
+    /* Android прави кадъра за списъка с приложенията, след като приложението вече е скрито или
+       е загубило фокус. Ако точно тогава овърлеят се махне, в кадъра остават бележките — затова
+       плочките не слизат, докато страницата е скрита или прозорецът е без фокус. Връща причината,
+       когато махането е забранено, и празен низ, когато е позволено. */
+    function privacyHideBlocked() {
+        if (document.hidden) return 'page hidden';
+        if (typeof document.hasFocus === 'function' && !document.hasFocus()) return 'no focus';
+        return '';
+    }
+
+    function privacyHide(force) {
         if (!privacyOverlay) return;
+        const blocked = force ? '' : privacyHideBlocked();
+        if (blocked) {
+            privacyLog('hide', 'refused: ' + blocked);
+            return;
+        }
         const wasVisible = privacyVisible();
         privacyOverlay.classList.remove('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'true');
@@ -34948,8 +34964,10 @@ initNoteWindows();
         // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
         if (!privacyWentHidden) {
             const wasVisible = privacyVisible();
+            const blocked = privacyHideBlocked();
             privacyHide();
-            privacyLog('focus', wasVisible ? 'HIDE (blur without hiding)' : 'nothing to hide');
+            privacyLog('focus', !wasVisible ? 'nothing to hide'
+                : (blocked ? 'keep overlay (refused: ' + blocked + ')' : 'HIDE (blur without hiding)'));
         } else {
             privacyLog('focus', 'keep overlay (went=1)');
         }

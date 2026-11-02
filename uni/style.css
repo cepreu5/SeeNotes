@@ -5952,9 +5952,10 @@ header.title-hidden > div:first-child {
     display: none;
     align-items: center;
     justify-content: center;
-    background: rgba(8, 10, 14, 0.55);
-    -webkit-backdrop-filter: blur(20px) saturate(120%);
-    backdrop-filter: blur(20px) saturate(120%);
+    /* Плътен фон, без прозрачност и без blur: кадърът за списъка с приложенията на Android се
+       снима без ефектите на слоя, затова през полупрозрачен фон бележките се виждаха около
+       плочките. Плочките остават, фонът само ги обгражда. */
+    background: #0a0d11 linear-gradient(160deg, #14181f, #0a0d11);
     overscroll-behavior: contain;
     touch-action: none;
 }
