@@ -16671,7 +16671,9 @@ function noteExpiredBadgeText(expiredNote) {
         ? boardsData.find(b => b.gdid == expiredNote.boardid || b.id == expiredNote.boardid)
         : null;
     const when = [(_('expiredOn') || 'изтекла'), dateText, timeText].filter(Boolean).join(' ');
-    return board && board.title ? `${when} · ${board.title}` : when;
+    // Името на борда е първо, най-вляво: то казва накъде се връща бележката, а „изтекла <дата> [час]“
+    // го следва (искане на собственика, 2 Nov 2026).
+    return board && board.title ? `${board.title} · ${when}` : when;
 }
 
 // Значката се показва ВИНАГИ, когато бележката е изтекла, а не само в „Невалидни“: изтеклата бележка
