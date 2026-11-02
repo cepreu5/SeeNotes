@@ -6102,7 +6102,7 @@ header.title-hidden > div:first-child {
    многоточие, вместо да вдигне картата. */
 .note-expired-badge {
     flex: 0 0 auto;
-    margin: 2px 8% 4px 8%;
+    margin: 0 10% 8px 8%;
     padding: 1px 7px;
     border-radius: 7px;
     background: rgba(0, 0, 0, 0.10);
@@ -6115,6 +6115,20 @@ header.title-hidden > div:first-child {
     text-overflow: ellipsis;
     text-align: left;
     pointer-events: none;
+}
+
+/* Значката е част от колоната на wrapper-а, но wrapper-ът е с height: 100% и така надхвърля
+   картата (тя е точно 250px, а под него стои още долната лента) - затова всичко в края му излиза
+   под долния ръб. С тези три реда той заема само остатъка над лентата, а тялото се свива с
+   височината на значката. */
+.note.has-expired-badge .note-content-wrapper {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.note.has-expired-badge .note-content-wrapper>.note-content {
+    min-height: 0;
 }
 
 /* Лентата над бележките в изгледа „Невалидни“: тъмна и заоблена като лентата на бордовете, със

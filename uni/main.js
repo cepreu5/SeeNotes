@@ -16681,6 +16681,7 @@ function syncNoteExpiredBadge(noteEl, expiredNote) {
     let badge = noteEl.querySelector('.note-expired-badge');
     if (!expiredNote) {
         if (badge) badge.remove();
+        noteEl.classList.remove('has-expired-badge');
         return;
     }
     if (!badge) {
@@ -16688,6 +16689,9 @@ function syncNoteExpiredBadge(noteEl, expiredNote) {
         badge.className = 'note-expired-badge';
         // Под тялото, над долната лента - там, където картата показва датата си в плана.
         (noteEl.querySelector('.note-content-wrapper') || noteEl).appendChild(badge);
+        // Класът пуска тялото да се свие с височината на значката (вж. style.css),
+        // иначе тя излиза под ръба на картата.
+        noteEl.classList.add('has-expired-badge');
     }
     const text = noteExpiredBadgeText(expiredNote);
     if (badge.textContent !== text) badge.textContent = text;
