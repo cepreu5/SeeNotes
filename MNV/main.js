@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.82'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.82)
+const version = 'Beta 1.83'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.83)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -11211,7 +11211,12 @@ function hydrateInlineImages(rootEl) {
     // Едно и също поставяне на картинката в рамката за всички режими, за да не се разминават
     // състоянията (is-loading / is-ready / data-nmState) между Drive и файла от диска.
     const putImage = (box, fileName, src, fileId, onRetry) => {
-        if (!box.isConnected) return false; // картата вече е преизградена - новата рамка ще поеме
+        // НЕ се отказва при откачена рамка: бордът строи картата, преди да я сложи в страницата,
+        // а адресът на снимката идва след това. Дотук тук стоеше `if (!box.isConnected) return false`,
+        // значи всяка карта, построена извън страницата, оставаше вечна рамка - никой не я хидрира
+        // повторно (същото беше поправено в uni, сега и в MNV, 3 Nov 2026). Картинката се слага и в
+        // откачен елемент; ако картата бъде преизградена, старата рамка просто изчезва със стария
+        // елемент.
         if (!src) { markInlineImageUnavailable(box, 'unavailable'); return false; }
         const img = document.createElement('img');
         img.alt = fileName;
