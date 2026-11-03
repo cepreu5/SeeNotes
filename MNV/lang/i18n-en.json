@@ -194,6 +194,8 @@
   "oneTapLinkLabel": "One-click links:",
   "hideAssistantLabel": "Hide Assistant:",
   "autoProtectLabel": "Automatic protection:",
+  "idleLockLabel": "Lock after:",
+  "idleLockHint": "Locks the screen when you stop touching the app.",
   "notesBgrdLabel": "Graphical background (board notes):",
   "imgBgrdLabel": "Graphical background (note):",
   "feedbackButtonTooltip": "Feedback: multinotes.web@gmail.com",

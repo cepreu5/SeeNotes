@@ -194,6 +194,8 @@
   "oneTapLinkLabel": "Ссылки в один клик:",
   "hideAssistantLabel": "Скрыть Ассистента:",
   "autoProtectLabel": "Автоматическая защита:",
+  "idleLockLabel": "Блокировка через:",
+  "idleLockHint": "Приложение блокирует экран, когда вы к нему не прикасаетесь.",
   "notesBgrdLabel": "Графический фон (заметки в доске):",
   "imgBgrdLabel": "Графический фон (заметка):",
   "feedbackButtonTooltip": "Обратная связь: multinotes.web@gmail.com",
