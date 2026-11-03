@@ -590,5 +590,10 @@
     "nmInlineRefusedCode": "An image cannot go here",
     "nmAttachDelete": "Delete the file \"{name}\"",
     "nmAttachDeleteConfirm": "The file \"{name}\" will be deleted from the note and from Google Drive. Continue?",
-    "nmAttachDeleted": "The file \"{name}\" was deleted"
+    "nmAttachDeleted": "The file \"{name}\" was deleted",
+    "noteTimerModeTimer": "Timer",
+    "noteTimerModeAlarm": "Alarm",
+    "noteTimerSet": "Set",
+    "noteTimerMinutesShort": "min",
+    "noteTimerStop": "Stop"
 }
