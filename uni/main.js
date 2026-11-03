@@ -14,7 +14,7 @@ let version = null;
 // при true обикновен клик в празното на горната ивица на картата показва JSON-а на бележката
 // (handleHeaderClick / showNoteDebugJson), а иконите на прикачените файлове показват своя JSON.
 // Заедно с това идват и записите в конзолата и бутонът „System Data” в Настройки.
-const debug = true;
+const debug = false;
 
 function versionFromCacheName(cacheName) {
     const match = /^cx-notes-b(\d.*)$/.exec(String(cacheName || '').trim());

@@ -73,18 +73,22 @@ body.open-notes-bar-visible #kb-fab {
 body.open-notes-bar-visible #add-note-fab {
     bottom: calc(10px + var(--open-notes-bar-h) + 8px);
 }
-/* Разпънатата бележка (b2.75). Собственикът (24.10.2026): „extended mode на бележката трябва да се
-   съобразява с наличието на лента, защото бутоните на бележката се скриват зад нея (когато я има)“.
-   Разпънатият прозорец иначе е висок 100% от екрана (applyExpandedModalSize), а лентата се рисува
-   ВЪРХУ прозорците - значи долният ред с кръглите бутони (и редът с датата под него) оставаше зад
-   нея. Тук кутията свършва над лентата, с 8px пролука: височината е екранът минус измерената
-   височина на лентата. !important е нужен, защото инлайн стилът от applyExpandedModalSize носи
-   height: 100% - битката се решава на едно място, тук, а не и в JS.
-   Правилото важи САМО докато лентата е на екрана (body.open-notes-bar-visible): щом тя изчезне
-   (2 или по-малко отворени бележки, „скрий всички“), бележката се връща на цялата височина без
-   остатъчна пролука, защото променливата също се връща на 0px. Свитите прозорци не се пипат -
-   те си имат собствен размер. */
-body.open-notes-bar-visible.modal-note-expanded .note-window .modal-content-box {
+/* Разпънатата бележка (b2.75; поправено в b3.40). Собственикът (24.10.2026): „extended mode на
+   бележката трябва да се съобразява с наличието на лента, защото бутоните на бележката се скриват
+   зад нея (когато я има)“.
+   Затова кутията се скъсява с височината на лентата (100% - лента - 8px): хартията свършва 8px над
+   лентата, а редът с кръглите бутони и редът с датата под него остават видими. Точно както е в MNV.
+   Собственикът (31.10.2026): „когато има лента, бележката да се разпъва до нея и бутоните й да не се
+   местят - това са излишни гимнастики“ (пробвах да разпъвам хартията до долния ръб и да вдигам
+   вътрешността с долен отстъп - върнато).
+   !important е нужен, защото инлайн стилът от applyExpandedModalSize носи height: 100%.
+   Правилото важи САМО докато лентата е на екрана (body.open-notes-bar-visible): щом я няма, бележката
+   ползва целия екран.
+   И САМО за прозореца, който наистина е разпънат (:has() по data-is-expanded на тялото му). Без това
+   ограничение правилото хващаше всички отворени бележки: при две отворени и една разпъната втората
+   ставаше 784 висока (100% от целия екран), излизаше под екрана и текстът ѝ се показваше под
+   полупрозрачната лента. Точно това видя собственикът: „текста на долната се появява под лентата“. */
+body.open-notes-bar-visible.modal-note-expanded .note-window .modal-content-box:has(> .nw-modal-body[data-is-expanded="true"]) {
     height: calc(100% - var(--open-notes-bar-h) - 8px) !important;
 }
 
@@ -98,10 +102,14 @@ body:has(#login-page:not([hidden])) #kb-fab {
     display: none !important;
 }
 
-/* Keep the Assistant clear of an expanded note's bottom toolbar — but only while nothing else has
-   already lifted it. The open-notes bar lifts the same button by exactly the same 60px, so adding this
-   on top moved it twice as high (b2.74). The class is set by syncExpandedFabLift, which checks that the
-   button still stands on the bottom edge. */
+/* Иконата на асистента се качва с 60px, когато има разпъната бележка, за да не застава върху реда ѝ с
+   кръглите бутони. Собственикът (31.10.2026): „за да не покрива бутоните на бележката при максимизиране,
+   асистента трябва да се мести (-60px) от долния й край“.
+   Класът се дава от syncExpandedFabLift само докато иконата още стои на долния ръб (собственикът може да я
+   е преместил - тогава не се пипа). ДО b3.38 отстъпът се пропускаше, докато лентата на бележките е на
+   екрана, защото тя вдига същите 60px (b2.74). От b3.38 това не стига: вътрешността на разпънатата
+   бележка спира НАД лентата, значи редът с бутоните е по-високо от лентата и иконата пак стъпва върху му.
+   Затова двете отмествания се събират - те целят различни неща. */
 body.modal-note-expanded-fab-lift #kb-fab {
     translate: 0 -60px;
 }
@@ -2013,12 +2021,10 @@ code {
     margin-top: 5px;
 }
 
-/* Hide logo on small screens */
-@media (max-width: 480px) {
-    .header-logo {
-        display: none;
-    }
-}
+/* Логото НЕ се крие по ширина (31 Oct 2026, по решение на собственика): на телефон хедърът е в
+   колона от три реда, логото има място до заглавието и освен това е натискаемото място за
+   защитния овърлей. Крие се само в едноредовия хедър в завъртян екран — виж @media
+   (orientation: landscape) and (max-height: 500px) в края на файла. */
 
 #boards-table th,
 #boards-table td {
@@ -3182,6 +3188,44 @@ code {
     gap: 5px;
 }
 
+/* --- Месец в нисък (завъртян) екран: вариант B (b3.29) ----------------------------------------
+   В 844x390 месецът не се побира по височина, а досега авто-зумът го смаляваше целия до миниатюра.
+   Затова в нисък екран месецът минава в кутия: залепеният хедър (стрелки, днес, седмица/месец,
+   затваряне, името на месеца) и редът с имената на дните остават горе, а мрежата се скролира в
+   собствена кутия под тях. Клетките си остават квадратни - не се пипат. Класът се слага от
+   main.js (fitCalendarMonth) само когато екранът е нисък, значи портретът и компютърът не се менят. */
+#calendar-container.calendar-scroll-box {
+    /* display:flex се слага инлайн от main.js (виж toggleCalendarScrollBox): инлайн block/none от
+       рендера и от седмичния изглед трябва да може да надделява. */
+    flex-direction: column;
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 5px;
+}
+
+/* Хедърът и имената на дните не се свиват и не се скролират - те са постоянната рамка. */
+#calendar-container.calendar-scroll-box > div:first-child {
+    flex: 0 0 auto;
+}
+
+/* Мрежата се скролира в собствената си кутия и не се свива: обвивката е обикновен блок в портрет. */
+.calendar-grid-scroll {
+    display: block;
+}
+
+/* Мрежата живее в собствената си кутия и се скролира в нея, без да мърда страницата. */
+#calendar-container.calendar-scroll-box > .calendar-grid-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 5px;
+}
+
 .calendar-days-header {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -3278,27 +3322,18 @@ code {
     gap: 4px;
     /* Creates space between the notes */
     padding-right: 4px;
-    /* Space between notes and scrollbar */
+    /* Скролбарът в клетката с дата се маха (2 Nov 2026, по заявка на собственика): в 50-пикселова
+       клетка сивата ивица беше по-забележима от самите бележки. Скролът остава — бележките се
+       плъзгат с пръст или колелце, само лентата не се вижда и не заема място. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
-/* Custom scrollbar for calendar cells */
 .calendar-notes-container::-webkit-scrollbar {
-    width: 5px;
-}
-
-.calendar-notes-container::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.calendar-notes-container::-webkit-scrollbar-thumb {
-    background: #aaa;
-    border-radius: 3px;
-}
-
-@media (hover: hover) {
-    .calendar-notes-container::-webkit-scrollbar-thumb:hover {
-        background: #888;
-    }
+    width: 0;
+    height: 0;
+    display: none;
+    /* Chromium: без лента и без място за нея */
 }
 
 .calendar-mini-note {
@@ -3313,8 +3348,10 @@ code {
     border: 1px solid rgba(0, 0, 0, 0.1);
     width: calc(50% - 2px);
     /* Two notes per row with a 4px gap */
-    height: 55px;
-    /* Fixed height to create a square-like shape */
+    /* Квадратче: височината е колкото ширината, за да се вижда цяло в клетката.
+       Преди беше фиксирани 55px и в ниска клетка се показваше само горната ивица. */
+    aspect-ratio: 1 / 1;
+    height: auto;
     box-sizing: border-box;
     display: -webkit-box;
     -webkit-line-clamp: 5;
@@ -3324,6 +3361,18 @@ code {
     white-space: pre-wrap;
     /* Respect newlines */
     word-break: break-word;
+}
+
+/* На телефон клетката се вдига толкова, че първият ред от две бележки да е цял:
+   43px за числото и отстъпите + височината на бележката (половината ширина на
+   клетката минус отстъпите), плюс 3px запас. Ширината не се пипа — седем колони. */
+@media (max-width: 520px) {
+    .calendar-cell {
+        aspect-ratio: auto;
+        /* Фиксирана височина, не min-height: иначе клетката расте по съдържание и
+           мрежата става неравна. Останалото слиза в скрола на контейнера. */
+        height: calc(37px + (100vw - 40px) / 14);
+    }
 }
 
 @media (hover: hover) {
@@ -4314,9 +4363,21 @@ body.selection-locked .note.active-selection-note .note-content {
 /* The strip is one row at every width (see flex-wrap: nowrap above), so ▦ keeps its place on the
    same row on phones too and the narrow-width gap override is no longer needed. */
 
+/* --- Редактор: отстъпът отгоре следва реалната височина на хедъра (30.10.2026) --------------------
+   Досега лентата пазеше 100px за хедъра, независимо колко е висок той: на телефон хедърът е 60-99px
+   според това дали редът с форматиране е отворен, и разликата оставаше празна ивица между лентата и
+   полето за редактиране. --nw-header-h се мери в main.js (wireNoteWindow) и се обновява при всяка
+   промяна на хедъра; мери се до линията под лентата, тоест без долния ѝ отстъп (b3.40). */
 .modal-content-box.has-edit-toolbar {
-    padding-top: 100px;
+    padding-top: calc(var(--nw-header-h, 100px) + 2px);
 }
+
+/* Текстът в режим Редактиране плътно до линиите на горния и долния хедър (b3.40).
+   Собственикът (31.10.2026): „добави и в режим Редактиране текста да приближава плътно до линиите,
+   отделящи горния и долния хедър - в момента има неизползвано пространство“.
+   Вертикалните отстъпи на полето за писане и на слоя с текста (createEditor в main.js) са 3px вместо
+   10px - иначе текстът стоеше 12px под линията на лентата с форматиране и 10px над линията на долната
+   лента. Страничните отстъпи остават 10px. */
 
 /* Adjustments for :is(#modal-board-name, .nw-modal-board-name) when in toolbar */
 .modal-header-toolbar :is(#modal-board-name, .nw-modal-board-name) {
@@ -4717,6 +4778,231 @@ body.selection-locked .note.active-selection-note .note-content {
     transform: translateY(-50%);
 }
 
+/* b3.59: остатък от таймера — седи точно над числото 6 в циферблата.
+   b3.60: вдигнат с 20px, за да не застъпва стрелките при по-дълъг текст (00:00 🔔). */
+.note-timer-readout {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    line-height: 1;
+    color: #1df52f;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.85);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.note-timer-readout[hidden] {
+    display: none;
+}
+
+.note-timer-readout.is-expired {
+    color: #ff3b3b;
+}
+
+/* b3.59: изборът на минути при Ctrl-клик / дълго натискане върху циферблата.
+   b3.61: фиксирана ширина, еднаква за двата режима (преди режимът „Аларма“ беше 145 px заради
+   полето за час, а „Таймер“ 99 px), за да не мени панелът ширина при смяна на режима. */
+.note-timer-picker {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 30;
+    box-sizing: border-box;
+    width: 112px;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px;
+    border-radius: 10px;
+    background: rgba(18, 18, 18, 0.94);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+}
+
+/* b3.62: нищо в панела не може да излезе извън рамката му — на телефон полето за час и „Задай“
+   излизаха от панела, когато браузърът поиска повече ширина за час и AM/PM. */
+.note-timer-picker > *,
+.note-timer-body > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.note-timer-picker[hidden] {
+    display: none;
+}
+
+/* b3.59: изборът започва с режим — обратно броене или аларма за точен час. */
+.note-timer-modes {
+    display: flex;
+    gap: 4px;
+}
+
+/* b3.61: всички бутони в панела са по-високи (25 → 31 px на екрана, 36 px в стиловете), за да
+   се натискат с пръст. */
+.note-timer-mode {
+    flex: 1 1 0;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 12px;
+    min-height: 36px;
+    padding: 4px 2px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.note-timer-mode.is-active {
+    background: rgba(29, 245, 47, 0.22);
+    border-color: rgba(29, 245, 47, 0.6);
+    color: #1df52f;
+}
+
+.note-timer-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.note-timer-body[hidden] {
+    display: none;
+}
+
+/* b3.61: полето за час и бутонът „Задай“ са един под друг, за да остане панелът тесен. */
+.note-timer-body[data-note-timer-body="alarm"] {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.note-timer-alarm-time {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 36px;
+    font: inherit;
+    font-size: 13px;
+    padding: 4px 2px;
+    text-align: center;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    overflow: hidden;
+}
+
+/* b3.62: вътрешните части на полето за час се свиват, за да не избутват панела (при 12-часов
+   вид браузърът иска повече място за AM/PM и за иконката на часовника). */
+.note-timer-alarm-time::-webkit-datetime-edit {
+    padding: 0;
+}
+
+.note-timer-alarm-time::-webkit-calendar-picker-indicator {
+    width: 13px;
+    margin: 0;
+    padding: 0;
+    opacity: 0.75;
+}
+
+/* b3.63: браузърът рисува стойността на полето по своя език (при английски Chrome — „2:05 PM“
+   дори при 24-часова система). Затова неговата рисунка става прозрачна, а видимият час идва от
+   .note-timer-alarm-face — собствен слой с текста по настройката на устройството. */
+.note-timer-alarm-field {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.note-timer-alarm-time {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: transparent;
+}
+
+.note-timer-alarm-face {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 17px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    color: #fff;
+    pointer-events: none;
+}
+
+.note-timer-alarm-set {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    font: inherit;
+    font-size: 13px;
+    min-height: 36px;
+    padding: 4px 2px;
+    border-radius: 6px;
+    border: 1px solid rgba(29, 245, 47, 0.45);
+    background: rgba(29, 245, 47, 0.18);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.note-timer-alarm-set:active {
+    background: rgba(29, 245, 47, 0.32);
+}
+
+.note-timer-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.note-timer-pick,
+.note-timer-stop {
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 13px;
+    min-height: 36px;
+    padding: 4px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.note-timer-pick:active {
+    background: rgba(29, 245, 47, 0.25);
+}
+
+.note-timer-stop {
+    background: rgba(255, 90, 90, 0.18);
+    border-color: rgba(255, 90, 90, 0.5);
+}
+
 /* Ripple ефект върху header бутони 
 .header-btn {
     transition: transform .15s, box-shadow .15s;
@@ -4860,16 +5146,19 @@ body.selection-locked .note.active-selection-note .note-content {
     transition: none;
     user-select: none;
 }
-/* --- Мобилна клавиатура (b2.89) ------------------------------------------------------------------
-   Докато полето за текст в бележката е на фокус на телефон, бележката застава на най-горния ръб и
-   се скъсява до 55vh - толкова остава над клавиатурата и на ниските телефони, така че и долният ред
-   с бутони остава над нея. Класът слага само !important правила: инлайн top/left, които местенето
+/* --- Мобилна клавиатура (2.0x) -------------------------------------------------------------------
+   При фокус в поле на бележката тя застава на горния ръб и се скъсява до мястото, което реално се
+   вижда над клавиатурата. Досега таванът беше 55vh - число, което не знае колко е висока клавиатурата:
+   на телефон с 844px екран 55vh = 464px, а над клавиатурата остават около 520px, значи близо 60px
+   стояха празни. Сега височината идва от --nw-kb-visible: тя се пише в main.js от visualViewport
+   (колко пиксела от страницата се виждат над клавиатурата) и от височината на екрана, когато
+   видимата площ е цялата. Класът слага само !important правила: инлайн top/left, които местенето
    пише, остават непокътнати, значи запомненото място не се променя и щом клавиатурата се затвори,
-   бележката се връща точно там, където е била. Нормалната височина (max-height: 95vh) се връща със
-   снемането на класа. */
+   бележката се връща точно там, където е била. */
 .note-window.note-window-kb-top .modal-content-box {
     top: 0 !important;
-    max-height: 55vh !important;
+    height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
+    max-height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
 }
 /* The quiet trace after a background sync took the new text in, and the question when it could not. */
 .note-window-sync-trace {
@@ -5869,4 +6158,262 @@ header {
 header.title-hidden > div:first-child {
     /* !important, защото блокът на заглавието носи inline style="display:flex" в HTML-а */
     display: none !important;
+}
+
+/* ===== Екран за поверителност (blur overlay при излизане от приложението) ===== */
+.privacy-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 10, 14, 0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(120%);
+    backdrop-filter: blur(20px) saturate(120%);
+    overscroll-behavior: contain;
+    touch-action: none;
+}
+
+.privacy-overlay.is-visible {
+    display: flex;
+}
+
+.privacy-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    transform-origin: center center;
+}
+
+.privacy-tile {
+    width: 300px;
+    height: 300px;
+    box-sizing: border-box;
+    border-radius: 22px;
+    background: linear-gradient(160deg, rgba(30, 34, 42, 0.86), rgba(13, 15, 19, 0.92));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.privacy-tile-clock .privacy-clock {
+    flex: 0 0 auto;
+    transform: scale(1.35);
+}
+
+.privacy-tile-calendar {
+    padding: 14px 14px 12px;
+    color: #e9edf2;
+}
+
+.privacy-cal {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.privacy-cal-month {
+    font-size: 17px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 8px;
+    text-transform: capitalize;
+    letter-spacing: 0.2px;
+    color: #f2f6fa;
+}
+
+.privacy-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+
+.privacy-cal-head span {
+    font-size: 11px;
+    text-align: center;
+    padding-bottom: 6px;
+    opacity: 0.55;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.privacy-cal-days {
+    flex: 1 1 auto;
+    grid-auto-rows: 1fr;
+    row-gap: 2px;
+}
+
+.privacy-cal-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 13px;
+    line-height: 1;
+    height: 100%;
+    /* Точките са процент от ширината на деня, затова денят е контейнер. */
+    container-type: inline-size;
+}
+
+.privacy-cal-num {
+    display: grid;
+    place-items: center;
+    width: 1.5em;
+    height: 1.5em;
+    border-radius: 50%;
+    font-style: normal;
+}
+
+.privacy-cal-day.is-today .privacy-cal-num {
+    background: #1df52f;
+    color: #07130a;
+    font-weight: 700;
+    box-shadow: 0 0 12px rgba(29, 245, 47, 0.45);
+}
+
+/* Две точки на един ред, цели: 24% от ширината на деня (бяха 28%, 2 Nov 2026 — по заявка
+   „една идея по-малки“). Мястото им е запазено и в дните без бележки, за да не мърдат числата
+   нагоре-надолу в редицата, затова слотът остава 28cqw, а точките в него са по-малки. */
+.privacy-cal-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    height: 28cqw;
+}
+
+.privacy-cal-dots i {
+    width: 24cqw;
+    height: 24cqw;
+    border-radius: 50%;
+}
+
+.privacy-close {
+    position: absolute;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 2;
+    padding: 8px 16px;
+    min-height: 36px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+}
+
+.privacy-close:active {
+    background: rgba(255, 255, 255, 0.24);
+}
+
+/* --- b3.54: „Валидност“ / изтекли бележки ------------------------------------------------ */
+
+/* Значката на карта, чиято дата е отминала. Стои под тялото, над долната лента на бележката, и е
+   тиха като реда с датата в картата (10.5px, цвят на текста на картата), а не червен етикет:
+   картата вече е извън борда си и не бива да крещи. Кликовете минават през нея
+   (pointer-events: none), за да не пречи да се отвори бележката, а дългият текст се реже с
+   многоточие, вместо да вдигне картата. */
+.note-expired-badge {
+    flex: 0 0 auto;
+    /* 13px = 8px + 5px: собственикът поиска (2 Nov 2026) информацията да стои 5px по-високо над
+       долния ръб на картата. */
+    margin: 0 10% 13px 8%;
+    padding: 1px 7px;
+    border-radius: 7px;
+    background: rgba(0, 0, 0, 0.10);
+    color: inherit;
+    font-family: Arial, sans-serif;
+    font-size: 10.5px;
+    line-height: 1.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+    pointer-events: none;
+}
+
+/* Значката е част от колоната на wrapper-а, но wrapper-ът е с height: 100% и така надхвърля
+   картата (тя е точно 250px, а под него стои още долната лента) - затова всичко в края му излиза
+   под долния ръб. С тези три реда той заема само остатъка над лентата, а тялото се свива с
+   височината на значката. */
+.note.has-expired-badge .note-content-wrapper {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.note.has-expired-badge .note-content-wrapper>.note-content {
+    min-height: 0;
+}
+
+/* Лентата над бележките в изгледа „Невалидни“: тъмна и заоблена като лентата на бордовете, със
+   същия шрифт и размер (14px Arial). Заглавието е отляво, броят - отдясно, а редът под него казва
+   как бележката се връща в борда си. */
+#expired-hint {
+    display: block;
+    box-sizing: border-box;
+    width: calc(100% - 16px);
+    margin: 6px 8px 8px 8px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: #2f2f2c;
+    color: #f3f0e5;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: left;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Атрибутът hidden трябва да победи display: block по-горе - иначе лентата стои и в другите изгледи. */
+#expired-hint[hidden] {
+    display: none;
+}
+
+#expired-hint .expired-hint-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+#expired-hint .expired-hint-title {
+    font-weight: 700;
+}
+
+#expired-hint .expired-hint-count {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: #cfcabb;
+    white-space: nowrap;
+}
+
+#expired-hint .expired-hint-line {
+    margin-top: 2px;
+    font-size: 13px;
+    color: #cfcabb;
+}
+
+/* На тясно (390px) редът с адреса на бележката се пренася, вместо да излезе извън лентата. */
+@media (max-width: 430px) {
+    #expired-hint .expired-hint-head {
+        flex-wrap: wrap;
+        gap: 2px 10px;
+    }
+
+    #expired-hint .expired-hint-line {
+        white-space: normal;
+    }
 }
