@@ -16004,11 +16004,46 @@ function playNoteTimerBeep() {
     } catch (e) { }
 }
 
+// b3.60 (по желание на собственика): алармата вдига бележката — прозорецът ѝ идва отпред, а ако
+// бележката не е отворена, се отваря. В режим „Единична бележка“ втори прозорец няма къде да
+// застане, затова там не се пипа нищо.
+function noteTimerActivateNote(noteId) {
+    try {
+        if (typeof isSingleNoteMode === 'function' && isSingleNoteMode()) return;
+        const sid = noteTimerKey(noteId);
+        if (!sid) return;
+        const win = typeof findNoteWindow === 'function' ? findNoteWindow(sid, '') : null;
+        if (win) { activateNoteWindow(win, true); return; }
+        // Затворена бележка се отваря по същия път като клик върху картата на борда.
+        let card = null;
+        try { card = document.querySelector(`.note[data-i="${CSS.escape(sid)}"]`); } catch (e) { }
+        if (card) { card.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true })); return; }
+        // Картата не е на екрана (друг борд): отваря се направо, както бележка от камбанката.
+        const note = (Array.isArray(allNotesData) ? allNotesData : []).find(n => n && n.id !== undefined && n.id !== null && String(n.id) === sid);
+        if (!note) return;
+        showModal({
+            raw: note.notetxt !== undefined ? note.notetxt : note.text,
+            format: note.text_span,
+            titleFormat: note.title_span || note.title_text_span,
+            color: getNoteColorCss(note.color),
+            boardId: note.boardid,
+            id: note.id,
+            gdid: note.gdid,
+            datemod: note.datemod,
+            originalNote: note
+        });
+    } catch (e) {
+        console.warn('noteTimerActivateNote failed:', e);
+    }
+}
+
 function noteTimerExpire(key) {
     const st = noteTimers.get(key);
     if (!st || st.expired) return;
     st.expired = true;
     st.timeoutId = null;
+    // Алармата е за точен час, значи бележката трябва да се види: вдига се преди звука.
+    if (st.mode === 'alarm') noteTimerActivateNote(key);
     playNoteTimerBeep();
     noteTimerPaintAll();
 }
@@ -16092,7 +16127,8 @@ function noteTimerPicker(clockEl, noteId) {
         b.type = 'button';
         b.className = 'note-timer-pick';
         b.dataset.minutes = String(mins);
-        b.textContent = mins + ' ' + label('noteTimerMinutesShort', 'мин');
+        // b3.60: по желание на собственика бутоните носят само числото, без „мин“.
+        b.textContent = String(mins);
         grid.appendChild(b);
     });
     timerBody.appendChild(grid);
@@ -25877,6 +25913,9 @@ async function createNoteElement(noteContent) {
         // --- Масов избор (b2.36): Shift+клик и Ctrl/⌘+клик върху тялото влизат в режим на избор;
         // вътре в него всеки клик сменя отметката, а Shift+клик отбелязва диапазон.
         // Ctrl+клик вече НЕ отваря бележката за редакция — собственикът махна това поведение.
+        // b3.60: циферблатът има свои жестове — Ctrl-клик и дълго натискане пускат таймера, значи
+        // клик в него не бива да влиза в избор и да маркира бележката.
+        if (e.target && e.target.closest && e.target.closest('.clock')) return;
         const cardKey = String(note.dataset.g || note.dataset.i || '');
         if (cardKey) {
             if (selectionState.active) {
@@ -25950,6 +25989,18 @@ async function createNoteElement(noteContent) {
             e.stopPropagation();
             return;
         }
+        // b3.60 (по желание на собственика): докато има избор, клик в горната ивица маха отметката
+        // на бележката (същото като клик в тялото) вместо да показва JSON-а. Ctrl-клик върху
+        // заглавието продължава да трие бележката.
+        if (selectionState.active && !e.ctrlKey && !e.metaKey) {
+            const selKey = String(note.dataset.g || note.dataset.i || '');
+            if (selKey) {
+                e.stopPropagation();
+                e.preventDefault();
+                toggleNoteSelection(selKey);
+                return;
+            }
+        }
         // Празното в горната ивица - всичко над заглавието - показва JSON-а с обикновен клик,
         // за да работи и с пръст на телефон. Датата, часът и пин-бутонът имат собствени
         // обработчици и спират събитието преди да стигне дотук.
@@ -25982,6 +26033,8 @@ async function createNoteElement(noteContent) {
         const startTarget = startEvent && startEvent.target;
         // Кабарчето има собствен жест — там изборът не се задейства.
         if (startTarget && startTarget.closest && startTarget.closest('.note-title-wrapper')) return;
+        // b3.60: циферблатът също — дългото натискане върху него отваря таймера, не избор.
+        if (startTarget && startTarget.closest && startTarget.closest('.clock')) return;
         const bodyKey = String(note.dataset.g || note.dataset.i || '');
         if (!bodyKey) return;
         suppressCardClickOnce();

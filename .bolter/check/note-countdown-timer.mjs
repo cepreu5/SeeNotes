@@ -349,6 +349,168 @@ const alarmStopped = await page.evaluate((sel) => {
 }, dial2);
 ok(alarmStopped.hidden && alarmStopped.text === '', '„Стоп“ маха и алармата', alarmStopped);
 
+// 16: бутоните на минутите носят само числото, без „мин“.
+const numOnly = await page.evaluate((sel) => {
+  const p = document.querySelector(sel + ' .note-timer-picker');
+  return [...p.querySelectorAll('.note-timer-pick')].map(b => b.textContent.trim());
+}, dial1);
+ok(numOnly.join(',') === '1,3,5,10,15,30', `бутоните на минутите са само числа (${numOnly.join(',')})`, numOnly);
+
+// 17: редът с остатъка е вдигнат с 20px — на 50px от долния ръб на циферблата.
+await page.evaluate(() => { noteTimerStop(201); noteTimerStart(201, 5 * 60000, 'timer'); });
+await page.waitForTimeout(200);
+const lift = await page.evaluate((sel) => {
+  const dial = document.querySelector(sel);
+  const el = dial.querySelector('.note-timer-readout');
+  const n6 = dial.querySelector('.n6');
+  const center = dial.querySelector('.center');
+  const a = el.getBoundingClientRect(), d = dial.getBoundingClientRect();
+  const b = n6.getBoundingClientRect(), c = center.getBoundingClientRect();
+  return {
+    text: el.textContent.trim(),
+    gapBottom: Math.round(d.bottom - a.bottom),
+    cssBottom: getComputedStyle(el).bottom,
+    scale: Math.round((d.width / dial.offsetWidth) * 100) / 100,
+    aboveNumber6: a.bottom <= b.top + 1,
+    clearsCenter: a.bottom <= c.top || a.top >= c.bottom,
+    inside: a.left >= d.left - 1 && a.right <= d.right + 1 && a.top >= d.top - 1 && a.bottom <= d.bottom + 1,
+    centred: Math.abs((a.left + a.right) / 2 - (d.left + d.right) / 2) <= 3,
+  };
+}, dial1);
+// Циферблатът се мащабира (0.85 на 390px), затова 50 CSS px се виждат като ~43 екранни:
+// проверява се CSS стойността и екранната, сметната през мащаба.
+ok(lift.cssBottom === '50px' && lift.gapBottom === Math.round(50 * lift.scale),
+  `остатъкът е вдигнат с 20px (30 → 50 CSS px, ${lift.gapBottom}px на екран при мащаб ${lift.scale})`, lift);
+ok(lift.aboveNumber6 && lift.clearsCenter && lift.inside && lift.centred,
+  'вдигнатият остатък е над 6, не застъпва центъра и остава в циферблата', lift);
+
+// Помощни за прозорците на бележките.
+const windowsNow = () => page.evaluate(() => {
+  const all = [...document.querySelectorAll('#note-windows-layer .note-window.visible')];
+  const idOf = (w) => { const b = w.querySelector('[data-id]'); return b ? String(b.dataset.id) : null; };
+  const act = all.find(w => w.classList.contains('note-window-active'));
+  return { count: all.length, ids: all.map(idOf), activeId: act ? idOf(act) : null };
+});
+
+// 18: алармата вдига бележката — отваря прозореца ѝ и той идва отпред.
+// Алармата от раздел 13 вече отваря бележката си (новото изискване), затова прозорците се
+// затварят тук: иначе „преди алармата няма отворени прозорци“ мери този остатък.
+await page.evaluate(() => closeAllNoteWindows());
+await page.waitForTimeout(200);
+await page.evaluate(`(async () => {
+  const now = Date.now();
+  const mk2 = (id, txt) => ({
+    alarm_type: -1, boardid: 'B1', calendarDate: 0, color: 0, date: now - 60000, datemod: now - 30000,
+    eventId: 0, gdid: 'GN' + id, id, notetxt: txt, numord: id, sellist: 0, status: 0,
+    text_span: '', title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, version: 1,
+  });
+  for (const nt of [mk2(203, 'бележка с аларма'), mk2(204, 'бележка за единичен режим')]) {
+    allNotesData.push(nt);
+    const el = await createNoteElement(nt);
+    if (el) notesContainer.appendChild(el);
+  }
+  applyFilters();
+})()`);
+await page.waitForTimeout(300);
+const winsBefore = await windowsNow();
+await page.evaluate(() => { noteTimerStart(203, 900, 'alarm'); });
+await page.waitForTimeout(1600);
+const winsAfter = await windowsNow();
+ok(winsBefore.count === 0, 'преди алармата няма отворени прозорци на бележки', winsBefore);
+ok(winsAfter.count === 1 && winsAfter.activeId === '203',
+  'изтеклата аларма отваря бележката и я вдига отпред', { winsBefore, winsAfter });
+
+// 19: в режим „Единична бележка“ алармата не отваря втори прозорец, но пак звъни.
+await page.evaluate(() => localStorage.setItem('singleNoteMode', 'true'));
+const oscSingleBefore = await page.evaluate(() => window.__osc);
+await page.evaluate(() => { noteTimerStart(204, 700, 'alarm'); });
+await page.waitForTimeout(1400);
+const winsSingle = await windowsNow();
+const oscSingleAfter = await page.evaluate(() => window.__osc);
+ok(winsSingle.count === winsAfter.count && !winsSingle.ids.includes('204'),
+  'в режим „Единична бележка“ алармата не вдига бележката', { winsAfter, winsSingle });
+ok(oscSingleAfter > oscSingleBefore, 'в „Единична бележка“ алармата пак звъни', { oscSingleBefore, oscSingleAfter });
+await page.evaluate(() => localStorage.removeItem('singleNoteMode'));
+
+// 20: дълго натискане с пръст върху циферблата отваря таймера, но НЕ маркира бележката.
+const longDial = await page.evaluate((sel) => {
+  if (selectionState.active) exitSelectionMode();
+  const el = document.querySelector(sel);
+  const r = el.getBoundingClientRect();
+  el.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true, cancelable: true, composed: true,
+    clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+    pointerId: 7, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1,
+  }));
+  return true;
+}, dial1);
+await page.waitForTimeout(950);
+const afterLong = await page.evaluate((sel) => {
+  const card = document.querySelector('#notes-container .note[data-i="201"]');
+  const p = document.querySelector(sel + ' .note-timer-picker');
+  const out = {
+    selActive: !!selectionState.active,
+    keys: [...selectionState.keys],
+    marked: !!(card && card.classList.contains('note-selected')),
+    pickerShown: !!p && !p.hidden,
+  };
+  document.querySelector(sel).dispatchEvent(new PointerEvent('pointerup', {
+    bubbles: true, pointerId: 7, pointerType: 'touch', button: 0,
+  }));
+  return out;
+}, dial1);
+ok(!afterLong.selActive && !afterLong.marked && afterLong.keys.length === 0,
+  'дълго натискане върху циферблата не маркира бележката', longDial && afterLong);
+ok(afterLong.pickerShown, 'дългото натискане пак отваря избора на минути', afterLong);
+
+// 21: Ctrl-клик върху циферблата също не маркира бележката.
+await page.evaluate(() => { if (selectionState.active) exitSelectionMode(); });
+await page.click(dial1, { modifiers: ['Control'] });
+await page.waitForTimeout(250);
+const afterCtrl = await page.evaluate(() => {
+  const card = document.querySelector('#notes-container .note[data-i="201"]');
+  return { selActive: !!selectionState.active, keys: [...selectionState.keys], marked: !!(card && card.classList.contains('note-selected')) };
+});
+ok(!afterCtrl.selActive && !afterCtrl.marked && afterCtrl.keys.length === 0,
+  'Ctrl-клик върху циферблата не маркира бележката', afterCtrl);
+
+// 22: докато има избор, клик в хедъра маха отметката вместо да показва JSON-а.
+await page.evaluate((sel) => { if (!document.querySelector(sel + ' .note-timer-picker').hidden) document.querySelector(sel + ' .note-timer-picker').hidden = true; }, dial1);
+await page.evaluate(() => {
+  window.__calls = [];
+  const orig = window.showModal;
+  window.showModal = function (...a) { window.__calls.push(a.length); return orig.apply(this, a); };
+  enterSelectionMode('GN201');
+});
+await page.waitForTimeout(200);
+const selOn = await page.evaluate(() => ({ active: !!selectionState.active, keys: [...selectionState.keys] }));
+await page.evaluate(() => {
+  const w = document.querySelector('#notes-container .note[data-i="201"] .note-title-wrapper');
+  w.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+});
+await page.waitForTimeout(250);
+const hdr = await page.evaluate(() => {
+  const card = document.querySelector('#notes-container .note[data-i="201"]');
+  return {
+    active: !!selectionState.active, keys: [...selectionState.keys],
+    marked: !!(card && card.classList.contains('note-selected')),
+    calls: (window.__calls || []).length,
+  };
+});
+ok(selOn.active && selOn.keys.length === 1 && selOn.keys[0] === 'GN201', 'преди клика бележката е избрана', selOn);
+ok(!hdr.active && hdr.keys.length === 0 && !hdr.marked, 'клик в хедъра маха избора на избраната бележка', hdr);
+ok(hdr.calls === 0, 'кликът в хедъра не показва JSON-а, докато има избор', hdr);
+
+// 23: без избор клик в хедъра пак показва JSON-а.
+await page.evaluate(() => { window.__calls = []; });
+await page.evaluate(() => {
+  const w = document.querySelector('#notes-container .note[data-i="201"] .note-title-wrapper');
+  w.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+});
+await page.waitForTimeout(250);
+const jsonAgain = await page.evaluate(() => (window.__calls || []).length);
+ok(jsonAgain === 1, 'без избор клик в хедъра пак показва JSON-а', { jsonAgain });
+
 // 15: без грешки в конзолата.
 ok(errs.length === 0, 'без изключения в конзолата', errs.slice(0, 3));
 

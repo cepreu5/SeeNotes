@@ -4778,10 +4778,11 @@ body.selection-locked .note.active-selection-note .note-content {
     transform: translateY(-50%);
 }
 
-/* b3.59: остатък от таймера — седи точно над числото 6 в циферблата. */
+/* b3.59: остатък от таймера — седи точно над числото 6 в циферблата.
+   b3.60: вдигнат с 20px, за да не застъпва стрелките при по-дълъг текст (00:00 🔔). */
 .note-timer-readout {
     position: absolute;
-    bottom: 30px;
+    bottom: 50px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 20;
