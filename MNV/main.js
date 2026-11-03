@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.79'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.79)
+const version = 'Beta 1.80'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.80)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -24,7 +24,7 @@ const appSettingsKeys = [
     'showBoardRemind', 'showPhotosBoard', 'showVideosBoard', 'showSoundsBoard',
     'showOtherBoard', 'showWeeklyCalendar', 'enableNoteSorting', 'sortCriteria',
     'sortInReverse', 'sortRemindersTop', 'startBoard', 'maxSavedSearches',
-    'hideAssistant', 'privacyAutoProtect', // 'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 
+    'hideAssistant', 'privacyAutoProtect', 'privacyIdleLock', // 'useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 
     'language', 'showAdvancedSettings', 'savedSearches', 'modalWidth', 'modalHeight', 'singleNoteMode',
     'popupMenuBtnPosition', 'kbFabPosition', 'scrollTopBtnPosition', 'boardMenuOrder'
 ];
@@ -9742,6 +9742,22 @@ async function createSettingsUI(boardsData, boardParseError) {
                 showToast(_('settingSaved'), 2000);
             });
         }
+        // Заключване след бездействие: колко секунди без докосване, преди защитният екран (порт от uni b3.48).
+        // Един ключ с „Автоматична защита“: изключената защита изключва и това заключване.
+        // Точно този ред липсваше в MNV, затова екранът не излизаше сам, колкото и да е включена защитата:
+        // бездействието няма как да вдигне екран, който не се брои никъде.
+        const idleLockSelect = document.getElementById('idle-lock-select');
+        if (idleLockSelect) {
+            const idleSteps = ['10', '15', '30', '60'];
+            const idleSaved = localStorage.getItem('privacyIdleLock');
+            idleLockSelect.value = idleSteps.indexOf(idleSaved) >= 0 ? idleSaved : '30';
+            idleLockSelect.addEventListener('change', () => {
+                localStorage.setItem('privacyIdleLock', idleLockSelect.value);
+                // Новото време се брои от смяната, не от предишната активност.
+                if (typeof window.privacyIdleReset === 'function') window.privacyIdleReset();
+                showToast(_('settingSaved'), 2000);
+            });
+        }
         // Zooom/Opacity Helpers
         let opacityTimeout;
         const settingsModal = document.getElementById('settings-modal');
@@ -13933,6 +13949,12 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
     let privacyExpectUntil = 0;      // до кога очакваме системен избор (файл), който сам вдига blur
     let privacyArmed = false;        // приложението е било наистина на екрана и на фокус
     let privacyArmedAt = 0;
+    // Заключване след бездействие (порт от uni b3.48): брояч до защитния екран.
+    const PRIVACY_IDLE_KEY = 'privacyIdleLock';
+    const PRIVACY_IDLE_DEFAULT = 30;
+    const PRIVACY_IDLE_STEPS = [10, 15, 30, 60];
+    let privacyIdleTimer = null;     // броячът: проверка през секунда
+    let privacyIdleFrom = 0;         // откога тече бездействие
 
     function privacyIsBg() {
         return typeof currentLang === 'string' && currentLang.indexOf('bg') === 0;
@@ -13971,6 +13993,49 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
         privacyArm();
         if (!privacyAutoProtectOn()) return false;
         return privacyArmed && (Date.now() - privacyArmedAt) >= PRIVACY_SETTLE_MS;
+    }
+
+    /* ===== Заключване след бездействие (порт от uni b3.48) =====
+       Същият защитен екран, но вдигнат от брояч: след N секунди без докосване, клавиш или
+       скролване (Настройки → „Заключване след“, по подразбиране 30 s). Причината е същата като в
+       uni: Android снима кадъра за списъка с приложенията, значи екранът трябва да е вдигнат
+       по-рано, не в мига на излизане. Броячът стои до blur/visibilitychange, не ги заменя. */
+
+    // Колко секунди бездействие (10 / 15 / 30 / 60, по подразбиране 30).
+    function privacyIdleSeconds() {
+        let v = 0;
+        try { v = parseInt(localStorage.getItem(PRIVACY_IDLE_KEY), 10); } catch (e) { v = 0; }
+        return PRIVACY_IDLE_STEPS.indexOf(v) >= 0 ? v : PRIVACY_IDLE_DEFAULT;
+    }
+
+    // Позволено ли е заключване по брояч сега: същата настройка, режим на приложението и
+    // флаг за системен избор като при blur. Докато прозорецът не е на фокус (системен избор,
+    // друг екран) броячът не заключва — тогава приложението не е това, което е на екрана.
+    function privacyIdleAllowed() {
+        if (!privacyArmed || !privacyAutoProtectOn()) return false;
+        if (!privacyAppScreenMode()) return false;
+        if (privacyExpectingSystemUI()) return false;
+        if (document.hidden) return false;
+        if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
+        return true;
+    }
+
+    function privacyIdleTick() {
+        if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) return;
+        if (!privacyIdleAllowed()) {
+            privacyIdleFrom = Date.now();
+            return;
+        }
+        // Броячът тръгва 0,8 s след старт — същото изчакване, което вече пази екрана да не
+        // излезе още при пускане.
+        const from = Math.max(privacyIdleFrom, privacyArmedAt + PRIVACY_SETTLE_MS);
+        if (Date.now() - from < privacyIdleSeconds() * 1000) return;
+        privacyShow();
+    }
+
+    // Докосване, клавиш или скролване: четенето на дълга бележка не е бездействие.
+    function privacyIdleReset() {
+        privacyIdleFrom = Date.now();
     }
 
     function privacyBuildClock() {
@@ -14142,6 +14207,8 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
     }
 
     function privacyHide() {
+        // Броячът тръгва наново от затварянето, за да не излезе екранът веднага пак.
+        privacyIdleFrom = Date.now();
         if (!privacyOverlay) return;
         privacyOverlay.classList.remove('is-visible');
         privacyOverlay.setAttribute('aria-hidden', 'true');
@@ -14182,7 +14249,7 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
     });
 
     document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) { privacyArm(); return; }
+        if (!document.hidden) { privacyArm(); privacyIdleFrom = Date.now(); return; }
         if (!privacyProtectReady()) return;
         privacyWentHidden = true;
         if (privacyExpectingSystemUI()) return;
@@ -14193,6 +14260,7 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
     window.addEventListener('focus', function () {
         privacyExpectUntil = 0;
         privacyArm();
+        privacyIdleFrom = Date.now();
         // Blur без истинско скриване (системен диалог, избор на час, падащо меню): приложението
         // не е напускало екрана, затова бележките се връщат веднага, без бутон Затвори.
         if (!privacyWentHidden) privacyHide();
@@ -14217,6 +14285,18 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
     }, true);
 
     privacyArm();
+
+    /* Броячът на бездействието: нулира се при докосване, клавиш и скролване и проверява през
+       секунда. Слушателите са в фаза прихващане, за да виждат и скрола на вътрешни елементи,
+       който не изплува до документа. */
+    ['touchstart', 'touchmove', 'pointerdown', 'mousedown', 'keydown', 'wheel', 'scroll'].forEach(function (type) {
+        document.addEventListener(type, privacyIdleReset, { passive: true, capture: true });
+    });
+    privacyIdleFrom = Date.now();
+    if (privacyIdleTimer) clearInterval(privacyIdleTimer);
+    privacyIdleTimer = setInterval(privacyIdleTick, 1000);
+
     window.privacyOverlayShow = privacyShow;
     window.privacyOverlayHide = privacyHide;
+    window.privacyIdleReset = privacyIdleReset;
 })();
