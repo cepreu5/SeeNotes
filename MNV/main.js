@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.84'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.84)
+const version = 'Beta 1.85'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.85)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -8730,14 +8730,46 @@ function formatDateTime(timestamp) {
     }
 }
 
+// 12 или 24 ч по устройството - същото правило като в uni (b2.13): първо -u-hc- в езика
+// (системната настройка стига до браузъра така, напр. en-US-u-hc-h23), после каквото дава
+// Intl за езика. null - няма Intl, тогава остава 'HH:MM'.
+let deviceHour12 = undefined;
+function getDeviceHour12() {
+    if (deviceHour12 !== undefined) return deviceHour12;
+    deviceHour12 = null;
+    try {
+        const tag = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+        const hc = /-u(?:-[a-z0-9]+)*?-hc-(h11|h12|h23|h24)(?:-|$)/i.exec(tag);
+        if (hc) {
+            deviceHour12 = /^h1[12]$/i.test(hc[1]);
+        } else {
+            const resolved = new Intl.DateTimeFormat(navigator.language, { hour: 'numeric' }).resolvedOptions();
+            if (typeof resolved.hour12 === 'boolean') deviceHour12 = resolved.hour12;
+            else if (resolved.hourCycle) deviceHour12 = resolved.hourCycle === 'h11' || resolved.hourCycle === 'h12';
+        }
+    } catch (e) {
+        deviceHour12 = null;
+    }
+    return deviceHour12;
+}
+
+let timeFormatter = null;
 function formatTime(timestamp) {
     if (!timestamp) return '';
     try {
         const parsedValue = !isNaN(timestamp) && !isNaN(parseFloat(timestamp)) ? Number(timestamp) : timestamp;
         const date = new Date(parsedValue);
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
+        if (Number.isNaN(date.getTime())) return '';
+        try {
+            const hour12 = getDeviceHour12();
+            if (typeof hour12 !== 'boolean') throw new Error('no Intl');
+            if (!timeFormatter) timeFormatter = new Intl.DateTimeFormat(navigator.language, { hour: 'numeric', minute: '2-digit', hour12 });
+            return timeFormatter.format(date);
+        } catch (e) {
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
     } catch (e) {
         return ''; // Fallback
     }
@@ -12800,18 +12832,26 @@ async function createNoteElement(noteContent) {
         showNoteWeekCalendar(note, getNoteHeaderDateTimestamp(extraData));
     });
 
-    // Какво показва хедърът: напомняне, календарна дата или дата на създаване - в този ред.
-    // Иконата на календара се вижда в нормалния хедър там, където бележката има календарна
-    // дата или напомняне (както досега), а при скрита дата остава сама отляво. Иконата на
-    // часовника се вижда в нормалния хедър само при наличен час; при скрита дата остава
-    // до пин-бутона, за да е достъпен аналоговият часовник.
+    // Какво показва хедърът - по същия ред като в uni: напомняне, календарна дата, дата на
+    // промяна и накрая дата на създаване. Иконата на календара се вижда там, където бележката
+    // има календарна дата; при напомняне остава само ако има и календарна дата, а при скрита
+    // дата - сама отляво. Иконата на часовника се вижда при наличен час; при скрита дата
+    // остава до пин-бутона, за да е достъпен аналоговият часовник.
+    // Автоматичният календарен таймер (00:00:33) не е напомняне: без тази проверка бележка с
+    // календарна дата показваше датата на таймера и час „00:00" вместо своята дата.
+    let isAutoTimer = false;
+    if (extraData.timer) {
+        const d = new Date(extraData.timer);
+        if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 33) isAutoTimer = true;
+    }
     const headerTimestamp = getNoteHeaderDateTimestamp(extraData);
     if (headerTimestamp) calendarIconEl.classList.add('has-header-value');
-    if (extraData.timer) {
+    if (extraData.timer && !isAutoTimer) {
         const dateText = formatDate(extraData.timer);
+        const showCalIcon = extraData.calendarDate && parseInt(extraData.calendarDate, 10) > 0;
         if (dateText) {
             dateTextEl.textContent = dateText;
-            calendarIconEl.classList.remove('icon-only-when-hidden');
+            if (showCalIcon) calendarIconEl.classList.remove('icon-only-when-hidden');
         }
         const timeText = formatTime(extraData.timer);
         if (timeText) {
@@ -12819,7 +12859,7 @@ async function createNoteElement(noteContent) {
             clockIconEl.classList.add('has-header-value');
             clockIconEl.classList.remove('icon-only-when-hidden');
         }
-    } else if (extraData.calendarDate) {
+    } else if (extraData.calendarDate && extraData.calendarDate > 0) {
         const dateText = formatDate(extraData.calendarDate);
         if (dateText) {
             dateTextEl.textContent = dateText;
@@ -12827,10 +12867,23 @@ async function createNoteElement(noteContent) {
             // Има дата, но няма час: часовникът се появява само при скрита дата.
             clockIconEl.classList.add('has-header-value');
         }
+    } else if (extraData.datemod) {
+        // Дата на промяна: класът е този, който настройката „Покажи дата на промяна" скрива.
+        const dateText = formatDate(extraData.datemod);
+        if (dateText) {
+            dateTextEl.textContent = dateText; // No icon for datemod
+            dateTextEl.classList.add('datemod-header-date');
+            const timeText = formatTime(extraData.datemod);
+            if (timeText) {
+                timeTextEl.textContent = timeText;
+                clockIconEl.classList.add('has-header-value');
+                clockIconEl.classList.remove('icon-only-when-hidden');
+            }
+        }
     } else if (extraData.date) { // Fallback to creation date
         const dateText = formatDate(extraData.date);
         if (dateText) {
-            dateTextEl.textContent = dateText; // No icon for datemod
+            dateTextEl.textContent = dateText;
             dateTextEl.classList.add('creation-header-date');
             const timeText = formatTime(extraData.date);
             if (timeText) {
