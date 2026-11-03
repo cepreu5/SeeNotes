@@ -590,5 +590,10 @@
     "nmInlineRefusedCode": "Тук снимка не може да се сложи",
     "nmAttachDelete": "Изтрий файла „{name}“",
     "nmAttachDeleteConfirm": "Файлът „{name}“ ще бъде изтрит от бележката и от Google Drive. Продължаваш ли?",
-    "nmAttachDeleted": "Файлът „{name}“ е изтрит"
+    "nmAttachDeleted": "Файлът „{name}“ е изтрит",
+    "noteTimerModeTimer": "Таймер",
+    "noteTimerModeAlarm": "Аларма",
+    "noteTimerSet": "Задай",
+    "noteTimerMinutesShort": "мин",
+    "noteTimerStop": "Стоп"
 }

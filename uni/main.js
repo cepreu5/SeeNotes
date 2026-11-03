@@ -15905,6 +15905,326 @@ function playCalendarBellSound() {
     } catch (e) { }
 }
 
+// --- b3.59: таймер и аларма върху циферблата на бележка ---
+// Ctrl-клик (Cmd на Mac) или дълго натискане върху циферблата отваря избор с два режима:
+// „Таймер“ (обратно броене от 1/3/5/10/15/30 мин) и „Аларма“ (точен час от деня).
+// Редът седи над числото 6: таймерът показва остатъка и се обновява на всеки 15 сек,
+// алармата показва само насрочения час. При изтичане се пуска кратък beep и до времето
+// застава камбанка. И двата режима се помнят по бележка, за да ги намери циферблатът и
+// след затваряне и ново отваряне на часовника.
+const NOTE_TIMER_TICK_MS = 15000;
+const NOTE_TIMER_LONG_PRESS_MS = 600;
+const NOTE_TIMER_MINUTES = [1, 3, 5, 10, 15, 30];
+const noteTimers = new Map(); // noteId -> { mode, endsAt, totalMs, expired, timeoutId }
+let noteTimerInterval = null;
+
+function noteTimerKey(id) {
+    return String(id === undefined || id === null ? '' : id);
+}
+
+function noteTimerPad2(n) {
+    return (n < 10 ? '0' : '') + n;
+}
+
+function noteTimerFormat(ms) {
+    const total = Math.max(0, Math.round(ms / 1000));
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return m + ':' + noteTimerPad2(sec);
+}
+
+// Часът, за който е насрочена алармата, във вид ЧЧ:ММ по местно време.
+function noteTimerAlarmText(endsAt) {
+    const d = new Date(endsAt);
+    return noteTimerPad2(d.getHours()) + ':' + noteTimerPad2(d.getMinutes());
+}
+
+// Предложението в полето за час: следващите 5 минути, закръглени нагоре.
+function noteTimerNextAlarmValue() {
+    const d = new Date(Date.now() + 5 * 60000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+    return noteTimerPad2(d.getHours()) + ':' + noteTimerPad2(d.getMinutes());
+}
+
+// Таймерът показва остатъка, алармата — само насрочения час.
+function noteTimerReadoutText(st) {
+    if (!st) return '';
+    if (st.mode === 'alarm') return noteTimerAlarmText(st.endsAt) + (st.expired ? ' 🔔' : '');
+    const left = st.expired ? 0 : Math.max(0, st.endsAt - Date.now());
+    return noteTimerFormat(left) + (st.expired ? ' 🔔' : '');
+}
+
+// Рисува всички отворени циферблати; без таймер редът е скрит.
+function noteTimerPaintAll() {
+    const nodes = document.querySelectorAll('.note-timer-readout');
+    for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        const st = noteTimers.get(noteTimerKey(el.dataset.noteTimerId));
+        if (!st) {
+            el.textContent = '';
+            el.hidden = true;
+            el.classList.remove('is-expired');
+            continue;
+        }
+        el.textContent = noteTimerReadoutText(st);
+        el.hidden = false;
+        el.classList.toggle('is-expired', !!st.expired);
+    }
+}
+
+function noteTimerEnsureInterval() {
+    if (noteTimerInterval) return;
+    noteTimerInterval = setInterval(() => {
+        noteTimerPaintAll();
+        if (!noteTimers.size) {
+            clearInterval(noteTimerInterval);
+            noteTimerInterval = null;
+        }
+    }, NOTE_TIMER_TICK_MS);
+}
+
+// Кратък beep (един тон, без звуков файл); контекстът е същият като на календарната камбанка
+// и се отключва от жеста, с който се пуска таймерът.
+function playNoteTimerBeep() {
+    try {
+        const ctx = getCalBellAudioCtx();
+        if (!ctx) return;
+        const t0 = ctx.currentTime + 0.01;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 1000;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.22);
+    } catch (e) { }
+}
+
+function noteTimerExpire(key) {
+    const st = noteTimers.get(key);
+    if (!st || st.expired) return;
+    st.expired = true;
+    st.timeoutId = null;
+    playNoteTimerBeep();
+    noteTimerPaintAll();
+}
+
+function noteTimerStop(noteId) {
+    const key = noteTimerKey(noteId);
+    const st = noteTimers.get(key);
+    if (st && st.timeoutId) clearTimeout(st.timeoutId);
+    noteTimers.delete(key);
+    noteTimerPaintAll();
+}
+
+function noteTimerStart(noteId, ms, mode) {
+    const key = noteTimerKey(noteId);
+    noteTimerStop(key);
+    if (!(ms > 0)) return null;
+    const st = {
+        mode: mode === 'alarm' ? 'alarm' : 'timer',
+        endsAt: Date.now() + ms, totalMs: ms, expired: false, timeoutId: null,
+    };
+    // Точността на beep-а не бива да зависи от 15-секундния такт на дисплея.
+    st.timeoutId = setTimeout(() => noteTimerExpire(key), ms);
+    noteTimers.set(key, st);
+    noteTimerEnsureInterval();
+    noteTimerPaintAll();
+    return st;
+}
+
+// Превключва избора между „Таймер“ и „Аларма“.
+function noteTimerPickerSetMode(picker, mode) {
+    const wanted = mode === 'alarm' ? 'alarm' : 'timer';
+    picker.dataset.noteTimerMode = wanted;
+    const tabs = picker.querySelectorAll('.note-timer-mode');
+    for (let i = 0; i < tabs.length; i++) {
+        tabs[i].classList.toggle('is-active', tabs[i].dataset.noteTimerMode === wanted);
+    }
+    const bodies = picker.querySelectorAll('.note-timer-body');
+    for (let i = 0; i < bodies.length; i++) {
+        bodies[i].hidden = bodies[i].dataset.noteTimerBody !== wanted;
+    }
+}
+
+// Преди показване: отваря режима, който бележката вече ползва, и слага в полето часа на
+// алармата (или следващите 5 минути, ако няма пусната аларма).
+function noteTimerPickerPrepare(picker, noteId) {
+    const st = noteTimers.get(noteTimerKey(noteId));
+    const isAlarm = !!st && st.mode === 'alarm';
+    noteTimerPickerSetMode(picker, isAlarm ? 'alarm' : 'timer');
+    const input = picker.querySelector('.note-timer-alarm-time');
+    if (input) input.value = isAlarm ? noteTimerAlarmText(st.endsAt) : noteTimerNextAlarmValue();
+}
+
+function noteTimerPicker(clockEl, noteId) {
+    let picker = clockEl.querySelector('.note-timer-picker');
+    if (picker) return picker;
+    const label = (key, fallback) => (typeof _ === 'function' && _(key)) || fallback;
+    picker = document.createElement('div');
+    picker.className = 'note-timer-picker';
+    picker.dataset.noteTimerPicker = '1';
+
+    // Първо се избира режимът — обратно броене или аларма за точен час.
+    const modes = document.createElement('div');
+    modes.className = 'note-timer-modes';
+    [['timer', 'noteTimerModeTimer', 'Таймер'], ['alarm', 'noteTimerModeAlarm', 'Аларма']].forEach(pair => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'note-timer-mode';
+        b.dataset.noteTimerMode = pair[0];
+        b.textContent = label(pair[1], pair[2]);
+        modes.appendChild(b);
+    });
+    picker.appendChild(modes);
+
+    const timerBody = document.createElement('div');
+    timerBody.className = 'note-timer-body';
+    timerBody.dataset.noteTimerBody = 'timer';
+    const grid = document.createElement('div');
+    grid.className = 'note-timer-picker-grid';
+    NOTE_TIMER_MINUTES.forEach(mins => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'note-timer-pick';
+        b.dataset.minutes = String(mins);
+        b.textContent = mins + ' ' + label('noteTimerMinutesShort', 'мин');
+        grid.appendChild(b);
+    });
+    timerBody.appendChild(grid);
+    picker.appendChild(timerBody);
+
+    const alarmBody = document.createElement('div');
+    alarmBody.className = 'note-timer-body';
+    alarmBody.dataset.noteTimerBody = 'alarm';
+    alarmBody.hidden = true;
+    const alarmTime = document.createElement('input');
+    alarmTime.type = 'time';
+    alarmTime.step = '60';
+    alarmTime.className = 'note-timer-alarm-time';
+    alarmTime.setAttribute('aria-label', label('noteTimerModeAlarm', 'Аларма'));
+    alarmBody.appendChild(alarmTime);
+    const alarmSet = document.createElement('button');
+    alarmSet.type = 'button';
+    alarmSet.className = 'note-timer-alarm-set';
+    alarmSet.dataset.noteTimerAlarmSet = '1';
+    alarmSet.textContent = label('noteTimerSet', 'Задай');
+    alarmBody.appendChild(alarmSet);
+    picker.appendChild(alarmBody);
+
+    const stop = document.createElement('button');
+    stop.type = 'button';
+    stop.className = 'note-timer-stop';
+    stop.dataset.noteTimerStop = '1';
+    stop.textContent = label('noteTimerStop', 'Стоп');
+    picker.appendChild(stop);
+
+    picker.hidden = true;
+    clockEl.appendChild(picker);
+    // Началният режим се слага при отваряне (noteTimerPickerPrepare), за да следва бележката.
+    noteTimerPickerSetMode(picker, 'timer');
+    return picker;
+}
+
+// Часът от полето → момент за аларма. Ако часът вече е минал днес, алармата е за утре.
+function noteTimerAlarmEndsAt(value) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(value || '').trim());
+    if (!m) return 0;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (!(h >= 0 && h < 24 && min >= 0 && min < 60)) return 0;
+    const target = new Date();
+    target.setHours(h, min, 0, 0);
+    if (target.getTime() <= Date.now() + 1000) target.setDate(target.getDate() + 1);
+    return target.getTime();
+}
+
+// Закача жестовете и реда с остатъка към един циферблат.
+function attachNoteCountdown(clockEl, noteId) {
+    const key = noteTimerKey(noteId);
+
+    let readout = clockEl.querySelector('.note-timer-readout');
+    if (!readout) {
+        readout = document.createElement('div');
+        readout.className = 'note-timer-readout';
+        readout.dataset.noteTimerId = key;
+        readout.hidden = true;
+        clockEl.appendChild(readout);
+    }
+
+    const picker = noteTimerPicker(clockEl, noteId);
+    let longPressTimer = null;
+    let longPressFired = false;
+
+    const clearLongPress = () => {
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    };
+
+    clockEl.addEventListener('pointerdown', ev => {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        longPressFired = false;
+        clearLongPress();
+        longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            longPressFired = true;
+            if (picker.hidden) noteTimerPickerPrepare(picker, noteId);
+            picker.hidden = !picker.hidden;
+        }, NOTE_TIMER_LONG_PRESS_MS);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(evName =>
+        clockEl.addEventListener(evName, clearLongPress));
+
+    // Слушателят се закача преди този, който затваря часовника, затова stopImmediatePropagation
+    // пази циферблата отворен при Ctrl-клик, дълго натискане и натиск върху самия избор.
+    clockEl.addEventListener('click', ev => {
+        if (ev.target.closest && ev.target.closest('.note-timer-picker')) {
+            ev.stopImmediatePropagation();
+            const btn = ev.target.closest('button');
+            if (!btn) return;
+            if (btn.dataset.noteTimerStop) {
+                noteTimerStop(noteId);
+                picker.hidden = true;
+                return;
+            }
+            if (btn.dataset.noteTimerMode) {
+                noteTimerPickerSetMode(picker, btn.dataset.noteTimerMode);
+                return;
+            }
+            if (btn.dataset.noteTimerAlarmSet) {
+                const input = picker.querySelector('.note-timer-alarm-time');
+                const endsAt = noteTimerAlarmEndsAt(input && input.value);
+                if (!endsAt) return;
+                noteTimerStart(noteId, endsAt - Date.now(), 'alarm');
+                picker.hidden = true;
+                return;
+            }
+            const mins = Number(btn.dataset.minutes);
+            if (mins > 0) {
+                noteTimerStart(noteId, mins * 60000, 'timer');
+                picker.hidden = true;
+            }
+            return;
+        }
+        if (longPressFired) {
+            longPressFired = false;
+            ev.stopImmediatePropagation();
+            return;
+        }
+        if (ev.ctrlKey || ev.metaKey) {
+            ev.stopImmediatePropagation();
+            if (picker.hidden) noteTimerPickerPrepare(picker, noteId);
+            picker.hidden = !picker.hidden;
+        }
+    });
+
+    // Ако бележката вече има пуснат таймер, циферблатът го показва веднага.
+    noteTimerPaintAll();
+}
+
 function calBellNoteKey(note) {
     return String(note.gdid || note.id || '');
 }
@@ -25268,6 +25588,8 @@ async function createNoteElement(noteContent) {
                 contentElement.innerHTML = clockHtml;
 
                 const clockElement = contentElement.querySelector(`#${clockId}`);
+                // Таймерът се закача преди слушателя, който затваря часовника.
+                attachNoteCountdown(clockElement, fullNoteContent.id);
 
                 // Restore original empty view on clock click
                 clockElement.addEventListener('click', (ev) => {
