@@ -4913,6 +4913,42 @@ body.selection-locked .note.active-selection-note .note-content {
     opacity: 0.75;
 }
 
+/* b3.63: браузърът рисува стойността на полето по своя език (при английски Chrome — „2:05 PM“
+   дори при 24-часова система). Затова неговата рисунка става прозрачна, а видимият час идва от
+   .note-timer-alarm-face — собствен слой с текста по настройката на устройството. */
+.note-timer-alarm-field {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.note-timer-alarm-time {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: transparent;
+}
+
+.note-timer-alarm-face {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 17px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    color: #fff;
+    pointer-events: none;
+}
+
 .note-timer-alarm-set {
     flex: 0 0 auto;
     box-sizing: border-box;
