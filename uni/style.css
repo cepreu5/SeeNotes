@@ -5423,6 +5423,14 @@ body.selection-locked .note.active-selection-note .note-content {
 .open-notes-bar-close:hover {
     background: #607D8B;
 }
+/* Блурът, вдигнат от самата лента (дълго натискане / Ctrl+клик на бутона за затваряне), се вижда
+   на бутона: жълтият контур е същият цвят като контура на активната плочка, значи се разчита без
+   обяснение. По-тъмният фон пази бутона различен и когато мишката не е върху него. */
+.open-notes-bar-close.is-shade-on,
+.open-notes-bar-close.is-shade-on:hover {
+    background: #37474F;
+    box-shadow: inset 0 0 0 2px #FFD400, inset 0 0 0 3px rgba(0, 0, 0, 0.45);
+}
 .open-notes-bar-hide svg,
 .open-notes-bar-close svg {
     width: 22px;

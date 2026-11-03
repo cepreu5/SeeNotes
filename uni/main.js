@@ -11806,6 +11806,31 @@ function isSingleNoteMode() {
     return localStorage.getItem('singleNoteMode') === 'true';
 }
 
+// Блур от лентата (b3.65): дълго натискане или Ctrl/⌘+клик върху бутона за затваряне на всички
+// бележки вдига и сваля същия затъмнен слой, който режим „единична бележка" слага под най-горната
+// бележка (собственикът, 3.11.2026). Състоянието се пази ОТДЕЛНО от настройката: при включен режим
+// лентата изчезва и блурът не може да се свали от нея, а жестът трябва да работи и в двете посоки.
+// Затова лентата остава на екрана, а изборът се помни като настройката - иначе единственото, което
+// се получава, е блур до първото презареждане.
+const NOTE_SHADE_STORE = 'noteShadeOn';
+function isNoteShadeOn() {
+    return localStorage.getItem(NOTE_SHADE_STORE) === 'true';
+}
+
+/** Слоят се показва и когато режимът „единична бележка" е включен, и когато е вдигнат от лентата. */
+function noteShadeActive() {
+    return isSingleNoteMode() || isNoteShadeOn();
+}
+
+function setNoteShadeOn(on) {
+    try { localStorage.setItem(NOTE_SHADE_STORE, on ? 'true' : 'false'); } catch (e) { }
+    updateSingleNoteOverlay();
+}
+
+function toggleNoteShade() {
+    setNoteShadeOn(!isNoteShadeOn());
+}
+
 // After a profile load: the checkbox and the shade follow the loaded value at once.
 function applySingleNoteModeSetting() {
     const checkbox = document.getElementById('single-note-mode-checkbox');
@@ -11827,7 +11852,7 @@ function updateSingleNoteOverlay() {
     if (!layer) return;
     let overlay = document.getElementById('single-note-overlay');
     // Скритите бележки не участват в режима „единична бележка": няма видим прозорец - няма и сянка.
-    const top = isSingleNoteMode() ? getTopVisibleNoteWindow() : null;
+    const top = noteShadeActive() ? getTopVisibleNoteWindow() : null;
     if (!top) {
         overlay?.classList.remove('visible');
         return;
@@ -12831,12 +12856,7 @@ function ensureOpenNotesBar() {
         closeBtn.type = 'button';
         closeBtn.className = 'open-notes-bar-close';
         closeBtn.innerHTML = closeAllNotesIconSvg;
-        // Същата функция като бутона в менюто: въпросът за незаписани промени остава ЕДИН.
-        closeBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeAllNoteWindows();
-        });
+        wireOpenNotesBarShadeToggle(closeBtn);
         bar.appendChild(closeBtn);
         // Родното меню на плочките е забранено (собственикът, 25.10.2026: „забрани стандартното меню на
         // плочките"). То изскачаше при дълго натискане - особено върху плочка със снимка, където Android
@@ -12910,6 +12930,45 @@ function openNotesBarFillTile(tile, win) {
     else if (file) openNotesBarFetchThumb(tile, file);
 }
 
+// Жестът на бутона за затваряне на всички (b3.65): обикновено натискане затваря всички бележки
+// както досега (същата функция като бутона в менюто - въпросът за незаписани промени остава ЕДИН),
+// а ДЪЛГО натискане или Ctrl/⌘+клик вдига и сваля блура под най-горната бележка. Прагът и
+// толерансът на местене са същите като при плочките, за да се усеща като един и същ жест.
+const NOTE_SHADE_PRESS_MS = 500;
+const NOTE_SHADE_PRESS_MOVE_PX = 5;
+
+function wireOpenNotesBarShadeToggle(btn) {
+    let timer = null;
+    // Дългото натискане пуска блура веднага, но браузърът после праща и click. Флагът пази онзи
+    // click да не затвори бележките: иначе жестът едновременно вдига блура и изтрива бележките.
+    let fired = false;
+    let startX = 0, startY = 0;
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    btn.addEventListener('pointerdown', (e) => {
+        if (e.button > 0) return;
+        fired = false;
+        startX = e.clientX;
+        startY = e.clientY;
+        cancel();
+        timer = setTimeout(() => { timer = null; fired = true; toggleNoteShade(); }, NOTE_SHADE_PRESS_MS);
+    });
+    btn.addEventListener('pointermove', (e) => {
+        if (!timer) return;
+        if (Math.abs(e.clientX - startX) > NOTE_SHADE_PRESS_MOVE_PX
+            || Math.abs(e.clientY - startY) > NOTE_SHADE_PRESS_MOVE_PX) cancel();
+    });
+    btn.addEventListener('pointerup', cancel);
+    btn.addEventListener('pointerleave', cancel);
+    btn.addEventListener('pointercancel', () => { cancel(); fired = false; });
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (fired) { fired = false; return; }
+        if (e.ctrlKey || e.metaKey) { toggleNoteShade(); return; }
+        closeAllNoteWindows();
+    });
+}
+
 /**
  * Опреснява лентата: кога се вижда, кои плочки са в нея и коя е активна. Вика се от
  * updateSingleNoteOverlay (всяко вдигане, затваряне и „затвори всички") и в края на всеки
@@ -12928,8 +12987,15 @@ function refreshOpenNotesBar() {
     // 25.10.2026: „при включена настройка Single note лентата е излишно да се показва") - режимът
     // държи една бележка, значи лентата няма какво да показва. Затова включването на режима затваря
     // скритите бележки (виж applySingleNoteModeSetting), вместо да ги остави недостъпни.
-    const show = !isSingleNoteMode() && (visibleOpen >= OPEN_NOTES_BAR_MIN || hiddenCount > 0);
+    // Изключение (b3.65): докато блурът е вдигнат от самата лента, тя остава дори при една бележка -
+    // това е единственото място, откъдето се сваля, значи скрита лента оставя блура без изход.
+    const shadeKeepsBar = isNoteShadeOn() && visibleOpen > 0;
+    const show = !isSingleNoteMode() && (visibleOpen >= OPEN_NOTES_BAR_MIN || hiddenCount > 0 || shadeKeepsBar);
     let bar = document.getElementById('open-notes-bar');
+    // Белегът на бутона се слага ПРЕДИ решението дали лентата се вижда: при скрита лента оставаше
+    // стар клас и при следващото ѝ показване бутонът изглеждаше с вдигнат блур, който вече е свален.
+    const anyCloseBtn = bar ? bar.querySelector('.open-notes-bar-close') : null;
+    if (anyCloseBtn) anyCloseBtn.classList.toggle('is-shade-on', isNoteShadeOn());
     if (!show) {
         if (bar) bar.classList.remove('is-visible');
         // Лентата изчезна: променливата се връща на 0px и плаващите бутони слизат на мястото си.
@@ -12944,6 +13010,9 @@ function refreshOpenNotesBar() {
     if (closeBtn) {
         closeBtn.title = closeLabel;
         closeBtn.setAttribute('aria-label', closeLabel);
+        // Вдигнатият блур се вижда на самия бутон: жълтият контур е същият като контура на
+        // активната плочка, значи се разчита без обяснение.
+        closeBtn.classList.toggle('is-shade-on', isNoteShadeOn());
     }
     // Достъпните имена на стрелките се слагат при всяко опресняване, за да следват езика (както при
     // бутона за затваряне). Ключовете са съществуващите - същите, с които се именуват предишна и
