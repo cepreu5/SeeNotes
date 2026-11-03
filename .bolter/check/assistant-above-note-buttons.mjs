@@ -256,6 +256,20 @@ for (const [W, H] of [[390, 844], [1280, 900]]) {
     ok(ready, `${tag}: приложението е готово`);
     await page.locator('#notes-container .note:not(.promo-note)').first().click();
     await page.waitForTimeout(800);
+    // Демо данните понякога идват след първото отваряне: бележката се отваря само за четене и редът с бутони
+    // остава празен. Затваряме и отваряме пак, преди да мерим - това не е част от проверяваното поведение.
+    for (let attempt = 0; attempt < 2; attempt++) {
+        if (await waitFooterButtons(page, 5000)) break;
+        await page.evaluate(() => {
+            const wins = [...document.querySelectorAll('.note-window.visible')];
+            const top = wins.filter(w => w.classList.contains('note-window-active')).pop() || wins.pop();
+            const close = top && top.querySelector('.modal-close');
+            if (close) close.click();
+        });
+        await page.waitForTimeout(600);
+        await page.locator('#notes-container .note:not(.promo-note)').first().click();
+        await page.waitForTimeout(900);
+    }
     const before = await geo(page);
     ok(!before.liftClass && before.fab.bottom !== null, `${tag}: преди разпъване няма отстъп`, before);
     ok(await expandActive(page), `${tag}: има бутон за разпъване`);
