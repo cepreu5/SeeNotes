@@ -698,19 +698,19 @@
                 <div class="settings-mobile-row zoom-control-wrapper" id="single-note-mode" style="margin-top: 10px;">
                     <label for="single-note-mode-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="singleNoteLabel">Single note</label>
+                        data-key="singleNoteLabel">Single note:</label>
                     <input type="checkbox" id="single-note-mode-checkbox" class="settings-checkbox">
                 </div>
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="gcal-notes" style="margin-top: 10px;">
                     <label for="gcal-notes-checkbox"
                         style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                        data-key="gcalNotesLabel">Write to Google Calendar (CX Notes)</label>
+                        data-key="gcalNotesLabel">Write to calendar CX Notes:</label>
                     <input type="checkbox" id="gcal-notes-checkbox" class="settings-checkbox">
                 </div>
-                <div id="gcal-notes-status" data-key="gcalNotesHint"
+                <!--div id="gcal-notes-status" data-key="gcalNotesHint"
                     style="margin-top: 2px; text-align: left; font-size: 0.85em; line-height: 1.3; opacity: 0.75;">Notes
-                    with a date are written as events into a separate calendar.</div>
+                    with a date are written as events into a separate calendar.</div-->
 
                 <div class="settings-mobile-row zoom-control-wrapper" id="one-tap-link" style="margin-top: 10px;">
                     <label for="one-tap-link-checkbox"
@@ -770,14 +770,14 @@
                             style="margin-top: 0px;">
                             <label for="remind-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showBoardRemind"><strong><i>Reminders</i></strong>:</label>
+                                data-key="showBoardRemind">Reminders:</label>
                             <input type="checkbox" id="remind-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="settings-mobile-row zoom-control-wrapper" id="all-board" style="margin-top: 10px;">
                             <label for="all-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showBoardAll"><strong><i>All</i></strong>:</label>
+                                data-key="showBoardAll">All:</label>
                             <input type="checkbox" id="all-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -785,7 +785,7 @@
                             style="margin-top: 10px;">
                             <label for="show-photos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showPhotosBoardLabel"><strong><i>With Photos</i></strong>:</label>
+                                data-key="showPhotosBoardLabel">With Photos:</label>
                             <input type="checkbox" id="show-photos-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -793,7 +793,7 @@
                             style="margin-top: 10px;">
                             <label for="show-videos-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showVideosBoardLabel"><strong><i>With Video</i></strong>:</label>
+                                data-key="showVideosBoardLabel">With Video:</label>
                             <input type="checkbox" id="show-videos-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -801,7 +801,7 @@
                             style="margin-top: 10px;">
                             <label for="show-sounds-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showSoundsBoardLabel"><strong><i>With Sounds</i></strong>:</label>
+                                data-key="showSoundsBoardLabel">With Sounds:</label>
                             <input type="checkbox" id="show-sounds-board-checkbox" class="settings-checkbox">
                         </div>
 
@@ -809,25 +809,25 @@
                             style="margin-top: 10px;">
                             <label for="show-other-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showOtherBoardLabel"><strong><i>Other Attachments</i></strong>:</label>
+                                data-key="showOtherBoardLabel">Other Attachments:</label>
                             <input type="checkbox" id="show-other-board-checkbox" class="settings-checkbox">
                         </div>
 
                         <div class="settings-mobile-row zoom-control-wrapper" id="show-new-board"
-                            style="margin-top: 10px; padding-bottom: 5px; border-bottom: 1px solid #000000;">
+                            style="margin-top: 10px; padding-bottom: 5px;">
                             <label for="show-new-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="showNewBoardLabel"><strong><i>New</i></strong>:</label>
+                                data-key="showNewBoardLabel">New:</label>
                             <input type="checkbox" id="show-new-board-checkbox" class="settings-checkbox">
                         </div>
 
-                        <!-- b3.54: „Невалидни“ (Expired) - филтърът за изтекли бележки. Изключен, той
-                             само скрива реда в менюто; бележките не се връщат в бордовете си. -->
+                        <!-- b3.54: „Невалидни“ (Expired) - филтърът за изтекли бележки. Изключен, 
+                            скрива борда в менюто; изключването не връщат бележките в бордовете. -->
                         <div class="settings-mobile-row zoom-control-wrapper" id="show-expired-board"
-                            style="margin-top: 10px; padding-bottom: 5px;">
+                            style="margin-top: 10px; padding-bottom: 5px; border-bottom: 1px solid #000000;">
                             <label for="show-expired-board-checkbox"
                                 style="margin-right: 10px; flex-basis: 265px; flex-shrink: 0; text-align: left;"
-                                data-key="expiredBoardTitle"><strong><i>Невалидни (Expired)</i></strong>:</label>
+                                data-key="expiredBoardTitle">Expired:</label>
                             <input type="checkbox" id="show-expired-board-checkbox" class="settings-checkbox">
                         </div>
                     </div>
@@ -966,8 +966,9 @@
                             <div class="settings-mobile-row zoom-control-wrapper" style="margin-top: 10px;"
                                 id="local-db-wrapper">
                                 <img src="Folder.png" alt="Folder" style="width:24px; height:24px; margin-right: 10px;">
-                                <label for="use-local-db-checkbox" class="settings-icon-label" data-key="useLocalDbLabel"
-                                    id="use-local-db-label" style="flex-basis: 122px; flex-shrink: 0;">Local folder:</label>
+                                <label for="use-local-db-checkbox" class="settings-icon-label"
+                                    data-key="useLocalDbLabel" id="use-local-db-label"
+                                    style="flex-basis: 122px; flex-shrink: 0;">Local folder:</label>
                                 <input type="checkbox" id="use-local-db-checkbox" class="settings-checkbox"
                                     style="flex-shrink: 0;" />
                                 <span id="local-sync-folder-name"
