@@ -184,14 +184,8 @@ for (const [W, H, mobile] of [[390, 844, true], [412, 915, true], [480, 800, tru
         ok(data.boxRight === null || row.rowRight <= data.boxRight, `[${tag}] ${row.id}: редът не излиза извън модала`, { rowRight: row.rowRight, boxRight: data.boxRight });
     }
 
-    // 7: диагностичният ред
-    ok(data.debug && data.debug.shown, `[${tag}] диагностичният ред се вижда при debug`, data.debug);
-    if (data.debug && data.debug.text) {
-        const t = data.debug.text;
-        ok(/mode=(app|tab)/.test(t) && /armed=[01]/.test(t) && /auto=[01]/.test(t) && /allow=[01]/.test(t)
-            && /idle=\d+s/.test(t) && /hidden=[01]/.test(t) && /focus=[01?]/.test(t),
-            `[${tag}] диагностичният ред показва всички проверки`, t);
-    }
+    // 7: диагностичният ред го няма (махнат 3 Nov 2026 — защитният екран работи)
+    ok(data.debug === null, `[${tag}] диагностичен ред в Настройки няма`, data.debug);
 
     // 8: manifest
     ok(data.manifestHref === 'manifest.json', `[${tag}] страницата обявява manifest.json`, data.manifestHref);
