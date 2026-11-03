@@ -15933,31 +15933,32 @@ function noteTimerFormat(ms) {
     return m + ':' + noteTimerPad2(sec);
 }
 
-// b3.61 (по желание на собственика): часът се показва във вида, който ползва системата —
-// 24-часов (ЧЧ:ММ) или 12-часов (Ч:ММ AM/PM). Решението се взема от същата настройка, по която
-// браузърът рисува и полето за час, и се помни, за да не се пита на всеки такт.
-let noteTimerHour12 = null;
-
+// b3.62 (по желание на собственика): 24- или 12-часов вид се решава от същата настройка на
+// системата, по която се показват и останалите часове в приложението (getDeviceHour12), а не от
+// Intl по подразбиране: Android WebView не винаги предава 24-часовата настройка на Intl и
+// панелът излизаше 12-часов при 24-часова система.
 function noteTimerUsesHour12() {
-    if (noteTimerHour12 !== null) return noteTimerHour12;
-    noteTimerHour12 = false;
-    try {
-        const opts = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions();
-        if (typeof opts.hour12 === 'boolean') noteTimerHour12 = opts.hour12;
-        else if (opts.hourCycle) noteTimerHour12 = opts.hourCycle === 'h11' || opts.hourCycle === 'h12';
-    } catch (e) { }
-    return noteTimerHour12;
+    return getDeviceHour12() === true;
+}
+
+// Часът като стойност за <input type="time">: винаги 24-часов ЧЧ:ММ, независимо как браузърът
+// го рисува. При 12-часова система тук се слагаше „7:05 PM“, което полето не приема, и при
+// отваряне на съществуваща аларма то оставаше празно (b3.62).
+function noteTimerValue24(ms) {
+    const d = new Date(Number(ms));
+    return noteTimerPad2(d.getHours()) + ':' + noteTimerPad2(d.getMinutes());
 }
 
 // Часът, за който е насрочена алармата, по местно време — 24- или 12-часов, според системата.
-// Частите идват от Intl, за да е същият ред и същите означения (AM/PM, пр.об./сл.об.) като в полето.
+// При 12 часове частите идват от Intl за съответния език, за да е същият ред и същите означения
+// (AM/PM, пр.об./сл.об.) като в полето.
 function noteTimerAlarmText(endsAt) {
-    const d = new Date(endsAt);
-    if (!noteTimerUsesHour12()) {
-        return noteTimerPad2(d.getHours()) + ':' + noteTimerPad2(d.getMinutes());
-    }
+    const ms = Number(endsAt);
+    if (!ms || Number.isNaN(new Date(ms).getTime())) return '';
+    if (!noteTimerUsesHour12()) return noteTimerValue24(ms);
+    const d = new Date(ms);
     try {
-        const parts = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).formatToParts(d);
+        const parts = new Intl.DateTimeFormat(navigator.language, { hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(d);
         const text = parts
             .filter(p => p.type === 'hour' || p.type === 'minute' || p.type === 'dayPeriod' || p.type === 'literal')
             .map(p => p.value)
@@ -16142,7 +16143,31 @@ function noteTimerPickerPrepare(picker, noteId) {
     const isAlarm = !!st && st.mode === 'alarm';
     noteTimerPickerSetMode(picker, isAlarm ? 'alarm' : 'timer');
     const input = picker.querySelector('.note-timer-alarm-time');
-    if (input) input.value = isAlarm ? noteTimerAlarmText(st.endsAt) : noteTimerNextAlarmValue();
+    if (input) input.value = isAlarm ? noteTimerValue24(st.endsAt) : noteTimerNextAlarmValue();
+}
+
+// b3.62 (по желание на собственика): надписите в панела следват езика на приложението. Досега
+// се слагаха само при създаването на панела, затова той оставаше на езика, който е бил активен
+// тогава (на английски при българско приложение), и смяната на езика не го пипаше.
+function noteTimerPickerLabels(picker) {
+    if (!picker) return;
+    const label = (key, fallback) => (typeof _ === 'function' && _(key)) || fallback;
+    const setText = (el, key, fallback) => {
+        if (!el) return;
+        el.textContent = label(key, fallback);
+    };
+    setText(picker.querySelector('.note-timer-mode[data-note-timer-mode="timer"]'), 'noteTimerModeTimer', 'Таймер');
+    setText(picker.querySelector('.note-timer-mode[data-note-timer-mode="alarm"]'), 'noteTimerModeAlarm', 'Аларма');
+    setText(picker.querySelector('.note-timer-alarm-set'), 'noteTimerSet', 'Задай');
+    setText(picker.querySelector('.note-timer-stop'), 'noteTimerStop', 'Стоп');
+    const input = picker.querySelector('.note-timer-alarm-time');
+    if (input) input.setAttribute('aria-label', label('noteTimerModeAlarm', 'Аларма'));
+}
+
+// След смяна на езика: всички вече създадени панели (в отворените бележки) се пре-надписват.
+function noteTimerPickerRelabelAll() {
+    const pickers = document.querySelectorAll('.note-timer-picker');
+    for (let i = 0; i < pickers.length; i++) noteTimerPickerLabels(pickers[i]);
 }
 
 function noteTimerPicker(clockEl, noteId) {
@@ -16212,6 +16237,8 @@ function noteTimerPicker(clockEl, noteId) {
     clockEl.appendChild(picker);
     // Началният режим се слага при отваряне (noteTimerPickerPrepare), за да следва бележката.
     noteTimerPickerSetMode(picker, 'timer');
+    // Надписите се слагат и тук, за да е панелът на езика на приложението още от създаването.
+    noteTimerPickerLabels(picker);
     return picker;
 }
 
@@ -26812,6 +26839,10 @@ async function setLanguage(lang) {
     // Update dynamic text that relies on database reads
     if (typeof updateSpecialFolderNames === 'function') {
         updateSpecialFolderNames();
+    }
+    // Панелът на таймера се строи в движение, без data-key, затова се пре-надписва тук (b3.62).
+    if (typeof noteTimerPickerRelabelAll === 'function') {
+        noteTimerPickerRelabelAll();
     }
 }
 
