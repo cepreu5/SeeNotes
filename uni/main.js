@@ -15933,10 +15933,41 @@ function noteTimerFormat(ms) {
     return m + ':' + noteTimerPad2(sec);
 }
 
-// Часът, за който е насрочена алармата, във вид ЧЧ:ММ по местно време.
+// b3.61 (по желание на собственика): часът се показва във вида, който ползва системата —
+// 24-часов (ЧЧ:ММ) или 12-часов (Ч:ММ AM/PM). Решението се взема от същата настройка, по която
+// браузърът рисува и полето за час, и се помни, за да не се пита на всеки такт.
+let noteTimerHour12 = null;
+
+function noteTimerUsesHour12() {
+    if (noteTimerHour12 !== null) return noteTimerHour12;
+    noteTimerHour12 = false;
+    try {
+        const opts = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions();
+        if (typeof opts.hour12 === 'boolean') noteTimerHour12 = opts.hour12;
+        else if (opts.hourCycle) noteTimerHour12 = opts.hourCycle === 'h11' || opts.hourCycle === 'h12';
+    } catch (e) { }
+    return noteTimerHour12;
+}
+
+// Часът, за който е насрочена алармата, по местно време — 24- или 12-часов, според системата.
+// Частите идват от Intl, за да е същият ред и същите означения (AM/PM, пр.об./сл.об.) като в полето.
 function noteTimerAlarmText(endsAt) {
     const d = new Date(endsAt);
-    return noteTimerPad2(d.getHours()) + ':' + noteTimerPad2(d.getMinutes());
+    if (!noteTimerUsesHour12()) {
+        return noteTimerPad2(d.getHours()) + ':' + noteTimerPad2(d.getMinutes());
+    }
+    try {
+        const parts = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).formatToParts(d);
+        const text = parts
+            .filter(p => p.type === 'hour' || p.type === 'minute' || p.type === 'dayPeriod' || p.type === 'literal')
+            .map(p => p.value)
+            .join('')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (text) return text;
+    } catch (e) { }
+    const h12 = d.getHours() % 12 || 12;
+    return h12 + ':' + noteTimerPad2(d.getMinutes()) + (d.getHours() < 12 ? ' AM' : ' PM');
 }
 
 // Предложението в полето за час: следващите 5 минути, закръглени нагоре.
@@ -15983,24 +16014,42 @@ function noteTimerEnsureInterval() {
     }, NOTE_TIMER_TICK_MS);
 }
 
-// Кратък beep (един тон, без звуков файл); контекстът е същият като на календарната камбанка
-// и се отключва от жеста, с който се пуска таймерът.
+// b3.61 (по желание на собственика): сигналът е по-дълъг и по-мелодичен от предишния един тон —
+// възходяща мелодия от четири тона (сол-си-ре-сол), изсвирена два пъти, с мека атака и дълго
+// заглъхване. Без звуков файл; контекстът е същият като на календарната камбанка и се отключва
+// от жеста, с който се пуска таймерът.
+const NOTE_TIMER_MELODY = [784, 988, 1175, 1568];
+const NOTE_TIMER_NOTE_STEP = 0.17;
+
+function noteTimerTone(ctx, freq, at, hold) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, at);
+    // Леко заглъхване на височината към края — тонът звучи като камбанка, не като зумер.
+    osc.frequency.linearRampToValueAtTime(freq * 0.997, at + hold);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.17, at + 0.014);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + hold);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + hold + 0.02);
+}
+
 function playNoteTimerBeep() {
     try {
         const ctx = getCalBellAudioCtx();
         if (!ctx) return;
         const t0 = ctx.currentTime + 0.01;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = 1000;
-        gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(t0);
-        osc.stop(t0 + 0.22);
+        const roundMs = NOTE_TIMER_MELODY.length * NOTE_TIMER_NOTE_STEP + 0.24;
+        for (let round = 0; round < 2; round++) {
+            const base = t0 + round * roundMs;
+            NOTE_TIMER_MELODY.forEach((freq, i) => {
+                const last = i === NOTE_TIMER_MELODY.length - 1;
+                noteTimerTone(ctx, freq, base + i * NOTE_TIMER_NOTE_STEP, last ? 0.55 : 0.3);
+            });
+        }
     } catch (e) { }
 }
 
