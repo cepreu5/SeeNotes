@@ -11056,6 +11056,13 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         setDefaultPosition();
     }
 
+    // Лентата с отворените бележки може вече да е на екрана, когато бутонът получи инлайн позиция
+    // (b3.66): при пускане с вдигнат блур от лентата и нула бележки тя се показва преди иконата на
+    // асистента да е сложила своето `bottom: ...!important`. Stylesheet правилата не могат да вдигнат
+    // бутон с инлайн !important, значи избутването се прилага пак тук - иначе иконата остава точно
+    // върху бутона за сваляне на блура и жестът не се хваща.
+    if (document.body && document.body.classList.contains('open-notes-bar-visible')) applyOpenNotesBarLift();
+
     // If onlyRestore is true, we stop here and don't attach listeners
     if (onlyRestore) return;
 
@@ -11869,9 +11876,15 @@ function updateSingleNoteOverlay() {
             win.el.querySelector('.modal-close')?.click();
         });
     }
-    // Same z-index as the top window and right before it in the layer: above every other window, below it.
-    overlay.style.zIndex = top.el.style.zIndex || String(NOTE_WINDOW_Z_BASE);
-    if (overlay.parentNode !== layer || overlay.nextSibling !== top.el) layer.insertBefore(overlay, top.el);
+    // Слоят стои под ВСИЧКИ видими отворени бележки (собственикът, 3.11.2026: „искам да е под всички
+    // отворени бележки - т. е. да са достъпни всички отворени, когато има блур"). Затова z-index-ът е
+    // този на най-долната видима бележка, а възелът се слага точно преди нея: със същия z-index и
+    // по-рано в DOM-а остава зад нея, значи всяка отворена бележка е над блура и се натиска.
+    const visible = getOpenNoteWindows().filter(w => !w.hidden && w.el.isConnected);
+    const lowest = visible.reduce((low, w) =>
+        (Number(w.el.style.zIndex) || 0) < (Number(low.el.style.zIndex) || 0) ? w : low, visible[0] || top);
+    overlay.style.zIndex = lowest.el.style.zIndex || String(NOTE_WINDOW_Z_BASE);
+    if (overlay.parentNode !== layer || overlay.nextSibling !== lowest.el) layer.insertBefore(overlay, lowest.el);
     overlay.classList.add('visible');
 }
 
@@ -12987,9 +13000,10 @@ function refreshOpenNotesBar() {
     // 25.10.2026: „при включена настройка Single note лентата е излишно да се показва") - режимът
     // държи една бележка, значи лентата няма какво да показва. Затова включването на режима затваря
     // скритите бележки (виж applySingleNoteModeSetting), вместо да ги остави недостъпни.
-    // Изключение (b3.65): докато блурът е вдигнат от самата лента, тя остава дори при една бележка -
-    // това е единственото място, откъдето се сваля, значи скрита лента оставя блура без изход.
-    const shadeKeepsBar = isNoteShadeOn() && visibleOpen > 0;
+    // Изключение (b3.65): докато блурът е вдигнат от самата лента, тя остава и когато няма отворени
+    // бележки - това е единственото място, откъдето се сваля, значи скрита лента оставя блура без
+    // изход (а с вдигнат блур картите не отварят бележка, виж handleNoteClick).
+    const shadeKeepsBar = isNoteShadeOn();
     const show = !isSingleNoteMode() && (visibleOpen >= OPEN_NOTES_BAR_MIN || hiddenCount > 0 || shadeKeepsBar);
     let bar = document.getElementById('open-notes-bar');
     // Белегът на бутона се слага ПРЕДИ решението дали лентата се вижда: при скрита лента оставаше
@@ -26121,6 +26135,12 @@ async function createNoteElement(noteContent) {
             clearTimeout(suppressClickTimer);
             return;
         }
+        // Докато блурът от лентата е вдигнат, карта не отваря бележка (собственикът, 3.11.2026:
+        // „докато имаме блур овърлей не трябва да може да се отварят бележки ръчно"). Блурът е
+        // козметичен - подобрява четимостта на отворените бележки - значи докато е вдигнат, бордът
+        // само се гледа: отварянето става след свалянето му от лентата. Режимът „единична бележка"
+        // НЕ се пипа: там картите отварят бележка както досега.
+        if (isNoteShadeOn()) return;
         // --- Масов избор (b2.36): Shift+клик и Ctrl/⌘+клик върху тялото влизат в режим на избор;
         // вътре в него всеки клик сменя отметката, а Shift+клик отбелязва диапазон.
         // Ctrl+клик вече НЕ отваря бележката за редакция — собственикът махна това поведение.

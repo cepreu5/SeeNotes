@@ -13,10 +13,15 @@
 //   3) Ctrl+клик сваля блура, без да затваря бележки;
 //   4) Ctrl+клик пак го вдига - жестът работи в двете посоки от същия бутон;
 //   5) състоянието се вижда на бутона (клас is-shade-on);
-//   6) след презареждане блурът е още вдигнат, а лентата пак я има - значи може да се свали от нея;
+//   6) след презареждане блурът е още вдигнат, а лентата е на екрана дори без отворени бележки -
+//      това е единственото място, откъдето се сваля;
 //   7) натискане върху блура затваря най-горната бележка, както в режим „единична бележка";
-//   8) дълго натискане сваля блура и не затваря бележки;
-//   9) няма изключения в конзолата.
+//   8) докато блурът е вдигнат, клик по карта от борда НЕ отваря бележка (собственикът, 3.11.2026:
+//      „докато имаме блур овърлей не трябва да може да се отварят бележки ръчно");
+//   9) дълго натискане сваля блура и след това картата пак отваря бележка;
+//   10) блурът е ПОД всички отворени бележки, значи всяка от тях се натиска (собственикът, 3.11.2026:
+//      „искам да е под всички отворени бележки - т. е. да са достъпни всички отворени, когато има блур");
+//   11) няма изключения в конзолата.
 //
 // Пускане от корена на хранилището: node .bolter/check/shade-from-bar.mjs   (exit 1 при провал)
 // ROOT=… сочи друга папка на приложението (за да се провери, че тестът хваща липсващия жест).
@@ -241,6 +246,83 @@ const openOneNote = async (page) => {
     return page.evaluate(VISIBLE_WINS);
 };
 
+// Клика по до `want` различни карти от борда и връща колко клика е направил. Ползва се, за да се
+// провери, че при вдигнат блур нито един от тях не отваря бележка.
+const clickBoardCards = async (page, want) => {
+    const points = await page.evaluate((max) => {
+        const out = [];
+        for (const card of document.querySelectorAll('#notes-container .note:not(.promo-note)')) {
+            const r = card.getBoundingClientRect();
+            if (r.height === 0 || r.bottom < 0 || r.top > innerHeight) continue;
+            const x = Math.round(Math.min(r.left + 40, r.right - 12));
+            const y = Math.round(r.top + Math.min(r.height / 2, 24));
+            const el = document.elementFromPoint(x, y);
+            if (!el || !card.contains(el)) continue;
+            out.push({ x, y });
+            if (out.length >= max) break;
+        }
+        return out;
+    }, want);
+    for (const p of points) {
+        await page.mouse.click(p.x, p.y);
+        await page.waitForTimeout(600);
+    }
+    return points.length;
+};
+
+// Бутонът за сваляне на блура трябва да е най-горният елемент в центъра си: ако нещо стои отгоре му
+// (напр. иконата на асистента, когато лентата се е появила преди нея), натискането отива там и жестът
+// мълчаливо не работи - точно това се случваше при пускане с вдигнат блур и нула отворени бележки.
+const closeTopmost = (page) => page.evaluate((SEL) => {
+    const btn = document.querySelector(SEL);
+    if (!btn) return null;
+    const r = btn.getBoundingClientRect();
+    const el = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+    return {
+        ok: !!el && (el === btn || btn.contains(el)),
+        at: el ? el.tagName + '.' + (typeof el.className === 'string' ? el.className : '') : null
+    };
+}, CLOSE_SEL);
+
+// Всяка видима бележка трябва да е най-горният елемент в точка от себе си - иначе блурът е над нея и тя
+// не се натиска. Връща колко са и кои са закрити.
+const windowsReachable = (page) => page.evaluate(() => {
+    const wins = [...document.querySelectorAll('.note-window.visible')].filter(w => w.getBoundingClientRect().height > 0);
+    const blocked = [];
+    for (const w of wins) {
+        const r = w.getBoundingClientRect();
+        // Бележките се застъпват, значи точка от една може да е закрита от друга - това е нормално.
+        // Пробата е „стига ли някоя точка от прозореца до прозорец, а не до слоя“: ако навсякъде има
+        // само блурът (или страницата), значи бележката е под него и не се натиска.
+        const ys = [r.top + 28, r.top + r.height / 2, r.bottom - 40];
+        const xs = [r.left + 30, r.left + r.width / 2, r.right - 30];
+        let hitWin = false;
+        let firstAt = null;
+        for (const y of ys) {
+            for (const x of xs) {
+                if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;
+                const el = document.elementFromPoint(Math.round(x), Math.round(y));
+                if (!firstAt) firstAt = el ? el.tagName + '.' + (typeof el.className === 'string' ? el.className : '') : null;
+                if (el && el.closest('.note-window')) { hitWin = true; break; }
+            }
+            if (hitWin) break;
+        }
+        if (!hitWin) blocked.push({ at: firstAt });
+    }
+    return { total: wins.length, blocked };
+});
+
+// Слоят трябва да е с z-index, който не е над нито една видима бележка.
+const overlayBelowAllWindows = (page) => page.evaluate(() => {
+    const o = document.getElementById('single-note-overlay');
+    if (!o) return { ok: false, why: 'няма слой' };
+    const oz = Number(getComputedStyle(o).zIndex) || 0;
+    const wins = [...document.querySelectorAll('.note-window.visible')]
+        .filter(w => w.getBoundingClientRect().height > 0)
+        .map(w => Number(getComputedStyle(w).zIndex) || 0);
+    return { ok: wins.length > 0 && wins.every(z => z >= oz), oz, wins };
+});
+
 // Състоянието, което ни интересува: вдигнат ли е блурът, има ли лента, има ли клас на бутона.
 const state = (page) => page.evaluate((VIS) => {
     const o = document.getElementById('single-note-overlay');
@@ -313,6 +395,14 @@ const ctrlClick = async (page) => {
     ok(/blur/.test(s2.blur) && !/blur\(0px\)/.test(s2.blur), 'слоят е наистина замъглен (backdrop blur)', s2.blur);
     ok(s2.barShown, 'лентата остава на екрана, за да се свали блурът от нея', s2);
     ok(s2.btnShade === true, 'бутонът показва, че блурът е вдигнат', s2.btnShadow);
+    // 2б) Блурът е ПОД всички отворени бележки (собственикът, 3.11.2026: „искам да е под всички
+    // отворени бележки - т. е. да са достъпни всички отворени, когато има блур"). Досега слоят беше
+    // само под най-горната, значи останалите бяха зад него и не се натискаха.
+    const reach = await windowsReachable(page);
+    ok(reach.total >= 2, 'има две отворени бележки за проверка на достъпността', reach);
+    ok(reach.blocked.length === 0, 'при вдигнат блур всяка отворена бележка се натиска (не е под слоя)', reach);
+    const zord = await overlayBelowAllWindows(page);
+    ok(zord.ok, 'слоят е с z-index под най-долната отворена бележка', zord);
     await page.screenshot({ path: '.bolter/check/shade-from-bar-390.png' });
 
     // 3) Натискане върху блура: затваря най-горната бележка, както в режим „единична бележка".
@@ -353,22 +443,28 @@ const ctrlClick = async (page) => {
     ok(s6.overlayShown && s6.stored === 'true' && s6.windows >= 2, 'Ctrl+клик вдига блура', s6);
     ok(s6.barShown && s6.btnShade === true, 'при вдигнат блур лентата и белегът на бутона са налице', s6);
 
-    // 6) Презареждане: блурът е още вдигнат и с една бележка лентата е на екрана, за да се свали.
+    // 6) Презареждане: блурът е още вдигнат, а лентата е на екрана и без отворени бележки, за да се свали.
     await page.reload({ waitUntil: 'load' });
     await page.waitForFunction(() => document.body.classList.contains('app-ready'), null, { timeout: 30000 }).catch(() => { });
     await page.waitForTimeout(700);
-    const oneWin = await openOneNote(page);
-    ok(oneWin >= 1, 'след презареждане бележката се отваря', oneWin);
     const s7 = await state(page);
-    ok(s7.overlayShown && s7.stored === 'true', 'след презареждане блурът е още вдигнат', s7);
-    ok(s7.barShown && s7.btnShade === true, 'след презареждане лентата е на екрана, за да се свали блурът', s7);
+    ok(s7.stored === 'true' && s7.btnShade === true, 'след презареждане блурът е още вдигнат', s7);
+    ok(s7.barShown, 'след презареждане лентата е на екрана и без отворени бележки, за да се свали блурът', s7);
 
-    // 7) Дълго натискане сваля блура и не затваря бележката.
-    const beforeLast = await state(page);
-    await longPress(page);
+    // 6б) Докато блурът е вдигнат, карта от борда не отваря бележка (собственикът, 3.11.2026).
+    const clicks = await clickBoardCards(page, 4);
     const s8 = await state(page);
-    ok(!s8.overlayShown && s8.stored === 'false', 'дълго натискане сваля блура', s8);
-    ok(s8.windows === beforeLast.windows && s8.windows >= 1, 'дълго натискане при сваляне не затваря бележката', { before: beforeLast.windows, after: s8.windows });
+    ok(clicks > 0, 'има по коя карта да се кликне', clicks);
+    ok(s8.windows === 0, 'с вдигнат блур клик по карта НЕ отваря бележка', s8);
+
+    // 7) Дълго натискане сваля блура; след това картата пак отваря бележка.
+    const top7 = await closeTopmost(page);
+    ok(top7 && top7.ok, 'бутонът за сваляне на блура не е закрит от нищо (иконата на асистента е над лентата)', top7);
+    ok(await longPress(page), 'бутонът за сваляне на блура е на екрана и при нула отворени бележки');
+    const s9 = await state(page);
+    ok(!s9.overlayShown && s9.stored === 'false', 'дълго натискане сваля блура', s9);
+    const afterOpen = await openOneNote(page);
+    ok(afterOpen >= 1, 'след свалянето на блура карта пак отваря бележка', afterOpen);
 
     ok(errs.length === 0, 'няма изключения в конзолата', errs);
     await ctx.close();
