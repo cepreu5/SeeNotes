@@ -16144,6 +16144,7 @@ function noteTimerPickerPrepare(picker, noteId) {
     noteTimerPickerSetMode(picker, isAlarm ? 'alarm' : 'timer');
     const input = picker.querySelector('.note-timer-alarm-time');
     if (input) input.value = isAlarm ? noteTimerValue24(st.endsAt) : noteTimerNextAlarmValue();
+    noteTimerAlarmFaceSync(picker);
 }
 
 // b3.62 (по желание на собственика): надписите в панела следват езика на приложението. Досега
@@ -16162,6 +16163,31 @@ function noteTimerPickerLabels(picker) {
     setText(picker.querySelector('.note-timer-stop'), 'noteTimerStop', 'Стоп');
     const input = picker.querySelector('.note-timer-alarm-time');
     if (input) input.setAttribute('aria-label', label('noteTimerModeAlarm', 'Аларма'));
+}
+
+// b3.63 (по желание на собственика): браузърът рисува стойността на <input type="time"> по своя
+// език, не по настройката на устройството — на телефон с 24-часов часовник Chrome пише
+// „2:05 PM“, защото езикът му е английски. От кода това не се сменя (полето няма как да се
+// накара да показва 24 часа), затова собствената рисунка на полето се скрива с прозрачен цвят,
+// а отгоре стои наш текст, който следва устройството: „14:05“ или „2:05 PM“.
+function noteTimerAlarmFaceText(value) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(value || '').trim());
+    if (!m) return '';
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (!(h >= 0 && h < 24 && min >= 0 && min < 60)) return '';
+    const d = new Date();
+    d.setHours(h, min, 0, 0);
+    return noteTimerAlarmText(d.getTime());
+}
+
+function noteTimerAlarmFaceSync(picker) {
+    if (!picker) return;
+    const input = picker.querySelector('.note-timer-alarm-time');
+    const face = picker.querySelector('.note-timer-alarm-face');
+    if (!input || !face) return;
+    const text = noteTimerAlarmFaceText(input.value);
+    if (face.textContent !== text) face.textContent = text;
 }
 
 // След смяна на езика: всички вече създадени панели (в отворените бележки) се пре-надписват.
@@ -16217,7 +16243,18 @@ function noteTimerPicker(clockEl, noteId) {
     alarmTime.step = '60';
     alarmTime.className = 'note-timer-alarm-time';
     alarmTime.setAttribute('aria-label', label('noteTimerModeAlarm', 'Аларма'));
-    alarmBody.appendChild(alarmTime);
+    // b3.63: полето и нашият 24-часов текст върху него (вж. noteTimerAlarmFaceText).
+    const alarmField = document.createElement('div');
+    alarmField.className = 'note-timer-alarm-field';
+    alarmField.appendChild(alarmTime);
+    const alarmFace = document.createElement('span');
+    alarmFace.className = 'note-timer-alarm-face';
+    alarmFace.dataset.noteTimerFace = '1';
+    alarmFace.setAttribute('aria-hidden', 'true');
+    alarmField.appendChild(alarmFace);
+    alarmBody.appendChild(alarmField);
+    alarmTime.addEventListener('input', () => noteTimerAlarmFaceSync(picker));
+    alarmTime.addEventListener('change', () => noteTimerAlarmFaceSync(picker));
     const alarmSet = document.createElement('button');
     alarmSet.type = 'button';
     alarmSet.className = 'note-timer-alarm-set';
