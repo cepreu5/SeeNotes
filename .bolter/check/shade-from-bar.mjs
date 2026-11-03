@@ -13,12 +13,14 @@
 //   3) Ctrl+клик сваля блура, без да затваря бележки;
 //   4) Ctrl+клик пак го вдига - жестът работи в двете посоки от същия бутон;
 //   5) състоянието се вижда на бутона (клас is-shade-on);
-//   6) след презареждане блурът е още вдигнат, а лентата е на екрана дори без отворени бележки -
-//      това е единственото място, откъдето се сваля;
+//   6) щом се затвори и последната бележка (обикновен клик за „затвори всички" или хиксчето), блурът
+//      пада сам, а лентата се скрива с него - собственикът, 3.11.2026: „когато се затворят всички
+//      бележки блур овърлеят трябва да се затвори автоматично и лентата да се скрие";
 //   7) натискане върху блура затваря най-горната бележка, както в режим „единична бележка";
 //   8) докато блурът е вдигнат, клик по карта от борда НЕ отваря бележка (собственикът, 3.11.2026:
 //      „докато имаме блур овърлей не трябва да може да се отварят бележки ръчно");
-//   9) дълго натискане сваля блура и след това картата пак отваря бележка;
+//   9) след свалянето картата пак отваря бележка, а след презареждане на празен борд няма нито блур,
+//      нито лента - дори когато в localStorage е останал стар запис „вдигнат";
 //   10) блурът е ПОД всички отворени бележки, значи всяка от тях се натиска (собственикът, 3.11.2026:
 //      „искам да е под всички отворени бележки - т. е. да са достъпни всички отворени, когато има блур");
 //   11) няма изключения в конзолата.
@@ -443,28 +445,71 @@ const ctrlClick = async (page) => {
     ok(s6.overlayShown && s6.stored === 'true' && s6.windows >= 2, 'Ctrl+клик вдига блура', s6);
     ok(s6.barShown && s6.btnShade === true, 'при вдигнат блур лентата и белегът на бутона са налице', s6);
 
-    // 6) Презареждане: блурът е още вдигнат, а лентата е на екрана и без отворени бележки, за да се свали.
+    // 6) Новото правило (собственикът, 3.11.2026): щом се затвори и последната бележка, блурът се сваля
+    // сам, а лентата се скрива с него. Затваряме всички с ОБИКНОВЕН клик върху бутона в лентата - жестът
+    // не се задейства, значи свалянето идва от затварянето на бележките, а не от него.
+    await page.locator(CLOSE_SEL).click();
+    await page.waitForTimeout(700);
+    const s7 = await state(page);
+    ok(s7.windows === 0, 'обикновен клик затваря и последната бележка', s7);
+    ok(!s7.overlayShown && s7.stored === 'false', 'щом няма отворени бележки блурът пада сам', s7);
+    ok(!s7.barShown, 'и лентата се скрива заедно с блура', s7);
+
+    // 6б) Докато блурът е вдигнат, карта от борда не отваря бележка (собственикът, 3.11.2026). Истински
+    // показалец по карта при вдигнат блур се хваща от слоя, не от картата - затова тук се проверява
+    // самата защита в handleNoteClick: програмно натискане по картите (то не минава през слоя) не бива
+    // да отвори нищо.
+    const again4 = await openTwoNotes(page);
+    ok(again4 >= 2, 'пак две бележки за проверката с карта', again4);
+    await ctrlClick(page);
+    const s8a = await state(page);
+    ok(s8a.overlayShown && s8a.windows >= 2, 'блурът е вдигнат при две отворени бележки', s8a);
+    const beforeCard = s8a.windows;
+    const cardPress = await page.evaluate(() => {
+        const cards = [...document.querySelectorAll('#notes-container .note:not(.promo-note)')];
+        cards.slice(0, 3).forEach(c => c.click());
+        return { cards: cards.length, clicked: Math.min(3, cards.length) };
+    });
+    await page.waitForTimeout(700);
+    const s8 = await state(page);
+    ok(cardPress.clicked > 0, 'има по коя карта да се натисне', cardPress);
+    ok(s8.windows === beforeCard, 'при вдигнат блур натискане по карта НЕ отваря бележка', { before: beforeCard, after: s8.windows });
+
+    // 7) Затваряне с хиксчето: предпоследната бележка още държи блура (лентата е единственото място,
+    // откъдето се сваля), а последната го сваля и скрива лентата.
+    const clickX = () => page.evaluate(() => {
+        const win = [...document.querySelectorAll('.note-window.visible')].find(w => w.getBoundingClientRect().height > 0);
+        const btn = win && win.querySelector('.modal-close');
+        if (!btn) return false;
+        btn.click();
+        return true;
+    });
+    const x1 = await clickX();
+    await page.waitForTimeout(700);
+    const s8b = await state(page);
+    ok(x1 && s8b.windows === beforeCard - 1, 'хиксчето затваря една бележка', { x1, before: beforeCard, after: s8b.windows });
+    ok(s8b.overlayShown && s8b.stored === 'true' && s8b.barShown, 'с една останала бележка блурът и лентата са още там', s8b);
+    const x2 = await clickX();
+    await page.waitForTimeout(700);
+    const s9 = await state(page);
+    ok(x2, 'има хиксче и на последната бележка', x2);
+    ok(s9.windows === 0 && !s9.overlayShown && s9.stored === 'false' && !s9.barShown,
+        'хиксчето на последната бележка сваля блура и скрива лентата', s9);
+
+    // 8) След свалянето картата пак отваря бележка - блурът не остава да пречи.
+    const afterOpen = await openOneNote(page);
+    ok(afterOpen >= 1, 'след свалянето на блура карта пак отваря бележка', afterOpen);
+
+    // 9) Презареждане: няма отворени бележки, значи няма нито блур, нито лента - и старият запис в
+    // localStorage не вдига блур над празен борд.
+    await page.evaluate(() => localStorage.setItem('noteShadeOn', 'true'));
     await page.reload({ waitUntil: 'load' });
     await page.waitForFunction(() => document.body.classList.contains('app-ready'), null, { timeout: 30000 }).catch(() => { });
     await page.waitForTimeout(700);
-    const s7 = await state(page);
-    ok(s7.stored === 'true' && s7.btnShade === true, 'след презареждане блурът е още вдигнат', s7);
-    ok(s7.barShown, 'след презареждане лентата е на екрана и без отворени бележки, за да се свали блурът', s7);
-
-    // 6б) Докато блурът е вдигнат, карта от борда не отваря бележка (собственикът, 3.11.2026).
-    const clicks = await clickBoardCards(page, 4);
-    const s8 = await state(page);
-    ok(clicks > 0, 'има по коя карта да се кликне', clicks);
-    ok(s8.windows === 0, 'с вдигнат блур клик по карта НЕ отваря бележка', s8);
-
-    // 7) Дълго натискане сваля блура; след това картата пак отваря бележка.
-    const top7 = await closeTopmost(page);
-    ok(top7 && top7.ok, 'бутонът за сваляне на блура не е закрит от нищо (иконата на асистента е над лентата)', top7);
-    ok(await longPress(page), 'бутонът за сваляне на блура е на екрана и при нула отворени бележки');
-    const s9 = await state(page);
-    ok(!s9.overlayShown && s9.stored === 'false', 'дълго натискане сваля блура', s9);
-    const afterOpen = await openOneNote(page);
-    ok(afterOpen >= 1, 'след свалянето на блура карта пак отваря бележка', afterOpen);
+    const s10 = await state(page);
+    ok(s10.windows === 0, 'след презареждане няма отворени бележки', s10);
+    ok(s10.stored === 'false' && !s10.overlayShown, 'след презареждане блурът не се вдига над празен борд', s10);
+    ok(!s10.barShown, 'след презареждане лентата също не е на екрана', s10);
 
     ok(errs.length === 0, 'няма изключения в конзолата', errs);
     await ctx.close();
