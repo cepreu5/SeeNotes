@@ -4805,7 +4805,9 @@ body.selection-locked .note.active-selection-note .note-content {
     color: #ff3b3b;
 }
 
-/* b3.59: изборът на минути при Ctrl-клик / дълго натискане върху циферблата. */
+/* b3.59: изборът на минути при Ctrl-клик / дълго натискане върху циферблата.
+   b3.61: фиксирана ширина, еднаква за двата режима (преди режимът „Аларма“ беше 145 px заради
+   полето за час, а „Таймер“ 99 px), за да не мени панелът ширина при смяна на режима. */
 .note-timer-picker {
     position: absolute;
     top: 50%;
@@ -4813,10 +4815,11 @@ body.selection-locked .note.active-selection-note .note-content {
     transform: translate(-50%, -50%);
     z-index: 30;
     box-sizing: border-box;
+    width: 112px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 8px;
+    gap: 4px;
+    padding: 5px;
     border-radius: 10px;
     background: rgba(18, 18, 18, 0.94);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
@@ -4832,10 +4835,14 @@ body.selection-locked .note.active-selection-note .note-content {
     gap: 4px;
 }
 
+/* b3.61: всички бутони в панела са по-високи (25 → 31 px на екрана, 36 px в стиловете), за да
+   се натискат с пръст. */
 .note-timer-mode {
     flex: 1 1 0;
+    box-sizing: border-box;
     font: inherit;
     font-size: 12px;
+    min-height: 36px;
     padding: 4px 2px;
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.25);
@@ -4861,17 +4868,21 @@ body.selection-locked .note.active-selection-note .note-content {
     display: none;
 }
 
+/* b3.61: полето за час и бутонът „Задай“ са един под друг, за да остане панелът тесен. */
 .note-timer-body[data-note-timer-body="alarm"] {
-    flex-direction: row;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
 }
 
 .note-timer-alarm-time {
-    flex: 1 1 auto;
+    box-sizing: border-box;
+    width: 100%;
     min-width: 0;
+    min-height: 36px;
     font: inherit;
     font-size: 13px;
-    padding: 5px 4px;
+    padding: 4px 2px;
+    text-align: center;
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.25);
     background: rgba(255, 255, 255, 0.08);
@@ -4880,9 +4891,11 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .note-timer-alarm-set {
     flex: 0 0 auto;
+    box-sizing: border-box;
     font: inherit;
     font-size: 13px;
-    padding: 6px;
+    min-height: 36px;
+    padding: 4px;
     border-radius: 6px;
     border: 1px solid rgba(29, 245, 47, 0.45);
     background: rgba(29, 245, 47, 0.18);
@@ -4903,9 +4916,11 @@ body.selection-locked .note.active-selection-note .note-content {
 
 .note-timer-pick,
 .note-timer-stop {
+    box-sizing: border-box;
     font: inherit;
     font-size: 13px;
-    padding: 6px 4px;
+    min-height: 36px;
+    padding: 4px;
     border-radius: 6px;
     border: 1px solid rgba(255, 255, 255, 0.25);
     background: rgba(255, 255, 255, 0.08);

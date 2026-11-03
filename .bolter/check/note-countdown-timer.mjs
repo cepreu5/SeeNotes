@@ -36,7 +36,9 @@ const ok = (cond, msg, extra) => {
 
 const browser = await chromium.launch({ args: ['--num-raster-threads=4', '--autoplay-policy=no-user-gesture-required'] });
 
-const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+// b3.61: часът на алармата вече следва настройката на системата (24/12), затова проверката тук е
+// закована към българска система — 12-часовият вид се проверява в note-timer-panel-and-sound.mjs.
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', locale: 'bg-BG' });
 await ctx.addInitScript(() => {
   try {
     localStorage.setItem('language', 'bg');
