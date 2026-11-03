@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.80'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.80)
+const version = 'Beta 1.81'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.81)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -14021,6 +14021,7 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
     }
 
     function privacyIdleTick() {
+        privacyDebugPaint();
         if (privacyOverlay && privacyOverlay.classList.contains('is-visible')) return;
         if (!privacyIdleAllowed()) {
             privacyIdleFrom = Date.now();
@@ -14036,6 +14037,35 @@ window.syncHeaderTitleFit = syncHeaderTitleFit;
     // Докосване, клавиш или скролване: четенето на дълга бележка не е бездействие.
     function privacyIdleReset() {
         privacyIdleFrom = Date.now();
+    }
+
+    /* Диагностичен ред в Настройки (само при debug = true): на телефона няма конзола, затова
+       редът показва на едно място всичко, което решава дали защитният екран може да излезе.
+       Собственикът го снима и причината се вижда без догадки. */
+    function privacyDebugText() {
+        const mode = privacyAppScreenMode() ? 'app' : 'tab';
+        const from = Math.max(privacyIdleFrom, privacyArmedAt + PRIVACY_SETTLE_MS);
+        const secs = Math.max(0, Math.round((Date.now() - from) / 1000));
+        const focus = typeof document.hasFocus === 'function' ? (document.hasFocus() ? 1 : 0) : '?';
+        return 'prot mode=' + mode
+            + ' armed=' + (privacyArmed ? 1 : 0)
+            + ' auto=' + (privacyAutoProtectOn() ? 1 : 0)
+            + ' allow=' + (privacyIdleAllowed() ? 1 : 0)
+            + ' idle=' + privacyIdleSeconds() + 's t=' + secs + 's'
+            + ' hidden=' + (document.hidden ? 1 : 0)
+            + ' focus=' + focus;
+    }
+
+    function privacyDebugPaint() {
+        let line = null;
+        try { line = document.getElementById('privacy-debug-line'); } catch (e) { return; }
+        if (!line) return;
+        if (typeof debug === 'undefined' || !debug) {
+            line.style.display = 'none';
+            return;
+        }
+        line.textContent = privacyDebugText();
+        line.style.display = 'block';
     }
 
     function privacyBuildClock() {
