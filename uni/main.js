@@ -20247,6 +20247,14 @@ async function createSettingsUI(boardsData, boardParseError) {
         idleLockSelect.value = idleSteps.indexOf(idleSaved) >= 0 ? idleSaved : '30';
         idleLockSelect.addEventListener('change', () => {
             localStorage.setItem('privacyIdleLock', idleLockSelect.value);
+            // Само localStorage не стига (същото като при One-tap links): при старт
+            // loadSettingsFromGDrive презаписва ключа от профилния снапшот и от settings.json в
+            // Drive, значи изборът се връщаше на предишното време при всяко пускане — зададени
+            // 60 s, а екранът излиза на 10-тата секунда. Затова обновяваме и снапшота, и профила,
+            // без да чакаме Save.
+            if (typeof saveSettingsToGDrive === 'function') {
+                saveSettingsToGDrive(true).catch(e => console.warn('Idle lock settings sync failed:', e));
+            }
             // Новото време се брои от смяната, не от предишната активност.
             if (typeof window.privacyIdleReset === 'function') window.privacyIdleReset();
             showToast(_('settingSaved'), 2000);
