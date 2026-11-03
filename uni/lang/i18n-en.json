@@ -594,6 +594,5 @@
     "noteTimerModeTimer": "Timer",
     "noteTimerModeAlarm": "Alarm",
     "noteTimerSet": "Set",
-    "noteTimerMinutesShort": "min",
     "noteTimerStop": "Stop"
 }
