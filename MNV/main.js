@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.85'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.85)
+const version = 'Beta 1.86'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.86)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -10913,6 +10913,120 @@ function stripInlineImageMarkers(text, formatString) {
     return out;
 }
 
+/**
+ * Видимата част от заглавието на картата: колко от реда се побира в ширината му.
+ * Порт от uni (getVisibleTitleTextForElement). Мери се с canvas със СЪЩИЯ шрифт като на елемента:
+ * ако целият текст се побира - връща се целият; иначе първите 30 знака се режат по ГРАНИЦА НА
+ * ДУМА и се връща последният префикс, който се побира заедно с многоточието.
+ * Връща се БЕЗ многоточие: точно това е мястото, на което заглавието свършва, а остатъкът от СЪЩИЯ
+ * ред продължава в началото на тялото (nmBodyAfterTitleLine). Дотук MNV режеше с substring(0, 50), а
+ * многоточието слагаше CSS - по средата на дума, докато в uni редът свършва на цяла дума.
+ */
+function nmVisibleTitleText(titleEl, sourceText) {
+    if (!titleEl || !sourceText) return sourceText || '';
+    const fullText = String(sourceText);
+    const availableWidth = titleEl.clientWidth || titleEl.getBoundingClientRect().width;
+    if (!availableWidth) return fullText;
+    const style = getComputedStyle(titleEl);
+    const canvas = nmVisibleTitleText._canvas || (nmVisibleTitleText._canvas = document.createElement('canvas'));
+    const ctx = canvas.getContext('2d');
+    ctx.font = `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    // Целият ред се побира - не се съкращава.
+    if (ctx.measureText(fullText).width <= availableWidth) return fullText;
+    // До 30 знака от реда: по-дълъг префикс не се побира и при най-тясната карта.
+    const words = fullText.slice(0, 30).split(' ');
+    const ellipsis = '...';
+    let current = '';
+    let lastFitting = '';
+    for (const word of words) {
+        if (!word) continue;
+        const candidate = current ? current + ' ' + word : word;
+        if (ctx.measureText(candidate + ellipsis).width <= availableWidth) {
+            lastFitting = candidate;
+            current = candidate;
+        } else {
+            break; // тази дума вече не се побира - заглавието свършва преди нея
+        }
+    }
+    return lastFitting;
+}
+
+/**
+ * Тялото на картата, когато заглавието е НАЧАЛОТО на реда си (бележка без разделител '|'): редът се
+ * маха от началото на текста заедно с празните редове и интервалите след него, а остатъкът от СЪЩИЯ
+ * ред остава в началото на тялото. Порт от uni (getPreviewBodyAfterTitle) - дотук MNV оставяше целия
+ * текст и заглавието се повтаряше над тялото.
+ * Връща { text, removeLen }, където removeLen е колко знака от началото на текста са отишли в
+ * заглавието - по него се разместват форматите (nmShiftFormatsAfterRemoval).
+ */
+function nmBodyAfterTitleLine(fullText, titleText, titleLineIndex = -1) {
+    const normalized = String(fullText || '').replace(/\r\n/g, '\n');
+    if (!titleText) return { text: normalized, removeLen: 0 };
+    const lines = normalized.split('\n');
+    if (!Number.isInteger(titleLineIndex) || titleLineIndex < 0) titleLineIndex = lines.findIndex(line => line.trim());
+    if (titleLineIndex < 0 || titleLineIndex >= lines.length) return { text: normalized, removeLen: 0 };
+    let lineStart = 0;
+    for (let i = 0; i < titleLineIndex; i++) lineStart += lines[i].length + 1;
+    const line = lines[titleLineIndex];
+    const leadingWhitespaceLength = line.length - line.trimStart().length;
+    const usedLength = Math.min(String(titleText).trim().length, line.trim().length);
+    if (usedLength <= 0) return { text: normalized, removeLen: 0 };
+    // Краят на заглавието в целия текст; след него редът продължава в тялото.
+    let removeLen = lineStart + leadingWhitespaceLength + usedLength;
+    // Празното след заглавието (интервали, краят на реда, празните редове) не влиза в тялото, за да
+    // не започва картата с празен ред - същото прави и uni.
+    while (removeLen < normalized.length && /\s/.test(normalized[removeLen])) removeLen++;
+    return { text: normalized.slice(removeLen).trimEnd(), removeLen };
+}
+
+/**
+ * Форматите (text_span), след като от НАЧАЛОТО на текста се изреже заглавието на картата: онова,
+ * което стои след изрязаното, се измества с дължината му, застъпващите се записи се свиват, а
+ * записите, които са ЦЯЛО в изрязаното, падат. Разделителят ('|' или нов ред) и завършващият '|' се
+ * пазят. Порт от uni (nmShiftFormatsAfterRemoval).
+ * Без това цветът/удебеляването след изрязването на заглавието би стоял на съседна дума.
+ */
+function nmShiftFormatsAfterRemoval(formatString, removeStart, removeLen) {
+    if (!formatString || !(removeLen > 0)) return formatString;
+    const hasTrailingPipe = formatString.endsWith('|');
+    const body = hasTrailingPipe ? formatString.slice(0, -1) : formatString;
+    const delimiter = body.includes('|') ? '|' : '\n';
+    const removeEnd = removeStart + removeLen;
+    const parts = body.split(/[|\n]/).map(part => {
+        let f = null;
+        try { f = JSON.parse(part); } catch (e) { return part; }
+        if (!f || f.start === undefined || f.end === undefined) return part;
+        const start = Number(f.start);
+        const end = Number(f.end);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) return part;
+        if (end <= removeStart) return part; // преди изрязаното - не мърда
+        if (start >= removeEnd) {
+            return JSON.stringify({ ...f, start: start - removeLen, end: end - removeLen });
+        }
+        // Целият запис е в изрязаното - в тялото от него не остава нищо.
+        if (start >= removeStart && end <= removeEnd) return null;
+        // Застъпва изрязаното: останалото се събира в началото на изрязаното място.
+        const newStart = Math.max(0, Math.min(start, removeStart));
+        const newEnd = Math.max(newStart, end - removeLen);
+        return JSON.stringify({ ...f, start: newStart, end: newEnd });
+    }).filter(part => part !== null);
+    return parts.join(delimiter) + (hasTrailingPipe ? '|' : '');
+}
+
+/**
+ * Колко знака от СУРОВИЯ текст отговарят на първите N знака от нормализирания (\r\n → \n).
+ * Тялото се смята по нормализирания текст (nmBodyAfterTitleLine), а форматите (text_span) са спрямо
+ * суровия - без това при бележка с CRLF цветовете биха се разместили с броя на \r.
+ */
+function nmRawOffsetForSourceOffset(sourceText, normalizedOffset) {
+    const offset = Number(normalizedOffset);
+    if (!(offset > 0) || !sourceText || String(sourceText).indexOf('\r') === -1) return offset > 0 ? offset : 0;
+    const text = String(sourceText);
+    let count = 0, i = 0;
+    for (; i < text.length && count < offset; i++) if (text[i] !== '\r') count++;
+    return i;
+}
+
 // Едно търсене на папка Images за всички карти наведнъж: getFolderID() пита Drive за всички
 // папки и пълни folderIds, но кешира чак след отговора - затова заявката се помни тук.
 let inlineImageFolderPromise = null;
@@ -12759,31 +12873,69 @@ async function createNoteElement(noteContent) {
         } else { throw new Error(_('errorNoteFieldMissing')); }
     } catch (e) { fileContent = _('errorNoteParse'); }
     const isHiddenNote = extraData.pass === true;
-    const isType1Note = extraData.type === 1;
     // let attachments = [];
     let noteTitle = '';
     let displayContent = fileContent;
     // Маркерите на type=8 не се показват и в заглавието на картата (то е суров текст).
     const titleText = stripInlineImageMarkers(fileContent, textSpan);
+    /* --- Заглавие и тяло на картата, образувани като в uni (b1.86) ------------------------------
+       uni строи първия (удебелен) ред на картата така:
+         * има разделител '|' - заглавие е частта ПРЕДИ него, тялото - частта СЛЕД него (дотук MNV
+           правеше това само при type === 1);
+         * няма разделител - заглавие е първият непразен ред, но редът се МАХА от тялото, за да не
+           се повтаря заглавието над текста;
+         * редът не се реже с substring(0, 50): когато картата вече е в страницата и редът има
+           ширина, заглавието се срязва на ГРАНИЦА НА ДУМА (nmVisibleTitleText), а остатъкът от
+           СЪЩИЯ ред отива в началото на тялото (nmBodyAfterTitleLine).
+       Затова тук се помнят: суровият текст на реда (по него се мери), индексът му в текста, колко
+       знака от началото на текста вече са в заглавието (по това се разместват форматите) и дали
+       заглавието чака ширина, за да се среже. */
+    const normalizedContent = fileContent.replace(/\r\n/g, '\n');
+    const rawLines = normalizedContent.split('\n');
+    let previewTitleSourceText = '';   // суровият текст на реда-заглавие
+    let previewTitleLineIndex = -1;    // кой ред е това
+    let titleRemovedLength = 0;        // колко знака от началото на текста са отишли в заглавието
+    let titleFitAfterLayout = false;   // заглавието чака ширина, за да се среже по думи
     if (isHiddenNote) {
         const pipeIndex = fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
         noteTitle = stripInlineImageMarkers(previewContent, textSpan).split('\n')[0].trim();
-    } else if (isType1Note) {
+    } else if (fileContent.indexOf('|') !== -1) {
+        // Разделител '|': заглавие е частта преди него, тялото започва след него.
         const pipeIndex = fileContent.indexOf('|');
-        if (pipeIndex !== -1) {
-            noteTitle = titleText.substring(0, pipeIndex).trim();
-            displayContent = fileContent.substring(pipeIndex + 1).trim();
-        } else {
-            noteTitle = titleText.split('\n')[0].substring(0, 50);
+        noteTitle = stripInlineImageMarkers(fileContent.slice(0, pipeIndex), textSpan).trim();
+        let bodyStart = pipeIndex + 1;
+        while (bodyStart < fileContent.length && /\s/.test(fileContent[bodyStart])) bodyStart++;
+        displayContent = fileContent.slice(bodyStart);
+        titleRemovedLength = bodyStart;
+        // Маркер на вградена картинка (type=8) в самата част-заглавие: той не се вижда в заглавието,
+        // значи би изчезнал от картата. Тогава тялото остава както досега (цялото съдържание с
+        // разделителя на нов ред) - по-добре старото тяло, отколкото изчезнала снимка.
+        if (fileContent.slice(0, pipeIndex).trim().length > noteTitle.length) {
+            displayContent = fileContent.replace('|', '\n');
+            titleRemovedLength = 0;
         }
-    } else if (!isHiddenNote) {
-        const lines = titleText.split('\n');
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine) {
-                noteTitle = trimmedLine.substring(0, 50);
-                break;
+    } else {
+        // Без разделител: заглавие е първият непразен ред. Показаният текст е без маркерите на
+        // type=8, затова редът се търси в него (както досега), а тялото се реже от суровия текст.
+        const titleLines = titleText.split('\n');
+        for (let i = 0; i < titleLines.length; i++) {
+            if (titleLines[i].trim()) { noteTitle = titleLines[i].trim(); previewTitleLineIndex = i; break; }
+        }
+        if (previewTitleLineIndex >= 0) {
+            previewTitleSourceText = (rawLines[previewTitleLineIndex] || '').trim();
+            const beforeTitleIsBlank = rawLines.slice(0, previewTitleLineIndex).every(line => !line.trim());
+            // В реда-заглавие не бива да има вградена картинка, а пред него - друг непразен ред:
+            // изрязването на началото би изяло и картинката, която в заглавието не се вижда.
+            const markersInTitle = previewTitleSourceText.length > noteTitle.length;
+            if (markersInTitle || !beforeTitleIsBlank) {
+                displayContent = fileContent;
+                titleRemovedLength = 0;
+            } else {
+                const cut = nmBodyAfterTitleLine(normalizedContent, noteTitle, previewTitleLineIndex);
+                displayContent = cut.text;
+                titleRemovedLength = nmRawOffsetForSourceOffset(fileContent, cut.removeLen);
+                titleFitAfterLayout = true;
             }
         }
     }
@@ -13003,26 +13155,75 @@ async function createNoteElement(noteContent) {
     const contentEl = document.createElement('div');
     contentEl.className = 'note-content';
     const isForModal = (note.closest('#modal-body') !== null);
-    if (isHiddenNote) {
-        const pipeIndex = fileContent.indexOf('|');
-        const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
-        contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
-        hydrateInlineImages(contentEl);
-    } else {
-        const formatSource = (textSpan && textSpan.trim() !== '') ? textSpan : null;
-        if (formatSource) {
-            // Use the exact same logic as in showModal to ensure indices match
-            let contentToFormat = fileContent;
-            if (contentToFormat.includes('|')) {
-                contentToFormat = contentToFormat.replace('|', '\n');
-            }
-            // Format the full content
-            let formattedHtml = formatText(contentToFormat, formatSource, isForModal);
-            contentEl.innerHTML = formattedHtml;
-            hydrateInlineImages(contentEl); // вградените картинки (type=8) влизат в рамките си
-        } else {
-            contentEl.innerHTML = processNoteContent(displayContent, isForModal);
+    const formatSource = (!isHiddenNote && textSpan && textSpan.trim() !== '') ? textSpan : null;
+    /* Тялото се строи от displayContent и се строи ОТНОВО, когато заглавието се среже по ширина -
+       тогава остатъкът от реда влиза в началото на тялото (nmBodyAfterTitleLine), значи тялото се
+       мени. Форматите (text_span) са спрямо целия текст, затова се разместват с точно изрязаното
+       за заглавието (titleRemovedLength) - иначе цветът/удебеляването биха стоели на съседна дума. */
+    const renderCardBody = () => {
+        if (isHiddenNote) {
+            const pipeIndex = fileContent.indexOf('|');
+            const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : ''; // КОРЕКЦИЯ: Използваме processNoteContent, за да се съобрази с настройката за линкове
+            contentEl.innerHTML = processNoteContent(previewContent, isForModal); // isForModal е false за бележките на борда
+            hydrateInlineImages(contentEl);
+            return;
         }
+        if (formatSource) {
+            const shiftedFormats = titleRemovedLength > 0
+                ? nmShiftFormatsAfterRemoval(formatSource, 0, titleRemovedLength)
+                : formatSource;
+            contentEl.innerHTML = formatText(displayContent, shiftedFormats, isForModal);
+            hydrateInlineImages(contentEl); // вградените картинки (type=8) влизат в рамките си
+            return;
+        }
+        contentEl.innerHTML = processNoteContent(displayContent, isForModal);
+    };
+    renderCardBody();
+    // Щом картата е в страницата и редът има ширина, заглавието се срязва на граница на дума, а
+    // остатъкът от СЪЩИЯ ред отива в началото на тялото - както в uni. До първата ненулева ширина
+    // (картата се строи скрита, за да не мига) заглавието е целият ред, а тялото започва след него.
+    if (titleFitAfterLayout && previewTitleSourceText) {
+        // Връща true, когато редът е премерен (вече има ширина). Срязването мести остатъка от реда в
+        // тялото, затова тялото се строи наново - с разместените формати (вж. renderCardBody).
+        const fitTitleToWidth = () => {
+            if (!titleEl.clientWidth) return false; // картата още не е в страницата
+            const visibleTitleText = nmVisibleTitleText(titleEl, previewTitleSourceText);
+            if (!visibleTitleText) return false;
+            if (visibleTitleText !== titleEl.textContent) {
+                titleEl.textContent = visibleTitleText;
+                const cut = nmBodyAfterTitleLine(normalizedContent, visibleTitleText, previewTitleLineIndex);
+                displayContent = cut.text;
+                titleRemovedLength = nmRawOffsetForSourceOffset(fileContent, cut.removeLen);
+                renderCardBody();
+            }
+            return true;
+        };
+        if (typeof ResizeObserver === 'function') {
+            // Наблюдението държи заглавието срязано за ТЕКУЩАТА ширина на реда (напр. при изключен
+            // фон на бележката отстъпите се махат и редът става по-широк).
+            let fittedWidth = 0;
+            const titleObserver = new ResizeObserver((entries) => {
+                const width = entries.reduce((widest, entry) => Math.max(widest, entry.contentRect.width), 0);
+                // Нулевата ширина значи, че картата още не е в страницата - чакаме. Същата ширина втори
+                // път не се мери: иначе наблюдението се задейства самото себе си.
+                if (!(width > 0) || width === fittedWidth) return;
+                fittedWidth = width;
+                fitTitleToWidth();
+            });
+            titleObserver.observe(titleEl);
+        }
+        // Наблюдението само по себе си не е достатъчно при зареждане на борда: картите се подреждат
+        // наново след построяването и Chrome понякога не съобщава първата ненулева ширина (измерено
+        // на 390px - една карта оставаше с целия ред). Затова първите кадри се пробва и направо,
+        // докато редът получи ширина, а после още два пъти с отстъп - всеки опит е безвреден, ако
+        // заглавието вече е срязано за същата ширина (тогава текстът не се мени).
+        let attemptsLeft = 30;
+        const fitWhenWide = () => {
+            if (fitTitleToWidth() || --attemptsLeft <= 0) return;
+            requestAnimationFrame(fitWhenWide);
+        };
+        requestAnimationFrame(fitWhenWide);
+        [300, 1000].forEach(ms => setTimeout(fitTitleToWidth, ms));
     }
     let attachments = [];
     if (useIndexedDb) {
