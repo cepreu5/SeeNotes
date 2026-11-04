@@ -21278,6 +21278,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             { id: 'with-videos', label: _('showVideosBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
             { id: 'with-sounds', label: _('showSoundsBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
             { id: 'with-other', label: _('showOtherBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
+            { id: 'expired', label: _('showExpiredBoardLabel').replace(/<[^>]*>/g, '').replace(/^(Board|Борд)\s*/i, '').replace(/:$/, '') },
             { id: 'search-results', label: _('searchResultTitle') },
             { id: 'trash', label: _('trashBoardTitle') }
         ];
