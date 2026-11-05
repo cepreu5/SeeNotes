@@ -58,8 +58,21 @@ const ok = (cond, msg, extra) => {
     if (!cond) fails++;
 };
 
-const SCOPES = [
-    'https://www.googleapis.com/auth/drive.file',
+// Същите ключове в localStorage като в uni (решение на собственика, 5.11.2026: двата
+// варианта не работят едновременно, значи общата памет на един origin е допустима).
+{
+    const uniMain = path.join(path.dirname(root), 'uni', 'main.js');
+    if (existsSync(uniMain)) {
+        const nomnSrc = await readFile(path.join(root, 'main.js'), 'utf8');
+        const uniSrc = await readFile(uniMain, 'utf8');
+        for (const k of ['gdrive_multinotes_data_id', 'settings_multinotes_data']) {
+            const a = nomnSrc.split(k).length - 1, b = uniSrc.split(k).length - 1;
+            ok(a === b && a > 0, `ключът ${k} се среща толкова пъти, колкото в uni (${a}/${b})`, { a, b });
+        }
+    }
+}
+
+const SCOPES = [    'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/drive.appdata',
     'https://www.googleapis.com/auth/userinfo.email'
 ];
@@ -105,7 +118,14 @@ const BASE_STATE = () => {
 
 const newPage = async (browser, { initFn, initArg } = {}) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
-    await ctx.route(/^https?:\/\/(?!localhost)/, route => route.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
+    await ctx.route(/^https?:\/\/(?!localhost)/, route => {
+        const url = route.request().url();
+        // Drive/Docs API отговори: празен списък с файлове, за да не се чупи JSON.parse.
+        if (/googleapis\.com/.test(url)) {
+            return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [], error: { code: 404 } }) });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/javascript', body: '' });
+    });
     const page = await ctx.newPage();
     const errs = [];
     page.on('pageerror', e => errs.push('pageerror: ' + String(e.message).slice(0, 300)));
@@ -154,6 +174,11 @@ const browser = await chromium.launch({ executablePath: CHROME, args: ['--num-ra
         'в обхвата няма auth/drive.readonly и няма голо auth/drive', requested);
     ok(signIn.configs.length > 0 && signIn.configs.every(c => c.client_id === CLIENT_ID),
         'ползва се съществуващият OAuth клиент, не нов', signIn.configs.map(c => c.client_id));
+
+    // --- 1б. Същата IndexedDB база като uni (решение на собственика, 5.11.2026):
+    // двата варианта не работят едновременно, затова пазят общи ключове и обща база.
+    const storage = await page.evaluate(() => ({ db: typeof NOTES_DB_NAME !== 'undefined' ? NOTES_DB_NAME : null }));
+    ok(storage.db === 'NotesDB', `ползва същата IndexedDB база като uni (${storage.db})`, storage.db);
 
     // --- 2. Първоначалният избор на папка ---
     const modal = await page.evaluate(async () => {
@@ -204,26 +229,28 @@ const browser = await chromium.launch({ executablePath: CHROME, args: ['--num-ra
         return c && c.getBoundingClientRect().height > 0;
     }, null, { timeout: 10000 }).catch(() => { });
 
-    const rows = await page.evaluate(() => {
-        const probe = (id) => {
-            const el = document.getElementById(id);
-            if (!el) return { exists: false };
-            const r = el.getBoundingClientRect();
-            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-            return {
-                exists: true,
-                h: Math.round(r.height),
-                reachable: !!(hit && (hit === el || el.contains(hit))),
-                text: el.innerText.replace(/\s+/g, ' ').trim().slice(0, 80)
-            };
-        };
-        const sel = document.getElementById('active-folder-select');
+    const probeRow = (id) => page.evaluate(async (id) => {
+        const el = document.getElementById(id);
+        if (!el) return { exists: false };
+        el.scrollIntoView({ block: 'center' });
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         return {
-            active: probe('active-folder-wrapper'),
-            del: probe('delete-folder-wrapper'),
-            options: sel ? [...sel.options].map(o => ({ value: o.value, text: o.textContent.trim() })) : null
+            exists: true,
+            h: Math.round(r.height),
+            reachable: !!(hit && (hit === el || el.contains(hit))),
+            text: el.innerText.replace(/\s+/g, ' ').trim().slice(0, 80)
         };
-    });
+    }, id);
+    const rows = {
+        active: await probeRow('active-folder-wrapper'),
+        del: await probeRow('delete-folder-wrapper'),
+        options: await page.evaluate(() => {
+            const sel = document.getElementById('active-folder-select');
+            return sel ? [...sel.options].map(o => ({ value: o.value, text: o.textContent.trim() })) : null;
+        })
+    };
     ok(rows.active.exists, 'редът „Активна папка“ съществува (вариант А)');
     ok(rows.active.exists && rows.active.reachable, `редът „Активна папка“ се вижда (${rows.active.h}px)`, rows.active);
     ok(rows.del.exists, 'редът „Изтрий папка“ съществува (вариант А)');
@@ -280,12 +307,20 @@ const browser = await chromium.launch({ executablePath: CHROME, args: ['--num-ra
 
     const { ctx, page, errs } = await newPage(browser, { initFn: ARCHIVE_DIR, initArg: { BOARDS, NOTES, MEDIAS } });
     await page.goto(`${ORIGIN}/${PAGE}`, { waitUntil: 'load' });
+    // Стартът се изчаква докрай: иначе кликът пуска втори mainLogic, докато първият още върви,
+    // и вторият се отказва (guard isMainLogicRunning).
+    await page.evaluate(() => startApp(true).catch(() => { }));
+    await page.waitForFunction(() => typeof authToken !== 'undefined' && !!authToken, null, { timeout: 20000 }).catch(() => { });
+    await page.waitForFunction(() => typeof isMainLogicRunning === 'undefined' || isMainLogicRunning === false, null, { timeout: 20000 }).catch(() => { });
     await bootSettings(page);
     // Памет вместо IndexedDB за дръжката на папката: фалшивата дръжка не може да се запише в базата.
     await page.evaluate(() => {
         window.__cfgStore = {};
         window.saveConfig = async (k, v) => { window.__cfgStore[k] = v; };
         window.getConfig = async (k) => window.__cfgStore[k];
+        // Токенът в паметта, както го задава startApp след успешен вход: иначе mainLogic
+        // тръгва към checkAuth и в този стенд стига до липсващ идентификатор.
+        authToken = { access_token: 'stub-token', issued_at: Date.now(), expires_in: 3600, scope: 'stub' };
         document.getElementById('settings-modal').classList.add('visible');
     });
     const btnExists = await page.evaluate(() => !!document.getElementById('select-arh-btn'));
@@ -299,14 +334,21 @@ const browser = await chromium.launch({ executablePath: CHROME, args: ['--num-ra
         notes: (typeof allNotesData !== 'undefined' ? allNotesData.length : -1),
         boardTitles: (typeof boardsData !== 'undefined' ? boardsData.map(b => b.title) : []),
         noteTexts: (typeof allNotesData !== 'undefined' ? allNotesData.map(n => n.notetxt || '') : []),
-        cardsInDom: document.querySelectorAll('#notes-container .note').length,
         shownAsArh: (() => { const el = document.getElementById('arh-folder-name'); return el ? el.textContent.trim() : null; })()
+    }));
+    // Бележките се рисуват от renderUI веднага след четенето; чакаме карта, не фиксирано време.
+    const rendered = await page.waitForFunction(() => document.querySelectorAll('#notes-container .note').length > 0,
+        null, { timeout: 15000 }).then(() => true, () => false);
+    const cards = await page.evaluate(() => ({
+        cards: document.querySelectorAll('#notes-container .note').length,
+        titles: [...document.querySelectorAll('#notes-container .note')].map(e => e.innerText.replace(/\s+/g, ' ').trim().slice(0, 40)).slice(0, 5)
     }));
     ok(loaded, 'след избор на архива бордовете и бележките са в паметта на приложението', state);
     ok(state.boards === BOARDS.length, `заредени са ${state.boards} борда от 'boards (1).bcp'`, state.boardTitles);
     ok(state.notes === NOTES.length, `заредени са ${state.notes} бележки от 'notes (2).bcp'`, state.noteTexts);
     ok(state.noteTexts.includes('Бележка от телефона'), 'текстът на бележката от архива е в паметта', state.noteTexts);
-    ok(state.cardsInDom > 0, `бележките се показват на екрана (${state.cardsInDom} карти)`, state);
+    ok(rendered && cards.cards > 0, `бележките се показват на екрана (${cards.cards} карти)`, cards);
+    ok(cards.titles.some(t => t.includes('Бележка от телефона')), 'картата с бележката от архива е на екрана', cards.titles);
     ok(state.shownAsArh === 'backup-21.03', `избраната папка се показва в Настройки (${state.shownAsArh})`, state.shownAsArh);
     ok(!errs.some(e => e.startsWith('pageerror:')), 'при вноса от Архив няма непохванати грешки', errs.slice(0, 5));
     await ctx.close();

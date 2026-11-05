@@ -94,7 +94,7 @@
                 "board"
             ],
             "question": "What is the <b><i>Other Attachments</i></b> board?",
-            "answer": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that photos not taken from a note in <b><i>Multinotes</i></b> but are attached as documents will appear in <b><i>With photos</i></b> board."
+            "answer": "The <b><i>Other Attachments</i></b> board shows notes with attached files that are not photos, videos, or audio (e.g. documents, PDFs, etc.). You should keep in mind that photos not taken from a note in <b><i>CX Notes</i></b> but are attached as documents will appear in <b><i>With photos</i></b> board."
         },
         "weekly-calendar-checkbox": {
             "label": "Weekly calendar view:",

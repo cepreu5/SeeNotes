@@ -1550,7 +1550,7 @@ async function refreshAuthToken(forcePopup = false, quiet = false) {
                                     localStorage.removeItem('active_folder_name');
                                     clearCachedMainFolderId();
                                     localStorage.removeItem('initial_setup_complete');
-                                    localStorage.removeItem('cx_notes_settings');
+                                    localStorage.removeItem('settings_multinotes_data');
                                     localStorage.removeItem('gdrive_folder_names');
                                     sessionStorage.removeItem('first_run_lock');
                                     ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
@@ -2724,19 +2724,19 @@ async function getFolderID() {
 }
 
 function setCachedMainFolderId(folderName, folderId) {
-    localStorage.setItem('gdrive_main_folder_id', folderId);
-    localStorage.setItem('gdrive_main_folder_id_folder', folderName);
+    localStorage.setItem('gdrive_multinotes_data_id', folderId);
+    localStorage.setItem('gdrive_multinotes_data_id_folder', folderName);
 }
 function clearCachedMainFolderId() {
-    localStorage.removeItem('gdrive_main_folder_id');
-    localStorage.removeItem('gdrive_main_folder_id_folder');
+    localStorage.removeItem('gdrive_multinotes_data_id');
+    localStorage.removeItem('gdrive_multinotes_data_id_folder');
 }
 
 async function getMainDataFolderID() {
     if (isOffline) return null;
     if (typeof activeFolderName !== 'undefined' && activeFolderName === 'AppDataFolder') return 'appDataFolder';
-    const cachedId = localStorage.getItem('gdrive_main_folder_id');
-    const cachedForFolder = localStorage.getItem('gdrive_main_folder_id_folder');
+    const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
+    const cachedForFolder = localStorage.getItem('gdrive_multinotes_data_id_folder');
     // b2.05: кешът се приема и когато записаното име се различава по главни/малки букви
     // (CX-notes срещу CX-Notes). Иначе всеки запис тръгва по точно име, не я намира и
     // кодът по-долу чисти настройките и презарежда приложението.
@@ -8651,7 +8651,7 @@ function resetAccountFolderSettings() {
     localStorage.removeItem('folderSetupDone');
     localStorage.removeItem('folderSetupMode');
     localStorage.removeItem('initial_setup_complete');
-    localStorage.removeItem('cx_notes_settings');
+    localStorage.removeItem('settings_multinotes_data');
     localStorage.removeItem('gdrive_folder_names');
     sessionStorage.removeItem('first_run_lock');
     ['Other', 'Sound', 'Video', 'Images'].forEach(name => localStorage.removeItem(`gdrive_folder_id_${name}`));
@@ -8893,7 +8893,7 @@ async function handleFirstRunSetup() {
         localStorage.setItem('initial_setup_complete', 'true');
         return false;
     }
-    const hasLocalSettings = localStorage.getItem('cx_notes_settings');
+    const hasLocalSettings = localStorage.getItem('settings_multinotes_data');
     if (hasLocalSettings) return false;
     const isFreshLocalSetup = localStorage.getItem('initial_setup_complete') !== 'true';
     sessionStorage.setItem('first_run_lock', 'true');
@@ -20097,7 +20097,7 @@ async function loadGlobalFoldersJson() {
             activeFolderName = remoteActiveFolder;
             // Ако кешът на ID не съответства на новата активна папка, го изчистваме,
             // за да се преизчисли по име при следващото зареждане на данни.
-            if (localStorage.getItem('gdrive_main_folder_id_folder') !== remoteActiveFolder) {
+            if (localStorage.getItem('gdrive_multinotes_data_id_folder') !== remoteActiveFolder) {
                 clearCachedMainFolderId();
             }
             const loaderFolderInfo = document.getElementById('loader-folder-info');
@@ -20193,7 +20193,7 @@ async function saveSettingsToGDrive(silent = false) {
         }
     }
     const contentLocal = JSON.stringify(settings, null, 2);
-    localStorage.setItem('cx_notes_settings', contentLocal);
+    localStorage.setItem('settings_multinotes_data', contentLocal);
     // Офлайн локалното копие е профилът; онлайн се чака успешен запис в Drive, за да се махне
     // бележката „чака запис" от изборите за видимост на бордовете.
     let profileSaved = isOffline;
@@ -20273,7 +20273,7 @@ async function loadSettingsFromGDrive(silent = false) {
             }
         }
     }
-    if (!content) content = localStorage.getItem('cx_notes_settings');
+    if (!content) content = localStorage.getItem('settings_multinotes_data');
     if (content) {
         try {
             let settings = JSON.parse(content);
@@ -20292,7 +20292,7 @@ async function loadSettingsFromGDrive(silent = false) {
                 localStorage.setItem('language', pendingLang);
                 currentLang = pendingLang;
             }
-            const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_main_folder_id', 'folderId', 'deviceName'];
+            const preservedKeys = ['useGoogleDb', 'useLocalDb', 'useArhDb', 'useIndexedDb', 'active_folder_name', 'gdrive_folder_names', 'gdrive_multinotes_data_id', 'folderId', 'deviceName'];
             if (window.hasUrlLanguage || pendingLang) preservedKeys.push('language');
             // Ключове, сменени от Настройки и още не записани в профила: профилът не ги презаписва,
             // иначе изключен борд се връща в менюто при следващия старт.
@@ -20353,7 +20353,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             showSettingsBtn.style.display = (typeof debug !== 'undefined' && debug) ? '' : 'none';
             showSettingsBtn.onclick = null;
             showSettingsBtn.addEventListener('click', () => {
-                const content = localStorage.getItem('cx_notes_settings');
+                const content = localStorage.getItem('settings_multinotes_data');
                 if (content) {
                     sessionStorage.setItem('full_settings_json', content);
                 }
@@ -20461,7 +20461,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                         if (existingFiles && existingFiles.length > 0) content = await fetchGDriveFileContent(existingFiles[0].id);
                     }
                 } catch (err) { console.error("Error loading profiles:", err); }
-                if (!content) content = localStorage.getItem('cx_notes_settings');
+                if (!content) content = localStorage.getItem('settings_multinotes_data');
                 if (content) {
                     try {
                         const parsed = JSON.parse(content);
@@ -23316,8 +23316,8 @@ async function inlineImageDataFolderId() {
     const name = (typeof activeFolderName !== 'undefined' && activeFolderName) ? activeFolderName : 'CX-Notes';
     if (name === 'AppDataFolder') return 'appDataFolder';
     try {
-        const cachedId = localStorage.getItem('gdrive_main_folder_id');
-        const cachedName = localStorage.getItem('gdrive_main_folder_id_folder');
+        const cachedId = localStorage.getItem('gdrive_multinotes_data_id');
+        const cachedName = localStorage.getItem('gdrive_multinotes_data_id_folder');
         if (cachedId && (!cachedName || String(cachedName).toLowerCase() === String(name).toLowerCase())) return cachedId;
     } catch (e) { /* режим без localStorage */ }
     if (typeof isOffline !== 'undefined' && isOffline) return null;

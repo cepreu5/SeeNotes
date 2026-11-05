@@ -1335,7 +1335,7 @@
         // a) id на папката, записан от приложението (същия origin); приема се само жива папка.
         async function workingFolderIdFromApp(DRIVE) {
             const seen = new Set();
-            for (const key of ['activeFolderId', 'gdrive_main_folder_id']) {
+            for (const key of ['activeFolderId', 'gdrive_multinotes_data_id']) {
                 const id = localStorage.getItem(key);
                 if (!id || id === 'appDataFolder' || seen.has(id)) continue;
                 seen.add(id);
