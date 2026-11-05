@@ -7039,17 +7039,22 @@ function extractAndFormat(text, onlyChecked = false) {
         // Залепяме операторите (чистим интервалите omkring тях)
         cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
         // 4. Екстракция на математическия блок
-        // Търсим най-дългата поредица от цифри и оператори.
-        // Число, залепено за буква отляво ("500 А1", "T1", "A1"), НЕ се взима в сметката.
-        // Число след интервал, запетая, скоба или в началото на реда се взима както досега.
+        // Собственик (5.11.2026): взима се САМО последното число в реда и то само ако пред него
+        // има интервал. Ако последното число е залепено за буква ("500 А1", "T1", "A1"),
+        // редът не дава нищо — не се връщаме към по-раншно число от същия ред.
         const mathMatchRe = /[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g;
         let mathMatch;
-        let expression = '';
+        let lastMatch = null;
         while ((mathMatch = mathMatchRe.exec(cleanLine)) !== null) {
-            const beforeChar = mathMatch.index > 0 ? cleanLine.charAt(mathMatch.index - 1) : '';
-            if (beforeChar && /\p{L}/u.test(beforeChar)) continue;
-            // Вземаме последното валидно съвпадение (обикновено сумата е в края на реда)
-            expression = mathMatch[0];
+            lastMatch = mathMatch;
+        }
+        let expression = '';
+        if (lastMatch) {
+            // В началото на реда няма буква отляво, значи числото се взима.
+            const beforeChar = lastMatch.index > 0 ? cleanLine.charAt(lastMatch.index - 1) : '';
+            if (!/\p{L}/u.test(beforeChar)) {
+                expression = lastMatch[0];
+            }
         }
         if (expression) {
             // 5. Финална проверка за знака в самото начало на целия низ

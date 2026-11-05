@@ -1,12 +1,15 @@
-// Калкулаторът не взима цифра, залепена за буква (b3.71 / b1.88)
+// Калкулаторът взима само последното число в реда и само ако не е залепено за буква (b3.72 / b1.89)
 //
 // Собственикът (5.11.2026): бележка с ред „180+247 БК, 500 А1“ дава 1+746.99+188.17+323.34 = 1259.50,
-// тоест взима единицата от „А1“. Искане: „Нека число да се взима само ако преди него има поне 1 интервал.“
+// тоест взима единицата от „А1“. Искане: „взима се само последното число в реда и то ако има
+// един интервал преди него“.
 //
 // Какво проверява (истински Chromium, истинският код):
-//   1) uni: функцията extractAndFormat върху точния текст на бележката дава 500+746.99+188.17+323.34;
-//   2) uni: същият текст през бутона на калкулатора (от клипборда) се записва като „… = 1758.50“, не 1259.50;
-//   3) uni: число, залепено за буква отляво (А1, A1, T1, А4), не влиза в сметката;
+//   1) uni: функцията extractAndFormat върху точния текст на бележката дава 746.99+188.17+323.34;
+//   2) uni: същият текст през бутона на калкулатора (от клипборда) се записва като „… = 1258.50“,
+//      а старият резултат 1259.50 (с единицата от „А1“) не се появява;
+//   3) uni: ако последното число в реда е залепено за буква (А1, A1, T1, А4), редът не дава нищо —
+//      не се връща към по-раншно число от същия ред;
 //   4) uni: старото поведение не е пипано (израз, номерация в началото, запетая, скоби, тръби);
 //   5) MNV: същата функция върху същия текст дава същото;
 //   6) няма изключения в конзолата.
@@ -43,8 +46,8 @@ const NOTE = [
     '| [x] Тоньо    | 188.17 |    [ ]    |',
     '| [x] Светлана | 323.34 |    [x]    |'
 ].join('\n');
-const WANT_EXPR = '500+746.99+188.17+323.34';
-const WANT_SUM = '1758.50';
+const WANT_EXPR = '746.99+188.17+323.34';
+const WANT_SUM = '1258.50';
 
 const types = { '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.ico': 'image/x-icon' };
 const srv = http.createServer(async (req, res) => {
@@ -115,15 +118,19 @@ let uniErrs = [];
         const got = await page.evaluate(t => window.extractAndFormat(t), NOTE);
         ok(got === WANT_EXPR, '1.2 uni: изразът от бележката на собственика', got);
         const sum = await page.evaluate(e => { try { return new Function('return ' + e)().toFixed(2); } catch (x) { return 'ERR ' + x.message; } }, got);
-        ok(sum === WANT_SUM, '1.3 uni: резултатът е 1758.50, не 1259.50', sum);
+        ok(sum === WANT_SUM, '1.3 uni: резултатът е 1258.50, не 1259.50', sum);
 
-        // ── 3. залепена цифра не влиза ──
+        // ── 3. само последното число в реда, и само ако не е залепено за буква ──
         const cases = [
             ['клетка А1', '', '3.1'],
             ['Т1', '', '3.2'],
-            ['Мой 746.99 А4', '746.99', '3.3'],
+            ['Мой 746.99 А4', '', '3.3'],
             ['A1 250', '250', '3.4'],
-            ['сума 500 А1', '500', '3.5']
+            ['сума 500 А1', '', '3.5'],
+            ['180+247 БК, 500 А1', '', '3.6'],
+            ['500 А1 250', '250', '3.7'],
+            ['сума 500 300', '300', '3.8'],
+            ['сума 500лв', '500', '3.9']
         ];
         for (const [inp, exp, tag] of cases) {
             const got2 = await page.evaluate(t => window.extractAndFormat(t), inp);
@@ -137,7 +144,9 @@ let uniErrs = [];
             ['☑ Мляко 2,50\n☑ Хляб 1,30', '2.50+1.30', '4.3'],
             ['|746.99|', '746.99', '4.4'],
             ['стойност (500)', '500', '4.5'],
-            ['Мляко 2.50\nХляб 1.30', '2.50+1.30', '4.6']
+            ['Мляко 2.50\nХляб 1.30', '2.50+1.30', '4.6'],
+            ['500', '500', '4.7'],
+            ['180+247 БК, 500 лв', '500', '4.8']
         ];
         for (const [inp, exp, tag] of keep) {
             const got3 = await page.evaluate(t => window.extractAndFormat(t), inp);
@@ -170,7 +179,7 @@ let uniErrs = [];
             await page.waitForTimeout(1500);
             const body = await page.evaluate(() => (document.querySelector('.note-window-active .nw-modal-body') || {}).textContent || '');
             const flat = body.replace(/\s+/g, ' ');
-            ok(flat.includes(`${WANT_EXPR} = ${WANT_SUM}`), '2.3 uni: в бележката се записва „… = 1758.50“', flat.slice(-140));
+            ok(flat.includes(`${WANT_EXPR} = ${WANT_SUM}`), '2.3 uni: в бележката се записва „… = 1258.50“', flat.slice(-140));
             ok(!flat.includes('1259.50'), '2.4 uni: никъде не се появява старият резултат 1259.50', flat.slice(-140));
         }
     }
@@ -192,11 +201,13 @@ let mnvErrs = [];
         const got = await page.evaluate(t => window.extractAndFormat(t), NOTE);
         ok(got === WANT_EXPR, '5.2 MNV: изразът от бележката на собственика', got);
         const sum = await page.evaluate(e => { try { return new Function('return ' + e)().toFixed(2); } catch (x) { return 'ERR ' + x.message; } }, got);
-        ok(sum === WANT_SUM, '5.3 MNV: резултатът е 1758.50', sum);
+        ok(sum === WANT_SUM, '5.3 MNV: резултатът е 1258.50', sum);
         const glued = await page.evaluate(() => window.extractAndFormat('клетка А1'));
         ok(glued === '', '5.4 MNV: „клетка А1“ не дава число', glued);
+        const gluedLast = await page.evaluate(() => window.extractAndFormat('сума 500 А1'));
+        ok(gluedLast === '', '5.5 MNV: „сума 500 А1“ не дава нищо (последното е залепено)', gluedLast);
         const expr = await page.evaluate(() => window.extractAndFormat('180+247'));
-        ok(expr === '180+247', '5.5 MNV: чист израз минава както преди', expr);
+        ok(expr === '180+247', '5.6 MNV: чист израз минава както преди', expr);
     }
     await ctx.close();
 }
