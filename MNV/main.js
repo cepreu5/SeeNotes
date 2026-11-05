@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.87'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.87)
+const version = 'Beta 1.88'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.88)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -2495,11 +2495,19 @@ function extractAndFormat(text, onlyChecked = false) {
         // Залепяме операторите (чистим интервалите omkring тях)
         cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
         // 4. Екстракция на математическия блок
-        // Търсим най-дългата поредица от цифри и оператори
-        let mathMatch = cleanLine.match(/[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g);
-        if (mathMatch) {
-            // Вземаме последното съвпадение (обикновено сумата е в края на реда)
-            let expression = mathMatch[mathMatch.length - 1];
+        // Търсим най-дългата поредица от цифри и оператори.
+        // Число, залепено за буква отляво ("500 А1", "T1", "A1"), НЕ се взима в сметката.
+        // Число след интервал, запетая, скоба или в началото на реда се взима както досега.
+        const mathMatchRe = /[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g;
+        let mathMatch;
+        let expression = '';
+        while ((mathMatch = mathMatchRe.exec(cleanLine)) !== null) {
+            const beforeChar = mathMatch.index > 0 ? cleanLine.charAt(mathMatch.index - 1) : '';
+            if (beforeChar && /\p{L}/u.test(beforeChar)) continue;
+            // Вземаме последното валидно съвпадение (обикновено сумата е в края на реда)
+            expression = mathMatch[0];
+        }
+        if (expression) {
             // 5. Финална проверка за знака в самото начало на целия низ
             if (/^\d/.test(expression)) {
                 expression = '+' + expression;
