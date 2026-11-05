@@ -10,7 +10,10 @@
 //   5) три бележки: ключът има три, след презареждане трите са отворени;
 //   6) фалшив id до реален в ключа: отваря се само реалната бележка, без изключения;
 //   7) режим „единична бележка": не се възстановява и ключът се трие;
-//   8) нула грешки в конзолата на страницата в целия ход.
+//   8) отделният запис за ЕДНА отворена бележка (cx_open_note_single, b3.70): пише се, докато има
+//      една отворена бележка и няма лента, трие се при показване на лентата и при затваряне на
+//      бележката, а при старт бележката от него се отваря - включително в режим „единична бележка";
+//   9) нула грешки в конзолата на страницата в целия ход.
 //
 // Пускане от корена на хранилището: node .bolter/check/open-notes-restore.mjs   (exit 1 при провал)
 // ROOT=… сочи друга папка на приложението (контрола: на b3.68 пада на проверките за ключа и за
@@ -43,6 +46,7 @@ const DB_NAME = process.env.UNI_DB || 'NotesDB-demo';
 const SEED_PATH = '/__seed.html';
 const W = Number(process.env.W || 390), H = Number(process.env.H || 844);
 const KEY = 'cx_open_notes_list';
+const KEY_SINGLE = 'cx_open_note_single';
 
 const types = { '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.ico': 'image/x-icon' };
 const srv = http.createServer(async (req, res) => {
@@ -170,6 +174,13 @@ const storedList = () => page.evaluate((key) => {
     try { return JSON.parse(raw); } catch (e) { return 'unparsable: ' + raw.slice(0, 120); }
 }, KEY);
 
+// Отделният запис за ЕДНА отворена бележка (b3.70): {id, gdid} или null.
+const storedSingle = () => page.evaluate((key) => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return 'unparsable: ' + raw.slice(0, 120); }
+}, KEY_SINGLE);
+
 const barVisible = () => page.evaluate(() => {
     const bar = document.getElementById('open-notes-bar');
     return !!(bar && bar.classList.contains('is-visible'));
@@ -285,6 +296,9 @@ const idsOf = (l) => (Array.isArray(l) ? l.map(e => String(e && e.id)) : []);
 ok(Array.isArray(list) && idsOf(list).join(',') === chain.join(','),
     'списъкът съдържа точно двете отворени бележки в реда на отваряне', list);
 ok(Array.isArray(list) && list.every(e => e && e.gdid), 'всеки запис в списъка носи и gdid на бележката', list);
+// b3.70: щом лентата се покаже, отделният запис за една бележка се трие - иначе при следващ старт
+// би се отворила една бележка до пълния списък.
+ok((await storedSingle()) === null, 'при показана лента няма отделен запис за една бележка', await storedSingle());
 
 // --- 2) Презареждане: двете бележки се отварят отново ---------------------------------------
 let reload = await reloadApp();
@@ -324,16 +338,39 @@ ok(barGone, 'при една отворена бележка лентата се
 const cleared = await waitFor((key) => localStorage.getItem(key) === null, KEY, 5000);
 list = await storedList();
 ok(cleared && list === null, 'при скрита лента списъкът се изтрива от локалната памет', list);
+// b3.70: остана една бележка и лентата се скри - тя влиза в отделния запис на мястото на лентата.
+const recAfterClose = await storedSingle();
+ok(recAfterClose && chain.includes(String(recAfterClose.id)),
+    'след скриване на лентата останалата бележка влиза в отделния запис', recAfterClose);
 
-// --- 4) Презареждане: нищо не се отваря, ключът още липсва ----------------------------------
+// --- 4) Презареждане: отваря се бележката от отделния запис; затварянето го трие (b3.70) ------
 reload = await reloadApp();
 ok(reload.ready && reload.cards, 'след второто презареждане приложението се вдигна', reload);
 await page.waitForTimeout(400);
 wins = await openWindows();
-ok(wins.length === 0, 'нищо не се отваря, когато в локалната памет няма списък', wins);
+ok(wins.length === 1, 'при старт се отваря точно бележката от отделния запис', wins);
+ok(wins.length === 1 && String(wins[0].id) === String(recAfterClose && recAfterClose.id),
+    'отворената бележка е същата, която беше отворена преди презареждането', wins);
+ok(new Set(wins.map(w => w.id)).size === wins.length, 'няма дублиран прозорец за една и съща бележка', wins);
 list = await storedList();
-ok(list === null, 'ключът още го няма', list);
+ok(list === null, 'списъкът не се появява при една бележка', list);
 ok(!(await barVisible()), 'лентата не се вижда');
+
+// Затваряне на тази единствена бележка: записът се трие и при следващ старт нищо не се отваря.
+const sole = await topWindow();
+let soleClosed = false;
+if (sole && sole.close) {
+    await page.mouse.click(sole.close.x, sole.close.y);
+    soleClosed = await waitFor(() => typeof getOpenNoteWindows === 'function' && getOpenNoteWindows().length === 0, null, 8000);
+}
+ok(soleClosed, 'единствената бележка се затваря с X', sole);
+const recCleared = await waitFor((key) => localStorage.getItem(key) === null, KEY_SINGLE, 5000);
+ok(recCleared && (await storedSingle()) === null, 'при затваряне на бележката записът се трие', await storedSingle());
+reload = await reloadApp();
+ok(reload.ready && reload.cards, 'след третото презареждане приложението се вдигна', reload);
+await page.waitForTimeout(400);
+wins = await openWindows();
+ok(wins.length === 0, 'когато записът е изтрит, при старт нищо не се отваря', wins);
 
 // --- 5) Три бележки: ключът има три, след презареждане трите са отворени ---------------------
 const three = ['1001', '1002', '1003'];
@@ -346,7 +383,7 @@ for (const id of three) {
 list = await storedList();
 ok(Array.isArray(list) && idsOf(list).join(',') === three.join(','), 'ключът има трите бележки в реда на отваряне', list);
 reload = await reloadApp();
-ok(reload.ready && reload.cards, 'след третото презареждане приложението се вдигна', reload);
+ok(reload.ready && reload.cards, 'след четвъртото презареждане приложението се вдигна', reload);
 wins = await openWindows();
 ok(wins.length === 3, 'след презареждане са отворени трите бележки', wins);
 ok(wins.map(w => w.id).sort().join(',') === three.slice().sort().join(','), 'това са същите три бележки', wins);
@@ -360,27 +397,49 @@ await page.evaluate(({ key }) => {
     ]));
 }, { key: KEY });
 reload = await reloadApp();
-ok(reload.ready && reload.cards, 'след четвъртото презареждане приложението се вдигна', reload);
+ok(reload.ready && reload.cards, 'след петото презареждане приложението се вдигна', reload);
 wins = await openWindows();
 ok(wins.length === 1, 'отваря се само реалната бележка, фалшивият запис се прескача', wins);
 ok(wins.length === 1 && wins[0].id === '1001', 'отворената бележка е точно реалната (1001)', wins);
 ok(errs.length === 0, 'възстановяването с фалшив запис не хвърля изключение', errs.slice(0, 3));
+// Останала е една реална бележка: тя влиза в отделния запис, а списъкът (две бележки) се трие.
+const recReal = await storedSingle();
+ok(recReal && String(recReal.id) === '1001', 'останалата една бележка е в отделния запис', recReal);
+ok((await storedList()) === null, 'списъкът е изтрит, при една отворена бележка', await storedList());
 
-// --- 7) Режим „единична бележка": не се възстановява, а ключът се трие ----------------------
-await page.evaluate(({ key }) => {
+// --- 7) Режим „единична бележка": списъкът не се възстановява, а се трие ---------------------
+// Отделният запис за една бележка тук е изрично изтрит: в този раздел се проверява само списъкът.
+await page.evaluate(({ key, keySingle }) => {
     localStorage.setItem('singleNoteMode', 'true');
+    localStorage.removeItem(keySingle);
     localStorage.setItem(key, JSON.stringify([
         { id: '1001', gdid: 'Note000000000000001001' },
         { id: '1002', gdid: 'Note000000000000001002' }
     ]));
-}, { key: KEY });
+}, { key: KEY, keySingle: KEY_SINGLE });
 reload = await reloadApp();
 ok(reload.ready && reload.cards, 'след презареждане в режим „единична бележка" приложението се вдигна', reload);
 wins = await openWindows();
-ok(wins.length === 0, 'в режим „единична бележка" нищо не се възстановява', wins);
+ok(wins.length === 0, 'в режим „единична бележка" списъкът не се възстановява', wins);
 const keyGone = await waitFor((key) => localStorage.getItem(key) === null, KEY, 5000);
 list = await storedList();
 ok(keyGone && list === null, 'в режим „единична бележка" списъкът се изтрива', list);
+
+// --- 7b) Същият режим, но със запис за една бележка: тя се отваря (искането на собственика) ---
+await page.evaluate(({ keySingle }) => {
+    localStorage.setItem('singleNoteMode', 'true');
+    localStorage.setItem(keySingle, JSON.stringify({ id: '1002', gdid: 'Note000000000000001002' }));
+}, { keySingle: KEY_SINGLE });
+reload = await reloadApp();
+ok(reload.ready && reload.cards, 'след презареждане в режим „единична бележка" (със запис) приложението се вдигна', reload);
+await page.waitForTimeout(300);
+wins = await openWindows();
+ok(wins.length === 1 && wins[0].id === '1002',
+    'в режим „единична бележка" записаната бележка се отваря при старт', wins);
+ok(!(await barVisible()), 'в режим „единична бележка" лентата не се показва');
+const recKept = await storedSingle();
+ok(recKept && String(recKept.id) === '1002', 'записът остава налице и след възстановяването', recKept);
+ok((await storedList()) === null, 'списъкът не се появява в режим „единична бележка"', await storedList());
 await page.evaluate(() => localStorage.removeItem('singleNoteMode'));
 
 // --- 8) Конзолата на страницата -------------------------------------------------------------

@@ -12064,6 +12064,60 @@ function clearOpenNotesLocalList() {
     try { localStorage.removeItem(OPEN_NOTES_LIST_STORE); } catch (e) { }
 }
 
+// --- ЕДНА отворена бележка в локалната памет (b3.70) ------------------------------------------
+// Собственикът (5.11.2026): „За първата отворена бележка, независимо от режима Single note, също да
+// има отделен запис в локалната памет, който се изтрива при затваряне на бележката или при показване
+// на лентата. Когато приложението се отвори, ако този запис съществува съответната бележка се отваря."
+// Затова записът живее точно докато има ЕДНА отворена бележка и лентата я няма: в режим „единична
+// бележка" това е единственият начин бележката да оцелее след презареждане (лентата там не се
+// показва, значи списъкът от b3.69 е винаги празен), а при две и повече бележки щафетата поема
+// списъкът и записът се трие - иначе при следващ старт би се отворила една бележка до пълния списък.
+// Един запис {id, gdid}, както един запис от списъка. Пише се и се трие на същото място като
+// списъка - в refreshOpenNotesBar, до решението дали лентата се вижда.
+const OPEN_NOTE_SINGLE_STORE = 'cx_open_note_single';
+
+function openNoteSingleEntry(win) {
+    if (!win || !win.body) return null;
+    const id = (win.body.dataset.id || '').toString();
+    const gdid = (win.body.dataset.gdid || '').toString();
+    return (id || gdid) ? { id, gdid } : null;
+}
+
+/** Прочетеният запис {id, gdid} или null при липса/повреда. */
+function readOpenNoteSingleRecord() {
+    try {
+        const raw = localStorage.getItem(OPEN_NOTE_SINGLE_STORE);
+        if (!raw) return null;
+        const entry = JSON.parse(raw);
+        if (!entry || typeof entry !== 'object') return null;
+        const id = (entry.id === undefined || entry.id === null) ? '' : String(entry.id);
+        const gdid = (entry.gdid === undefined || entry.gdid === null) ? '' : String(entry.gdid);
+        return (id || gdid) ? { id, gdid } : null;
+    } catch (e) { return null; }
+}
+
+/** Записва единствената отворена бележка. Същият запис не се пише пак (иначе всяко опресняване
+ *  пипа локалната памет излишно). */
+function saveOpenNoteSingleRecord(win) {
+    // Преди първото възстановяване записът НЕ се пипа: при старт refreshOpenNotesBar минава и с нула
+    // отворени бележки (лентата се строи преди бележките), а тогава би изтрил записа от предишното
+    // пускане, преди restoreOpenNotesFromLocal да го е прочел.
+    if (!openNotesRestoreDone || openNotesRestoreRunning) return;
+    const entry = openNoteSingleEntry(win);
+    if (!entry) { clearOpenNoteSingleRecord(); return; }
+    try {
+        const prev = readOpenNoteSingleRecord();
+        if (prev && prev.id === entry.id && prev.gdid === entry.gdid) return;
+        localStorage.setItem(OPEN_NOTE_SINGLE_STORE, JSON.stringify(entry));
+    } catch (e) { }
+}
+
+/** Трие записа: бележката е затворена или лентата е поела отворените бележки. */
+function clearOpenNoteSingleRecord() {
+    if (!openNotesRestoreDone || openNotesRestoreRunning) return;
+    try { localStorage.removeItem(OPEN_NOTE_SINGLE_STORE); } catch (e) { }
+}
+
 /**
  * Отваря наново бележките от списъка в локалната памет - ЕДНОКРАТНО, след първото пълно изчертаване.
  * Редът на списъка се пази, значи последната бележка от него остава най-отпред и активна (всяко
@@ -12072,18 +12126,21 @@ function clearOpenNotesLocalList() {
 function restoreOpenNotesFromLocal() {
     if (openNotesRestoreDone) return;
     openNotesRestoreDone = true;
-    // Режим „единична бележка": той държи една бележка и лентата не се показва в него, значи няма
-    // какво да се възстановява - списъкът се трие, за да не остане за следващото пускане.
-    if (isSingleNoteMode()) {
-        clearOpenNotesLocalList();
-        return;
-    }
-    const list = readOpenNotesLocalList();
-    if (list === null) return; // няма списък - няма какво да се отваря
-    if (!list.length) { clearOpenNotesLocalList(); return; }
+    // Режим „единична бележка": лентата не се показва в него, значи списъкът няма какво да възстанови
+    // и се трие. Отделният запис за ЕДНА отворена бележка (b3.70) важи точно в този режим - затова не
+    // се излиза, а се чете той.
+    const singleMode = isSingleNoteMode();
+    const list = singleMode ? null : readOpenNotesLocalList();
+    if (singleMode) clearOpenNotesLocalList();
+    else if (list !== null && !list.length) clearOpenNotesLocalList();
+    // Списъкът е пълният отговор, когато го има (записът за една бележка се трие, щом лентата се
+    // покаже, значи двете не съществуват заедно). Иначе се гледа записът за една бележка.
+    const single = (list && list.length) ? null : readOpenNoteSingleRecord();
+    const entries = (list && list.length) ? list : (single ? [single] : []);
+    if (!entries.length) return; // няма какво да се отваря
     openNotesRestoreRunning = true; // флагът се вдига ПРЕДИ първото отваряне - виж обяснението при него
     try {
-        list.forEach(entry => {
+        entries.forEach(entry => {
             const note = allNotesData.find(n => n && ((entry.gdid && String(n.gdid) === entry.gdid) || (entry.id && String(n.id) === entry.id)));
             if (!note) return; // бележката вече я няма (изтрита в другия раздел/устройство) - прескача се
             // Вече отворена бележка не се отваря втори път: списъкът не бива да прави дублиран прозорец.
@@ -13136,6 +13193,12 @@ function refreshOpenNotesBar() {
         // лентата се вижда, за да не остане списък без лента (или обратното). Трие се само ПРЕХОДЪТ
         // „видима → скрита" (openNotesBarWasVisible): при старт това опресняване минава и с нула
         // отворени бележки, а тогава списъкът от предишното пускане още не е прочетен.
+        // Записът за ЕДНА отворена бележка (b3.70) се поддържа тук, до решението дали лентата се вижда:
+        // точно една отворена бележка и няма лента - тя се помни, за да се отвори при следващ старт
+        // (това е и единственият път в режим „единична бележка"). Няма отворена бележка - записът се
+        // трие, както иска собственикът: „изтрива се при затваряне на бележката".
+        if (open.length === 1) saveOpenNoteSingleRecord(open[0]);
+        else clearOpenNoteSingleRecord();
         if (openNotesBarWasVisible) {
             openNotesBarWasVisible = false;
             clearOpenNotesLocalList();
@@ -13256,6 +13319,9 @@ function refreshOpenNotesBar() {
     bar.classList.add('is-visible');
     // Лентата е на екрана: оттук нататък скриването ѝ трие списъка (виж началото на функцията).
     openNotesBarWasVisible = true;
+    // Лентата се вижда: отворените бележки ги помни списъкът, значи отделният запис за една бележка
+    // се трие (b3.70) - собственикът: „изтрива се ... при показване на лентата".
+    clearOpenNoteSingleRecord();
     // Лентата е на екрана: измерва се и плаващите бутони се качват над нея. Меренето е след като
     // класът е сложен, за да има лентата реална височина (иначе getBoundingClientRect дава 0).
     syncOpenNotesBarLift(true);

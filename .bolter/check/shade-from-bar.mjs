@@ -500,16 +500,29 @@ const ctrlClick = async (page) => {
     const afterOpen = await openOneNote(page);
     ok(afterOpen >= 1, 'след свалянето на блура карта пак отваря бележка', afterOpen);
 
-    // 9) Презареждане: няма отворени бележки, значи няма нито блур, нито лента - и старият запис в
-    // localStorage не вдига блур над празен борд.
+    // 9) Презареждане: отворената бележка се връща (b3.70), но блурът не се вдига сам и лентата
+    // не излиза, защото в localStorage няма вдигнат блур.
     await page.evaluate(() => localStorage.setItem('noteShadeOn', 'true'));
     await page.reload({ waitUntil: 'load' });
     await page.waitForFunction(() => document.body.classList.contains('app-ready'), null, { timeout: 30000 }).catch(() => { });
     await page.waitForTimeout(700);
     const s10 = await state(page);
-    ok(s10.windows === 0, 'след презареждане няма отворени бележки', s10);
-    ok(s10.stored === 'false' && !s10.overlayShown, 'след презареждане блурът не се вдига над празен борд', s10);
+    ok(s10.windows >= 1, 'след презареждане отворената бележка се връща', s10);
+    ok(s10.stored === 'false' && !s10.overlayShown, 'след презареждане блурът не се вдига сам над борда', s10);
     ok(!s10.barShown, 'след презареждане лентата също не е на екрана', s10);
+
+    // 10) Празен борд: затваряме върнатата бележка и презареждаме пак - нищо не се отваря и
+    // старият запис в localStorage не вдига блур над празен борд.
+    const x3 = await clickX();
+    await page.waitForTimeout(700);
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => document.body.classList.contains('app-ready'), null, { timeout: 30000 }).catch(() => { });
+    await page.waitForTimeout(700);
+    const s11 = await state(page);
+    ok(x3, 'върнатата бележка се затваря с хиксчето', x3);
+    ok(s11.windows === 0, 'след затваряне и презареждане няма отворени бележки', s11);
+    ok(s11.stored === 'false' && !s11.overlayShown, 'над празен борд блурът не се вдига', s11);
+    ok(!s11.barShown, 'над празен борд лентата не е на екрана', s11);
 
     ok(errs.length === 0, 'няма изключения в конзолата', errs);
     await ctx.close();
