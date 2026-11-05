@@ -7,7 +7,7 @@
 
 // terser main.js --compress arrows=true,booleans=true,collapse_vars=true,comparisons=true,dead_code=true,drop_console=true,hoist_funs=true,if_return=true,passes=3 --mangle --toplevel --ecma 2020 --module --format wrap_iife=true -c pure_funcs=["console.log"] --output mainn.js
 
-const version = 'Beta 1.89'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.89)
+const version = 'Beta 1.90'; // App version — трябва да съвпада с CACHE_NAME в sw.js (multinotes-b1.90)
 let debug = true; // Глобален флаг за дебъг режим
 window.isAppErrorState = false; // Флаг за грешки (изтекъл сертификат и др.)
 
@@ -2495,9 +2495,11 @@ function extractAndFormat(text, onlyChecked = false) {
         // Залепяме операторите (чистим интервалите omkring тях)
         cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
         // 4. Екстракция на математическия блок
-        // Собственик (5.11.2026): взима се САМО последното число в реда и то само ако пред него
-        // има интервал. Ако последното число е залепено за буква ("500 А1", "T1", "A1"),
-        // редът не дава нищо — не се връщаме към по-раншно число от същия ред.
+        // Собственик (5.11.2026): взима се САМО последното число в реда, и то само ако редът
+        // ЗАВЪРШВА с него. Не се брои, ако числото е залепено за буква отляво ("500 А1", "T1"),
+        // нито ако след него има букви ("сума 500лв", "180+247 БК"). Тогава редът не дава нищо —
+        // не се връщаме към по-раншно число от същия ред. Знаци след числото (скоба, черта,
+        // точка) не пречат.
         const mathMatchRe = /[+-]?\d+(\.\d+)?([\*\/\+\-]\d+(\.\d+)?)+|[+-]?\d+(\.\d+)?/g;
         let mathMatch;
         let lastMatch = null;
@@ -2508,7 +2510,9 @@ function extractAndFormat(text, onlyChecked = false) {
         if (lastMatch) {
             // В началото на реда няма буква отляво, значи числото се взима.
             const beforeChar = lastMatch.index > 0 ? cleanLine.charAt(lastMatch.index - 1) : '';
-            if (!/\p{L}/u.test(beforeChar)) {
+            // След числото до края на реда не трябва да има букви — иначе редът не завършва с число.
+            const tail = cleanLine.slice(lastMatch.index + lastMatch[0].length);
+            if (!/\p{L}/u.test(beforeChar) && !/\p{L}/u.test(tail)) {
                 expression = lastMatch[0];
             }
         }
