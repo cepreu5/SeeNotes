@@ -16478,6 +16478,47 @@ function openCalendarBellNote() {
     openNoteByData(note);
 }
 
+/*
+ * Собственикът (5.11.2026): „Когато звънне, ако не е в single note режим, да отвори бележката."
+ * Отваря се най-ранната по момент от звънналите, по същия път като карта от борда (showModal), значи
+ * отворена бележка само идва отпред и втори прозорец за същата бележка не се прави, а бележка в
+ * редакция не губи написаното. Останалите остават в опашката на камбанката - клик върху нея ги
+ * отваря един по един, както досега.
+ *
+ * В режим „Единична бележка" не се пипа нищо (същото правило като при алармата на бележка,
+ * noteTimerActivateNote): там втори прозорец няма къде да застане. Звъненето и камбанката остават,
+ * значи бележката се отваря с клик върху камбанката, когато човекът излезе от режима.
+ */
+function calendarBellOpenDue(due) {
+    try {
+        if (!Array.isArray(due) || !due.length) return false;
+        if (isSingleNoteMode()) return false;
+        const entry = due[0]; // due е подреден по момент - отваря се първата
+        const note = (Array.isArray(allNotesData) ? allNotesData : []).find(n => n && (
+            (entry.gdid && String(n.gdid) === entry.gdid) ||
+            (entry.id && n.id !== undefined && n.id !== null && String(n.id) === entry.id)
+        ));
+        if (!note) return false;
+        showModal({
+            raw: note.notetxt !== undefined ? note.notetxt : note.text,
+            format: note.text_span,
+            titleFormat: note.title_span || note.title_text_span,
+            color: getNoteColorCss(note.color),
+            boardId: note.boardid,
+            id: note.id,
+            gdid: note.gdid,
+            datemod: note.datemod,
+            originalNote: note
+        });
+        // Бележката вече е отворена, значи следващият клик върху камбанката отваря следващата.
+        calBellOpened = Math.min(calBellOpened + 1, calBellQueue.length);
+        return true;
+    } catch (e) {
+        console.warn('calendarBellOpenDue failed:', e);
+        return false;
+    }
+}
+
 function calendarBellTick(now = Date.now()) {
     try {
         if (calBellActive && calBellUntil && now >= calBellUntil) restoreCalendarButton();
@@ -16499,6 +16540,8 @@ function calendarBellTick(now = Date.now()) {
         calBellQueue.push(...due);
         playCalendarBellSound();
         showCalendarBell(now);
+        // Звъненето отваря бележката (освен в режим „Единична бележка").
+        calendarBellOpenDue(due);
         return due.length;
     } catch (e) {
         console.warn('calendarBellTick failed:', e);
