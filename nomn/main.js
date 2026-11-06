@@ -2933,6 +2933,9 @@ async function writeFolderConfigToAppData(config) {
 
         const configContent = JSON.stringify({
             activeFolderId: config.activeFolderId,
+            // Името се пази, за да не се връща приложението към CX-Notes, когато
+            // възстановява настройката от този файл.
+            activeFolderName: config.activeFolderName,
             folderSetupMode: config.folderSetupMode,
             folderSetupDone: config.folderSetupDone,
             timestamp: Date.now()
@@ -3175,6 +3178,39 @@ async function isFolderConfirmedEmpty(folderId) {
 }
 
 /**
+ * Подсигурява началните файлове в папка без данни: създава борд Main (board.txt),
+ * както прави първоначалната настройка.
+ *
+ * Използва се при смяна на активната папка: изборът на празна папка (нова или
+ * съществуваща) досега беше отказан и приложението оставаше на старата.
+ *
+ * @returns {Promise<boolean>} true, ако папката има борд — създаден сега или преди
+ */
+async function ensureInitialDataInFolder(folderId) {
+    if (isOffline) return false;
+    if (!folderId) return false;
+    if (folderId === 'appDataFolder') return true;
+    try {
+        const existingBoards = await findGDFileByName(folderId, 'board.txt');
+        if (existingBoards && existingBoards.length > 0) return true;
+        console.log(`[Folder-Init] Empty folder (${folderId}) — creating the initial Main board.`);
+        const boardToSave = {
+            "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
+            "colorfont": "#000", "datemod": Date.now(), "gdid": "", "id": 1,
+            "numord": 1, "status": 0, "title": "Main"
+        };
+        const gdid = await createGDriveFile(folderId, 'board.txt', JSON.stringify(boardToSave));
+        if (!gdid) return false;
+        boardToSave.gdid = gdid;
+        await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+        return true;
+    } catch (e) {
+        console.warn('[Folder-Init] Error creating the initial board:', e);
+        return false;
+    }
+}
+
+/**
  * Завършва първоначалното съзнаване на папката
  */
 async function completeInitialFolderSetup() {
@@ -3206,9 +3242,10 @@ async function completeInitialFolderSetup() {
             console.log('[Initial Setup] Folder verified. Restoring config...');
             sessionStorage.removeItem('_folder_not_found_reload');
             cachedMainFolderId = appConfig.activeFolderId;
-            setCachedMainFolderId('CX-Notes', appConfig.activeFolderId);
-            activeFolderName = 'CX-Notes';
-            localStorage.setItem('active_folder_name', 'CX-Notes');
+            const restoredName = appConfig.activeFolderName || localStorage.getItem('active_folder_name') || 'CX-Notes';
+            setCachedMainFolderId(restoredName, appConfig.activeFolderId);
+            activeFolderName = restoredName;
+            localStorage.setItem('active_folder_name', restoredName);
             localStorage.setItem('activeFolderId', appConfig.activeFolderId);
             localStorage.setItem('folderSetupDone', 'true');
             localStorage.setItem('folderSetupMode', appConfig.folderSetupMode || 'create_empty');
@@ -19752,18 +19789,17 @@ async function createSettingsUI(boardsData, boardParseError) {
                         return;
                     }
                     if (targetFolderId) {
-                        if (selectedValue !== 'new_folder' && targetFolderName !== 'AppDataFolder') {
-                            const [boardFiles, noteFiles] = await Promise.all([
-                                findGDFileByName(targetFolderId, 'board.txt'),
-                                findGDFileByName(targetFolderId, 'note.txt')
-                            ]);
-                            if (!boardFiles && !noteFiles) {
-                                if (typeof showToast === 'function') {
-                                    showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with notes.', 7000);
-                                }
-                                activeFolderSelect.value = activeFolderName;
-                                return;
+                        // Празна папка вече не се отказва. Досега „Избор на папка“ с празна
+                        // папка (например току-що създадена) показваше „не съдържа данни“ и
+                        // приложението оставаше на старата папка. Сега в нея се създава
+                        // началният борд Main — същото, което прави първоначалната настройка.
+                        const prepared = await ensureInitialDataInFolder(targetFolderId);
+                        if (!prepared) {
+                            if (typeof showToast === 'function') {
+                                showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with notes.', 7000);
                             }
+                            activeFolderSelect.value = activeFolderName;
+                            return;
                         }
                         const oldActiveFolderName = activeFolderName;
                         console.log(`[Folder-Switch] Changing folder to: "${targetFolderName}" (ID: ${targetFolderId})`);
@@ -19780,6 +19816,20 @@ async function createSettingsUI(boardsData, boardParseError) {
                         const loaderFolderInfo = document.getElementById('loader-folder-info');
                         if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
                         setCachedMainFolderId(targetFolderName, targetFolderId);
+                        // Папката се помни и извън кеша на ID-то: activeFolderId и
+                        // app-config.json в AppDataFolder. Без това следваща проверка на
+                        // настройката (completeInitialFolderSetup) връщаше CX-Notes.
+                        localStorage.setItem('activeFolderId', targetFolderId);
+                        try {
+                            await writeFolderConfigToAppData({
+                                activeFolderId: targetFolderId,
+                                activeFolderName: targetFolderName,
+                                folderSetupMode: 'select',
+                                folderSetupDone: true
+                            });
+                        } catch (e) {
+                            console.warn('[Folder-Switch] Could not write app-config.json:', e);
+                        }
                         const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
                         if (folderStartBoard) {
                             localStorage.setItem('startBoard', folderStartBoard);
