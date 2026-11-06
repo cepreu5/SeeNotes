@@ -37,7 +37,6 @@ const CHROME = [
 const root = path.resolve(process.env.ROOT || 'nomn');
 const PAGE = 'index.html';
 const W = 390, H = 844;
-const EXPECTED = 'Beta 5.02';
 
 if (!existsSync(path.join(root, PAGE))) {
     console.log(`FAIL няма ${PAGE} в ${root}`);
@@ -70,7 +69,10 @@ const swSource = await readFile(path.join(root, 'sw.js'), 'utf8');
 const cacheName = (/const\s+CACHE_NAME\s*=\s*'([^']+)'/.exec(swSource) || [])[1] || null;
 ok(!!cacheName, '1.1 sw.js има CACHE_NAME', cacheName);
 ok(/^(?:cx-notes|nomn)-b\d/.test(String(cacheName || '')), '1.2 името на кеша е от вида nomn-b5.01 (иначе версията не се разпознава)', cacheName);
-ok(cacheName === 'nomn-b5.02', '1.3 CACHE_NAME е nomn-b5.02', cacheName);
+// Версията не се заковава в теста: вдигането на CACHE_NAME не бива да чупи проверката.
+// Иска се само форматът, а надписът по-долу се сравнява точно с това име.
+ok(/^nomn-b\d+\.\d+$/.test(String(cacheName || '')), '1.3 CACHE_NAME е от вида nomn-b5.0x', cacheName);
+const EXPECTED = 'Beta ' + String(cacheName || '').replace(/^nomn-b/, '');
 
 const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
 
@@ -163,15 +165,15 @@ const versionLabel = async (page) => {
 // --- 4) парсерът: приема двата формата и отхвърля стария ---------------------
 {
     const { ctx, page } = await openApp({ blockServiceWorkers: true });
-    const parsed = await page.evaluate(() => {
+    const parsed = await page.evaluate((cn) => {
         if (typeof versionFromCacheName !== 'function') return null;
         return [
-            versionFromCacheName('nomn-b5.02'),
+            versionFromCacheName(cn),
             versionFromCacheName('cx-notes-b3.74'),
             versionFromCacheName('nomn-1.3'),
             versionFromCacheName('')
         ];
-    });
+    }, cacheName);
     ok(Array.isArray(parsed), '4.1 versionFromCacheName съществува');
     ok(JSON.stringify(parsed) === JSON.stringify([EXPECTED, 'Beta 3.74', null, null]),
         '4.2 разпознава nomn-b5.01 и cx-notes-b3.74, отхвърля nomn-1.3', parsed);

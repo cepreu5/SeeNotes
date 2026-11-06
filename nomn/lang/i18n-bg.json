@@ -351,6 +351,8 @@
     "newFolderOption": "Нова папка...",
     "newFolderPrompt": "Въведете име за новата папка:",
     "creatingFolder": "Създаване на папка...",
+    "switchingFolder": "Смяна на папка...",
+    "folderSwitched": "Папката е сменена",
     "folderCreated": "Папката е създадена успешно.",
     "errorCreateFolder": "Грешка при създаване на папка.",
     "confirmMigration": "Новата папка е празна. Искате ли да се копира информацията от текущата база данни в нея?",
