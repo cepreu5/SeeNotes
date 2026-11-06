@@ -32774,9 +32774,16 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             labelEl.innerHTML = `<span style="font-weight:normal; font-size:11px; opacity:0.6; color:#000;">${new Date(parseInt(note.datemod)).toLocaleString()}</span>`;
             card.appendChild(labelEl);
 
+            // Кръгчето за затваряне в ъгъла на версията. НЕ взимаме класа .modal-header-btn:
+            // той е за хедър-лентата и носи `position: static !important`, което изваждаше
+            // бутона от ъгъла и той заставаше като празно кръгче под датата. Затова стилът е
+            // inline, а хиксът е изрично сложен (&times;), иначе кръгчето остава празно.
             const closeBtn = document.createElement('button');
-            closeBtn.className = 'modal-close modal-header-btn';
-            closeBtn.style.right = '10px'; closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+            closeBtn.className = 'modal-close';
+            closeBtn.innerHTML = '&times;';
+            closeBtn.title = _('closeButton') || 'Close';
+            closeBtn.style.cssText = 'position:absolute;top:10px;right:10px;width:32px;height:32px;padding:0;box-sizing:border-box;border:1px solid #aaa;border-radius:50%;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;line-height:1;color:#333;z-index:2;';
+            closeBtn.onclick = () => { overlay.remove(); resolve(null); };
             card.appendChild(closeBtn);
 
             const bdy = document.createElement('div');
@@ -32797,20 +32804,13 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
 
             const refreshContent = (currentNote) => {
-                // Apply to text and formatted element
-                let txt = currentNote.notetxt || '';
-                const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) !== -1 : txt.includes('|');
-                if (hasPipe) {
-                    const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
-                    const tPart = txt.substring(0, pipeIdx);
-                    const bPart = txt.substring(pipeIdx + 1);
-                    const tS = stripLinkMarkersForDisplay(tPart, currentNote.title_span || '');
-                    const bS = stripLinkMarkersForDisplay(bPart, currentNote.text_span || '');
-                    bdy.innerHTML = formatText(tS.text, tS.formatString, true) + '<br>' + formatText(bS.text, bS.formatString, true);
-                } else {
-                    const S = stripLinkMarkersForDisplay(txt, currentNote.text_span || '');
-                    bdy.innerHTML = formatText(S.text, S.formatString, true);
-                }
+                // Същият визуализатор като в модала за преглед на бележката: getFormattedNoteHtml
+                // рисува заглавие/тяло, форматите, Markdown таблиците и отметките. Преди тук се
+                // викаше само formatText и таблиците излизаха като обикновен текст.
+                bdy.innerHTML = getFormattedNoteHtml(currentNote.notetxt || '', currentNote.text_span || '', currentNote.title_span || '', true);
+                // Отметките в конфликтния екран са само за четене: без този флаг клик върху
+                // квадратче би записал бележката, преди версията да е избрана.
+                bdy.dataset.isPreview = 'true';
                 bdy.dataset.id = currentNote.id || '';
                 bdy.dataset.gdid = currentNote.gdid || '';
                 bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
