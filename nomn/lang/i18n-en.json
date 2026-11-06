@@ -355,6 +355,8 @@
     "newFolderOption": "New folder...",
     "newFolderPrompt": "Enter name for the new folder:",
     "creatingFolder": "Creating folder...",
+    "switchingFolder": "Switching folder...",
+    "folderSwitched": "Folder changed",
     "folderCreated": "Folder created successfully.",
     "errorCreateFolder": "Error creating folder.",
     "confirmMigration": "The new folder is empty. Do you want to copy information from the current database into it?",

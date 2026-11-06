@@ -3181,6 +3181,44 @@ async function isFolderConfirmedEmpty(folderId) {
 }
 
 /**
+ * Какво има в една папка — с една заявка към Drive.
+ *
+ * Досега смяната на папка питаше Drive два пъти (note.txt за въпроса „да се копира ли
+ * базата“ и после board.txt за началния борд), а при бавна връзка всяка заявка е
+ * отделно чакане. Имената на двата файла идват от един списък.
+ *
+ * @returns {Promise<{hasNotes: boolean, hasBoards: boolean}|null>} null, ако не може да се
+ *          провери — тогава викащите питат поотделно, както преди.
+ */
+async function readFolderContentsBrief(folderId) {
+    if (isOffline || !folderId || folderId === 'appDataFolder') return null;
+    const sendRequest = async (token) => {
+        const query = encodeURIComponent(`'${folderId}' in parents and (name = 'note.txt' or name = 'board.txt') and trashed = false`);
+        return fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=10&spaces=drive`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+    };
+    try {
+        const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return null;
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) resp = await sendRequest(refresh.tokenData.access_token);
+        }
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        const names = new Set((result.files || []).map(f => String(f.name || '').toLowerCase()));
+        return { hasNotes: names.has('note.txt'), hasBoards: names.has('board.txt') };
+    } catch (e) {
+        console.warn('[Folder-Switch] Could not read the folder contents in one request:', e);
+        return null;
+    }
+}
+
+/**
  * Подсигурява началните файлове в папка без данни: създава борд Main (board.txt),
  * както прави първоначалната настройка.
  *
@@ -3189,13 +3227,19 @@ async function isFolderConfirmedEmpty(folderId) {
  *
  * @returns {Promise<boolean>} true, ако папката има борд — създаден сега или преди
  */
-async function ensureInitialDataInFolder(folderId) {
+async function ensureInitialDataInFolder(folderId, contents = null) {
     if (isOffline) return false;
     if (!folderId) return false;
     if (folderId === 'appDataFolder') return true;
     try {
-        const existingBoards = await findGDFileByName(folderId, 'board.txt');
-        if (existingBoards && existingBoards.length > 0) return true;
+        // Смяната на папка вече е прочела какво има в нея с една заявка
+        // (readFolderContentsBrief), затова тук не питаме Drive втори път за board.txt.
+        let hasBoards = contents ? contents.hasBoards : null;
+        if (hasBoards === null) {
+            const existingBoards = await findGDFileByName(folderId, 'board.txt');
+            hasBoards = !!(existingBoards && existingBoards.length > 0);
+        }
+        if (hasBoards) return true;
         console.log(`[Folder-Init] Empty folder (${folderId}) — creating the initial Main board.`);
         const boardToSave = {
             "backcolor": 0, "backnum": 0, "backpath": "", "color": "#4CAF50",
@@ -3224,19 +3268,24 @@ async function ensureInitialDataInFolder(folderId) {
  *
  * @returns {Promise<boolean>} true, ако бележките са копирани в папката
  */
-async function offerCopyIntoEmptyFolder(folderId, folderName) {
+async function offerCopyIntoEmptyFolder(folderId, folderName, contents = null) {
     if (isOffline) return false;
     if (!folderId || folderId === 'appDataFolder') return false;
     const notesInDb = Array.isArray(allNotesData) ? allNotesData.length : 0;
     if (notesInDb === 0) return false;
-    let targetNotes = null;
-    try {
-        targetNotes = await findGDFileByName(folderId, 'note.txt');
-    } catch (e) {
-        console.warn('[Folder-Copy] Could not check the notes in the target folder:', e);
-        return false;
+    // Ако смяната на папка вече е прочела съдържанието с една заявка, ползваме него.
+    let hasNotes = contents ? contents.hasNotes : null;
+    if (hasNotes === null) {
+        let targetNotes = null;
+        try {
+            targetNotes = await findGDFileByName(folderId, 'note.txt');
+        } catch (e) {
+            console.warn('[Folder-Copy] Could not check the notes in the target folder:', e);
+            return false;
+        }
+        hasNotes = !!(targetNotes && targetNotes.length > 0);
     }
-    if (targetNotes && targetNotes.length > 0) return false;
+    if (hasNotes) return false;
     if (typeof showConfirmation !== 'function') return false;
     const question = (_('confirmCopyToEmptyFolder') || 'This folder has no notes. Do you want to copy the information from the current database into it?')
         .replace('{folder}', folderName || '');
@@ -19819,11 +19868,19 @@ async function createSettingsUI(boardsData, boardParseError) {
                     targetFolderName = selectedValue;
                 }
                 if (targetFolderName === activeFolderName) return;
+                // Отворените бележки са от старата папка — затваряме ги преди смяната, както
+                // презареждането на страницата правеше; при незаписани има един въпрос.
+                if (typeof closeAllNoteWindows === 'function' && !(await closeAllNoteWindows())) {
+                    activeFolderSelect.value = activeFolderName;
+                    return;
+                }
                 const settingsModal = document.getElementById('settings-modal');
                 const settings2Modal = document.getElementById('settings2-modal');
                 if (settingsModal) settingsModal.classList.remove('visible');
                 if (settings2Modal) settings2Modal.classList.remove('visible');
-                if (typeof showToast === 'function') showToast((_('settingSaved') || 'Settings saved.') + ' ' + (_('synchronizing') || 'Syncing...'));
+                // Спинер в бутона Refresh, докато трае смяната, за да не изглежда екранът замръзнал.
+                setRefreshBusy(true);
+                if (typeof showToast === 'function') showToast(_('switchingFolder') || 'Switching folder...', 4000);
                 try {
                     if (!targetFolderId) {
                         targetFolderId = await getFolderIDByName(targetFolderName);
@@ -19837,9 +19894,12 @@ async function createSettingsUI(boardsData, boardParseError) {
                         return;
                     }
                     if (targetFolderId) {
+                        // Една заявка за съдържанието на папката: от нея става ясно и дали има
+                        // бележки (за въпроса за копиране), и дали има борд.
+                        const folderContents = await readFolderContentsBrief(targetFolderId);
                         // Папка без нито една бележка, докато базата е пълна: питаме дали
                         // да се копира съдържанието на базата в нея, преди да стане активна.
-                        if (!copyQuestionHandled && await offerCopyIntoEmptyFolder(targetFolderId, targetFolderName)) {
+                        if (!copyQuestionHandled && await offerCopyIntoEmptyFolder(targetFolderId, targetFolderName, folderContents)) {
                             const copiedBmo = localStorage.getItem('boardMenuOrder');
                             if (copiedBmo) localStorage.setItem('boardMenuOrder_' + targetFolderName, copiedBmo);
                             localStorage.setItem('lastNoteId_' + targetFolderName, noteId.toString());
@@ -19851,7 +19911,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                         // папка (например току-що създадена) показваше „не съдържа данни“ и
                         // приложението оставаше на старата папка. Сега в нея се създава
                         // началният борд Main — същото, което прави първоначалната настройка.
-                        const prepared = await ensureInitialDataInFolder(targetFolderId);
+                        const prepared = await ensureInitialDataInFolder(targetFolderId, folderContents);
                         if (!prepared) {
                             if (typeof showToast === 'function') {
                                 showToast(_('errorFolderNoNotesData') || 'This folder does not contain notes data and cannot be used. Please select a folder with notes.', 7000);
@@ -19874,20 +19934,15 @@ async function createSettingsUI(boardsData, boardParseError) {
                         const loaderFolderInfo = document.getElementById('loader-folder-info');
                         if (loaderFolderInfo) loaderFolderInfo.textContent = `(${activeFolderName})`;
                         setCachedMainFolderId(targetFolderName, targetFolderId);
+                        // Кешът в паметта също се сменя: досега презареждането на страницата го
+                        // нулираше, а без това четенето остава върху старата папка.
+                        cachedMainFolderId = targetFolderId;
                         // Папката се помни и извън кеша на ID-то: activeFolderId и
                         // app-config.json в AppDataFolder. Без това следваща проверка на
                         // настройката (completeInitialFolderSetup) връщаше CX-Notes.
                         localStorage.setItem('activeFolderId', targetFolderId);
-                        try {
-                            await writeFolderConfigToAppData({
-                                activeFolderId: targetFolderId,
-                                activeFolderName: targetFolderName,
-                                folderSetupMode: 'select',
-                                folderSetupDone: true
-                            });
-                        } catch (e) {
-                            console.warn('[Folder-Switch] Could not write app-config.json:', e);
-                        }
+                        // app-config.json се записва заедно с folders.json по-долу (двете са
+                        // различни файлове в AppDataFolder, пишат се успоредно).
                         const folderStartBoard = localStorage.getItem('startBoard_' + targetFolderName);
                         if (folderStartBoard) {
                             localStorage.setItem('startBoard', folderStartBoard);
@@ -19923,19 +19978,43 @@ async function createSettingsUI(boardsData, boardParseError) {
                         localStorage.setItem('useLocalDb', 'false');
                         localStorage.setItem('useArhDb', 'false');
                         ["Other", "Sound", "Video", "Images"].forEach(n => localStorage.removeItem(`gdrive_folder_id_${n}`));
-                        if (typeof NOTES_DB_NAME !== 'undefined') {
-                            indexedDB.deleteDatabase(NOTES_DB_NAME);
-                        } else {
-                            indexedDB.deleteDatabase('NotesDB');
-                        }
-                        await syncGlobalFoldersJson();
-                        location.reload();
+                        // Изтриването се изчаква, преди да четем наново: отворената връзка се
+                        // затваря сама (db.onversionchange), но без изчакване новата папка може
+                        // да дойде върху старата база.
+                        await new Promise(resolve => {
+                            let finished = false;
+                            const finish = () => { if (!finished) { finished = true; resolve(); } };
+                            const request = indexedDB.deleteDatabase(typeof NOTES_DB_NAME !== 'undefined' ? NOTES_DB_NAME : 'NotesDB');
+                            request.onsuccess = finish;
+                            request.onerror = finish;
+                            request.onblocked = finish;
+                            setTimeout(finish, 3000);
+                        });
+                        // app-config.json и folders.json са два различни файла — пишем ги
+                        // успоредно, вместо да чакаме два пъти по две заявки.
+                        await Promise.all([
+                            writeFolderConfigToAppData({
+                                activeFolderId: targetFolderId,
+                                activeFolderName: targetFolderName,
+                                folderSetupMode: 'select',
+                                folderSetupDone: true
+                            }).catch(e => console.warn('[Folder-Switch] Could not write app-config.json:', e)),
+                            syncGlobalFoldersJson().catch(e => console.warn('[Folder-Switch] Could not write folders.json:', e))
+                        ]);
+                        // Без пълно презареждане на страницата: то струваше още ~2.8 s чакане по
+                        // Drive за същите файлове. mainLogic(true) е пътят на бутона Refresh —
+                        // чете новата папка и я рисува на място.
+                        await mainLogic(true);
+                        if (typeof showToast === 'function') showToast(_('folderSwitched') || 'Folder changed', 2500);
                     } else {
                         activeFolderSelect.value = activeFolderName;
                     }
                 } catch (err) {
                     console.error("Error switching folder:", err);
                     activeFolderSelect.value = activeFolderName;
+                } finally {
+                    // Спинерът гасне при всяко излизане от смяната, включително при отказ.
+                    setRefreshBusy(false);
                 }
             });
         }
@@ -34074,6 +34153,27 @@ function updateReloadButtonState() {
         if (img) img.style.filter = '';
     }
 }
+/**
+ * Спинер в бутона Refresh, докато тече дълга операция (смяна на папка).
+ *
+ * Брояч, а не флаг: ако две операции се застъпят, спирането на едната не бива да
+ * изгаси спинера на другата. При отпускане състоянието на бутона се връща през
+ * updateReloadButtonState, за да не изчезне червеното при незаписани бележки.
+ */
+let _refreshBusyCount = 0;
+function setRefreshBusy(on) {
+    const btn = document.getElementById('reload_button');
+    if (!btn) return;
+    _refreshBusyCount = Math.max(0, _refreshBusyCount + (on ? 1 : -1));
+    const busy = _refreshBusyCount > 0;
+    const img = btn.querySelector('img');
+    if (img) img.style.animation = busy ? 'spin 1.5s linear infinite' : '';
+    btn.style.pointerEvents = busy ? 'none' : '';
+    btn.classList.toggle('refresh-busy', busy);
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    if (!busy && typeof updateReloadButtonState === 'function') updateReloadButtonState();
+}
+
 async function syncDirtyNotes() {
     if (isOffline) {
         showToast(_('offlineModeMessage') || 'Cannot sync while offline.', 3000);
