@@ -31661,9 +31661,16 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             labelEl.innerHTML = `<span style="font-weight:normal; font-size:11px; opacity:0.6; color:#000;">${new Date(parseInt(note.datemod)).toLocaleString()}</span>`;
             card.appendChild(labelEl);
 
+            // Кръгчето за затваряне в ъгъла на версията. НЕ взимаме класа .modal-header-btn:
+            // той е за хедър-лентата и носи `position: static !important`, което изваждаше
+            // бутона от ъгъла и той заставаше като празно кръгче под датата. Затова стилът е
+            // inline, а хиксът е изрично сложен (&times;), иначе кръгчето остава празно.
             const closeBtn = document.createElement('button');
-            closeBtn.className = 'modal-close modal-header-btn';
-            closeBtn.style.right = '10px'; closeBtn.onclick = () => { overlay.remove(); resolve(null); };
+            closeBtn.className = 'modal-close';
+            closeBtn.innerHTML = '&times;';
+            closeBtn.title = _('closeButton') || 'Close';
+            closeBtn.style.cssText = 'position:absolute;top:10px;right:10px;width:32px;height:32px;padding:0;box-sizing:border-box;border:1px solid #aaa;border-radius:50%;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;line-height:1;color:#333;z-index:2;';
+            closeBtn.onclick = () => { overlay.remove(); resolve(null); };
             card.appendChild(closeBtn);
 
             const bdy = document.createElement('div');
