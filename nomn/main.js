@@ -31684,20 +31684,13 @@ async function showNoteConflictModal(unusedBase, localNote, serverNote, unusedCo
             btnSave.style.display = 'flex'; btnEdit.style.display = 'flex'; btnEye.style.display = 'none';
 
             const refreshContent = (currentNote) => {
-                // Apply to text and formatted element
-                let txt = currentNote.notetxt || '';
-                const hasPipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) !== -1 : txt.includes('|');
-                if (hasPipe) {
-                    const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(txt) : txt.indexOf('|');
-                    const tPart = txt.substring(0, pipeIdx);
-                    const bPart = txt.substring(pipeIdx + 1);
-                    const tS = stripLinkMarkersForDisplay(tPart, currentNote.title_span || '');
-                    const bS = stripLinkMarkersForDisplay(bPart, currentNote.text_span || '');
-                    bdy.innerHTML = formatText(tS.text, tS.formatString, true) + '<br>' + formatText(bS.text, bS.formatString, true);
-                } else {
-                    const S = stripLinkMarkersForDisplay(txt, currentNote.text_span || '');
-                    bdy.innerHTML = formatText(S.text, S.formatString, true);
-                }
+                // Същият визуализатор като в модала за преглед на бележката: getFormattedNoteHtml
+                // рисува заглавие/тяло, форматите, Markdown таблиците и отметките. Преди тук се
+                // викаше само formatText и таблиците излизаха като обикновен текст.
+                bdy.innerHTML = getFormattedNoteHtml(currentNote.notetxt || '', currentNote.text_span || '', currentNote.title_span || '', true);
+                // Отметките в конфликтния екран са само за четене: без този флаг клик върху
+                // квадратче би записал бележката, преди версията да е избрана.
+                bdy.dataset.isPreview = 'true';
                 bdy.dataset.id = currentNote.id || '';
                 bdy.dataset.gdid = currentNote.gdid || '';
                 bdy.dataset.format = currentNote.text_span || ''; bdy.dataset.titleFormat = currentNote.title_span || '';
