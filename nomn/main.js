@@ -3214,6 +3214,47 @@ async function ensureInitialDataInFolder(folderId) {
 }
 
 /**
+ * Папка, в която няма нито една бележка, докато базата има бележки: питаме дали
+ * да се копира информацията от текущата база данни в папката — същият въпрос,
+ * който „Нова папка…“ задава при създаване.
+ *
+ * Използва се при избор на съществуваща папка („Избор на папка…“ или от списъка).
+ * Ако в папката вече има бележки, ако базата е празна или ако не можем да
+ * проверим папката, не се пита и не се копира нищо.
+ *
+ * @returns {Promise<boolean>} true, ако бележките са копирани в папката
+ */
+async function offerCopyIntoEmptyFolder(folderId, folderName) {
+    if (isOffline) return false;
+    if (!folderId || folderId === 'appDataFolder') return false;
+    const notesInDb = Array.isArray(allNotesData) ? allNotesData.length : 0;
+    if (notesInDb === 0) return false;
+    let targetNotes = null;
+    try {
+        targetNotes = await findGDFileByName(folderId, 'note.txt');
+    } catch (e) {
+        console.warn('[Folder-Copy] Could not check the notes in the target folder:', e);
+        return false;
+    }
+    if (targetNotes && targetNotes.length > 0) return false;
+    if (typeof showConfirmation !== 'function') return false;
+    const question = (_('confirmCopyToEmptyFolder') || 'This folder has no notes. Do you want to copy the information from the current database into it?')
+        .replace('{folder}', folderName || '');
+    if (!await showConfirmation(question)) {
+        console.log(`[Folder-Copy] The owner refused to copy the notes into "${folderName}".`);
+        return false;
+    }
+    console.log(`[Folder-Copy] Copying ${notesInDb} notes from the database into "${folderName}".`);
+    try {
+        await migrateDataToNewFolder(folderId);
+        return true;
+    } catch (e) {
+        console.warn('[Folder-Copy] Migration failed:', e);
+        return false;
+    }
+}
+
+/**
  * Завършва първоначалното съзнаване на папката
  */
 async function completeInitialFolderSetup() {
@@ -19729,6 +19770,8 @@ async function createSettingsUI(boardsData, boardParseError) {
                 const selectedValue = activeFolderSelect.value;
                 let targetFolderName = null;
                 let targetFolderId = null;
+                // Въпросът „да се копира ли базата в папката“ е зададен вече (нова папка).
+                let copyQuestionHandled = false;
                 const folderNamesStr = localStorage.getItem('gdrive_folder_names');
                 const folderNames = folderNamesStr ? JSON.parse(folderNamesStr) : [];
                 if (selectedValue === 'new_folder' || selectedValue === 'select_folder') {
@@ -19742,6 +19785,8 @@ async function createSettingsUI(boardsData, boardParseError) {
                                 if (typeof showToast === 'function') showToast(_('creatingFolder') || 'Creating folder...');
                                 targetFolderId = await createNewGDriveFolder(targetFolderName);
                                 if (targetFolderId) {
+                                    // Новата папка пита тук, затова по-долу не се пита втори път.
+                                    copyQuestionHandled = true;
                                     const confirmed = await showConfirmation(_('confirmMigration') || 'Do you want to copy the data from the current folder into the new folder?');
                                     if (confirmed) {
                                         await migrateDataToNewFolder(targetFolderId);
@@ -19792,6 +19837,16 @@ async function createSettingsUI(boardsData, boardParseError) {
                         return;
                     }
                     if (targetFolderId) {
+                        // Папка без нито една бележка, докато базата е пълна: питаме дали
+                        // да се копира съдържанието на базата в нея, преди да стане активна.
+                        if (!copyQuestionHandled && await offerCopyIntoEmptyFolder(targetFolderId, targetFolderName)) {
+                            const copiedBmo = localStorage.getItem('boardMenuOrder');
+                            if (copiedBmo) localStorage.setItem('boardMenuOrder_' + targetFolderName, copiedBmo);
+                            localStorage.setItem('lastNoteId_' + targetFolderName, noteId.toString());
+                            localStorage.setItem('lastNoteNumord_' + targetFolderName, noteNumord.toString());
+                            const copiedBic = localStorage.getItem('boardIdCounter');
+                            if (copiedBic) localStorage.setItem('lastBoardId_' + targetFolderName, copiedBic);
+                        }
                         // Празна папка вече не се отказва. Досега „Избор на папка“ с празна
                         // папка (например току-що създадена) показваше „не съдържа данни“ и
                         // приложението оставаше на старата папка. Сега в нея се създава
