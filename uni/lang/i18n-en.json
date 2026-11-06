@@ -374,6 +374,7 @@
     "folderCreated": "Folder created successfully.",
     "errorCreateFolder": "Error creating folder.",
     "confirmMigration": "The new folder is empty. Do you want to copy information from the current database into it?",
+    "confirmCopyToEmptyFolder": "The folder \"{folder}\" has no notes. Do you want to copy the information from the current database into it?",
     "migratingData": "Copying data...",
     "migrationSuccess": "Data copied successfully.",
     "copySkippedCXNotesHasData": "CX Notes already contains notes. Nothing was copied; the existing data is kept.",
