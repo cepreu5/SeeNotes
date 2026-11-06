@@ -10300,32 +10300,46 @@ async function validateFolderContent(directoryHandle) {
     return { isValid: false, reason: 'criteria_not_met' };
 }
 
+/**
+ * Шаблони на архивните файлове. Телефонното приложение понякога ги записва с
+ * добавка в името ('boards (1).bcp'), затова се четат по шаблон, не по точно име.
+ */
+const ARH_FILE_PATTERNS = {
+    boards: /^boards.*\.bcp$/i,
+    notes: /^notes.*\.bcp$/i,
+    medias: /^medias.*\.bcp$/i
+};
+
+/**
+ * Единственият резолвер на архивните файлове.
+ * Ползва се и от проверката на папката, и от четенето, за да не се разминават:
+ * проверката приемаше 'boards (1).bcp', а четенето после търсеше точно 'boards.bcp'.
+ * @param {FileSystemDirectoryHandle} dirHandle
+ * @param {'boards'|'notes'|'medias'} kind
+ * @returns {Promise<FileSystemFileHandle|null>}
+ */
+async function findArhFileHandle(dirHandle, kind) {
+    const pattern = ARH_FILE_PATTERNS[kind];
+    if (!dirHandle || !pattern || typeof dirHandle.values !== 'function') return null;
+    for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file' && pattern.test(entry.name)) return entry;
+    }
+    return null;
+}
+
 async function validateArhFolderContent(directoryHandle) {
-    const boardPattern = /^boards.*\.bcp$/i;
-    const notePattern = /^notes.*\.bcp$/i;
-    let boardsFile = false;
-    let notesFile = false
     try {
-        for await (const entry of directoryHandle.values()) {
-            if (entry.kind === 'file') {
-                if (boardPattern.test(entry.name)) {
-                    boardsFile = true;
-                } else if (notePattern.test(entry.name)) {
-                    notesFile = true;
-                }
-                // Прекъсваме проверката веднага щом условията са изпълнени
-                if (boardsFile && notesFile) {
-                    console.log(`Arh validation successful: Found files.`);
-                    return { isValid: true, reason: null };
-                }
-            }
+        const boardsFile = await findArhFileHandle(directoryHandle, 'boards');
+        const notesFile = await findArhFileHandle(directoryHandle, 'notes');
+        if (boardsFile && notesFile) {
+            console.log(`Arh validation successful: Found '${boardsFile.name}' and '${notesFile.name}'.`);
+            return { isValid: true, reason: null };
         }
     } catch (error) {
         console.log("Error during arh folder validation:", error);
         return { isValid: false, reason: 'error' };
     }
-    // Ако цикълът приключи без да са изпълнени условията
-    console.log('Arh validation failed: Not found boards.bcp or notes.bcp.');
+    console.log('Arh validation failed: Not found boards*.bcp or notes*.bcp.');
     return { isValid: false, reason: 'criteria_not_met' };
 }
 /**
@@ -27083,43 +27097,49 @@ async function readArh(dirHandle) {
         }
     };
     try {
-        // 1. Четене на boards.bcp
-        const boardsFileHandle = await dirHandle.getFileHandle('boards.bcp');
+        // 1. Четене на boards*.bcp
+        const boardsFileHandle = await findArhFileHandle(dirHandle, 'boards');
+        if (!boardsFileHandle) {
+            const missing = new Error('boards*.bcp not found');
+            missing.name = 'NotFoundError';
+            throw missing;
+        }
         const boardsFile = await boardsFileHandle.getFile();
         const boardsContent = await boardsFile.text();
         boardsData = JSON.parse(boardsContent);
         trackMaxBoardIds(boardsData);
-        validateFileData(boardsData, 'boards.bcp');
-        console.log(`Успешно заредени ${boardsData.length} борда от boards.bcp.`);
-        // 2. Четене на notes.bcp
-        const notesFileHandle = await dirHandle.getFileHandle('notes.bcp');
+        validateFileData(boardsData, boardsFileHandle.name);
+        console.log(`Успешно заредени ${boardsData.length} борда от ${boardsFileHandle.name}.`);
+        // 2. Четене на notes*.bcp
+        const notesFileHandle = await findArhFileHandle(dirHandle, 'notes');
+        if (!notesFileHandle) {
+            const missing = new Error('notes*.bcp not found');
+            missing.name = 'NotFoundError';
+            throw missing;
+        }
         const notesFile = await notesFileHandle.getFile();
         const notesContent = await notesFile.text();
         const notesArray = JSON.parse(notesContent);
         allNotesData = notesArray;
         trackMaxIds(allNotesData);
-        validateFileData(allNotesData, 'notes.bcp');
-        console.log(`Успешно заредени ${allNotesData.length} бележки от notes.bcp.`);
-        // 3. Четене на medias.bcp (ако съществува)
-        try {
-            const mediaFileHandle = await dirHandle.getFileHandle('medias.bcp');
+        validateFileData(allNotesData, notesFileHandle.name);
+        console.log(`Успешно заредени ${allNotesData.length} бележки от ${notesFileHandle.name}.`);
+        // 3. Четене на medias*.bcp (ако съществува)
+        const mediaFileHandle = await findArhFileHandle(dirHandle, 'medias');
+        if (!mediaFileHandle) {
+            console.log("Файл 'medias*.bcp' не е намерен. Продължаваме без него.");
+            mediaData = [];
+        } else {
             const mediaFile = await mediaFileHandle.getFile();
             const mediaContent = await mediaFile.text();
             mediaData = JSON.parse(mediaContent);
-            validateFileData(mediaData, 'medias.bcp');
-            console.log(`Успешно заредени ${mediaData.length} медийни файла от medias.bcp.`);
-        } catch (mediaError) {
-            if (mediaError.name === 'NotFoundError') {
-                console.log("Файл 'medias.bcp' не е намерен. Продължаваме без него.");
-                mediaData = [];
-            } else {
-                throw mediaError;
-            }
+            validateFileData(mediaData, mediaFileHandle.name);
+            console.log(`Успешно заредени ${mediaData.length} медийни файла от ${mediaFileHandle.name}.`);
         }
     } catch (error) {
         success = false;
         if (error.name === 'NotFoundError') {
-            console.log(`Грешка: Файл 'boards.bcp' или 'notes.bcp' не е намерен в папката '${dirHandle.name}'.`);
+            console.log(`Грешка: Файл 'boards*.bcp' или 'notes*.bcp' не е намерен в папката '${dirHandle.name}'.`);
             showToast(_('errorRequiredArchiveFileMissing'), 10000);
         } else if (error instanceof SyntaxError) {
             console.log("Грешка при парсване на JSON съдържание от архивен файл:", error);
