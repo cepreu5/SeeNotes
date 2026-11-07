@@ -3086,7 +3086,7 @@ function splitScopeTokens(scopeString) {
 
 // force: съгласието се иска, дори authToken.scope да твърди, че обхватът вече е даден (Google е казал друго)
 async function requestAdditionalScopes(additionalScopes, { force = false } = {}) {
-    if (typeof tokenClient === 'undefined' || typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+    if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2 || typeof CLIENT_ID === 'undefined' || !CLIENT_ID) {
         return false;
     }
     const currentScopeString = SCOPES || SCOPES_BASE;
@@ -3097,28 +3097,50 @@ async function requestAdditionalScopes(additionalScopes, { force = false } = {})
         const allPresent = splitScopeTokens(additionalScopes).every(s => currentScopes.includes(s));
         if (allPresent) return true;
     }
+    // След ново пускане на приложението tokenClient още не съществува — създава се само при вход.
+    // Без него requestAccessToken няма кой да отвори попъпа, а досега кодът стигаше до
+    // tokenClient.callback и хвърляше TypeError (старт с помнен вход, после ключ в Настройки).
+    if (!tokenClient) {
+        try {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: currentScopeString,
+                callback: () => { },
+                error_callback: () => { }
+            });
+        } catch (e) {
+            console.warn('[requestAdditionalScopes] tokenClient could not be created:', e);
+            return false;
+        }
+    }
     return new Promise((resolve) => {
-        tokenClient.callback = async (resp) => {
-            if (resp && resp.access_token) {
-                const tokenWithTimestamp = { ...resp, issued_at: Date.now() };
-                const rememberMe = localStorage.getItem('rememberMe') === 'true';
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
-                authToken = tokenWithTimestamp;
-                SCOPES = combinedScopes;
-                if (typeof gapi !== 'undefined' && gapi.client) {
-                    gapi.client.setToken({ access_token: authToken.access_token });
+        try {
+            tokenClient.callback = async (resp) => {
+                if (resp && resp.access_token) {
+                    const tokenWithTimestamp = { ...resp, issued_at: Date.now() };
+                    const rememberMe = localStorage.getItem('rememberMe') === 'true';
+                    const storage = rememberMe ? localStorage : sessionStorage;
+                    storage.setItem('google_auth_token', JSON.stringify(tokenWithTimestamp));
+                    authToken = tokenWithTimestamp;
+                    SCOPES = combinedScopes;
+                    if (typeof gapi !== 'undefined' && gapi.client) {
+                        gapi.client.setToken({ access_token: authToken.access_token });
+                    }
+                    resolve(true);
+                } else {
+                    resolve(false);
                 }
-                resolve(true);
-            } else {
+            };
+            tokenClient.error_callback = (err) => {
+                console.warn('[requestAdditionalScopes] Error or cancelled:', err);
                 resolve(false);
-            }
-        };
-        tokenClient.error_callback = (err) => {
-            console.warn('[requestAdditionalScopes] Error or cancelled:', err);
+            };
+            tokenClient.requestAccessToken({ prompt: 'consent', scope: combinedScopes });
+        } catch (e) {
+            // Попъпът не тръгна (блокиран жест, липсващ клиент): съгласие няма, вместо увиснало обещание
+            console.warn('[requestAdditionalScopes] requestAccessToken failed:', e);
             resolve(false);
-        };
-        tokenClient.requestAccessToken({ prompt: 'consent', scope: combinedScopes });
+        }
     });
 }
 
@@ -19606,9 +19628,20 @@ async function ensureGcalCalendarOnce({ quiet = false, consent = null } = {}) {
         logGcalScopeDecision('start check', lacks ? 'wait for first click to request consent' : 'no consent (quiet), check the calendar');
         if (lacks) return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-needed' };
     }
-    if (!quiet && !(await (consent || startGcalConsent('user action')))) {
-        localStorage.setItem('gcalNotes', 'false');
-        return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-denied' };
+    if (!quiet) {
+        const consentGranted = await (consent || startGcalConsent('user action'));
+        if (!consentGranted) {
+            localStorage.setItem('gcalNotes', 'false');
+            return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-denied' };
+        }
+        // Съгласието мина, но Google може да не е дал точно обхвата за календара (отделно разрешение,
+        // което човекът е оставил неотметнато, или отказ само за него). Без проверка тук следваше
+        // 403 от Calendar API — или 404 за стар календар, който гасеше ключа без обяснение.
+        if (getGcalTokenScopeState() === 'lacks') {
+            localStorage.setItem('gcalScopeStale', 'true');
+            localStorage.setItem('gcalNotes', 'false');
+            return { ok: false, calendarId: localStorage.getItem('gcalCalendarId'), reason: 'scope-not-granted' };
+        }
     }
     let calendarId = localStorage.getItem('gcalCalendarId') || null;
     let idFromDrive = false;
@@ -19630,13 +19663,16 @@ async function ensureGcalCalendarOnce({ quiet = false, consent = null } = {}) {
             return { ok: true, calendarId, reason: null };
         }
         if (resp.status === 404 || resp.status === 410) {
-            forgetGcalCalendar();
-            // Файлът се чисти само ако още сочи изтрития календар (друго устройство може да е записало нов)
+            // Календарът го няма в Google (изтрит, или създаден от друг клиент): създава се нов в
+            // СЪЩИЯ опит. Досега ключът угасваше мълчаливо и човекът започваше отначало.
             const driveId = idFromDrive ? calendarId : await readGcalIdFromDrive();
+            localStorage.removeItem('gcalCalendarId');
             if (driveId === calendarId) await writeGcalIdToDrive(null);
-            return { ok: false, calendarId: null, reason: 'calendar-deleted' };
+            calendarId = null;
+            idFromDrive = false;
+        } else {
+            return gcalHttpFailure(resp, calendarId);
         }
-        return gcalHttpFailure(resp, calendarId);
     }
     // Няма ID нито локално, нито в Drive: нов календар „CX Notes“
     let resp;
@@ -19660,6 +19696,7 @@ async function ensureGcalCalendarOnce({ quiet = false, consent = null } = {}) {
 function getGcalErrorKey(reason) {
     if (reason === 'http-403') return 'gcalStatusApiDisabled';
     if (reason === 'scope-missing') return 'gcalStatusScopeMissing';
+    if (reason === 'scope-not-granted') return 'gcalStatusScopeNotGranted';
     if (reason === 'no-auth') return 'gcalStatusNoAuth';
     if (reason === 'http-401') return 'gcalStatusAuthExpired';
     return 'gcalStatusHttp';
@@ -19668,7 +19705,9 @@ function getGcalStatusKey() {
     const on = isGcalNotesOn();
     const state = localStorage.getItem('gcalState');
     const lastError = localStorage.getItem('gcalLastError');
-    if (on && lastError) return getGcalErrorKey(lastError);
+    // Причината се показва и при изключен ключ: иначе отказът от Google оставя празна отметка
+    // без нито дума защо (точно това виждаше собственикът).
+    if (lastError) return getGcalErrorKey(lastError);
     if (!on && state === 'deleted') return 'gcalStatusDeleted';
     if (on && state === 'ok' && localStorage.getItem('gcalCalendarId')) return 'gcalStatusOk';
     return 'gcalNotesHint';
@@ -19682,7 +19721,7 @@ function applyGcalNotesSetting() {
         line.setAttribute('data-key', key);
         line.innerHTML = _(key);
         // Под реда за грешка: точният отговор на Google, ако е записан (строи се тук, за да следва езика)
-        const detail = isGcalNotesOn() && localStorage.getItem('gcalLastError') ? getGcalLastErrorDetail() : null;
+        const detail = localStorage.getItem('gcalLastError') ? getGcalLastErrorDetail() : null;
         if (detail) {
             const text = [detail.reason, detail.message].filter(Boolean).join(': ');
             line.innerHTML += '<span style="display:block;margin-top:2px;font-size:0.85em;opacity:.75;word-break:break-word;">' +
@@ -19718,6 +19757,8 @@ function initGcalNotesCheckbox() {
         if (!checkbox.checked) {
             // Изключване: нищо в Google не се трие, календарът остава
             localStorage.setItem('gcalNotes', 'false');
+            localStorage.removeItem('gcalLastError');
+            localStorage.removeItem('gcalLastErrorDetail');
             applyGcalNotesSetting();
             showToast(_('settingSaved'), 2000);
             return;
@@ -19745,6 +19786,7 @@ function initGcalNotesCheckbox() {
 function reportGcalResult(result) {
     if (!result.ok && result.reason !== 'calendar-deleted') {
         if (result.reason === 'scope-denied') showToast(_('gcalScopeDenied'), 4000);
+        else if (result.reason === 'scope-not-granted') showToast(_('gcalStatusScopeNotGranted'), 6000);
         else if (result.reason === 'network') showToast(_('offlineModeMessage'), 3000);
         else {
             console.warn(`[gcal] calendar not available: ${result.reason}`);
