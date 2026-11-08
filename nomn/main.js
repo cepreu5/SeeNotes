@@ -20649,16 +20649,13 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
         if (changedCheckbox.checked) {
             // Преди да запишем в localStorage, проверяваме дали имаме избрана папка
-            if (changedKey === 'useLocalDb' || changedKey === 'useArhDb') {
-                const display = (changedKey === 'useLocalDb') ?
-                    document.getElementById('local-sync-folder-name') :
-                    document.getElementById('arh-folder-name');
+            if (changedKey === 'useLocalDb') {
+                const display = document.getElementById('local-sync-folder-name');
 
                 if (!display || display.textContent === _('folderNotSelected')) {
                     // Не записваме в localStorage, махаме отметката и отваряме избора на папка
                     changedCheckbox.checked = false;
-                    const btnId = (changedKey === 'useLocalDb') ? 'select-folder-btn' : 'select-arh-btn';
-                    document.getElementById(btnId).click();
+                    document.getElementById('select-folder-btn').click();
                     return;
                 }
             }
@@ -20837,9 +20834,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                 await deleteNotesDB();
                 // Нулираме UI елементите за избраните папки
                 const folderNameDisplay = document.getElementById('local-sync-folder-name');
-                const arhFolderNameDisplay = document.getElementById('arh-folder-name');
                 if (folderNameDisplay) folderNameDisplay.textContent = _('folderNotSelected');
-                if (arhFolderNameDisplay) arhFolderNameDisplay.textContent = _('folderNotSelected');
                 dbExists = false; // Актуализираме глобалния флаг
                 // --- НОВА ЛОГИКА: Премахваме отметките за локални източници ---
                 const localCheckbox = document.getElementById('use-local-db-checkbox');
@@ -20926,18 +20921,18 @@ async function createSettingsUI(boardsData, boardParseError) {
     });
     // --- Archive Folder Setting ---
     const selectArhBtn = document.getElementById('select-arh-btn');
-    const arhFolderNameDisplay = document.getElementById('arh-folder-name');
     selectArhBtn.addEventListener('click', async () => {
         try {
             // --- Зареждане от архив: работим само върху празна база ---
-            // Проверката е върху данните, не върху файловете в папката:
-            // празна база значи най-много един борд и нито една бележка.
-            const boardsInMemory = Array.isArray(boardsData) ? boardsData.length : 0;
-            const notesInMemory = Array.isArray(allNotesData) ? allNotesData.length : 0;
-            if (boardsInMemory > 1 || notesInMemory > 0) {
+            // Празна база значи: в store „boards“ най-много един елемент и в store „notes“ нула.
+            // Броим store-овете, а не паметта: в паметта стоят и бележките, прочетени от
+            // папката, и проверката съобщаваше „514 бележки“ при празна база.
+            const boardsInStore = (await getAllFromDB(BOARD_STORE_NAME)) || [];
+            const notesInStore = (await getAllFromDB(NOTE_STORE_NAME)) || [];
+            if (boardsInStore.length > 1 || notesInStore.length > 0) {
                 showMessagePopup(_('arhLoadNeedsEmptyDb')
-                    .replace('{boards}', boardsInMemory)
-                    .replace('{notes}', notesInMemory), false);
+                    .replace('{boards}', boardsInStore.length)
+                    .replace('{notes}', notesInStore.length), false);
                 return;
             }
             // Целевата папка: активната локална папка. Ако няма избрана, избираме я сега —
@@ -20980,8 +20975,7 @@ async function createSettingsUI(boardsData, boardParseError) {
                     showToast(warningMessage, 15000);
                     return;
                 }
-                arhFolderNameDisplay.textContent = handle.name;
-                arhFolderNameDisplay.title = handle.name;
+                // Името на архивната папка не се показва — изборът ѝ е еднократен.
                 await saveConfig('arhHandle', handle); // Запомняме от коя папка е заредено
 
                 // --- Четем архива и го записваме в празната активна папка ---
@@ -21076,27 +21070,9 @@ if (advancedSettings) {
     advancedSettings.removeAttribute('hidden');
 }
 
-// Асинхронно зареждане на името на папката за архив и локална синхронизация
+// Асинхронно зареждане на името на папката за локална синхронизация.
+// Името на архивната папка не се показва — изборът ѝ е еднократен.
 async function updateSpecialFolderNames() {
-    try {
-        const arhFolderNameDisplay = document.getElementById('arh-folder-name');
-        if (arhFolderNameDisplay) {
-            const arhHandle = await getConfig('arhHandle');
-            if (arhHandle) {
-                const permission = await arhHandle.queryPermission({ mode: 'readwrite' });
-                if (permission === 'granted') {
-                    arhFolderNameDisplay.textContent = arhHandle.name;
-                    arhFolderNameDisplay.title = arhHandle.name;
-                } else {
-                    arhFolderNameDisplay.textContent = _('permissionDenied');
-                    arhFolderNameDisplay.style.color = 'red';
-                }
-            } else { arhFolderNameDisplay.textContent = _('folderNotSelected'); }
-        }
-    } catch (err) {
-        console.warn("Could not load archive folder name:", err);
-    }
-
     try {
         const folderNameDisplay = document.getElementById('local-sync-folder-name');
         if (folderNameDisplay) {
