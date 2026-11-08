@@ -10151,6 +10151,72 @@ async function validateArhFolderContent(directoryHandle) {
     console.log('Arh validation failed: Not found boards*.bcp or notes*.bcp.');
     return { isValid: false, reason: 'criteria_not_met' };
 }
+
+/**
+ * Проверява дали папката е напълно празна (без файлове и без подпапки).
+ * Използва се при „Зареждане от архив“: архивът се зарежда само в нова празна папка.
+ * @param {FileSystemDirectoryHandle|null} dirHandle
+ * @returns {Promise<boolean>} true само ако има handle и в него няма нито един запис.
+ */
+async function isDirectoryEmpty(dirHandle) {
+    if (!dirHandle) return false;
+    try {
+        for await (const entry of dirHandle.values()) {
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.log("Error while checking if folder is empty:", error);
+        return false;
+    }
+}
+
+/**
+ * Записва масив от JSON обекти в папката като отделни .txt файлове
+ * (board.txt, board (1).txt, ... / note.txt, note (1).txt, ...).
+ * Използва се при зареждане на архив в нова празна папка.
+ * @param {FileSystemDirectoryHandle} dirHandle
+ * @param {string} baseName - 'board', 'note' или 'media'
+ * @param {Array} items
+ * @returns {Promise<number>} брой записани файлове
+ */
+async function writeItemsToFolder(dirHandle, baseName, items) {
+    if (!dirHandle || !Array.isArray(items)) return 0;
+    let written = 0;
+    for (let i = 0; i < items.length; i++) {
+        const filename = i === 0 ? `${baseName}.txt` : `${baseName} (${i}).txt`;
+        const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        try {
+            await writable.write(new Blob([JSON.stringify(items[i])], { type: 'text/plain' }));
+        } finally {
+            await writable.close();
+        }
+        written++;
+    }
+    return written;
+}
+
+/**
+ * Записва вече прочетения архив (boardsData, allNotesData, mediaData) в папката.
+ * @param {FileSystemDirectoryHandle} dirHandle
+ * @returns {Promise<boolean>}
+ */
+async function writeLoadedArhToFolder(dirHandle) {
+    if (!dirHandle) return false;
+    try {
+        await writeItemsToFolder(dirHandle, 'board', boardsData);
+        await writeItemsToFolder(dirHandle, 'note', allNotesData);
+        if (Array.isArray(mediaData) && mediaData.length > 0) {
+            await writeItemsToFolder(dirHandle, 'media', mediaData);
+        }
+        return true;
+    } catch (error) {
+        console.log("Error writing archive data to folder:", error);
+        showToast(_('arhLoadWriteError'), 10000);
+        return false;
+    }
+}
 /**
  * Взима handle на директория - от паметта, от IndexedDB или чрез избор от потребителя.
  * @param {boolean} promptUser - Дали да се покаже диалог за избор, ако няма запазен handle.
@@ -20875,6 +20941,12 @@ async function createSettingsUI(boardsData, boardParseError) {
     const arhFolderNameDisplay = document.getElementById('arh-folder-name');
     selectArhBtn.addEventListener('click', async () => {
         try {
+            // --- Зареждане от архив: първо активната папка трябва да е празна ---
+            const activeHandle = dirHandle || (await getConfig('directoryHandle'));
+            if (!await isDirectoryEmpty(activeHandle)) {
+                showToast(_('arhLoadNeedsEmptyFolder'), 15000);
+                return;
+            }
             const handle = await window.showDirectoryPicker(); // Prompt user to select
             if (handle) {
                 const validationArh = await validateArhFolderContent(handle);
@@ -20888,34 +20960,39 @@ async function createSettingsUI(boardsData, boardParseError) {
                 }
                 arhFolderNameDisplay.textContent = handle.name;
                 arhFolderNameDisplay.title = handle.name;
-                dirHandle = handle; // <--- ДОБАВЕН РЕД
-                await saveConfig('arhHandle', handle); // Запазваме избраната папка
+                await saveConfig('arhHandle', handle); // Запомняме от коя папка е заредено
 
-                // Актуализираме отметката и localStorage
-                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                if (arhCheckbox) arhCheckbox.checked = true;
-                localStorage.setItem('useArhDb', 'true');
+                // --- Четем архива и го записваме в празната активна папка ---
+                const arhReadOk = await readArh(handle);
+                if (!arhReadOk) return; // readArh сам показва съобщението за грешка
+                const arhWritten = await writeLoadedArhToFolder(activeHandle);
+                if (!arhWritten) return;
 
-                // Изключваме другите източници
+                // Архивът вече не е режим на работа: работим с папката
+                dirHandle = activeHandle;
+                localStorage.setItem('useArhDb', 'false');
+                localStorage.setItem('useLocalDb', 'true');
                 localStorage.setItem('useGoogleDb', 'false');
-                localStorage.setItem('useLocalDb', 'false');
+                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+                if (arhCheckbox) arhCheckbox.checked = false;
                 const googleCheckbox = document.getElementById('use-google-db-checkbox');
                 const localCheckbox = document.getElementById('use-local-db-checkbox');
                 if (googleCheckbox) googleCheckbox.checked = false;
-                if (localCheckbox) localCheckbox.checked = false;
+                if (localCheckbox) localCheckbox.checked = true;
 
                 const settingsModal = document.getElementById('settings-modal');
                 const settings2Modal = document.getElementById('settings2-modal');
                 if (settingsModal) settingsModal.classList.remove('visible');
                 if (settings2Modal) settings2Modal.classList.remove('visible');
 
-                showToast(_('folderSelectedForArh').replace('{folderName}', handle.name), 5000);
+                showToast(_('arhLoadDone')
+                    .replace('{boards}', boardsData.length)
+                    .replace('{notes}', allNotesData.length), 7000);
                 // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
                 updateGlobalStateFlags();
 
                 updateModeButton();
-                // След избор, просто презареждаме основната логика,
-                // която вече ще види, че е избран режим "Архив".
+                // Презареждаме основната логика, която вече чете заредената папка.
                 mainLogic();
             }
         } catch (error) {
