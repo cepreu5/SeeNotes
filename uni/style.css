@@ -5620,13 +5620,43 @@ body.selection-locked .note.active-selection-note .note-content {
     line-height: 1;
 }
 
-/* Редът „Премести N бележки в…" в избора на борд. */
+/* Редът „Премести N бележки в…" в избора на борд.
+   b3.78: фонът на модала е тъмна снимка (Frame.jpg), затова надписът е бял с лека сянка. */
 .boards-modal-hint {
     padding: 0 10px 10px 10px;
     text-align: center;
     font-weight: 600;
     font-size: 1em;
-    color: #333;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* b3.78: редът „Папка: [избор]" в модала за преместване на партида.
+   Надписът е на свой ред, а изборът заема цялата ширина на модала. */
+.boards-modal-folder {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 0 10px 12px 10px;
+}
+
+.boards-modal-folder-label {
+    font-size: 0.95em;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.boards-modal-folder-select {
+    width: 100%;
+    box-sizing: border-box;
+    height: 34px;
+    padding: 0 8px;
+    font: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    background: #fff;
+    color: #000;
 }
 
 /* Бутон „Отмени" в съобщението. */
