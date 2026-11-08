@@ -15875,7 +15875,7 @@ async function handleSearchCommand(commandText) {
     return false;
 }
 
-function showAllBoardsModal(onSelectCallback = null, hint = '') {
+function showAllBoardsModal(onSelectCallback = null, hint = '', options = {}) {
     const modalContent = document.createElement('div');
     const boardsModal = document.getElementById('boards-menu-modal');
     updateHeaderFullscreenUI();
@@ -15949,6 +15949,11 @@ function showAllBoardsModal(onSelectCallback = null, hint = '') {
         hintEl.className = 'boards-modal-hint';
         hintEl.textContent = hint;
         boardsModalBody.appendChild(hintEl);
+    }
+    // b5.15: при партида има и ред за местене в друга папка с данни (борд „Преместени" в нея).
+    if (typeof options.onFolderMove === 'function') {
+        const folderRow = buildMoveToFolderRow(options.onFolderMove);
+        if (folderRow) boardsModalBody.appendChild(folderRow);
     }
     boardsModalBody.appendChild(modalContent);
     // --- Calculate optimal width to fit columns exactly ---
@@ -18287,7 +18292,9 @@ async function bulkMoveSelectedNotes() {
     const hint = _n('selectionMoveHint', keys.length);
     showAllBoardsModal((newBoardId) => {
         runBulkMove(keys, newBoardId);
-    }, hint);
+    }, hint, {
+        onFolderMove: (folderName) => runBulkMoveToFolder(keys, folderName)
+    });
 }
 
 /** Самото преместване: едно пре-рисуване, едно съобщение, бележките в целта се пропускат. */
@@ -18356,6 +18363,212 @@ async function runBulkMove(keys, newBoardId) {
                 .replace('{done}', restored).replace('{total}', movedEntries.length), 5000);
         }
     });
+}
+
+/* --- b5.15: МЕСТЕНЕ НА ПАРТИДАТА В ДРУГА ПАПКА С ДАННИ ---
+ * Папките тук са папките от „Активна папка“ (всяка е отделен набор данни в Drive).
+ * В избраната папка се създава борд „Преместени“, ако го няма, бележките се записват в него
+ * като нови note.txt, а прикачените им файлове се копират в Images/Sound/Video/Other и се
+ * записват в media.txt на папката. Накрая бележките се махат от текущата папка, защото това е
+ * местене, не копие - затова тук няма „Отмени“.
+ */
+
+/** Папките, в които може да се мести: без текущата и без скритата AppDataFolder. */
+function getFoldersForMove() {
+    let names = [];
+    try {
+        names = JSON.parse(localStorage.getItem('gdrive_folder_names') || '[]');
+    } catch (e) {
+        names = [];
+    }
+    if (!Array.isArray(names)) names = [];
+    return names.filter(n => n && n !== 'AppDataFolder' && n !== activeFolderName);
+}
+
+/** Редът „Папка: [избор]“ в модала за избор на борд. Връща null, ако няма къде да се мести. */
+function buildMoveToFolderRow(onPick) {
+    if (!(useGoogleDb && !isOffline)) return null;
+    const names = getFoldersForMove();
+    if (!names.length) return null;
+    const row = document.createElement('div');
+    row.className = 'boards-modal-folder';
+    const label = document.createElement('label');
+    label.className = 'boards-modal-folder-label';
+    label.textContent = _('selectionMoveFolderLabel') || 'Папка:';
+    const select = document.createElement('select');
+    select.className = 'boards-modal-folder-select';
+    select.id = 'boards-modal-folder-select';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = _('selectionMoveFolderPlaceholder') || 'Премести в папка…';
+    select.appendChild(placeholder);
+    names.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        select.appendChild(option);
+    });
+    select.addEventListener('change', async () => {
+        const folderName = select.value;
+        if (!folderName) return;
+        // Изборът се нулира, за да не изглежда избрано, ако човекът откаже потвърждението.
+        select.value = '';
+        const modal = document.getElementById('boards-menu-modal');
+        if (modal) modal.classList.remove('visible');
+        await onPick(folderName);
+    });
+    row.appendChild(label);
+    row.appendChild(select);
+    return row;
+}
+
+/** Подпапка по име в дадена папка (за Images/Sound/Video/Other). */
+async function findChildFolderId(parentId, name) {
+    if (isOffline || !parentId) return null;
+    const query = encodeURIComponent(`'${parentId}' in parents and name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const sendRequest = async (token) => fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    try {
+        let storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+        if (!storedTokenString) return null;
+        let tokenData = JSON.parse(storedTokenString);
+        let resp = await sendRequest(tokenData.access_token);
+        if (resp.status === 401 || resp.status === 403) {
+            const refresh = await refreshAuthToken(false);
+            if (refresh && refresh.pass) {
+                tokenData = refresh.tokenData;
+                resp = await sendRequest(tokenData.access_token);
+            }
+        }
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        return (result.files && result.files[0]) ? result.files[0].id : null;
+    } catch (e) {
+        console.warn('[FolderMove] Subfolder lookup failed:', e);
+        return null;
+    }
+}
+
+/** Бордът „Преместени“ в целевата папка: намира го по име или го създава. */
+async function ensureMovedBoardInFolder(folderId, title) {
+    const parsed = await loadAndParseFile('board.txt', folderId);
+    const boards = (parsed && parsed.data) || [];
+    const wanted = String(title).trim().toLowerCase();
+    const existing = boards.find(b => String(b.title || '').trim().toLowerCase() === wanted);
+    if (existing) return existing;
+    const maxId = boards.reduce((max, b) => Math.max(max, +(b.id || 0)), 0);
+    const board = {
+        backcolor: 0, backnum: 0, backpath: '', color: '#4CAF50', colorfont: '#000',
+        datemod: Date.now(), gdid: '', id: maxId + 1, numord: maxId + 1, status: 0, title: title
+    };
+    const gdid = await createGDriveFile(folderId, 'board.txt', JSON.stringify(board));
+    if (!gdid) return null;
+    board.gdid = gdid;
+    await updateGDriveFile(gdid, JSON.stringify(board));
+    return board;
+}
+
+/** Подпапките по вид медия в целевата папка; липсващите се създават. */
+async function ensureTypeFoldersInFolder(folderId) {
+    const ids = {};
+    for (const name of ['Other', 'Sound', 'Video', 'Images']) {
+        let id = await findChildFolderId(folderId, name);
+        if (!id) {
+            try {
+                id = await createNewGDriveFolder(name, folderId);
+            } catch (e) {
+                console.warn(`[FolderMove] Could not create ${name} folder:`, e);
+            }
+        }
+        ids[name] = id;
+    }
+    return ids;
+}
+
+/** Следващото свободно id за ред в media.txt на целевата папка. */
+async function nextMediaIdInFolder(folderId) {
+    try {
+        const parsed = await loadAndParseFile('media.txt', folderId);
+        const rows = (parsed && parsed.data) || [];
+        return rows.reduce((max, r) => Math.max(max, +(r.id || 0)), 0) + 1;
+    } catch (e) {
+        return Date.now();
+    }
+}
+
+/** Местенето: нов note.txt за всяка бележка, копие на медията, после махане от текущата папка. */
+async function runBulkMoveToFolder(keys, folderName) {
+    const targets = [];
+    keys.forEach(k => {
+        const note = allNotesData.find(n => String(n.gdid || n.id) === k);
+        if (note) targets.push(note);
+    });
+    if (!folderName || !targets.length) {
+        exitSelectionMode();
+        return;
+    }
+    const boardTitle = _('movedBoardTitle') || 'Преместени';
+    const confirmMsg = _n('confirmBatchMoveToFolder', targets.length, { folderName: folderName, boardName: boardTitle });
+    if (!(await showConfirmation(confirmMsg))) return;
+    const folderId = await getFolderIDByName(folderName);
+    if (!folderId) {
+        showToast((_('batchMoveToFolderError') || '').replace('{folderName}', folderName), 5000);
+        exitSelectionMode();
+        return;
+    }
+    const sourceBoards = new Set();
+    targets.forEach(n => {
+        if (n.boardid !== undefined && n.boardid !== null) sourceBoards.add(String(n.boardid));
+    });
+    exitSelectionMode();
+    setRefreshBusy(true);
+    let moved = 0;
+    try {
+        const targetBoard = await ensureMovedBoardInFolder(folderId, boardTitle);
+        if (!targetBoard) throw new Error('Няма борд „' + boardTitle + '“ в папката.');
+        const subfolderIds = await ensureTypeFoldersInFolder(folderId);
+        let nextMediaId = await nextMediaIdInFolder(folderId);
+        for (const note of targets) {
+            const mediaRows = (mediaData || []).filter(m => note.gdid && String(m.noteid) === String(note.gdid));
+            const copy = { ...note, boardid: targetBoard.gdid, status: 0, datemod: Date.now() };
+            delete copy.gdid;
+            const newGdid = await createGDriveFile(folderId, 'note.txt', JSON.stringify(copy));
+            if (!newGdid) {
+                console.error('[FolderMove] note.txt not created for', note.gdid || note.id);
+                continue;
+            }
+            copy.gdid = newGdid;
+            await updateGDriveFile(newGdid, JSON.stringify(copy));
+            for (const item of mediaRows) {
+                const typeFolderName = (item.type === 1 ? 'Images' : (item.type === 2 ? 'Sound' : (item.type === 4 ? 'Video' : 'Other')));
+                const subFolderId = subfolderIds[typeFolderName];
+                const newFilePath = (item.pathGD && subFolderId)
+                    ? await copyGDriveFile(item.pathGD, subFolderId, item.filename || item.path)
+                    : null;
+                const entry = { ...item, gdid: '', id: nextMediaId++, noteid: newGdid, pathGD: newFilePath || item.pathGD };
+                const mediaGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(entry));
+                if (mediaGdid) {
+                    entry.gdid = mediaGdid;
+                    await updateGDriveFile(mediaGdid, JSON.stringify(entry));
+                }
+            }
+            // Едва след като копието и медията са в папката, бележката се маха оттук.
+            await permanentlyDeleteNote(note.gdid, note.id, true);
+            moved++;
+        }
+    } catch (e) {
+        console.error('[FolderMove] Move failed:', e);
+        showToast(_('batchMoveToFolderError') || '', 5000);
+    } finally {
+        setRefreshBusy(false);
+        refreshAfterBatch(sourceBoards);
+    }
+    if (moved > 0) {
+        showToast(_n('batchMovedToFolder', moved, { folderName: folderName, boardName: boardTitle }), 5000);
+        if (typeof scheduleSemanticIndexSync === 'function') scheduleSemanticIndexSync();
+    }
 }
 
 /* --- КРАЙ НА ДЕЙСТВИЯТА ПО ПАРТИДА --- */

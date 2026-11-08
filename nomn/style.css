@@ -5603,6 +5603,31 @@ body.selection-locked .note.active-selection-note .note-content {
     color: #333;
 }
 
+/* b5.15: редът „Папка: [избор]" в модала за преместване на партида. */
+.boards-modal-folder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 10px 12px 10px;
+}
+
+.boards-modal-folder-label {
+    font-size: 0.95em;
+    color: #333;
+}
+
+.boards-modal-folder-select {
+    max-width: 60%;
+    height: 34px;
+    padding: 0 8px;
+    font: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    background: #fff;
+    color: #000;
+}
+
 /* Бутон „Отмени" в съобщението. */
 .toast-undo-btn {
     margin-left: 12px;
