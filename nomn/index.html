@@ -917,6 +917,25 @@
                         </div>
                     </div>
 
+                    <div class="settings-mobile-row zoom-control-wrapper" id="active-folder-wrapper"
+                        style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #404040;">
+                        <label for="active-folder-select" style="margin-right: 10px; white-space: nowrap;"
+                            data-key="activeFolderLabel">Active folder:</label>
+                        <select id="active-folder-select" class="active-folder-select">
+                            <!-- Options will be populated by JS -->
+                        </select>
+                    </div>
+                    <div class="settings-mobile-row zoom-control-wrapper" id="delete-folder-wrapper"
+                        style="margin-top: 10px;">
+                        <label for="delete-folder-btn" style="margin-right: 10px; white-space: nowrap;"
+                            data-key="deleteFolderLabel">Delete folder:</label>
+                        <button id="delete-folder-btn" class="zoom-btn"
+                            style="margin-left: 10px; padding: 0 12px; display: flex; align-items: center; gap: 5px; height: 38px;">
+                            <img src="Folder.png" alt="Folder" style="width:24px; height:24px;">
+                            <span data-key="deleteFolderBtn">Delete</span>
+                        </button>
+                    </div>
+
                     <div class="settings-mobile-row zoom-control-wrapper" id="arh-db-wrapper"
                         style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #404040;">
                         <img src="Zip.png" alt="Zip" style="width:24px; height:24px; margin-right: 10px;">
@@ -996,25 +1015,6 @@
                                             data-key="localSyncFolderLabel">Select local folder</button>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div class="settings-mobile-row zoom-control-wrapper" id="active-folder-wrapper"
-                                style="margin-top: 0px;">
-                                <label for="active-folder-select" style="margin-right: 10px; white-space: nowrap;"
-                                    data-key="activeFolderLabel">Active folder:</label>
-                                <select id="active-folder-select" class="active-folder-select">
-                                    <!-- Options will be populated by JS -->
-                                </select>
-                            </div>
-                            <div class="settings-mobile-row zoom-control-wrapper" id="delete-folder-wrapper"
-                                style="margin-top: 10px;">
-                                <label for="delete-folder-btn" style="margin-right: 10px; white-space: nowrap;"
-                                    data-key="deleteFolderLabel">Delete folder:</label>
-                                <button id="delete-folder-btn" class="zoom-btn"
-                                    style="margin-left: 10px; padding: 0 12px; display: flex; align-items: center; gap: 5px; height: 38px;">
-                                    <img src="Folder.png" alt="Folder" style="width:24px; height:24px;">
-                                    <span data-key="deleteFolderBtn">Delete</span>
-                                </button>
                             </div>
 
                             <div class="settings-mobile-row zoom-control-wrapper" id="force-gdrive-read"

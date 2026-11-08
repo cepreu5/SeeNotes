@@ -20940,14 +20940,36 @@ async function createSettingsUI(boardsData, boardParseError) {
                     .replace('{notes}', notesInMemory), false);
                 return;
             }
-            // Целевата папка: активната локална папка, а ако няма — избира се нова.
+            // Целевата папка: активната локална папка. Ако няма избрана, избираме я сега —
+            // браузърът разрешава само един избор на папка за едно натискане, затова изборът
+            // на архива остава за следващото натискане на бутона.
             let activeHandle = dirHandle || (await getConfig('directoryHandle'));
             if (activeHandle) activeHandle = await verifyPermission(activeHandle);
             if (!activeHandle) {
-                activeHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                const pickedHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                if (!pickedHandle) return;
+                const pickedPermission = await verifyPermission(pickedHandle);
+                if (!pickedPermission) {
+                    showToast(_('arhLoadNoPermission'), 10000);
+                    return;
+                }
+                // Записваме избора като активна локална папка, за да го ползва следващото натискане.
+                await saveConfig('directoryHandle', pickedHandle);
+                dirHandle = pickedHandle;
+                const activeFolderNameDisplay = document.getElementById('local-sync-folder-name');
+                if (activeFolderNameDisplay) {
+                    activeFolderNameDisplay.textContent = pickedHandle.name;
+                    activeFolderNameDisplay.title = pickedHandle.name;
+                }
+                const pickedLocalCheckbox = document.getElementById('use-local-db-checkbox');
+                if (pickedLocalCheckbox) pickedLocalCheckbox.checked = true;
+                localStorage.setItem('useLocalDb', 'true');
+                localStorage.setItem('useGoogleDb', 'false');
+                localStorage.setItem('useArhDb', 'false');
+                showMessagePopup(_('arhLoadActiveFolderSet').replace('{folderName}', pickedHandle.name), false);
+                return;
             }
-            if (!activeHandle) return;
-            const handle = await window.showDirectoryPicker(); // Prompt user to select
+            const handle = await window.showDirectoryPicker(); // Избор на папката с архива
             if (handle) {
                 const validationArh = await validateArhFolderContent(handle);
                 if (!validationArh.isValid) {
