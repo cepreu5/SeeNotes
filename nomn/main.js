@@ -19618,6 +19618,15 @@ async function loadSettingsFromGDrive(silent = false) {
         } catch (err) { console.error("Parse error:", err); if (!silent) showToast(_('errorLoadSettings')); }
     } else if (!silent) showToast(_('errorLoadSettings'));
 }
+/**
+ * Бройките от последно прочетения архив.
+ * Параметърът boardsData на createSettingsUI засенчва глобалния boardsData,
+ * затова вътре в Настройки бройките се взимат оттук, а не с голо име.
+ * @returns {{boards: number, notes: number}}
+ */
+function getArchiveLoadCounts() {
+    return { boards: boardsData.length, notes: allNotesData.length };
+}
 async function createSettingsUI(boardsData, boardParseError) {
     const settingsModalBody = document.getElementById('settings-modal-body');
     if (!settingsModalBody.dataset.initializedListeners) {
@@ -20920,10 +20929,14 @@ async function createSettingsUI(boardsData, boardParseError) {
         }
     });
     // --- Archive Folder Setting ---
+    // Зареждането от архив е един непрекъснат процес: едно натискане, един избор на папка,
+    // едно потвърждение, после данните влизат в базата и се записват в Google Drive.
+    // Локална папка тук не се избира: втори showDirectoryPicker в един и същ клик не минава
+    // и процесът се разкъсваше на две натискания.
     const selectArhBtn = document.getElementById('select-arh-btn');
     selectArhBtn.addEventListener('click', async () => {
         try {
-            // --- Зареждане от архив: работим само върху празна база ---
+            // --- 1. Зареждане от архив: работим само върху празна база ---
             // Празна база значи: в store „boards“ най-много един елемент и в store „notes“ нула.
             // Броим store-овете, а не паметта: в паметта стоят и бележките, прочетени от
             // папката, и проверката съобщаваше „514 бележки“ при празна база.
@@ -20935,82 +20948,82 @@ async function createSettingsUI(boardsData, boardParseError) {
                     .replace('{notes}', notesInStore.length), false);
                 return;
             }
-            // Целевата папка: активната локална папка. Ако няма избрана, избираме я сега —
-            // браузърът разрешава само един избор на папка за едно натискане, затова изборът
-            // на архива остава за следващото натискане на бутона.
-            let activeHandle = dirHandle || (await getConfig('directoryHandle'));
-            if (activeHandle) activeHandle = await verifyPermission(activeHandle);
-            if (!activeHandle) {
-                const pickedHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-                if (!pickedHandle) return;
-                const pickedPermission = await verifyPermission(pickedHandle);
-                if (!pickedPermission) {
-                    showToast(_('arhLoadNoPermission'), 10000);
-                    return;
-                }
-                // Записваме избора като активна локална папка, за да го ползва следващото натискане.
-                await saveConfig('directoryHandle', pickedHandle);
-                dirHandle = pickedHandle;
-                const activeFolderNameDisplay = document.getElementById('local-sync-folder-name');
-                if (activeFolderNameDisplay) {
-                    activeFolderNameDisplay.textContent = pickedHandle.name;
-                    activeFolderNameDisplay.title = pickedHandle.name;
-                }
-                const pickedLocalCheckbox = document.getElementById('use-local-db-checkbox');
-                if (pickedLocalCheckbox) pickedLocalCheckbox.checked = true;
-                localStorage.setItem('useLocalDb', 'true');
-                localStorage.setItem('useGoogleDb', 'false');
-                localStorage.setItem('useArhDb', 'false');
-                showMessagePopup(_('arhLoadActiveFolderSet').replace('{folderName}', pickedHandle.name), false);
+            // --- 2. Целта е активната папка в Google Drive ---
+            const storedToken = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+            const targetFolderId = (isOffline || !storedToken) ? null : await getFolderID();
+            if (!targetFolderId) {
+                showMessagePopup(_('arhLoadNoDrive'), false);
                 return;
             }
-            const handle = await window.showDirectoryPicker(); // Избор на папката с архива
-            if (handle) {
-                const validationArh = await validateArhFolderContent(handle);
-                if (!validationArh.isValid) {
-                    let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
-                    if (validationArh.reason === 'criteria_not_met') {
-                        warningMessage += " " + _('requiredFilesForLocalFolder');
-                    }
-                    showToast(warningMessage, 15000);
-                    return;
-                }
-                // Името на архивната папка не се показва — изборът ѝ е еднократен.
-                await saveConfig('arhHandle', handle); // Запомняме от коя папка е заредено
-
-                // --- Четем архива и го записваме в празната активна папка ---
-                const arhReadOk = await readArh(handle);
-                if (!arhReadOk) return; // readArh сам показва съобщението за грешка
-                const arhWritten = await writeLoadedArhToFolder(activeHandle);
-                if (!arhWritten) return;
-
-                // Архивът вече не е режим на работа: работим с папката
-                dirHandle = activeHandle;
-                localStorage.setItem('useArhDb', 'false');
-                localStorage.setItem('useLocalDb', 'true');
-                localStorage.setItem('useGoogleDb', 'false');
-                const arhCheckbox = document.getElementById('use-arh-db-checkbox');
-                if (arhCheckbox) arhCheckbox.checked = false;
-                const googleCheckbox = document.getElementById('use-google-db-checkbox');
-                const localCheckbox = document.getElementById('use-local-db-checkbox');
-                if (googleCheckbox) googleCheckbox.checked = false;
-                if (localCheckbox) localCheckbox.checked = true;
-
-                const settingsModal = document.getElementById('settings-modal');
-                const settings2Modal = document.getElementById('settings2-modal');
-                if (settingsModal) settingsModal.classList.remove('visible');
-                if (settings2Modal) settings2Modal.classList.remove('visible');
-
-                showToast(_('arhLoadDone')
-                    .replace('{boards}', boardsData.length)
-                    .replace('{notes}', allNotesData.length), 7000);
-                // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
-                updateGlobalStateFlags();
-
-                updateModeButton();
-                // Презареждаме основната логика, която вече чете заредената папка.
-                mainLogic();
+            const targetFolderName = activeFolderName || '';
+            // --- 3. Папката в Drive трябва да е празна ---
+            const arhEligibility = await checkFolderEligibilityForSave(targetFolderId);
+            if (!arhEligibility.eligible) {
+                showMessagePopup(_('arhLoadTargetBusy').replace('{folderName}', targetFolderName), false);
+                return;
             }
+            // --- 4. Единственият избор на папка: папката с архива ---
+            const handle = await window.showDirectoryPicker();
+            if (!handle) return;
+            const validationArh = await validateArhFolderContent(handle);
+            if (!validationArh.isValid) {
+                let warningMessage = _('invalidDataFolder').replace('{folderName}', handle.name);
+                if (validationArh.reason === 'criteria_not_met') {
+                    warningMessage += " " + _('requiredFilesForLocalFolder');
+                }
+                showToast(warningMessage, 15000);
+                return;
+            }
+            // --- 5. Четем архива в паметта ---
+            const arhReadOk = await readArh(handle);
+            if (!arhReadOk) return; // readArh сам показва съобщението за грешка
+            // --- 6. Потвърждение с бройките ---
+            const arhCounts = getArchiveLoadCounts();
+            const arhConfirmed = await showConfirmation(_('arhLoadConfirm')
+                .replace('{archive}', handle.name)
+                .replace('{boards}', arhCounts.boards)
+                .replace('{notes}', arhCounts.notes)
+                .replace('{folderName}', targetFolderName));
+            if (!arhConfirmed) return;
+            // Името на архивната папка не се показва — изборът ѝ е еднократен.
+            await saveConfig('arhHandle', handle); // Запомняме от коя папка е заредено
+            // --- 7. Запис в базата и в Google Drive (готовата процедура за миграция) ---
+            localStorage.setItem('useIndexedDb', 'true');
+            localStorage.setItem('useGoogleDb', 'true');
+            localStorage.setItem('useLocalDb', 'false');
+            localStorage.setItem('useArhDb', 'false');
+            const arhCheckbox = document.getElementById('use-arh-db-checkbox');
+            if (arhCheckbox) arhCheckbox.checked = false;
+            const googleCheckbox = document.getElementById('use-google-db-checkbox');
+            if (googleCheckbox) googleCheckbox.checked = true;
+            const localCheckbox = document.getElementById('use-local-db-checkbox');
+            if (localCheckbox) localCheckbox.checked = false;
+            const indexCheckbox = document.getElementById('use-indexeddb-checkbox');
+            if (indexCheckbox) indexCheckbox.checked = true;
+            updateGlobalStateFlags();
+            const arhMigrated = await migrateDataToNewFolder(targetFolderId);
+            if (!arhMigrated) return; // migrateDataToNewFolder сам показва грешката
+            dbExists = true;
+            await saveConfig('dbSource', 1); // 1 = Google Drive
+            try {
+                await syncGlobalFoldersJson();
+            } catch (e) {
+                console.warn('folders.json sync failed after archive load:', e);
+            }
+            // --- 8. Затваряме Настройки и показваме зареденото ---
+            const settingsModal = document.getElementById('settings-modal');
+            const settings2Modal = document.getElementById('settings2-modal');
+            if (settingsModal) settingsModal.classList.remove('visible');
+            if (settings2Modal) settings2Modal.classList.remove('visible');
+            const arhLoadedCounts = getArchiveLoadCounts();
+            showToast(_('arhLoadDone')
+                .replace('{boards}', arhLoadedCounts.boards)
+                .replace('{notes}', arhLoadedCounts.notes), 7000);
+            // КЛЮЧОВА КОРЕКЦИЯ: Обновяваме флаговете ПРЕДИ да извикаме mainLogic
+            updateGlobalStateFlags();
+            updateModeButton();
+            // Презареждаме основната логика, която вече чете заредената папка.
+            mainLogic();
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.log("Error selecting directory:", error);
