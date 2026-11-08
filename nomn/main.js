@@ -6832,14 +6832,17 @@ function showPrompt(message, defaultValue = '') {
  * Истинско продължително натискане (b2.36): задейства callback веднъж, ако пръстът остане
  * неподвижен върху елемента за delay ms. Отменя се при движение над tolerance px (за да
  * работи превъртането), при отпускане, при отмяна на докосването и при скрол.
- * Мишка не задейства — жестът е за телефон; на компютър има Shift+клик и Ctrl+A.
+ * Мишка не задейства — жестът е за телефон; на компютър има Shift+клик и Ctrl+A. Затова
+ * изборът на бележка (b5.14) пуска жеста и за мишка с options.mouse: собственикът иска
+ * бележката да се избира със задържане върху нея и на компютър, а не само с Ctrl+клик.
  * @param {HTMLElement} element - Елементът, който се натиска.
  * @param {Function} callback - Функцията, която се изпълнява при задействане (получава началното събитие).
- * @param {Object} [options] - { delay = 500, tolerance = 10 }
+ * @param {Object} [options] - { delay = 500, tolerance = 10, mouse = false }
  */
 function addLongPress(element, callback, options = {}) {
     const delay = options.delay || 500;
     const tolerance = options.tolerance || 10;
+    const allowMouse = options.mouse === true;
     let timer = null;
     let startX = 0;
     let startY = 0;
@@ -6850,7 +6853,7 @@ function addLongPress(element, callback, options = {}) {
         }
     };
     const startPress = (e) => {
-        if (e && e.pointerType === 'mouse') return; // само пръст/писалка
+        if (!allowMouse && e && e.pointerType === 'mouse') return; // само пръст/писалка (освен ако не е позволено)
         const p = (e && e.touches && e.touches[0]) ? e.touches[0] : e;
         if (!p || p.clientX === undefined) return;
         startX = p.clientX;
@@ -25442,13 +25445,14 @@ async function createNoteElement(noteContent) {
     }
     // --- Логика за клик, Ctrl+клик, Shift+клик и продължително натискане (long press) ---
     // b2.36: един клик след задействано продължително натискане се поглъща, за да не отвори модала.
+    // b5.14: флагът се сваля при СЛЕДВАЩО натискане, а не по таймер. Досега се сваляше сам след
+    // 700 ms и при по-дълго задържане (с мишка или пръст) кликът на отпускането идваше след това
+    // и отваряше бележката точно когато трябваше само да се избере.
     let suppressNextClick = false;
-    let suppressClickTimer = null;
     const suppressCardClickOnce = () => {
         suppressNextClick = true;
-        clearTimeout(suppressClickTimer);
-        suppressClickTimer = setTimeout(() => { suppressNextClick = false; }, 700);
     };
+    note.addEventListener('pointerdown', () => { suppressNextClick = false; }, true);
 
     // JSON-ът на бележката - същият изглед, който дотогава се отваряше с Ctrl+клик върху датата.
     // От b2.97 го отваря обикновен клик в празното на горната ивица (над заглавието), за да
@@ -25466,7 +25470,6 @@ async function createNoteElement(noteContent) {
         // Кликът, който следва задействано продължително натискане, не прави нищо.
         if (suppressNextClick) {
             suppressNextClick = false;
-            clearTimeout(suppressClickTimer);
             return;
         }
         // Докато блурът от лентата е вдигнат, карта не отваря бележка (собственикът, 3.11.2026:
@@ -25550,7 +25553,6 @@ async function createNoteElement(noteContent) {
         // Кликът, който следва дълго натискане върху кабарчето, не бива да стига до бележката.
         if (suppressNextClick) {
             suppressNextClick = false;
-            clearTimeout(suppressClickTimer);
             e.stopPropagation();
             return;
         }
@@ -25593,7 +25595,9 @@ async function createNoteElement(noteContent) {
         handleNoteDelete(noteGdid, noteID);
     }, { delay: 500 });
 
-    // b2.36: продължително натискане върху тялото (телефон) влиза в режим на избор с тази бележка.
+    // b2.36: продължително натискане върху тялото влиза в режим на избор с тази бележка.
+    // b5.14: жестът вече работи и с мишка — собственикът иска бележката да се избира със
+    // задържане върху нея, а досега на компютър оставаше само Ctrl/Shift+клик.
     addLongPress(note, (startEvent) => {
         const startTarget = startEvent && startEvent.target;
         // Кабарчето има собствен жест — там изборът не се задейства.
@@ -25605,7 +25609,7 @@ async function createNoteElement(noteContent) {
         suppressCardClickOnce();
         if (!selectionState.active) enterSelectionMode(bodyKey);
         else setNoteSelected(bodyKey, true);
-    }, { delay: 500 });
+    }, { delay: 500, mouse: true });
 
     // Закачаме събитието за отваряне на модала за цялата бележка
     note.addEventListener('click', handleNoteClick);
