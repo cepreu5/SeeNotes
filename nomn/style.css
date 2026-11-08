@@ -5600,25 +5600,29 @@ body.selection-locked .note.active-selection-note .note-content {
     text-align: center;
     font-weight: 600;
     font-size: 1em;
-    color: #333;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
-/* b5.15: редът „Папка: [избор]" в модала за преместване на партида. */
+/* b5.15: редът „Папка: [избор]" в модала за преместване на партида.
+   b5.16: надписът е на свой ред, а изборът заема цялата ширина на модала. */
 .boards-modal-folder {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
     padding: 0 10px 12px 10px;
 }
 
 .boards-modal-folder-label {
     font-size: 0.95em;
-    color: #333;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .boards-modal-folder-select {
-    max-width: 60%;
+    width: 100%;
+    box-sizing: border-box;
     height: 34px;
     padding: 0 8px;
     font: inherit;
