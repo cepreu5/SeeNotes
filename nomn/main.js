@@ -3250,6 +3250,9 @@ async function ensureInitialDataInFolder(folderId, contents = null) {
         if (!gdid) return false;
         boardToSave.gdid = gdid;
         await updateGDriveFile(gdid, JSON.stringify(boardToSave));
+        // Запомняме кой е началният борд, за да може „Зареждане от архив“ да го
+        // махне, вместо да остави празен борд Main до заредените.
+        localStorage.setItem('initialBoardGdid_' + folderId, gdid);
         return true;
     } catch (e) {
         console.warn('[Folder-Init] Error creating the initial board:', e);
@@ -20956,12 +20959,10 @@ async function createSettingsUI(boardsData, boardParseError) {
                 return;
             }
             const targetFolderName = activeFolderName || '';
-            // --- 3. Папката в Drive трябва да е празна ---
-            const arhEligibility = await checkFolderEligibilityForSave(targetFolderId);
-            if (!arhEligibility.eligible) {
-                showMessagePopup(_('arhLoadTargetBusy').replace('{folderName}', targetFolderName), false);
-                return;
-            }
+            // --- 3. Папката в Drive не се проверява ---
+            // Единствената проверка е тази по-горе: базата трябва да е празна.
+            // Папката с архива се избира след това, данните влизат в базата и в
+            // активната папка.
             // --- 4. Единственият избор на папка: папката с архива ---
             const handle = await window.showDirectoryPicker();
             if (!handle) return;
@@ -20987,6 +20988,10 @@ async function createSettingsUI(boardsData, boardParseError) {
             if (!arhConfirmed) return;
             // Името на архивната папка не се показва — изборът ѝ е еднократен.
             await saveConfig('arhHandle', handle); // Запомняме от коя папка е заредено
+            // Началният борд Main, който приложението само е сложило в новата папка,
+            // се маха, за да не остане празен борд до заредените от архива. Папката
+            // не се проверява: това е само почистване на наш собствен файл.
+            await removeStarterBoardForArchiveLoad(targetFolderId);
             // --- 7. Запис в базата и в Google Drive (готовата процедура за миграция) ---
             localStorage.setItem('useIndexedDb', 'true');
             localStorage.setItem('useGoogleDb', 'true');
@@ -34600,6 +34605,46 @@ async function checkFolderEligibilityForSave(folderId) {
     } catch (e) {
         console.error("checkFolderEligibilityForSave error:", e);
         return { eligible: false, conflicts: ['Network or parse error'] };
+    }
+}
+
+/**
+ * Премахва началния борд Main, който приложението само е сложило в папката при
+ * смяна на активната папка (ensureInitialDataInFolder). Без това след
+ * „Зареждане от архив“ до заредените бордове остава един празен борд Main.
+ *
+ * Папката в Drive не се проверява: това е почистване на наш собствен файл,
+ * записан при създаването му. Ако в папката вече има бележки, бордът се оставя,
+ * за да не се пипа нищо, което не е наше.
+ *
+ * @param {string} folderId
+ * @returns {Promise<boolean>} true, ако началният борд е премахнат
+ */
+async function removeStarterBoardForArchiveLoad(folderId) {
+    if (isOffline || !folderId) return false;
+    const key = 'initialBoardGdid_' + folderId;
+    const starterBoardGdid = localStorage.getItem(key);
+    if (!starterBoardGdid) return false;
+    const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
+    if (!storedTokenString) return false;
+    try {
+        const tokenData = JSON.parse(storedTokenString);
+        // Без бележки в папката началният борд е само скелетът на приложението.
+        const query = encodeURIComponent(`'${folderId}' in parents and name contains 'note' and trashed = false`);
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=drive&fields=files(id,name)&pageSize=10`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+        });
+        if (!resp.ok) return false; // при грешка не пипаме нищо
+        const result = await resp.json();
+        if ((result.files || []).length > 0) return false;
+        await deleteGDriveFile(starterBoardGdid);
+        localStorage.removeItem(key);
+        console.log('[Archive-Load] Removed the starter board from the target folder.');
+        return true;
+    } catch (e) {
+        console.warn('[Archive-Load] Could not remove the starter board:', e);
+        return false;
     }
 }
 
