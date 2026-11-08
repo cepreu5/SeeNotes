@@ -89,7 +89,7 @@
     "localSyncFolderLabel": "Select local folder",
     "arhFolderLabel": "Select archive folder",
     "arhLoadBtn": "Load from archive",
-    "arhLoadNeedsEmptyFolder": "Loading from an archive works only into a new empty folder. Open a new empty folder and try again.",
+    "arhLoadNeedsEmptyDb": "Loading from an archive needs an empty database: one board at most and no notes. You currently have {boards} boards and {notes} notes. Delete the notes and the extra boards, then press Load from archive again.",
     "arhLoadDone": "Loaded {boards} boards and {notes} notes from the archive.",
     "arhLoadWriteError": "Error writing the archive into the folder.",
     "useIndexedDbLabel": "Database:",

@@ -7070,6 +7070,13 @@ function initApp() {
     if (localStorage.getItem('useIndexedDb') === null) {
         localStorage.setItem('useIndexedDb', 'true');
     }
+    // Архивът вече не е режим на работа, а само източник за „Зареждане от архив“.
+    // Стара отметка в localStorage оставяше приложението в режим „Архив“ и при всяко
+    // зареждане то искаше разрешение за стара архивна папка (съобщение „Няма разрешение“).
+    if (localStorage.getItem('useArhDb') === 'true') {
+        localStorage.setItem('useArhDb', 'false');
+        useArhDb = false;
+    }
     // Инициализация на DOM елементи
     signoutButton = document.getElementById('signout_button');
     if (signoutButton) {
@@ -10150,25 +10157,6 @@ async function validateArhFolderContent(directoryHandle) {
     }
     console.log('Arh validation failed: Not found boards*.bcp or notes*.bcp.');
     return { isValid: false, reason: 'criteria_not_met' };
-}
-
-/**
- * Проверява дали папката е напълно празна (без файлове и без подпапки).
- * Използва се при „Зареждане от архив“: архивът се зарежда само в нова празна папка.
- * @param {FileSystemDirectoryHandle|null} dirHandle
- * @returns {Promise<boolean>} true само ако има handle и в него няма нито един запис.
- */
-async function isDirectoryEmpty(dirHandle) {
-    if (!dirHandle) return false;
-    try {
-        for await (const entry of dirHandle.values()) {
-            return false;
-        }
-        return true;
-    } catch (error) {
-        console.log("Error while checking if folder is empty:", error);
-        return false;
-    }
 }
 
 /**
@@ -20941,12 +20929,24 @@ async function createSettingsUI(boardsData, boardParseError) {
     const arhFolderNameDisplay = document.getElementById('arh-folder-name');
     selectArhBtn.addEventListener('click', async () => {
         try {
-            // --- Зареждане от архив: първо активната папка трябва да е празна ---
-            const activeHandle = dirHandle || (await getConfig('directoryHandle'));
-            if (!await isDirectoryEmpty(activeHandle)) {
-                showToast(_('arhLoadNeedsEmptyFolder'), 15000);
+            // --- Зареждане от архив: работим само върху празна база ---
+            // Проверката е върху данните, не върху файловете в папката:
+            // празна база значи най-много един борд и нито една бележка.
+            const boardsInMemory = Array.isArray(boardsData) ? boardsData.length : 0;
+            const notesInMemory = Array.isArray(allNotesData) ? allNotesData.length : 0;
+            if (boardsInMemory > 1 || notesInMemory > 0) {
+                showMessagePopup(_('arhLoadNeedsEmptyDb')
+                    .replace('{boards}', boardsInMemory)
+                    .replace('{notes}', notesInMemory), false);
                 return;
             }
+            // Целевата папка: активната локална папка, а ако няма — избира се нова.
+            let activeHandle = dirHandle || (await getConfig('directoryHandle'));
+            if (activeHandle) activeHandle = await verifyPermission(activeHandle);
+            if (!activeHandle) {
+                activeHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            }
+            if (!activeHandle) return;
             const handle = await window.showDirectoryPicker(); // Prompt user to select
             if (handle) {
                 const validationArh = await validateArhFolderContent(handle);
