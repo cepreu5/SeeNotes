@@ -20989,9 +20989,16 @@ async function createSettingsUI(boardsData, boardParseError) {
             // Името на архивната папка не се показва — изборът ѝ е еднократен.
             await saveConfig('arhHandle', handle); // Запомняме от коя папка е заредено
             // Началният борд Main, който приложението само е сложило в новата папка,
-            // се маха, за да не остане празен борд до заредените от архива. Папката
-            // не се проверява: това е само почистване на наш собствен файл.
-            await removeStarterBoardForArchiveLoad(targetFolderId);
+            // се маха преди зареждането — и в базата, и в папката — за да не остане
+            // празен борд до заредените от архива. Папката не се проверява за друго:
+            // това е само почистване на наш собствен файл.
+            await removeStarterBoardForArchiveLoad(targetFolderId, boardsInStore);
+            // Настройки се затварят преди самото зареждане, за да се вижда прогресът.
+            const settingsModal = document.getElementById('settings-modal');
+            const settings2Modal = document.getElementById('settings2-modal');
+            if (settingsModal) settingsModal.classList.remove('visible');
+            if (settings2Modal) settings2Modal.classList.remove('visible');
+            if (window.kbAssistant) window.kbAssistant.terminateGuide();
             // --- 7. Запис в базата и в Google Drive (готовата процедура за миграция) ---
             localStorage.setItem('useIndexedDb', 'true');
             localStorage.setItem('useGoogleDb', 'true');
@@ -21015,11 +21022,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             } catch (e) {
                 console.warn('folders.json sync failed after archive load:', e);
             }
-            // --- 8. Затваряме Настройки и показваме зареденото ---
-            const settingsModal = document.getElementById('settings-modal');
-            const settings2Modal = document.getElementById('settings2-modal');
-            if (settingsModal) settingsModal.classList.remove('visible');
-            if (settings2Modal) settings2Modal.classList.remove('visible');
+            // --- 8. Показваме зареденото (Настройки вече са затворени) ---
             const arhLoadedCounts = getArchiveLoadCounts();
             showToast(_('arhLoadDone')
                 .replace('{boards}', arhLoadedCounts.boards)
@@ -34620,13 +34623,32 @@ async function checkFolderEligibilityForSave(folderId) {
  * @param {string} folderId
  * @returns {Promise<boolean>} true, ако началният борд е премахнат
  */
-async function removeStarterBoardForArchiveLoad(folderId) {
-    if (isOffline || !folderId) return false;
+async function removeStarterBoardForArchiveLoad(folderId, boardsInStore = []) {
+    // Празната база може да съдържа точно един борд — началният Main, който
+    // приложението само е сложило в новата папка. Миграцията добавя бордовете от
+    // архива, без да чисти стария, затова той се трие тук, преди зареждането.
+    const starterInDb = (boardsInStore || []).filter(b => String(b.title || '').toLowerCase() === 'main');
+    let removedFromDb = false;
+    if (starterInDb.length > 0 && starterInDb.length === (boardsInStore || []).length) {
+        for (const b of starterInDb) {
+            try {
+                await deleteFromDB(BOARD_STORE_NAME, b.gdid);
+                removedFromDb = true;
+            } catch (e) {
+                console.warn('[Archive-Load] Could not remove the starter board from the DB:', e);
+            }
+        }
+        // И от паметта, ако началният борд още е там.
+        const starterGdids = new Set(starterInDb.map(b => String(b.gdid)));
+        boardsData = (boardsData || []).filter(b => !starterGdids.has(String(b.gdid)));
+        console.log('[Archive-Load] Removed the starter board from the database.');
+    }
+    if (isOffline || !folderId) return removedFromDb;
     const key = 'initialBoardGdid_' + folderId;
     const starterBoardGdid = localStorage.getItem(key);
-    if (!starterBoardGdid) return false;
+    if (!starterBoardGdid) return removedFromDb;
     const storedTokenString = sessionStorage.getItem('google_auth_token') || localStorage.getItem('google_auth_token');
-    if (!storedTokenString) return false;
+    if (!storedTokenString) return removedFromDb;
     try {
         const tokenData = JSON.parse(storedTokenString);
         // Без бележки в папката началният борд е само скелетът на приложението.
@@ -34635,16 +34657,16 @@ async function removeStarterBoardForArchiveLoad(folderId) {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
         });
-        if (!resp.ok) return false; // при грешка не пипаме нищо
+        if (!resp.ok) return removedFromDb; // при грешка не пипаме нищо
         const result = await resp.json();
-        if ((result.files || []).length > 0) return false;
+        if ((result.files || []).length > 0) return removedFromDb;
         await deleteGDriveFile(starterBoardGdid);
         localStorage.removeItem(key);
         console.log('[Archive-Load] Removed the starter board from the target folder.');
         return true;
     } catch (e) {
         console.warn('[Archive-Load] Could not remove the starter board:', e);
-        return false;
+        return removedFromDb;
     }
 }
 
