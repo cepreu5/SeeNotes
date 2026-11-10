@@ -2466,6 +2466,7 @@ async function migrateDataToNewFolder(targetFolderId, archiveHandle = null) {
             if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
             const note = { ...notesToMigrate[i] };
             const oldGdid = note.gdid;
+            const oldId = note.id;
             delete note.gdid;
             const promise = (async () => {
                 try {
@@ -2477,6 +2478,12 @@ async function migrateDataToNewFolder(targetFolderId, archiveHandle = null) {
                         note.gdid = newId;
                         if (oldGdid && mediaNotesMap.hasOwnProperty(oldGdid)) {
                             mediaNotesMap[oldGdid] = newId;
+                        }
+                        // Архивът на оригиналното приложение свързва файла с бележката по числовото
+                        // id, не по Drive gdid. Без тази връзка записите в media.txt оставаха със
+                        // старото id и прикачените файлове не влизаха в лентата под бележката.
+                        if (oldId !== undefined && oldId !== null && mediaNotesMap.hasOwnProperty(oldId)) {
+                            mediaNotesMap[oldId] = newId;
                         }
                         if (useIndexedDb) await bulkPutDB(NOTE_STORE_NAME, [note], true);
                     }
@@ -2502,6 +2509,11 @@ async function migrateDataToNewFolder(targetFolderId, archiveHandle = null) {
             const item = mediaToMigrate[i];
             const promise = (async () => {
                 const newItem = { ...item };
+                // Типът в запис от архив може да е текст ("1") - в новата папка влиза като число,
+                // за да намери иконата си в лентата и да се покаже на картата по тип.
+                if (newItem.type !== undefined && newItem.type !== null && newItem.type !== '' && Number.isFinite(Number(newItem.type))) {
+                    newItem.type = Number(newItem.type);
+                }
                 if (newItem.noteid && mediaNotesMap[newItem.noteid]) {
                     newItem.noteid = mediaNotesMap[newItem.noteid];
                 }
@@ -25701,28 +25713,16 @@ async function createNoteElement(noteContent) {
     } else {
         renderPreviewContent(displayContent);
     }
-    let attachments = [];
-    if (useIndexedDb) {
-        // Когато използваме база данни, трябва да знаем как е създадена.
-        // Използваме глобалната променлива, която е заредена в mainLogic
-        const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid'; // 'gdid' е fallback за стари бази
-        if (dbNoteIdType === 'id') {
-            attachments = mediaData.filter(media => +media.noteid === +noteID);
-        } else { // 'gdid'
-            attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
-    } else {
-        // Когато четем директно, логиката зависи от текущия режим.
-        if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteID);
-        else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
-    }
+    let attachments = (noteID || noteGdid) ? noteAttachmentItems(noteID, noteGdid) : [];
     if (attachments.length > 0) {
         note.dataset.hasAttachments = 'true';
+        // Типът в запис от архив може да е текст ("1"), затова типът се сравнява като число.
+        const typeOf = (att) => Number(att && att.type);
         // --- КОРЕКЦИЯ: Добавяме специфична проверка за снимки (тип 1) ---
-        if (attachments.some(att => att.type === 1)) {
+        if (attachments.some(att => typeOf(att) === 1)) {
             note.dataset.hp = '1';
             // --- Store preview data for programmatic access (e.g. Board Previews) ---
-            const firstPhoto = attachments.find(att => att.type === 1);
+            const firstPhoto = attachments.find(att => typeOf(att) === 1);
             let mode = 'gdrive';
             // Determine mode based on global state, mirroring the attachment rendering logic
             // Note: DB logic relies on globals set in mainLogic
@@ -25744,15 +25744,15 @@ async function createNoteElement(noteContent) {
         }
         // --- Край на корекцията ---
         // Check for video attachments (type 4)
-        if (attachments.some(att => att.type === 4)) {
+        if (attachments.some(att => typeOf(att) === 4)) {
             note.dataset.hv = '1';
         }
         // Check for sound attachments (type 2)
-        if (attachments.some(att => att.type === 2)) {
+        if (attachments.some(att => typeOf(att) === 2)) {
             note.dataset.hs = '1';
         }
         // Check for other attachments (not type 1 or 4)
-        if (attachments.some(att => att.type !== 1 && att.type !== 4 && att.type !== 2)) {
+        if (attachments.some(att => typeOf(att) !== 1 && typeOf(att) !== 4 && typeOf(att) !== 2)) {
             note.dataset.ho = '1';
         }
         // Списъкът с прикачени файлове (икона + линк с име) се показва САМО в модала.
@@ -28939,20 +28939,24 @@ function removePendingAttachment(noteId, entry) {
     return true;
 }
 
-/** Прикачените файлове на бележката по същото правило, по което ги търсеше showModal. */
+/**
+ * Прикачените файлове на бележката по същото правило, по което ги търсеше showModal.
+ * Записът в media.txt сочи бележката по Drive gdid. Архивът на оригиналното приложение я сочи
+ * по числовото id, затова се приема и съвпадение по id: без него заредените от архив файлове се
+ * виждат в текста (там се търсят по име), но лентата под бележката остава празна.
+ */
 function noteAttachmentItems(noteId, noteGdid) {
-    let attachments = [];
-    if (useIndexedDb) {
-        const dbNoteIdType = dbNoteIdTypeGlobal || 'gdid';
-        if (dbNoteIdType === 'id') {
-            attachments = mediaData.filter(media => +media.noteid === +noteId);
-        } else { // 'gdid'
-            attachments = mediaData.filter(media => media.noteid === noteGdid);
-        }
-    } else {
-        if (useArhDb) attachments = mediaData.filter(media => +media.noteid === +noteId);
-        else if (useLocalFolder || useGoogleDb) attachments = mediaData.filter(media => media.noteid === noteGdid);
-    }
+    const belongsToNote = (media) => {
+        if (!media) return false;
+        const ref = (media.noteid === undefined || media.noteid === null) ? '' : String(media.noteid);
+        if (!ref) return false;
+        if (noteGdid && ref === String(noteGdid)) return true;
+        // Само числов запис може да е id на бележка - Drive gdid не е число, значи няма как да
+        // съвпадне по грешка с id на друга бележка.
+        if (!/^\d+$/.test(ref)) return false;
+        return noteId !== undefined && noteId !== null && noteId !== '' && ref === String(noteId);
+    };
+    const attachments = (mediaData || []).filter(belongsToNote);
     // Файловете, прикачени от този екран, но още несвързани със записа (бележката още не е записана):
     // те стоят в лентата от първия миг. Запис, който вече е в mediaData, се пропуска - иначе по
     // време на предаването (записът е готов, чакащият още не е махнат) плочката щеше да е две.
@@ -29013,7 +29017,9 @@ function buildNoteAttachmentStrip(host, noteId, noteGdid, opts) {
     // Мястото на плочката се заема веднага и в реда на файловете, а съдържанието идва, когато
     // файлът бъде намерен - иначе редът зависи от това кой файл се чете по-бързо.
     attachments.forEach(attachment => {
-        const iconData = attachmentIcons.find(icon => icon.type === attachment.type);
+        // Типът в запис от архив може да е текст ("1"), затова се сравнява като число - иначе
+        // файлът няма икона и изобщо не влиза в лентата.
+        const iconData = attachmentIcons.find(icon => Number(icon.type) === Number(attachment.type));
         if (!iconData) return;
         const slot = document.createElement('div');
         slot.className = 'nm-attach-slot';
