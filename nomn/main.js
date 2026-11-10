@@ -2243,6 +2243,57 @@ async function isGDriveFolderEmpty(folderId) {
     }
 }
 
+// Подпапките по тип в папката с данни; по тях се търси и медиен файл в архива.
+const ARCHIVE_MEDIA_SUBFOLDERS = ['Images', 'Sound', 'Video', 'Other'];
+
+/**
+ * Чете медиен файл от избраната архивна папка по име.
+ * Архивът пази файловете направо в папката, затова първо се търси там; по-стар архив може да е
+ * с подпапки по тип, значи се проверяват и те.
+ * @param {FileSystemDirectoryHandle} dirHandle
+ * @param {string} fileName
+ * @returns {Promise<File|null>} null, когато файлът не е намерен никъде.
+ */
+async function readArchiveMediaFile(dirHandle, fileName) {
+    const rawName = String(fileName || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!dirHandle || !rawName) return null;
+    const parts = rawName.split('/').filter(Boolean);
+    const baseName = parts[parts.length - 1] || '';
+    const readFrom = async (dir, name) => {
+        try {
+            const fileHandle = await dir.getFileHandle(name);
+            return await fileHandle.getFile();
+        } catch (e) {
+            return null;
+        }
+    };
+    // Път с папки в самия запис („Images/snimka.jpg“): вървим по него, вместо да гадаем.
+    if (parts.length > 1) {
+        let dir = dirHandle;
+        let walked = true;
+        for (const segment of parts.slice(0, -1)) {
+            try {
+                dir = await dir.getDirectoryHandle(segment, { create: false });
+            } catch (e) { walked = false; break; }
+        }
+        if (walked) {
+            const fromPath = await readFrom(dir, baseName);
+            if (fromPath) return fromPath;
+        }
+    }
+    const direct = await readFrom(dirHandle, baseName);
+    if (direct) return direct;
+    const searchDirs = parts.length > 1 ? [parts[0], ...ARCHIVE_MEDIA_SUBFOLDERS] : ARCHIVE_MEDIA_SUBFOLDERS;
+    for (const sub of searchDirs) {
+        try {
+            const subDir = await dirHandle.getDirectoryHandle(sub, { create: false });
+            const fromSub = await readFrom(subDir, baseName);
+            if (fromSub) return fromSub;
+        } catch (e) { /* такава подпапка няма */ }
+    }
+    return null;
+}
+
 async function copyGDriveFile(fileId, newParentId, newName) {
     if (isOffline || !fileId || !newParentId) return null;
     const sendRequest = async (token) => {
@@ -2288,7 +2339,13 @@ async function copyGDriveFile(fileId, newParentId, newName) {
     }
 }
 
-async function migrateDataToNewFolder(targetFolderId) {
+/**
+ * @param {string} targetFolderId - Папката в Drive, в която влизат данните.
+ * @param {FileSystemDirectoryHandle|null} archiveHandle - Папката, от която се чете архив.
+ *        Медията се копира в Drive по id; когато такова липсва (архив от локална папка или
+ *        изтрит файл), самият файл се чете оттук и се качва наново.
+ */
+async function migrateDataToNewFolder(targetFolderId, archiveHandle = null) {
     const backupOnBeforeUnload = window.onbeforeunload;
     let reloadBtn = document.getElementById('reload_button');
     let counterElem = document.getElementById('note-counter');
@@ -2405,6 +2462,7 @@ async function migrateDataToNewFolder(targetFolderId) {
         pool = new Set();
         let mediaResults = [];
         let completedMedia = 0;
+        let mediaWithoutFile = 0;
         for (let i = 0; i < totalMedia; i++) {
             if (pool.size >= CONCURRENCY_LIMIT) await Promise.race(pool);
             const item = mediaToMigrate[i];
@@ -2413,12 +2471,29 @@ async function migrateDataToNewFolder(targetFolderId) {
                 if (newItem.noteid && mediaNotesMap[newItem.noteid]) {
                     newItem.noteid = mediaNotesMap[newItem.noteid];
                 }
-                const typeFolderName = (item.type === 1 ? "Images" : (item.type === 2 ? "Sound" : (item.type === 4 ? "Video" : "Other")));
+                // Папката се взима от type, но ако самият път в записа вече сочи подпапка по тип
+                // („Images/snimka.jpg“), тя е по-точната.
+                const pathFirstSegment = String(item.path || item.filename || '').replace(/\\/g, '/').split('/')[0];
+                const pathFolder = ARCHIVE_MEDIA_SUBFOLDERS.includes(pathFirstSegment) ? pathFirstSegment : null;
+                const typeFolderName = pathFolder || (Number(item.type) === 1 ? "Images" : (Number(item.type) === 2 ? "Sound" : (Number(item.type) === 4 ? "Video" : "Other")));
                 const targetSubfolderId = newSubfolderIds[typeFolderName];
+                let newPathGD = null;
                 if (item.pathGD && targetSubfolderId) {
-                    const newId = await copyGDriveFile(item.pathGD, targetSubfolderId, item.filename);
-                    if (newId) newItem.pathGD = newId;
+                    newPathGD = await copyGDriveFile(item.pathGD, targetSubfolderId, item.filename);
                 }
+                // Копирането по id не минава, когато архивът е правен от локална папка (там id-то е
+                // празно) или файлът вече не е в Drive. Тогава файлът се чете от избраната архивна
+                // папка и се качва в подпапката по тип - иначе подпапката остава празна, а записът
+                // в media.txt сочи към нищо.
+                if (!newPathGD && archiveHandle && targetSubfolderId) {
+                    const mediaName = String(item.filename || item.path || '').replace(/\\/g, '/').split('/').pop() || '';
+                    const mediaFile = await readArchiveMediaFile(archiveHandle, item.filename || item.path || '');
+                    if (mediaFile) {
+                        newPathGD = await uploadBlobToGDrive(targetSubfolderId, mediaName, mediaFile, mediaFile.type || 'application/octet-stream');
+                    }
+                }
+                if (newPathGD) newItem.pathGD = newPathGD;
+                else mediaWithoutFile++;
                 newMediaData.push(newItem);
                 completedMedia++;
                 if (counterElem) counterElem.innerText = `[M] ${completedMedia}/${totalMedia}`;
@@ -2429,6 +2504,15 @@ async function migrateDataToNewFolder(targetFolderId) {
             mediaResults.push(promise);
         }
         await Promise.all(mediaResults);
+        if (mediaWithoutFile > 0) {
+            // Не се пропуска тихо: без файл записът в media.txt остава без работещ адрес и
+            // снимката/прикаченото не се показва в бележката.
+            console.warn(`[Migration] ${mediaWithoutFile} медийни файла не са намерени и не са качени.`);
+            if (typeof showToast === 'function') {
+                showToast((_('arhLoadMediaMissing') || 'Файловете на {count} медийни записа не са намерени и не са качени.')
+                    .replace('{count}', mediaWithoutFile), 12000);
+            }
+        }
         if (newMediaData.length > 0) {
             await createGDriveFile(targetFolderId, 'media.txt', JSON.stringify(newMediaData));
             if (useIndexedDb) {
@@ -21234,7 +21318,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             const indexCheckbox = document.getElementById('use-indexeddb-checkbox');
             if (indexCheckbox) indexCheckbox.checked = true;
             updateGlobalStateFlags();
-            const arhMigrated = await migrateDataToNewFolder(targetFolderId);
+            const arhMigrated = await migrateDataToNewFolder(targetFolderId, handle);
             if (!arhMigrated) return; // migrateDataToNewFolder сам показва грешката
             dbExists = true;
             await saveConfig('dbSource', 1); // 1 = Google Drive

@@ -91,6 +91,7 @@
     "arhLoadBtn": "Load from archive",
     "arhLoadNeedsEmptyDb": "Loading from an archive needs an empty database: one board at most and no notes. You currently have {boards} boards and {notes} notes. Delete the notes and the extra boards, then press Load from archive again.",
     "arhLoadDone": "Loaded {boards} boards and {notes} notes from the archive.",
+    "arhLoadMediaMissing": "The files of {count} media records were not found in the archive and were not uploaded.",
     "arhLoadWriteError": "Error writing the archive into the folder.",
     "arhLoadNoPermission": "No permission to write into the selected folder.",
     "arhLoadActiveFolderSet": "“{folderName}” is now the active local folder. Press “Load from archive” once more and choose the archive folder.",
