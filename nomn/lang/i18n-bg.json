@@ -380,7 +380,7 @@
     "folderNotFoundCreate": "Папката '{folder}' не е намерена в Google Drive. Искате ли да я създадете сега?",
     "folderNotFoundRemovedFromList": "Папката '{folder}' не съществува в Google Drive и бе премахната от списъка с папки.",
     "deleteFolderLabel": "Изтриване на папка:",
-    "deleteFolderBtn": "Изтрий",
+    "deleteFolderBtn": "Избери",
     "confirmDeleteFolder": "Сигурни ли сте, че искате да изтриете папка \"{folderName}\" и цялото ѝ съдържание?",
     "folderDeletedSuccess": "Папката е изтрита успешно.",
     "errorDeleteFolder": "Грешка при изтриване на папката.",
