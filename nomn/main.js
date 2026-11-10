@@ -2247,25 +2247,35 @@ async function isGDriveFolderEmpty(folderId) {
 const ARCHIVE_MEDIA_SUBFOLDERS = ['Images', 'Sound', 'Video', 'Other'];
 
 /**
- * Чете медиен файл от избраната архивна папка по име.
- * Архивът пази файловете направо в папката, затова първо се търси там; по-стар архив може да е
- * с подпапки по тип, значи се проверяват и те.
+ * Търси къде в избраната архивна папка седи медиен файл: самата папка, името и подпапката по тип,
+ * в която е намерен (null, когато е направо в избраната папка).
+ * Разширението не казва подпапката - една и съща снимка (jpg) може да е и в Images, и в Other, значи
+ * се гледа къде файлът наистина е.
  * @param {FileSystemDirectoryHandle} dirHandle
- * @param {string} fileName
- * @returns {Promise<File|null>} null, когато файлът не е намерен никъде.
+ * @param {string} recordPath - пътят от записа в media.txt (може да е само име на файл).
+ * @param {number|string} [type] - типът от записа, ползва се само при двусмислие.
+ * @returns {Promise<{dir: FileSystemDirectoryHandle, name: string, folder: string|null}|null>}
  */
-async function readArchiveMediaFile(dirHandle, fileName) {
-    const rawName = String(fileName || '').replace(/\\/g, '/').replace(/^\/+/, '');
+async function findArchiveMediaFile(dirHandle, recordPath, type) {
+    const rawName = String(recordPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
     if (!dirHandle || !rawName) return null;
     const parts = rawName.split('/').filter(Boolean);
     const baseName = parts[parts.length - 1] || '';
-    const readFrom = async (dir, name) => {
+    if (!baseName) return null;
+    // Името в записа и името на файла в архива могат да се различават по главни/малки букви
+    // (архив от друга система), затова се търси и без значение от регистъра.
+    const findEntry = async (dir, name) => {
         try {
-            const fileHandle = await dir.getFileHandle(name);
-            return await fileHandle.getFile();
-        } catch (e) {
-            return null;
-        }
+            await dir.getFileHandle(name);
+            return name;
+        } catch (e) { /* не е с точно това име */ }
+        try {
+            const wanted = name.toLowerCase();
+            for await (const entry of dir.values()) {
+                if (entry.kind === 'file' && entry.name.toLowerCase() === wanted) return entry.name;
+            }
+        } catch (e) { /* папката не се чете */ }
+        return null;
     };
     // Път с папки в самия запис („Images/snimka.jpg“): вървим по него, вместо да гадаем.
     if (parts.length > 1) {
@@ -2277,21 +2287,45 @@ async function readArchiveMediaFile(dirHandle, fileName) {
             } catch (e) { walked = false; break; }
         }
         if (walked) {
-            const fromPath = await readFrom(dir, baseName);
-            if (fromPath) return fromPath;
+            const foundName = await findEntry(dir, baseName);
+            if (foundName) return { dir, name: foundName, folder: parts[0] };
         }
     }
-    const direct = await readFrom(dirHandle, baseName);
-    if (direct) return direct;
-    const searchDirs = parts.length > 1 ? [parts[0], ...ARCHIVE_MEDIA_SUBFOLDERS] : ARCHIVE_MEDIA_SUBFOLDERS;
-    for (const sub of searchDirs) {
+    // Плоско в избраната папка - там архивът няма подпапки.
+    const flatName = await findEntry(dirHandle, baseName);
+    if (flatName) return { dir: dirHandle, name: flatName, folder: null };
+    // Иначе се гледа в подпапките по тип и се взима тази, в която файлът е.
+    const found = [];
+    for (const sub of ARCHIVE_MEDIA_SUBFOLDERS) {
         try {
             const subDir = await dirHandle.getDirectoryHandle(sub, { create: false });
-            const fromSub = await readFrom(subDir, baseName);
-            if (fromSub) return fromSub;
+            const foundName = await findEntry(subDir, baseName);
+            if (foundName) found.push({ dir: subDir, name: foundName, folder: sub });
         } catch (e) { /* такава подпапка няма */ }
     }
-    return null;
+    if (found.length === 0) return null;
+    if (found.length === 1) return found[0];
+    // Едно и също име в две подпапки: взима се тази по тип, за да не се качи чужд файл.
+    const typeFolder = mediaFolderFromType(type);
+    const byType = found.find((f) => f.folder === typeFolder);
+    console.warn(`[Archive] „${baseName}“ го има в няколко подпапки, взима се ${(byType || found[0]).folder}.`);
+    return byType || found[0];
+}
+
+/** Подпапката по тип в папката с данни, когато записът не казва друга. */
+function mediaFolderFromType(type) {
+    if (Number(type) === 1) return 'Images';
+    if (Number(type) === 2) return 'Sound';
+    if (Number(type) === 4) return 'Video';
+    return 'Other';
+}
+
+/** Подпапката по тип, ако пътят в записа започва с нея („Images/snimka.jpg“). */
+function mediaFolderFromPath(recordPath) {
+    const rawName = String(recordPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const parts = rawName.split('/').filter(Boolean);
+    if (parts.length < 2) return null;
+    return ARCHIVE_MEDIA_SUBFOLDERS.includes(parts[0]) ? parts[0] : null;
 }
 
 async function copyGDriveFile(fileId, newParentId, newName) {
@@ -2471,29 +2505,55 @@ async function migrateDataToNewFolder(targetFolderId, archiveHandle = null) {
                 if (newItem.noteid && mediaNotesMap[newItem.noteid]) {
                     newItem.noteid = mediaNotesMap[newItem.noteid];
                 }
-                // Папката се взима от type, но ако самият път в записа вече сочи подпапка по тип
-                // („Images/snimka.jpg“), тя е по-точната.
-                const pathFirstSegment = String(item.path || item.filename || '').replace(/\\/g, '/').split('/')[0];
-                const pathFolder = ARCHIVE_MEDIA_SUBFOLDERS.includes(pathFirstSegment) ? pathFirstSegment : null;
-                const typeFolderName = pathFolder || (Number(item.type) === 1 ? "Images" : (Number(item.type) === 2 ? "Sound" : (Number(item.type) === 4 ? "Video" : "Other")));
-                const targetSubfolderId = newSubfolderIds[typeFolderName];
+                // Подпапката не се взима от разширението/типа: един тип (например jpg) може да е и в
+                // Images, и в Other. Първо се гледа пътят в записа, после подпапката, в която файлът
+                // наистина е в архива, и само накрая типът.
+                const recordPath = item.path || item.filename || '';
+                const archiveLoc = archiveHandle ? await findArchiveMediaFile(archiveHandle, recordPath, item.type) : null;
+                const folderName = mediaFolderFromPath(recordPath)
+                    || (archiveLoc && archiveLoc.folder)
+                    || mediaFolderFromType(item.type);
+                const targetSubfolderId = newSubfolderIds[folderName];
+                if (!targetSubfolderId) {
+                    // Няма такава подпапка в новата папка - записът се брои като некачен, вместо да
+                    // отиде в чужд файл/папка, и не остава със стар адрес.
+                    newItem.pathGD = '';
+                    mediaWithoutFile++;
+                    newMediaData.push(newItem);
+                    completedMedia++;
+                    if (counterElem) counterElem.innerText = `[M] ${completedMedia}/${totalMedia}`;
+                    return;
+                }
+                const mediaName = String(recordPath).replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+                if (archiveLoc && mediaName && newItem.path !== mediaName) {
+                    // Пътят в записа може да е с папка („Images/snimka.jpg“) - в новата папка файлът
+                    // е в подпапка, значи в записа остава само името.
+                    newItem.path = mediaName;
+                }
                 let newPathGD = null;
-                if (item.pathGD && targetSubfolderId) {
-                    newPathGD = await copyGDriveFile(item.pathGD, targetSubfolderId, item.filename);
-                }
-                // Копирането по id не минава, когато архивът е правен от локална папка (там id-то е
-                // празно) или файлът вече не е в Drive. Тогава файлът се чете от избраната архивна
-                // папка и се качва в подпапката по тип - иначе подпапката остава празна, а записът
-                // в media.txt сочи към нищо.
-                if (!newPathGD && archiveHandle && targetSubfolderId) {
-                    const mediaName = String(item.filename || item.path || '').replace(/\\/g, '/').split('/').pop() || '';
-                    const mediaFile = await readArchiveMediaFile(archiveHandle, item.filename || item.path || '');
-                    if (mediaFile) {
-                        newPathGD = await uploadBlobToGDrive(targetSubfolderId, mediaName, mediaFile, mediaFile.type || 'application/octet-stream');
+                if (archiveHandle) {
+                    // Зареждане от архив: старите Drive идентификатори не се търсят изобщо. Всеки
+                    // файл се качва наново в новата папка и записът получава само новия идентификатор.
+                    let mediaFile = null;
+                    if (archiveLoc) {
+                        try {
+                            mediaFile = await (await archiveLoc.dir.getFileHandle(archiveLoc.name)).getFile();
+                        } catch (e) {
+                            mediaFile = null;
+                        }
                     }
+                    if (mediaFile) {
+                        newPathGD = await uploadBlobToGDrive(targetSubfolderId, archiveLoc.name, mediaFile, mediaFile.type || 'application/octet-stream');
+                    }
+                } else if (item.pathGD) {
+                    // Другите миграции (база -> нова папка в Drive) нямат архив за източник, там
+                    // файловете се копират по идентификатор.
+                    newPathGD = await copyGDriveFile(item.pathGD, targetSubfolderId, mediaName || item.filename);
                 }
-                if (newPathGD) newItem.pathGD = newPathGD;
-                else mediaWithoutFile++;
+                // Без качен файл записът не остава със стар адрес: иначе сочи към папката на архива,
+                // а не към новия файл.
+                newItem.pathGD = newPathGD || '';
+                if (!newPathGD) mediaWithoutFile++;
                 newMediaData.push(newItem);
                 completedMedia++;
                 if (counterElem) counterElem.innerText = `[M] ${completedMedia}/${totalMedia}`;
