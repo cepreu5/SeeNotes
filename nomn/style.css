@@ -4607,6 +4607,59 @@ body.selection-locked .note.active-selection-note .note-content {
     min-width: 160px;
 }
 
+/* --- Настройки: дясната колона на бутоните ---
+   „Създай“ и „Изтрий“ стоят центрирани по две еднакви колони с отстояние между тях.
+   Другите бутони в секцията за данни („Избери“ и „Зареждане от архив“) ползват същата
+   колона: същата височина и същото дясно отстояние като „Изтрий“, за да са подравнени
+   по десния ръб. Отстоянието се смята от същите ширини, за да остане подравнено и
+   когато модалът е по-тесен. */
+#settings-modal-body {
+    --settings-btn-col: 160px;
+    --settings-btn-gap: 10px;
+    --settings-btn-inset: max(0px, calc((100% - (2 * var(--settings-btn-col) + var(--settings-btn-gap))) / 2));
+}
+
+#create-db-btn,
+#delete-db-btn,
+#delete-folder-btn,
+#select-arh-btn {
+    box-sizing: border-box;
+    min-width: var(--settings-btn-col);
+    height: 38px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+/* Тези два бутона не са в центрирания ред: застават до десния ръб на колоната на „Изтрий“. */
+#delete-folder-btn,
+#select-arh-btn {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+#delete-folder-wrapper,
+#arh-db-wrapper {
+    padding-right: var(--settings-btn-inset);
+}
+
+/* Под 360px редът на архива не се побира: бутонът минава на втори ред и пак остава
+   подравнен по десния ръб, а колоната се свива, за да се побират и двата бутона отгоре
+   в модала — иначе редът им излиза извън него и подравняването се разминава. */
+@media (max-width: 359px) {
+    #settings-modal-body {
+        --settings-btn-col: 130px;
+    }
+
+    #delete-folder-wrapper,
+    #arh-db-wrapper {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+}
+
 /* Unsynced Offline Changes indicator */
 .note.dirty::after {
     content: '!';
