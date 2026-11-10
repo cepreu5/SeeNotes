@@ -1,0 +1,6419 @@
+:root {
+    /* Колко е висока лентата на отворените бележки. Стои 0px, докато лентата не се покаже: всичко,
+       закачено за долния ръб на екрана (асистентът, „+", стрелката нагоре, лентата с действията),
+       се мести с тази стойност и се връща на мястото си, щом лентата изчезне - без остатък. */
+    --open-notes-bar-h: 0px;
+    --note-font-size: 16px;
+    /* Default font size for notes */
+    --note-bg-0: #FBFF86;
+    --note-bg-1: #FF829E;
+    --note-bg-2: #68FF97;
+    --note-bg-3: #EFEFEF;
+    --note-bg-4: #69B7FF;
+    --note-bg-5: #FBCB39;
+    --note-bg-6: #FBFBCD;
+    --note-bg-7: #FFC5D2;
+    --note-bg-8: #B6FFCD;
+    --note-bg-9: #B2DAFF;
+
+    --board-bg-0: #00FF00;
+    --board-bg-1: #FF0000;
+    --board-bg-2: #FF4500;
+    --board-bg-3: #FFFF00;
+    --board-bg-4: #00FFFF;
+    --board-bg-5: #FF00FF;
+    --board-bg-6: #3355FF;
+}
+
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-image: url('Board.png');
+}
+
+.login-div {
+    /*max-width: 800px;*/
+    padding: 1em;
+    font-family: sans-serif;
+    background-image: url('Frame.png');
+}
+
+body:not(.app-ready) header,
+body:not(.app-ready) #add-note-fab,
+body:not(.app-ready) #scrollTopBtn,
+body:not(.app-ready) #kb-fab {
+    display: none !important;
+}
+
+/* A note modal blocks creating another note; hide the global add button. */
+/* --- Избутване на плаващите бутони над лентата (b2.70) ------------------------------------------
+   Докато лентата е на екрана, всичко закачено за долния ръб се качва над нея, вместо да остане зад
+   нея. Правилото важи САМО под body.open-notes-bar-visible, значи щом лентата изчезне, елементите
+   се връщат на точното си място (променливата също се връща на 0px). Бутоните с инлайн позиция
+   (!important от местенето) не могат да се вдигнат оттук - тях ги вдига applyOpenNotesBarLift. */
+body.open-notes-bar-visible #kb-loading-panel {
+    bottom: calc(80px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible .board-filter-popup {
+    bottom: calc(20px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #scrollTopBtn {
+    bottom: calc(20px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #selection-bar {
+    bottom: calc(0px + var(--open-notes-bar-h) + 8px);
+}
+/* Съобщенията („Прикачено: ...") излизат точно на долния ръб - иначе лентата ги закрива. */
+body.open-notes-bar-visible .toast-notification {
+    bottom: calc(0px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #kb-fab {
+    bottom: calc(10px + var(--open-notes-bar-h) + 8px);
+}
+body.open-notes-bar-visible #add-note-fab {
+    bottom: calc(10px + var(--open-notes-bar-h) + 8px);
+}
+/* Разпънатата бележка (b2.75; поправено в b3.40). Собственикът (24.10.2026): „extended mode на
+   бележката трябва да се съобразява с наличието на лента, защото бутоните на бележката се скриват
+   зад нея (когато я има)“.
+   Затова кутията се скъсява с височината на лентата (100% - лента - 8px): хартията свършва 8px над
+   лентата, а редът с кръглите бутони и редът с датата под него остават видими. Точно както е в MNV.
+   Собственикът (31.10.2026): „когато има лента, бележката да се разпъва до нея и бутоните й да не се
+   местят - това са излишни гимнастики“ (пробвах да разпъвам хартията до долния ръб и да вдигам
+   вътрешността с долен отстъп - върнато).
+   !important е нужен, защото инлайн стилът от applyExpandedModalSize носи height: 100%.
+   Правилото важи САМО докато лентата е на екрана (body.open-notes-bar-visible): щом я няма, бележката
+   ползва целия екран.
+   И САМО за прозореца, който наистина е разпънат (:has() по data-is-expanded на тялото му). Без това
+   ограничение правилото хващаше всички отворени бележки: при две отворени и една разпъната втората
+   ставаше 784 висока (100% от целия екран), излизаше под екрана и текстът ѝ се показваше под
+   полупрозрачната лента. Точно това видя собственикът: „текста на долната се появява под лентата“. */
+body.open-notes-bar-visible.modal-note-expanded .note-window .modal-content-box:has(> .nw-modal-body[data-is-expanded="true"]) {
+    height: calc(100% - var(--open-notes-bar-h) - 8px) !important;
+}
+
+/* Скритите бележки не са на екрана: бутонът за нова бележка остава достъпен. */
+body:has(.note-window.visible:not(.note-window-hidden)) #add-note-fab {
+    display: none !important;
+}
+
+/* The Assistant button is static now; keep it off the login page as before. */
+body:has(#login-page:not([hidden])) #kb-fab {
+    display: none !important;
+}
+
+/* Иконата на асистента се качва с 60px, когато има разпъната бележка, за да не застава върху реда ѝ с
+   кръглите бутони. Собственикът (31.10.2026): „за да не покрива бутоните на бележката при максимизиране,
+   асистента трябва да се мести (-60px) от долния й край“.
+   Класът се дава от syncExpandedFabLift само докато иконата още стои на долния ръб (собственикът може да я
+   е преместил - тогава не се пипа). ДО b3.38 отстъпът се пропускаше, докато лентата на бележките е на
+   екрана, защото тя вдига същите 60px (b2.74). От b3.38 това не стига: вътрешността на разпънатата
+   бележка спира НАД лентата, значи редът с бутоните е по-високо от лентата и иконата пак стъпва върху му.
+   Затова двете отмествания се събират - те целят различни неща. */
+body.modal-note-expanded-fab-lift #kb-fab {
+    translate: 0 -60px;
+}
+
+/* KB Assistant FAB - статичен в index.html; kb-assistant.css се зарежда при първо отваряне */
+.kb-fab {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--kb-primary-color, #f59e0b) 0%, var(--kb-primary-dark, #d97706) 100%);
+    color: white;
+    font-size: 28px;
+    border: none;
+    cursor: pointer;
+    box-shadow: var(--kb-shadow-md, 0 4px 12px rgba(72, 183, 162, 0.3));
+    z-index: 9998;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kb-fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 20px rgba(72, 183, 162, 0.6);
+}
+
+.kb-fab:active {
+    transform: scale(0.95);
+}
+
+.kb-fab-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0);
+}
+
+/* Панел "зареждане" при първото отваряне на асистента (ensureKBAssistant) */
+#kb-loading-panel {
+    position: fixed;
+    bottom: 80px;
+    right: 10px;
+    width: 240px;
+    max-width: calc(100vw - 20px);
+    background: #1a202c;
+    color: #cbd5e0;
+    border: 5px solid #f59e0b;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    z-index: 10100;
+    overflow: hidden;
+    font-family: sans-serif;
+}
+
+#kb-loading-panel .kb-loading-panel-title {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+    font-weight: bold;
+    padding: 10px 14px;
+}
+
+#kb-loading-panel .kb-loading-panel-text {
+    padding: 14px;
+}
+
+header {
+    padding: 5px 1em 0px 5px;
+    border-bottom: 3px solid #6c6c6c;
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.16), 0 5px 8px rgba(0, 0, 0, 0.23);
+    /* margin-bottom: 1em; */
+    /* Removed to stick the boards note to the header */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    background-image: url('Frame.jpg');
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+header.header-fullscreen {
+    padding: 2px 5px;
+    border-bottom: none;
+    box-shadow: none;
+    background-image: none;
+    background-color: transparent;
+    justify-content: center;
+}
+
+header.header-fullscreen>*:not(#search-wrapper) {
+    display: none !important;
+}
+
+header.header-fullscreen #search-wrapper {
+    max-width: 600px;
+}
+
+#fullscreen-board-label {
+    display: none;
+}
+
+header.header-fullscreen #fullscreen-board-label {
+    display: block;
+    position: absolute;
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: bold;
+    color: #555;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+.header-logo {
+    margin-right: 10px;
+    flex-shrink: 0;
+}
+
+header h1 {
+    margin: 0;
+    text-shadow: 2px 3px 5px rgba(0, 0, 0, 0.5);
+    color: darkorange;
+    font-size: 2.2rem;
+}
+
+#search-container {
+    position: relative;
+    /* Needed for positioning the save button and popup */
+    flex-grow: 1;
+    /*padding: 0 2em;*/
+    display: flex;
+    justify-content: center;
+    max-width: 400px;
+    /* Prevent it from growing too wide */
+    align-items: center;
+}
+
+#search-wrapper {
+    position: relative;
+    /* New context for positioning icons */
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    align-items: center;
+}
+
+#search-box {
+    width: 100%;
+    /* increased height for buttons */
+    height: 40px;
+    /* padding: left for icon, right for 2 large buttons */
+    padding: 4px 90px 4px 45px;
+    border-radius: 20px;
+    border: 1px solid #aaa;
+    font-size: 1em;
+    background-color: #d6d4d5;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    transition: box-shadow 0.2s;
+}
+
+#search-box:focus {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    outline: none;
+}
+
+
+
+
+
+/* Hide native clear button */
+#search-box::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+}
+
+/* Static Search Icon (Left) — clickable for search mode toggle */
+.search-icon-static {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #666;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    cursor: pointer;
+}
+
+.search-icon-static svg {
+    width: 24px;
+    height: 24px;
+    opacity: 0.6;
+}
+
+.search-mode-dot {
+    transition: fill 0.3s ease;
+}
+
+/* Base style for Action Buttons (Clear & Save) */
+/* Base style for Action Buttons (Clear & Save) */
+.search-action-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    /* Flex is set via JS display property, but good to have base */
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background-color: rgba(87, 84, 84, 0.259);
+    transition: background-color 0.2s, transform 0.1s;
+    z-index: 5;
+    color: #444;
+    /*box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);*/
+}
+
+.search-action-btn:hover {
+    background-color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.search-action-btn:active {
+    background-color: rgba(255, 255, 255, 0.8);
+    transform: translateY(-50%) scale(0.95);
+}
+
+.search-action-btn svg {
+    width: 20px;
+    /* Slightly smaller icon too? 20px is fine for 32px btn */
+    height: 20px;
+}
+
+/* Specific Positions */
+.search-btn-save {
+    right: 45px;
+    /* Inner position: 6px + 33px + 6px */
+}
+
+.search-btn-clear {
+    right: 6px;
+    /* Outer edge position */
+}
+
+/* Animation for the save icon */
+@keyframes save-spin {
+    from {
+        transform: translateY(-50%) rotate(0deg);
+    }
+
+    to {
+        transform: translateY(-50%) rotate(360deg);
+    }
+}
+
+.saved-animation {
+    animation: save-spin 0.5s ease-in-out;
+}
+
+/* Анимация за зареждане на бутон */
+@keyframes button-spin {
+    from {
+        transform: translate(-50%, -50%) rotate(0deg);
+    }
+
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* Стил за самата икона за зареждане в бутона */
+
+
+/* Клас, който се добавя, за да се покаже иконата и да се стартира анимацията */
+.button-loading {
+    display: inline-block !important;
+    /* Показваме иконата */
+    animation: button-spin 0.8s linear infinite;
+    transform-origin: center;
+}
+
+/* Стил за иконата за зареждане в бутона за режим */
+#mode-button-loading-icon {
+    display: none;
+    /* Скрита по подразбиране */
+    width: 24px;
+    /* Същия размер като основната икона */
+    height: 24px;
+    position: absolute;
+    /* Позиционираме я в центъра на бутона */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* Първоначално центриране */
+}
+
+/* Стил за бутона за затваряне на календара */
+.close-calendar-btn {
+    position: relative;
+}
+
+/* Стил за иконата за зареждане в бутона за затваряне на календара */
+.close-loading-icon {
+    width: 20px;
+    height: 20px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* Popup for saved searches */
+#saved-searches-popup {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    background: linear-gradient(135deg, #E4E4E4, #858585);
+    border: 1px solid #636363;
+    border-radius: 3px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 101;
+    /* Above the header content */
+    max-height: 600px;
+    overflow-y: auto;
+    display: none;
+    /* Hidden by default */
+    padding: 15px;
+}
+
+.saved-search-close-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    cursor: pointer;
+    font-size: 20px;
+    font-weight: bold;
+    color: #555;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    z-index: 10;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.saved-search-close-btn:hover {
+    color: #000;
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.saved-search-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    text-align: left;
+    border-bottom: 1px solid #9e9e9e;
+    color: #1f3b52;
+}
+
+.saved-search-item:hover {
+    background-color: #ababab;
+}
+
+.saved-search-item:first-child {
+    font-style: italic;
+    color: #3a5a78;
+    border-bottom: 1px solid #636363;
+    /* Make separator stronger */
+}
+
+
+.header-btn {
+    margin-left: 10px;
+    padding: 0;
+    border: 2px solid #dddddd;
+    border-radius: 50%;
+    background-color: #878fa3;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    cursor: pointer;
+    color: #000;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* Prevent text selection on buttons */
+    position: relative;
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
+    user-select: none;
+    padding: 11px;
+    /* Задаваме padding, за да определим размера */
+    box-sizing: border-box;
+    /* Гарантираме, че padding-ът е включен в размера */
+}
+
+/* Специфични стилове за бутона за режим, за да се адаптира към съдържанието */
+#mode_button {
+    width: auto;
+    /* Премахваме фиксираната ширина */
+    height: auto;
+    /* Премахваме фиксираната височина */
+    min-width: 46px;
+    /* Гарантираме минимален размер, равен на другите бутони */
+    min-height: 46px;
+    gap: 5px;
+    /* Разстояние между елементите вътре в бутона (напр. icon-wrapper и loading icon) */
+    background-color: #48b7a2;
+    border-radius: 25px;
+    /* Заоблени ъгли, вместо елипса */
+}
+
+/* Wrapper for the mode icon to correctly position the overlay */
+.mode-icon-wrapper {
+    /* Remove fixed width/height to allow it to expand with content */
+    /* width: 24px; */
+    /* height: 24px; */
+    position: relative;
+    /* Keep relative for potential future absolute children */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    /* Малко разстояние между двете икони */
+}
+
+/* Overlay for DB icon on mode button */
+.mode-db-overlay {
+    /* Премахваме абсолютното позициониране, за да е една до друга */
+    position: relative;
+    /* Позволява ни да я местим спрямо нормалната й позиция */
+    top: 7px;
+    /* Сваляме иконата 7px надолу */
+    margin-left: -15px;
+    /* Придърпваме я наляво, за да застъпи първата */
+    width: 21px;
+    /* 3px по-малка от основната икона (24px) */
+    height: 21px;
+}
+
+.mode-db-overlay img {
+    width: 100%;
+    height: 100%;
+}
+
+/* Когато mode_button зарежда, скриваме другите икони и показваме анимацията */
+.mode-button-loading #mode-button-loading-icon {
+    display: block !important;
+}
+
+.mode-button-loading .mode-icon-wrapper {
+    display: none !important;
+}
+
+.header-btn:hover {
+    background-color: #c0c0c0;
+}
+
+.header-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+    flex-shrink: 0;
+}
+
+main {
+    text-align: center;
+}
+
+#notes-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.note {
+    position: relative;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 10px 10px 5px 10px;
+    margin: 0px;
+    width: 250px;
+    height: 250px;
+    display: flex;
+    flex-direction: column;
+    /* Това ще подреди wrapper-а и футъра вертикално */
+    /*background-color: var(--note-bg-0);*/
+    font-size: var(--note-font-size);
+    /* Set base font size for the whole note */
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    /* Картата е границата на бележката: нищо не бива да се рисува извън нея (собственик,
+       25.10.2026: „текста в бележката в борда излиза извън границите й"). Дългият текст се
+       скролва вътре в .note-content; ако нещо все пак се разпъне над височината на картата,
+       тук се реже, вместо да падне върху дъската под бележката. Сянката на самата карта не се
+       реже от това - overflow не пипа box-shadow на елемента. Менютата на бележката са
+       position: fixed върху body (вж. .nm-inline-menu), значи не се режат оттук. */
+    overflow: hidden;
+    text-align: left;
+    cursor: pointer;
+    /* Added for pointer cursor on hover */
+    padding-bottom: 35px;
+    /* Добавяме padding отдолу, за да направим място за футъра */
+    box-sizing: border-box;
+    /* Гарантираме, че padding-ът е включен в общата височина */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    content-visibility: auto;
+    contain-intrinsic-size: 250px 250px;
+}
+
+.note-item {
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-blend-mode: normal;
+    box-shadow: none;
+}
+
+/* Временен клас, докато се генерира фона */
+
+
+.note-background-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    /* Ensure it's behind the content wrapper */
+}
+
+.note-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    /* Wrapper-ът продължава да заема 100% от намаленото налично пространство */
+    padding-top: 0px;
+    box-sizing: border-box;
+    background-color: transparent;
+    z-index: 1;
+    /* Гарантираме, че съдържанието е над canvas-а */
+    flex-grow: 1;
+    /* Позволяваме на wrapper-а да се разшири и да запълни свободното място */
+}
+
+.note-content-wrapper>.note-content {
+    margin: 0 10% 10% 8%;
+}
+
+.note-borderless-table .note-title-wrapper {
+    flex: 0 0 50px;
+    min-height: 50px;
+}
+
+/* Карта БЕЗ заглавие (бележка само със снимка или само с линк - заглавието е display: none, вж.
+   hideCardTitleNoWords в main.js). Хедърът с датата и часа е absolute на top: 25px, значи не заема
+   място в layout-а; единственото, което държи тялото под него, е margin-top: 50px на заглавието.
+   Щом заглавие няма, маржът му изчезва и първият елемент на тялото (вградената снимка) застава
+   върху датата/часа. Wrapper-ът пази същите 50px - същият прецедент като бележките-таблици без
+   рамка отгоре (23.10.2026, шести доклад на собственика). */
+.note.no-card-title .note-title-wrapper {
+    flex: 0 0 50px;
+    min-height: 50px;
+}
+
+.note:not(.note-item) .note-content-wrapper>.note-content {
+    margin: 0;
+}
+
+.note-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    word-wrap: break-word;
+    /* Font size is now inherited from .note */
+    white-space: pre-wrap;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+    cursor: pointer;
+}
+
+/* Вградена картинка в бележката (text_span type=8).
+   Картинката застава точно на мястото на маркера (звездичката) в изречението, затова е
+   inline-block, а не блок: думите преди и след нея остават на същия ред.
+   Ширината идва от paramint (10..100%) и е процент от САМАТА СНИМКА: щом тя се зареди, рамката
+   получава ширина в пиксели (putImage в main.js). max-width:100% тук е таванът - на 240px карта
+   по-широко изчисление се показва с ширината на картата. Виж и :is(#modal-body, ...) долу.
+   Докато файлът се търси в Drive, рамката пази мястото (aspect-ratio), за да не подскача картата. */
+.note-content .nm-inline-img,
+:is(#modal-body, .nw-modal-body) .nm-inline-img {
+    display: inline-block;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 2px 0;
+    /* bottom, не top и не middle (собственик, 24.10.2026: „приложените снимки разширяват реда и
+       текстът остава в горната част, така изглежда, че снимката виси от реда, а не е на него.
+       нека текстът да е изравнен по долната част на снимката").
+       При top думата стоеше на върха на високата снимка и снимката изглеждаше окачена отдолу.
+       При middle рамката се центроваше по базовата линия и горният ѝ ръб излизаше НАД реда.
+       С bottom долният ръб на рамката е на дъното на реда, значи думите стоят до долния ѝ ръб,
+       а снимката расте нагоре - все едно стои НА реда, не виси от него. Общата височина на реда
+       не се мени, само положението на думите в него. */
+    vertical-align: bottom;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.note-content .nm-inline-img.is-loading,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-loading {
+    aspect-ratio: 4 / 3;
+    background: rgba(127, 127, 127, .16);
+    border: 1px solid rgba(127, 127, 127, .28);
+}
+
+.note-content .nm-inline-img.is-ready,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-ready {
+    aspect-ratio: auto;
+}
+
+.note-content .nm-inline-img img,
+:is(#modal-body, .nw-modal-body) .nm-inline-img img {
+    display: block;
+    width: 100%;
+    height: auto;
+    box-sizing: border-box;
+    border: 0;
+}
+
+/* Липсващ или недостъпен файл: рамката казва, че там е имало снимка, и коя.
+   Иначе текстът изглежда счупен без причина. */
+.note-content .nm-inline-img.is-missing,
+.note-content .nm-inline-img.is-unavailable,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-missing,
+:is(#modal-body, .nw-modal-body) .nm-inline-img.is-unavailable {
+    aspect-ratio: auto;
+    border: 1px dashed #b4534a;
+    border-radius: 7px;
+    background: rgba(180, 83, 74, .08);
+    color: #9d3f37;
+    padding: 4px 6px;
+    font-size: 78%;
+    line-height: 1.35;
+    white-space: normal;
+}
+
+.note-content .nm-inline-img-note,
+:is(#modal-body, .nw-modal-body) .nm-inline-img-note {
+    display: block;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.note-content .nm-inline-img-why,
+:is(#modal-body, .nw-modal-body) .nm-inline-img-why {
+    display: block;
+    opacity: .85;
+}
+
+/* Футър с миниатюри на прикачените файлове във viewer-а (:is(#modal-body, .nw-modal-body)).
+   Плочка 40x40, междина 8, заобляне 6 - точно колкото е плочката в оригинала на телефон 360px
+   (процент от ширината в модал на десктоп дава различен размер всеки път).
+   Лентата се плъзга настрани с пръст, колелце и стрелки, а скролбарът е скрит - видим скролбар
+   под футъра изглежда като чужд елемент върху бележката, както при лентата с икони в хедъра. */
+:is(#modal-body, .nw-modal-body) .nm-attach-strip {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 0 3px;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    white-space: normal;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-strip::-webkit-scrollbar {
+    display: none;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-slot {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+}
+
+/* Редът, който футърът строеше досега (икона + линк към файла), остава в страницата, защото
+   плочката натиска точно него - така отварянето на файла не се пренаписва, сменя се само
+   изгледът. Видим е само ако строенето на плочката се счупи. */
+:is(#modal-body, .nw-modal-body) .nm-attach-source {
+    display: none;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile {
+    position: relative;
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(127, 127, 127, .16);
+    color: #22262b;
+    overflow: hidden;
+    cursor: pointer;
+    font: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+    scroll-snap-align: start;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile:hover {
+    background: rgba(127, 127, 127, .26);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile:active {
+    background: rgba(127, 127, 127, .34);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile:focus-visible {
+    outline: 2px solid #3a6ff0;
+    outline-offset: 1px;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-icon {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-icon svg {
+    width: 22px;
+    height: 22px;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* Звукът свири от плочката: иконата пулсира, защото самата тя е и бутонът за спиране. Състоянието
+   трябва да се вижда и без анимация, затова плочката е и по-тъмна. */
+@keyframes nm-attach-audio-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: .55;
+        transform: scale(1.12);
+    }
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing {
+    background: rgba(127, 127, 127, .3);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing .nm-attach-tile-icon {
+    animation: nm-attach-audio-pulse .9s ease-in-out infinite;
+}
+
+/* Докато файлът се тегли, трябва да се вижда, че НЕЩО СЕ СЛУЧВА: голям файл се тегли секунди и без
+   индикатор плочката изглежда сякаш кликът не е хванат. Затова върху нея се върти тънък кръг, а
+   иконата на типа притъмнява под него. Кръгът е ::after, за да не се пипа строежът на плочката. */
+@keyframes nm-attach-tile-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading {
+    background: rgba(127, 127, 127, .1);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 15px;
+    height: 15px;
+    box-sizing: border-box;
+    border: 2px solid rgba(34, 38, 43, .22);
+    border-top-color: rgba(34, 38, 43, .85);
+    border-radius: 50%;
+    animation: nm-attach-tile-spin .7s linear infinite;
+}
+
+/* Иконата остава под кръга, но почти изчезва - иначе двете се бият за едно и също място. */
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading .nm-attach-tile-icon {
+    opacity: .18;
+}
+
+/* Без движение: пулсът пада, но „свири" остава ясно - по-тъмна плочка и тъмна рамка отвътре,
+   за да се разбира, че втори клик спира звука. Спинърът остава като видим кръг, но не се върти. */
+@media (prefers-reduced-motion: reduce) {
+    :is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing .nm-attach-tile-icon {
+        animation: none;
+        opacity: 1;
+    }
+
+    :is(#modal-body, .nw-modal-body) .nm-attach-tile.is-loading::after {
+        animation: none;
+        border-top-color: rgba(34, 38, 43, .22);
+        border-right-color: rgba(34, 38, 43, .85);
+    }
+
+    :is(#modal-body, .nw-modal-body) .nm-attach-tile.is-playing {
+        background: rgba(127, 127, 127, .42);
+        box-shadow: inset 0 0 0 1.5px rgba(34, 38, 43, .45);
+    }
+}
+
+/* Снимката е самата снимка, без рамка и без заобляне на ъглите вътре в плочката: пълни я цялата. */
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-photo {
+    position: absolute;
+    inset: 0;
+    display: block;
+    overflow: hidden;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-photo.is-loading {
+    background: rgba(127, 127, 127, .16);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: cover;
+}
+
+/* Докато има снимка, иконата на типа не се показва - иначе би надничала под нея. */
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.has-photo .nm-attach-tile-icon {
+    display: none;
+}
+
+/* PDF: червена плочка с "PDF", както е в оригиналното приложение. */
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-pdf {
+    background: #d5453b;
+    color: #fff;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-pdf .nm-attach-tile-icon {
+    display: none;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile-tag {
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 9px;
+    line-height: 1;
+    letter-spacing: .02em;
+}
+
+/* Липсващ или недостъпен файл: плочката пази мястото и показва иконата на типа с пунктир, за да
+   не изглежда футърът счупен. */
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-missing,
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-unavailable {
+    border: 1px dashed #b4534a;
+    background: rgba(180, 83, 74, .08);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-missing .nm-attach-tile-icon,
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-unavailable .nm-attach-tile-icon {
+    opacity: .55;
+}
+
+/* Файл, прикачен току-що: плочката вече е в лентата, но записът му към бележката още върви. Затова
+   е приглушена и с пунктир - същият език като при недостъпен файл, само че неутрален, защото това не
+   е грешка. Щом записът стане, плочката светва (класът се маха заедно с преизградената лента). */
+:is(#modal-body, .nw-modal-body) .nm-attach-tile.is-pending {
+    opacity: .7;
+    border: 1px dashed rgba(127, 127, 127, .55);
+}
+
+/* X за махане на файла: на всяка плочка и ВИНАГИ видим - не само при задържане, защото на телефон
+   няма как да се задържи. Кръгът е 16px в горния десен ъгъл (плочката е 40x40), а кутията около
+   него - 20x20, за да се уцели с пръст; плочката реже извън себе си, затова зоната е отвътре.
+   Знакът е нарисуван с две черти (градиенти), без емоджи и без картинка - остава чист във всеки
+   мащаб и се вижда и върху снимка, защото кръгът е бял. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 3;
+    display: block;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Бялото кръгче: то държи X-ът четим върху снимка и върху червената PDF плочка. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(213, 69, 59, .8), 0 1px 2px rgba(0, 0, 0, .35);
+    transition: background-color .15s ease;
+}
+
+/* Самият знак: два тънки диагонала на кръст. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    background:
+        linear-gradient(to top right, transparent calc(50% - 0.8px), #d5453b 0, #d5453b calc(50% + 0.8px), transparent 0),
+        linear-gradient(to bottom right, transparent calc(50% - 0.8px), #d5453b 0, #d5453b calc(50% + 0.8px), transparent 0);
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-del:hover::before {
+    background: #fdeceb;
+}
+
+:is(#modal-body, .nw-modal-body) .nm-attach-del:active::before {
+    background: #f8d5d2;
+}
+
+/* Клавиатура: същият син пръстен като на плочката, за да се вижда къде е фокусът. */
+:is(#modal-body, .nw-modal-body) .nm-attach-del:focus-visible {
+    outline: 2px solid #3a6ff0;
+    outline-offset: 1px;
+    border-radius: 50%;
+}
+
+/* Без движение: кръгчето сменя цвета си веднага. */
+@media (prefers-reduced-motion: reduce) {
+    :is(#modal-body, .nw-modal-body) .nm-attach-del::before {
+        transition: none;
+    }
+}
+
+pre,
+code {
+    font-size: 100%;
+    /* Match the surrounding text size */
+    -webkit-user-select: text;
+    user-select: contain;
+}
+
+.note .note-content,
+.note .note-content * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+}
+
+.note .note-content::-webkit-scrollbar,
+.note .note-content *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+}
+
+.md-table-wrapper {
+    margin: 6px 0;
+    max-width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
+    background: transparent;
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
+}
+
+
+
+
+
+
+
+
+
+
+
+/* Ширина по съдържанието, както е в ASCII режима на редактора: колоната е толкова широка,
+   колкото най-дългата стойност в нея, а .md-table-wrapper я превърта хоризонтално, вместо да
+   свива колоните и да пренася стойностите на няколко реда. max-width на клетките пази дългите
+   пасажи в клетка четими, вместо да разпъне таблицата на хиляди пиксели. */
+.md-table-render {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    font-size: 0.95em;
+    line-height: 1.35;
+    white-space: normal;
+}
+
+.md-table-render th,
+.md-table-render td {
+    /* 5px резерв отдясно: при ширина по съдържанието колоната се побира точно в най-дългата
+       стойност и без резерв закръглянето на шрифта я пренася на втори ред. */
+    padding: 4px 11px 4px 6px;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    text-align: left;
+    vertical-align: top;
+    max-width: 340px;
+}
+
+.md-table-render th {
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.md-table-render.md-table-borderless th,
+.md-table-render.md-table-borderless td {
+    border: none;
+    background: transparent;
+    padding: 2px 15px 2px 0;
+}
+
+.code-block {
+    position: relative;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    padding: 8px;
+    padding-right: 28px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: pre;
+    line-height: 1.4;
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
+}
+
+.code-block::-webkit-scrollbar {
+    height: 8px;
+}
+
+.code-block::-webkit-scrollbar-track {
+    background: #c8a64b;
+}
+
+.code-block::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.code-block::-webkit-scrollbar-thumb:hover {
+    background: #333;
+}
+
+.code-block code {
+    background: none;
+    padding: 0;
+}
+
+.code-block-copy {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
+
+.code-block-copy:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.code-block-copy svg {
+    width: 14px;
+    height: 14px;
+    stroke: #333;
+    fill: none;
+    stroke-width: 2;
+}
+
+.note-content::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+}
+
+.note-content a,
+:is(#modal-body, .nw-modal-body) a {
+    color: #007bff;
+    text-decoration: none;
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: text-bottom;
+    cursor: pointer;
+}
+
+.note-content a:hover {
+    text-decoration: underline;
+}
+
+/* На борда URL-ът е гол текст (не линк, освен при one-tap режим), но трябва да изглежда като в
+   модала: един ред, съкратен със „…“ на ръба на картата, вместо разлят на няколко реда.
+   Същото поведение като .note-content a по-горе, само че не е котва и не носи цвят на линк. */
+.note-content .nmd-link-elide {
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: text-bottom;
+}
+
+.note-footer {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    position: absolute;
+    /* Остава абсолютно позициониран */
+    bottom: 5px;
+    /* Запазваме позицията отдолу */
+    left: 0;
+    right: 0;
+    height: 30px;
+    /* Задаваме фиксирана височина на футъра */
+    z-index: 2;
+    /* Задаваме по-висок z-index, за да е винаги отгоре */
+}
+
+.footer-icon {
+    background-color: transparent;
+    /* Гарантираме, че фонът е прозрачен */
+    padding: 0px;
+    /* Добавяме малко отстояние, за да не са залепени иконите */
+    height: 25px;
+}
+
+.footer-icon svg {
+    width: 25px;
+    /* Леко увеличаваме размера за по-добра видимост */
+    height: 25px;
+    /* Увеличаваме височината за по-добра видимост */
+    stroke: #000;
+    /* По-тъмен цвят за иконите */
+    stroke-width: 1.5;
+}
+
+.lock-icon-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    color: rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+.lock-icon-overlay svg {
+    width: 100px;
+    height: 100px;
+    stroke-width: 1.5;
+}
+
+.trash-icon-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    color: rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+}
+
+.trash-icon-overlay svg {
+    width: 100px;
+    height: 100px;
+    stroke: rgba(0, 0, 0, 0.2);
+    stroke-width: 1.5;
+}
+
+
+/* Specific styles for the boards note to make it a full-width panel */
+.boards-note,
+.note.boards-note {
+    height: auto;
+    /* Auto-adjust height based on content */
+    margin: 0 0;
+    margin-left: -5px;
+    /* Negative margin to span full width, counteracting header padding (5px left) */
+    width: calc(100% + 1em + 5px);
+    /* Adjust width to compensate for negative margins (1em right + 5px left) */
+    border-radius: 0;
+    /* Remove rounded corners */
+    box-shadow: 0 5px 8px rgba(0, 0, 0, 0.1);
+    /* Add a subtle shadow */
+    border: none;
+    /*border-bottom: 1px solid #ccc;
+    padding: 10px;*/
+    background: transparent;
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
+    user-select: none;
+    /* Prevent text selection on the board panel */
+    box-sizing: border-box;
+    /* Ensure padding is included in width */
+}
+
+.note-title-truncated {
+    margin-top: 50px;
+    margin-left: 8%;
+    margin-right: 10%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0;
+    /* Премахва стандартния долен марджин на h3 */
+}
+
+.note:not(.note-item) .note-title-truncated {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* Снимка В ЗАГЛАВИЕТО на картата (23.10.2026, трети доклад на собственика: „Идеята е ако искаме да
+   украсим заглавието с някакви изображения те да останат на реда, а не да слизат отдолу").
+   Собственикът (23.10.2026, четвърти доклад): „Снимката в заглавието трябва да е с размера, с който
+   сме я създали." Затова ТУК НЯМА фиксирана височина и ширина: ширината идва от inline стила на
+   рамката - същият процент от колоната (paramint), с който снимката стои и в тялото. Дотук тук
+   стоеше малка украса 1.1em × 2.2em и снимката се виждаше смалена.
+   Заглавието е един ред (nowrap, overflow hidden, многоточие): с висока снимка редът просто расте по
+   височина - това е желаното, не се ограничава. max-width: 100% пази широка снимка в картата.
+   vertical-align: top - висока снимка при middle се центроваше по базовата линия на текста и горният
+   ѝ ръб излизаше НАД реда (същото, което собственикът видя в бележката). С top снимката започва на
+   реда и расте надолу, а думите стоят до нея.
+   pointer-events: none: това е украса на заглавието - клик и задържане минават към заглавието, за да
+   работят подсказката и отварянето на бележката, както досега. */
+/* Снимката е с размера, с който е създадена (23.10.2026, четвърти доклад на собственика), значи
+   широка снимка не се побира на един ред след думите. Такова заглавие може да се пренесе на втори
+   ред (снимката слиза цяла под думите), вместо nowrap да я отреже в края на картата. Заглавията
+   БЕЗ снимка пазят днешното поведение - един ред с многоточие. */
+.note-title-truncated.has-title-img {
+    white-space: normal;
+    text-overflow: clip;
+}
+
+.note-title-truncated .nm-inline-img {
+    display: inline-block;
+    box-sizing: border-box;
+    max-width: 100%;
+    margin: 0 .15em;
+    vertical-align: top;
+    border-radius: 3px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* Картинката се вписва в рамката цялата (contain, не cover): тя не бива да се реже - същият вид
+   като в тялото на бележката, само че на реда на заглавието. */
+.note-title-truncated .nm-inline-img img {
+    display: block;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Докато файлът се търси: рамката пази мястото си с ширината от inline стила и 4:3, за да не
+   подскача картата, когато снимката дойде. */
+.note-title-truncated .nm-inline-img.is-loading {
+    aspect-ratio: 4 / 3;
+    background: rgba(127, 127, 127, .16);
+    border: 1px solid rgba(127, 127, 127, .28);
+    padding: 0;
+}
+
+/* Липсващ или недостъпен файл в заглавието: пак кутийка с ширината от inline стила и 4:3, с
+   пунктирана рамка на мястото на снимката. Кой файл липсва се вижда в бележката и в модала. */
+.note-title-truncated .nm-inline-img.is-missing,
+.note-title-truncated .nm-inline-img.is-unavailable {
+    aspect-ratio: 4 / 3;
+    border: 1px dashed rgba(180, 83, 74, .55);
+    background: rgba(180, 83, 74, .08);
+    padding: 0;
+}
+
+.note-title-truncated .nm-inline-img.is-missing > *,
+.note-title-truncated .nm-inline-img.is-unavailable > * {
+    display: none;
+}
+
+.note-header-info {
+    position: absolute;
+    top: 25px;
+    /* Position from the top of the note */
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 0 30px 0 20px;
+    /* Horizontal padding */
+    box-sizing: border-box;
+    pointer-events: none;
+    /* Make it non-interactive */
+    font-size: 12px;
+    font-weight: bold;
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.note-header-date,
+.note-header-time {
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+    /* Re-enable clicks on date/time elements */
+    gap: 5px;
+    /* Space between icon and text */
+}
+
+.note-header-date {
+    cursor: pointer;
+}
+
+.note-week-calendar {
+    position: absolute;
+    inset: 5px 10px 10px 5px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    padding: 7px;
+    border-radius: inherit;
+    background: rgba(255, 255, 255, 0.88) url('Board1.png') center / cover;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+.note-week-calendar-header {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 24px 18px 24px;
+    align-items: center;
+    gap: 3px;
+    min-height: 27px;
+    padding-bottom: 2px;
+    border-radius: 4px;
+    background: rgba(185, 221, 246, 0.92);
+    cursor: pointer;
+}
+
+.note-week-nav {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.note-week-nav:hover,
+.note-week-nav:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-today {
+    width: 24px;
+    height: 24px;
+    padding: 3px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.68);
+    cursor: pointer;
+}
+
+.note-week-today svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+.note-week-today:hover,
+.note-week-today:focus-visible {
+    background: rgba(0, 0, 0, 0.1);
+    outline: none;
+}
+
+.note-week-close-hint {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    border-radius: 50%;
+    color: rgba(0, 0, 0, 0.7);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.note-week-title {
+    overflow: hidden;
+    color: rgba(0, 0, 0, 0.68);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.note-week-days {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 3px;
+}
+
+.note-week-day {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 1px 4px;
+    border: 1px solid rgba(0, 0, 0, 0.24);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.note-week-day.is-today {
+    background: #bfc523;
+}
+
+.note-week-date-label {
+    width: 34px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.note-week-markers {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-content: center;
+    gap: 2px;
+    min-height: 16px;
+}
+
+.note-week-marker {
+    display: block;
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    border-radius: 2px;
+    box-sizing: border-box;
+    appearance: none;
+    opacity: 1;
+    visibility: visible;
+    cursor: pointer;
+}
+
+.note-week-marker:hover,
+.note-week-marker:focus-visible {
+    outline: 2px solid rgba(0, 0, 0, 0.65);
+    outline-offset: 1px;
+    transform: scale(1.25);
+}
+
+.note-header-time {
+    margin-left: auto;
+}
+
+.note-pin-btn {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    padding: 2px;
+    color: rgba(0, 0, 0, 0.42);
+    background: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.note-pin-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.note-pin-btn .pin-dot {
+    fill: transparent;
+}
+
+.note-pin-btn:hover {
+    color: rgba(0, 0, 0, 0.75);
+    background: rgba(255, 255, 255, 0.62);
+    transform: translateY(-1px);
+}
+
+.note-pin-btn.pinned {
+    color: #c22d1f;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.note-pin-btn.pinned .pin-dot {
+    fill: currentColor;
+}
+
+.note-pinned {
+    box-shadow: 0 0 0 2px rgba(194, 45, 31, 0.28), 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+}
+
+.header-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2.5;
+    vertical-align: middle;
+    /* Better alignment with text */
+}
+
+.datemod-header-date {
+    /* Тук могат да се добавят специфични стилове за датата на модификация в хедъра */
+    /* Например: font-style: italic; opacity: 0.8; */
+    font-style: italic;
+}
+
+/* Скрита дата (настройка „Покажи дата на промяна/календар“): маха се само ТЕКСТЪТ.
+   Отляво остава иконата на календара, която отваря мини календара, а отдясно остават
+   иконата на часовника и пин-бутонът - един до друг. */
+.hide-datemod .datemod-header-date,
+.hide-datemod .note-header-date-text,
+.hide-datemod .note-header-time-text {
+    display: none;
+}
+
+/* Икона, която в нормалния хедър не се показва (няма час за показване или датата е само
+   дата на създаване), но при скрита дата трябва да е налична. */
+.note-header-calendar-icon.icon-only-when-hidden,
+.note-header-clock-icon.icon-only-when-hidden {
+    display: none;
+}
+
+.hide-datemod .note-header-calendar-icon.has-header-value,
+.hide-datemod .note-header-clock-icon {
+    display: inline-flex;
+}
+
+/* Малка междина между часовника и пин-бутона, за да не се допират. */
+.hide-datemod .note .note-header-clock-icon {
+    margin-right: 4px;
+}
+
+/* New unified style for all checkboxes in the settings modal */
+.settings-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    vertical-align: middle;
+    /* Better alignment with the label text */
+}
+
+
+.view-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.view-button svg {
+    width: 16px;
+    height: 16px;
+    stroke: #555;
+    cursor: pointer;
+}
+
+/* Анимация на Overlay */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+
+    /* Animation base state */
+    display: flex;
+    /* Always flex, handled by visibility */
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+/* Анимация при активен клас visible */
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* Анимация на самата бележка (Pop effect) */
+.modal-content-box {
+    transform: scale(0.7) translateY(20px);
+    opacity: 0;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.3s ease;
+    will-change: transform, opacity;
+}
+
+.modal-overlay.visible .modal-content-box {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+}
+
+/* New style for when the modal acts as a popup */
+.modal-overlay.popup-mode {
+    position: fixed;
+    align-items: flex-start;
+    /* Align to top */
+    justify-content: flex-start;
+    /* Align to left */
+}
+
+.modal-content-box {
+    box-sizing: border-box;
+    padding-top: 55px;
+    /* Ensure space for header buttons */
+    padding-right: 15px;
+    padding-bottom: 0px;
+    padding-left: 15px;
+    border-radius: 2px;
+    /* По-остри ръбове за реалистичен вид */
+    width: 95%;
+    /* Задаваме ширината да е 90% от екрана */
+    max-width: 90%;
+    min-height: 10%;
+    max-height: 95vh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    /* transition: background-color 0.3s ease; Smooth background color transition */
+    background-image: url('Note.jpg');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    /* 3D ефект със сянка */
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2), 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+/* Стил за "лист хартия" когато няма фоново изображение */
+.modal-content-box.no-bg-image {
+    border: none;
+    /* Inset сянка за лек обем + външна сянка */
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.05), 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+/* Възстановяваме лекия градиент за обем */
+.modal-content-box.no-bg-image::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 0;
+    /* Фин градиент: Светлина горе-вляво (бяло) -> прозрачно -> лека сянка долу-вдясно */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 60%, rgba(0, 0, 0, 0.03) 100%);
+}
+
+/* Гарантираме, че съдържанието е над псевдо-елемента */
+:is(#modal-body, .nw-modal-body),
+:is(#modal-board-name, .nw-modal-board-name),
+.modal-header-btn,
+.modal-resize-handle {
+    position: relative;
+    z-index: 1;
+}
+
+/* "Дръжка" за преоразмеряване на модалния прозорец */
+.modal-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 32px;
+    height: 32px;
+    cursor: se-resize;
+    z-index: 2;
+    /* Трябва да е над съдържанието */
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 3px;
+    box-sizing: border-box;
+    color: rgba(0, 0, 0, 0.65);
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.modal-resize-handle.individual-resize-active {
+    color: #1976d2;
+    filter: drop-shadow(0 0 3px rgba(25, 118, 210, 0.8));
+}
+
+.popup-mode {
+    position: absolute;
+    /* Allow top/left positioning */
+    max-width: none;
+    /* Override max-width to allow it to be sized by content */
+    width: auto;
+    /* Let content define width */
+}
+
+:is(#modal-body, .nw-modal-body) {
+    padding-top: 1px;
+    padding-right: 10px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    text-align: left;
+    flex-grow: 1;
+}
+
+:is(#modal-body, .nw-modal-body).no-bg-image {
+    padding: 0 0;
+    /* Keeps vertical 0, but content-box handles side padding */
+}
+
+/* Custom scrollbar for modal content */
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar {
+    width: 10px;
+}
+
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-track {
+    background: #c8a64b;
+    /* Dark yellow background for the track */
+}
+
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb {
+    background: #555;
+    /* Darker handle for contrast */
+    border-radius: 5px;
+}
+
+:is(#modal-body, .nw-modal-body)::-webkit-scrollbar-thumb:hover {
+    background: #333;
+    /* Even darker on hover */
+}
+
+.modal-header-btn {
+    background: none;
+    border: 1px solid #aaa;
+    border-radius: 50%;
+    cursor: pointer;
+    position: absolute;
+    top: 10px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1;
+}
+
+/* New style for board name in modal header */
+:is(#modal-board-name, .nw-modal-board-name) {
+    position: absolute;
+    top: 15px;
+    /* Moved 5px up */
+    /* right: 141px; Position to the left of the new calculator button */
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #333;
+    background-color: transparent;
+    padding: 5px 5px;
+    border-radius: 5px;
+    max-width: calc(100% - 150px);
+    /* Prevent overlapping with title or buttons */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* .modal-header-btn:hover { background-color: #ddd; } -- Removed to fix mobile sticky hover */
+
+.modal-close {
+    right: 15px;
+    font-size: 24px;
+    padding-top: 4px;
+    box-sizing: border-box;
+}
+
+:is(#copy-modal-btn, .nw-copy-modal-btn) svg {
+    width: 16px;
+    height: 16px;
+    stroke: #333;
+}
+
+/* --- Бутони за навигация в модала --- */
+.modal-nav-btn {
+    font-size: 24px;
+    /*font-weight: bold;*/
+}
+
+/* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
+/* Бутон за затваряне (X) е на right: 15px */
+/* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
+:is(#prev-note-btn, .nw-prev-note-btn) {
+    right: 235px;
+}
+
+:is(#next-note-btn, .nw-next-note-btn) {
+    right: 193px;
+}
+
+@media (hover: hover) {
+
+    .modal-nav-btn:hover,
+    .modal-header-btn:hover {
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+}
+
+:is(#delete-modal-btn, .nw-delete-modal-btn) {
+    right: 57px;
+    /* 57px (delete) + 32px (width) + 10px (gap) */
+}
+
+:is(#copy-modal-btn, .nw-copy-modal-btn) {
+    right: 99px;
+}
+
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) {
+    right: 151px;
+    /* 151px (calculate) + 32px (width) + 10px (gap) */
+}
+
+/* --- КОРЕКЦИЯ: Гарантираме, че курсорът се показва --- */
+:is(#calculate-modal-btn, .nw-calculate-modal-btn) svg {
+    pointer-events: none;
+    /* Иконата не "поглъща" клика */
+}
+
+
+#boards-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 5px;
+}
+
+/* Логото НЕ се крие по ширина (31 Oct 2026, по решение на собственика): на телефон хедърът е в
+   колона от три реда, логото има място до заглавието и освен това е натискаемото място за
+   защитния овърлей. Крие се само в едноредовия хедър в завъртян екран — виж @media
+   (orientation: landscape) and (max-height: 500px) в края на файла. */
+
+#boards-table th,
+#boards-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+#boards-table th {
+    background-color: #f2f2f2;
+}
+
+#scrollTopBtn {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    right: 30px;
+    z-index: 99;
+    border: none;
+    outline: none;
+    background-color: #555;
+    color: white;
+    cursor: pointer;
+    padding: 0 20px;
+    height: 50px;
+    border-radius: 25px;
+    font-size: 16px;
+    justify-content: center;
+    align-items: center;
+    opacity: 0.2;
+    white-space: nowrap;
+}
+
+#scrollTopBtn:hover {
+    background-color: #333;
+    opacity: 1;
+}
+
+/* Floating button for popup menu in boards-menu-container */
+.popup-menu-btn-floating {
+    display: flex;
+    position: fixed;
+    top: 60px;
+    right: 10px;
+    z-index: 9998;
+    border: none;
+    outline: none;
+    background-color: yellow;
+    color: black;
+    cursor: pointer;
+    padding: 11px;
+    border-radius: 50%;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    opacity: 1;
+    width: 46px;
+    height: 46px;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (hover: hover) {
+    .popup-menu-btn-floating:hover {
+        background-color: #c0c0c0;
+        opacity: 1;
+    }
+}
+
+.popup-menu-btn-floating svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+}
+
+.popup-menu-btn-floating.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+/* Floating button is now always flex */
+
+#loader-container {
+    text-align: center;
+    margin: 50px auto;
+    background-color: #fbcb39;
+    padding: 2em;
+    border-radius: 10px;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    display: inline-block;
+    width: 300px;
+}
+
+.loader {
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid #3498db;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1.5s linear infinite;
+    margin: 0 auto;
+}
+
+#loader-text {
+    margin-top: 10px;
+    font-size: 1.1em;
+    color: #0a0a0a;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+
+
+.scrolling-menu-wrapper {
+    display: grid;
+    /* Промяна на flex към grid за по-добър контрол */
+    grid-template-columns: auto 1fr;
+    /* Първата колона (стрелката) е с авто-ширина, втората (менюто) заема останалото място */
+    align-items: center;
+    width: 100%;
+}
+
+.board-menu-container {
+    display: flex;
+    /* Остава flex, за да се подредят бутоните на един ред */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* Позволява хоризонтално скролиране */
+    scroll-behavior: smooth;
+    /* Smooth scrolling on button click */
+    gap: 5px;
+    padding: 10px 0 0 0px;
+    align-items: flex-end;
+    /* Align items to bottom to allow growth upwards */
+    /* Remove padding-bottom to keep height consistent? */
+    height: 45px;
+    /* Ensure sufficient total height for the container */
+    overflow-y: hidden;
+    /* Prevent vertical scroll bar if height slightly exceeds */
+    /* Намалява разстоянието отдолу до 3px */
+    /* Премахваме правилата, които скриват скролбара */
+    scrollbar-color: #aaa #555;
+    /* thumb track - за Firefox */
+    scrollbar-width: auto;
+    /* thin - за Firefox */
+}
+
+/* Стилизиране на скролбара за Webkit-базирани браузъри (Chrome, Edge, Safari) */
+.board-menu-container::-webkit-scrollbar {
+    height: 16px;
+    /* Височина на скролбара */
+}
+
+.board-menu-container::-webkit-scrollbar-track {
+    background: #555;
+    /* Тъмно сив фон, както е поискано */
+    border-radius: 4px;
+}
+
+.board-menu-container::-webkit-scrollbar-thumb {
+    background: #aaa;
+    /* По-светъл плъзгач за контраст */
+    border-radius: 4px;
+}
+
+
+
+
+
+
+
+
+
+.board-filter-link {
+    position: relative;
+    padding: 1px 8px;
+    /* Вътрешен отстъп за текста */
+    border-top-left-radius: 8px;
+    /* Заоблен горен ляв ъгъл */
+    border-top-right-radius: 8px;
+    /* Заоблен горен десен ъгъл */
+    margin-right: 0px;
+    /* Разстояние между табовете */
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+    /* Може да промените шрифта */
+    font-size: 14px;
+    color: #090909;
+    /* Цвят на текста */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+    /* Лека сянка за текста */
+    box-shadow: inset 0 2px 5px rgba(255, 255, 255, 0.3),
+        /* Вътрешен блясък отгоре */
+        inset 0 -1px 2px rgba(0, 0, 0, 0.2),
+        /* Вътрешна сянка отдолу */
+        0 3px 6px rgba(0, 0, 0, 0.3);
+    /* Външна сянка за дълбочина */
+    /* transition: all 0.2s ease-in-out;
+    Плавен преход при hover/active */
+    /* Вместо all, избройте само конкретните свойства
+    transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out; */
+    transform: translateY(0);
+    /* За да може active да се повдига */
+    /* Центриране по хоризонтала */
+    min-width: 70px;
+    /* Минимална ширина на таба      max-width: 150px;*/
+    height: 35px;
+    /* Височина на таба */
+    /* Добавено за съкращаване на текста */
+    display: inline-block;
+    white-space: nowrap;
+    /* Prevent shrinking in flex container */
+    flex-shrink: 0;
+    text-align: center;
+    line-height: 33px;
+    /* Центриране по вертикала (35px височина - 2px padding) */
+    vertical-align: middle;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Общи стилове за пластмасов ефект */
+.board-filter-link::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 100%);
+    /* Лек блясък отгоре */
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    pointer-events: none;
+    /* За да не блокира кликовете */
+}
+
+/* Стил за активен таб */
+.board-filter-link.active,
+.selected-board {
+    z-index: 11;
+    font-weight: bold;
+    box-shadow: inset 0 2px 8px rgba(255, 255, 255, 0.4),
+        inset 0 -1px 3px rgba(0, 0, 0, 0.3),
+        0 4px 8px rgba(0, 0, 0, 0.3);
+    border: 2px solid #fff;
+}
+
+/* Prevent text selection in board menu items */
+.board-filter-link
+
+/* Restore lift effect for active items in dropdown menu */
+
+
+.modal-body .board-filter-link {
+    display: inline-block;
+    /* Allow width to be based on content */
+    width: auto;
+    text-align: left;
+}
+
+/* Container for the Ctrl+Click modal with all boards */
+.all-boards-modal-container {
+    display: flex;
+    flex-direction: row;
+    /* Arrange items in rows */
+    flex-wrap: wrap;
+    /* Allow wrapping to the next column */
+    gap: 10px;
+    /* Space between buttons */
+    align-items: flex-end;
+    /* Lift active buttons up by aligning to bottom */
+}
+
+/* Remove the large top padding from the modal body when showing the board list */
+.modal-content-box:has(.all-boards-modal-container) #boards-menu-modal-body {
+    padding-right: 0px;
+}
+
+/* Apply background specifically to the all-boards modal, regardless of popup-mode */
+#boards-menu-modal .modal-content-box {
+    background-image: url('Frame.jpg');
+    max-width: 95%;
+    max-height: 80vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding-top: 60px;
+}
+
+#boards-menu-modal .modal-close {
+    position: absolute !important;
+    right: 10px !important;
+    /* margin-top: 0px !important; @@*/
+}
+
+#boards-menu-modal-body {
+    overflow-y: auto !important;
+    flex-grow: 1;
+    min-height: 0;
+    padding-bottom: 0px;
+    width: 100%;
+}
+
+/* Apply background to the parent modal box when it contains the board list */
+.popup-mode .modal-content-box {
+    background-image: url('Frame.jpg');
+    max-width: 95%;
+    margin-left: 5px;
+    max-height: 80vh;
+    /* Limit height on small screens */
+    overflow-y: auto;
+    /* Enable vertical scrolling */
+}
+
+/* Make the close button visible on the textured background */
+.popup-mode .modal-close {
+    background-color: #d6d6d6;
+    /* Same color as header buttons */
+    right: 10px;
+    /* Fine-tuned position closer to the edge */
+}
+
+#boards-menu-modal .modal-close {
+    color: #d6d6d6 !important;
+}
+
+.board-filter-link:hover {
+    background-color: #e9ecef;
+    text-decoration: none;
+}
+
+.board-filter-link.trash-filter-btn {
+    background-color: #c00 !important;
+    color: #fff !important;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.board-filter-link.trash-filter-btn.active,
+.board-filter-link.trash-filter-btn.selected-board {
+    background-color: #a00 !important;
+    color: #fff !important;
+    border: 1px solid #fff;
+}
+
+.selected-board {
+    background-color: #007bff;
+    color: #fff;
+    text-decoration: underline;
+    /* border: 3px solid #f70202 !important; Add a thick border to the selected board */
+}
+
+.selected-board:hover {
+    background-color: #0056b3;
+}
+
+/* Special style for the 'All' button when it's selected */
+.all-boards-filter-btn.selected-board {
+    background-color: #ffc107;
+    /* Keep it orange even when selected */
+    /* Keep it orange even when selected */
+    color: #000;
+}
+
+/* Ensure new updates button is white like others when inactive */
+.new-updates-filter-btn {
+    color: #fff;
+}
+
+/* Style for the 'All' button to accommodate the icon */
+.all-boards-filter-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #ffc107;
+    /* Orange color */
+}
+
+/* Style for the icon inside the button */
+
+
+
+
+
+
+
+
+.reminder-filter-btn {
+    background-color: red;
+    color: white;
+}
+
+.reminder-filter-btn:hover {
+    background-color: #ff3333;
+    color: white;
+}
+
+.reminder-filter-btn.selected-board {
+    background-color: #cc0000;
+    color: white;
+}
+
+.board-filter-popup {
+    position: fixed;
+    bottom: 20px;
+    right: 30px;
+    background-color: #555;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    z-index: 999;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease;
+    pointer-events: none;
+    font-family: sans-serif;
+    cursor: pointer;
+}
+
+.board-filter-popup.visible {
+    opacity: 0.7;
+    transform: translateY(0);
+    pointer-events: auto;
+    /* Re-enable pointer events when visible */
+}
+
+.board-filter-popup.visible:hover {
+    background-color: #333;
+    opacity: 1;
+}
+
+/* b1.95: таблет и десктоп 900-1220px — хедърът остава в ЕДИН ред (преди: колона от 4 реда и ~212px).
+   Търсачката се свива, за да се събере редом бутоните, вместо да се пренася на втори ред.
+   15 Oct 2026: горната граница 1220px е премахната — над 1220px панелът с дъските (.boards-note, пълна ширина,
+   добавен от main.js) нямаше order и заставаше ПРЕДИ бутоните, избутвайки ги на трети ред, а търсачката
+   се долепяше най-вдясно. Сега същият едноредов ред важи и за широки екрани. */
+@media (min-width: 900px) {
+    header {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    header > div:first-child {
+        order: 1;
+    }
+
+    /* Title */
+
+    #search-wrapper {
+        order: 2;
+        min-width: 0;
+        flex: 1 1 150px;
+        max-width: 400px;
+        /* b1.96: гарантирано >=10px отстояние до заглавието и до бутоните, и когато полето се свие */
+        margin-left: 12px;
+        margin-right: 12px;
+    }
+
+    /* Search Box — свиваем */
+
+    #header-buttons {
+        order: 3;
+    }
+
+    /* Buttons */
+
+    .boards-note {
+        order: 4;
+    }
+
+    /* Board menu — собствен ред под горния ред */
+}
+
+/* Под 900px (телефони, тесни портретни екрани) остава колоната, както досега. */
+@media (max-width: 899px) {
+    header {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    /* b1.96: полето за търсене пази >=10px до ръбовете на хедъра и в колона */
+    #search-wrapper {
+        width: calc(100% - 20px);
+        max-width: 400px;
+        margin-left: 10px;
+        margin-right: 10px;
+    }
+
+    /* Order for tablets (769px - 1030px) */
+    /* header > div:first-child { order: 1; } Title */
+    #search-container {
+        order: 3;
+    }
+
+    /* Search Box */
+    #header-buttons {
+        order: 2;
+    }
+
+    /* Buttons */
+    .boards-note {
+        order: 4;
+    }
+
+    /* Board menu at the bottom */
+
+    #scale-wrapper .slider-container {
+        flex-wrap: nowrap;
+    }
+
+/* Responsive layout for settings modal on small screens */
+
+    .zoom-control-wrapper {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+        margin-top: 5px !important;
+        /* Reduce space between settings groups */
+    }
+
+    .zoom-control-wrapper label {
+        /* flex-basis removed to allow inline styles to persist */
+        text-align: left !important;
+        /* Ensure labels are left-aligned */
+    }
+
+    /* Ширината НЕ се пипа тук (20 Oct 2026): от 400px нагоре модалът пази същите
+       400px, с които е на екран над 900px. По цялата ширина е само под 400px —
+        виж @media (max-width: 399px) по-долу. */
+    #settings-modal .modal-content-box {
+        height: 90% !important;
+        max-height: 100% !important;
+        border-radius: 0 !important;
+        margin: 10px 0 0px 0 !important;
+    }
+
+    /* Гарантира, че иконите, етикетите и бутоните за управление на данни остават на един ред */
+    .settings-mobile-row {
+        flex-direction: row !important;
+        align-items: center !important;
+        /* Поддържа вертикално центриране */
+    }
+
+    #scale-wrapper #scaleInput {
+        min-width: 55px;
+        width: 55px;
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+
+    #scale-wrapper #scaleInput::-webkit-outer-spin-button,
+    #scale-wrapper #scaleInput::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+}
+
+/* Модалът Настройки е по цялата ширина само на съвсем тесни екрани (под 400px).
+   От 400px до 900px е със същата ширина като на широк екран (max 400px). */
+@media (max-width: 399px) {
+    #settings-modal .modal-content-box {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+}
+
+/*#search-container {
+        padding: 1em 0 0.5em;
+    }*/
+
+/* ВАЖНО (15 Oct 2026): оттук до #header-buttons НЕ е изтекло от @media (max-width:899px) —
+   двете правила тук важат на всички ширини и са единствените за този селектор:
+     - #header-buttons { display:flex; justify-content:center; padding:5px 0 } — от него зависи
+       едноредовият хедър на таблет/десктоп (без него хедърът става 132px вместо 96px);
+     - #header-buttons { order: 2 } — редът вече е излишен, след като медията за едноредов хедър
+       стана @media (min-width: 900px) и тя сама задава order:3 на бутоните, но е оставен на
+       мястото си, за да не се пипа нищо извън двете поправки.
+   Мобилните правила, които наистина бяха изтекли (диалогът на настройките, редовете в него и
+   полето за мащаб), са прибрани обратно в @media (max-width:899px) — иначе диалогът се разпъваше
+   по цялата ширина на широк екран вместо да е max 400px. */
+#header-buttons {
+    display: flex;
+    justify-content: center;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+#header-buttons {
+    order: 2;
+}
+
+    /* Ensure settings modal is above Ko-fi widget on mobile
+    #settings-modal {
+        z-index: 100000000 !important;
+    } */
+
+    /* Превключва грида за сортиране в една колона на тесни екрани */
+    
+
+
+/* Toast Notification */
+.toast-notification {
+    visibility: hidden;
+    /* Hidden by default. */
+    min-width: 250px;
+    /* Set a default minimum width */
+    transform: translateX(-50%);
+    background-color: #FBCB39;
+    color: #000;
+    text-align: center;
+    /* Centered text */
+    border-radius: 8px;
+    /* Rounded borders */
+    padding: 16px;
+    /* Padding */
+    position: fixed;
+    /* Sit on top of the screen */
+    z-index: 1001;
+    /* Add a z-index if needed */
+    left: 50%;
+    /* Center the snackbar */
+    bottom: 0;
+    /* 0px from the bottom as requested */
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    font-size: 1.1em;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.16), 0 5px 8px rgba(0, 0, 0, 0.23);
+    cursor: pointer;
+}
+
+/* Show the toast notification when it has the 'show' class */
+.toast-notification.show {
+    visibility: visible;
+    /* Show the snackbar */
+    -webkit-animation: fadein 0.5s;
+    animation: fadein 0.5s;
+}
+
+/* Animations to fade the toast in and out */
+@-webkit-keyframes fadein {
+    from {
+        bottom: -60px;
+        opacity: 0;
+    }
+
+    to {
+        bottom: 0;
+        opacity: 1;
+    }
+}
+
+@keyframes fadein {
+    from {
+        bottom: -60px;
+        opacity: 0;
+    }
+
+    to {
+        bottom: 0;
+        opacity: 1;
+    }
+}
+
+@-webkit-keyframes fadeout {
+    from {
+        bottom: 0;
+        opacity: 1;
+    }
+
+    to {
+        bottom: -60px;
+        opacity: 0;
+    }
+}
+
+@keyframes fadeout {
+    from {
+        bottom: 0;
+        opacity: 1;
+    }
+
+    to {
+        bottom: -60px;
+        opacity: 0;
+    }
+}
+
+/* Folder ID Prompt Popup */
+.folder-id-prompt-popup {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    visibility: hidden;
+    /* Hidden by default */
+    opacity: 0;
+    transition: visibility 0s, opacity 0.3s ease-in-out;
+}
+
+.folder-id-prompt-popup.show {
+    visibility: visible;
+    opacity: 1;
+}
+
+.folder-id-prompt-popup .popup-content {
+    background: #fbcb39;
+    padding: 30px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 400px;
+}
+
+.folder-id-prompt-popup p {
+    margin-bottom: 20px;
+    font-size: 1.1em;
+    color: #333;
+}
+
+.folder-id-prompt-popup input {
+    width: calc(100% - 20px);
+    padding: 10px;
+    margin-bottom: 20px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em;
+}
+
+.folder-id-prompt-popup button {
+    padding: 10px 20px;
+    background-color: #4285F4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+.folder-id-prompt-popup button:hover {
+    background-color: #357ae8;
+}
+
+
+
+
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    padding: 3px;
+    box-sizing: border-box;
+    overflow: visible;
+}
+
+.scale-step-btn {
+    width: 24px;
+    height: 24px;
+    border: 1px solid #1f3b52;
+    border-radius: 4px;
+    background-color: #dde8f0;
+    color: #1f3b52;
+    font-size: 1.2em;
+    font-weight: bold;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    padding: 0;
+    line-height: 1;
+}
+
+.scale-step-btn:active {
+    background-color: #b0c4d8;
+}
+
+#scaleSlider {
+    appearance: none;
+    flex-grow: 1;
+    height: 5px;
+    background: linear-gradient(to right, #f1c40f, red);
+    border: 1px solid #17202a;
+    border-radius: 5px;
+    outline: none;
+}
+
+#scaleSlider::-webkit-slider-thumb {
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    background-color: #17202a;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+#scaleValue {
+    margin-left: 10px;
+    font-size: 1em;
+    color: black;
+}
+
+.note-counter {
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 0.9em;
+    font-weight: bold;
+    margin-right: 5px;
+    /* Add space to the right, before the buttons */
+    margin-top: 12px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    /* Make it look clickable */
+}
+
+#zoom-modal .modal-content-box {
+    background-color: #cfe6f8;
+    width: 90%;
+    max-width: 600px;
+    padding: 0;
+    height: auto;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#zoom-modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.zoom-control-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding-right: 20px;
+}
+
+/* Специфичен стил, за да се подредят етикетът и бутонът за избор на папка вертикално */
+
+
+/* Renamed from #zoom-modal to #settings-modal */
+#settings-modal .modal-content-box {
+    background-color: #cfe6f8;
+    width: 70%;
+    max-width: 480px;
+    padding: 10px;
+    height: auto;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    -webkit-user-select: none;
+    /* Safari */
+    -moz-user-select: none;
+    /* Firefox */
+    user-select: none;
+    /* Prevent text selection */
+}
+
+#settings-modal .modal-content-box h2 {
+    margin: 5px 0 8px 0;
+    text-align: center;
+    color: #1f3b52;
+}
+
+/* Close button for settings modal */
+#settings-modal .modal-close {
+    right: 15px;
+    margin-top: 0px;
+}
+
+#settings-modal-body {
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.zoom-btn {
+    padding: 10px 15px;
+    background-color: #4285F4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+.zoom-btn:hover {
+    background-color: #357ae8;
+}
+
+.zoom-input-number {
+    width: 75px;
+    min-width: 50px;
+    flex-shrink: 0;
+    margin: 0 2px 0 10px;
+    /* top, right, bottom, left */
+    text-align: center;
+    font-size: 1em;
+    border: 1px solid #1f3b52;
+    border-radius: 4px;
+    background-color: #eef5fb;
+    /* -moz-appearance: textfield;
+    Firefox
+    appearance: none; */
+    /* Standard property to remove default appearance */
+}
+
+.zoom-input-select {
+    width: 80px;
+    /* Explicit width */
+    margin: 0 2px 0 10px;
+    /* top, right, bottom, left */
+    text-align: center;
+    font-size: 1em;
+    border: 1px solid #1f3b52;
+    border-radius: 4px;
+    background-color: #eef5fb;
+    /* No appearance property needed for select, as it's not a number input */
+}
+
+
+/* .zoom-input-number::-webkit-outer-spin-button,
+.zoom-input-number::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+} */
+
+.modal-version {
+    text-align: center;
+    font-size: 1em;
+    color: #555;
+    margin-top: 0px;
+    margin-bottom: 5px;
+    padding-bottom: 0px;
+    align-self: center;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+}
+
+#settings-modal .modal-content-box.set-modal {
+    background: linear-gradient(135deg, #858585, #E4E4E4);
+    border-radius: 3px;
+    padding: 5px;
+    position: relative;
+    height: auto;
+    max-width: 400px;
+    width: 100%;
+}
+
+.corner-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: conic-gradient(#636363, #E4E4E4, #636363);
+    position: absolute;
+}
+
+.top-left {
+    top: 5px;
+    left: 5px;
+}
+
+.top-right {
+    top: 5px;
+    right: 5px;
+}
+
+.bottom-left {
+    bottom: 5px;
+    left: 5px;
+}
+
+.bottom-right {
+    bottom: 5px;
+    right: 5px;
+}
+
+.modal-content-box.set-modal .corner-dot {
+    /* Ensure dots are visible when .set-modal is applied dynamically */
+    display: block;
+}
+
+/* Нов стил за контейнера на опциите за сортиране */
+.sort-options-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    /* 1 колона */
+    gap: 5px 15px;
+    /* 5px вертикално, 15px хоризонтално разстояние */
+    padding-top: 0px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #404040;
+}
+
+/* Стил за етикетите вътре в контейнера за сортиране */
+.sort-options-container .sort-option-label {
+    white-space: nowrap;
+    /* Гарантира, че текстът на етикета не се пренася */
+    display: flex;
+    align-items: center;
+}
+
+/* Стил за добавяне на разделител преди чекбоксовете за сортиране */
+.sort-option-separator {
+    border-top: 1px solid #808080;
+    margin-top: 5px;
+    padding-top: 10px;
+}
+
+.settings-close-btn-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    /* Increased margin `for better separation */
+    width: 100%;
+    /* Ensure the wrapper takes full width to allow alignment */
+}
+
+.start-board-select,
+.active-folder-select {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #060606;
+    background-color: #dadada;
+    font-size: 1em;
+    flex-grow: 1;
+    min-width: 200px;
+}
+
+.start-board-select:focus,
+.active-folder-select:focus {
+    outline: 2px solid #4285F4;
+}
+
+/* New style for the close button to differentiate it */
+#settings-close-btn {
+    background-color: #6c757d;
+    /* A neutral grey color */
+    min-height: 44px;
+    /* Apple's recommended touch target size */
+    min-width: 180px;
+    touch-action: manipulation;
+    /* Prevent zooming on double-tap */
+}
+
+#settings-close-btn:hover {
+    background-color: #5a6268;
+}
+
+/* --- Calendar View Styles --- */
+#calendar-container {
+    padding: 5px;
+    padding-bottom: 20px;
+    /* Разумен padding */
+    background-color: #e0e0e0;
+    /* Собствен фон за календара */
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 100%;
+    /* Покрива родителя, не целия viewport насила */
+    height: auto !important;
+    /* Презаписваме евентуални JS стилове */
+    display: flow-root;
+    /* Създава нов BFC context */
+}
+
+#calendar-container * {
+    box-sizing: border-box;
+    /* Crucial for correct scaling with padding */
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+    /* Добавяме разстояние между заглавието и бутоните */
+    flex-direction: row-reverse;
+    padding: 10px;
+    background-image: url('Frame.jpg');
+    border-bottom: 2px solid #d4c8a8;
+    margin-bottom: 0px;
+    position: relative;
+}
+
+.calendar-nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    /* Разстояние между бутоните в групата */
+}
+
+.calendar-header h2 {
+    margin: 0;
+    position: static;
+    transform: none;
+    text-align: left;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    color: darkorange;
+    /* Подсказва, че може да се кликне */
+    pointer-events: none;
+    flex-grow: 1;
+}
+
+.calendar-header button {
+    border: 2px solid #dddddd;
+    border-radius: 50%;
+    background-color: #878fa3;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    width: 40px;
+    height: 40px;
+    font-size: 1.5em;
+    cursor: pointer;
+    box-shadow: 2px 3px 5px rgba(0, 0, 0, 0.16);
+}
+
+.calendar-header button:hover {
+    background-color: #c0c0c0;
+}
+
+/* Стил за бутона "Днес" в седмичния календар, за да се центрира иконата */
+#today-week-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+    /* Намаляваме padding-а, за да е по-компактен */
+}
+
+/* Прилагаме стила за всички бутони за затваряне на календар */
+.close-calendar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    line-height: 1;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+}
+
+/* --- Месец в нисък (завъртян) екран: вариант B (b3.29) ----------------------------------------
+   В 844x390 месецът не се побира по височина, а досега авто-зумът го смаляваше целия до миниатюра.
+   Затова в нисък екран месецът минава в кутия: залепеният хедър (стрелки, днес, седмица/месец,
+   затваряне, името на месеца) и редът с имената на дните остават горе, а мрежата се скролира в
+   собствена кутия под тях. Клетките си остават квадратни - не се пипат. Класът се слага от
+   main.js (fitCalendarMonth) само когато екранът е нисък, значи портретът и компютърът не се менят. */
+#calendar-container.calendar-scroll-box {
+    /* display:flex се слага инлайн от main.js (виж toggleCalendarScrollBox): инлайн block/none от
+       рендера и от седмичния изглед трябва да може да надделява. */
+    flex-direction: column;
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 5px;
+}
+
+/* Хедърът и имената на дните не се свиват и не се скролират - те са постоянната рамка. */
+#calendar-container.calendar-scroll-box > div:first-child {
+    flex: 0 0 auto;
+}
+
+/* Мрежата се скролира в собствената си кутия и не се свива: обвивката е обикновен блок в портрет. */
+.calendar-grid-scroll {
+    display: block;
+}
+
+/* Мрежата живее в собствената си кутия и се скролира в нея, без да мърда страницата. */
+#calendar-container.calendar-scroll-box > .calendar-grid-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 5px;
+}
+
+.calendar-days-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    /* Same gap as the main grid */
+    margin-bottom: 5px;
+}
+
+.calendar-day-name {
+    font-weight: bold;
+    text-align: center;
+    padding: 10px 0;
+    background-color: #c8c8c8;
+    border-radius: 4px;
+}
+
+.day-name-short {
+    display: none;
+    /* Hide short names by default */
+}
+
+.weekend-day {
+    color: red;
+}
+
+.calendar-cell-blank {
+    background: none;
+    border: none;
+}
+
+.calendar-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    aspect-ratio: 1 / 1;
+    /* This is the key: forces the element to be a square */
+    overflow: hidden;
+    /* Prevent content from expanding the cell */
+    padding: 5px 5px 10px 5px;
+    /* Restore padding for content alignment */
+    isolation: isolate;
+    /* Create a new stacking context to contain the ::before pseudo-element */
+}
+
+.calendar-cell::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: url('day1.png');
+    background-size: 100% 100%;
+    /* Stretch to fill the cell */
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: -1;
+    /* Place it behind the content */
+}
+
+.calendar-date-number {
+    font-weight: bold;
+    color: #555;
+    margin-top: 5px;
+    /* margin-left: 5px; Re-added background for all dates */
+    background-color: rgb(194, 194, 194);
+}
+
+.today-cell {
+    border: 2px solid gold;
+    background-color: rgba(255, 255, 0, 0.2);
+    /* Make sure it sits on top of the texture if needed, though the texture is on ::before */
+}
+
+.today-cell .calendar-date-number {
+    background-color: yellow !important;
+    color: black !important;
+    font-weight: 900;
+    border: 1px solid goldenrod;
+}
+
+/* Fallback/Legacy styling */
+.today-date {
+    background-color: yellow !important;
+    color: black !important;
+}
+
+.calendar-notes-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-top: 5px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    /* Creates space between the notes */
+    padding-right: 4px;
+    /* Скролбарът в клетката с дата се маха (2 Nov 2026, по заявка на собственика): в 50-пикселова
+       клетка сивата ивица беше по-забележима от самите бележки. Скролът остава — бележките се
+       плъзгат с пръст или колелце, само лентата не се вижда и не заема място. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.calendar-notes-container::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+    /* Chromium: без лента и без място за нея */
+}
+
+.calendar-mini-note {
+    font-size: 0.7em;
+    padding: 4px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+    background-color: var(--note-bg-0);
+    cursor: pointer;
+    overflow: hidden;
+    /* Hide text that overflows */
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    width: calc(50% - 2px);
+    /* Two notes per row with a 4px gap */
+    /* Квадратче: височината е колкото ширината, за да се вижда цяло в клетката.
+       Преди беше фиксирани 55px и в ниска клетка се показваше само горната ивица. */
+    aspect-ratio: 1 / 1;
+    height: auto;
+    box-sizing: border-box;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    /* Limit text to 5 lines */
+    line-clamp: 5;
+    -webkit-box-orient: vertical;
+    white-space: pre-wrap;
+    /* Respect newlines */
+    word-break: break-word;
+}
+
+/* На телефон клетката се вдига толкова, че първият ред от две бележки да е цял:
+   43px за числото и отстъпите + височината на бележката (половината ширина на
+   клетката минус отстъпите), плюс 3px запас. Ширината не се пипа — седем колони. */
+@media (max-width: 520px) {
+    .calendar-cell {
+        aspect-ratio: auto;
+        /* Фиксирана височина, не min-height: иначе клетката расте по съдържание и
+           мрежата става неравна. Останалото слиза в скрола на контейнера. */
+        height: calc(37px + (100vw - 40px) / 14);
+    }
+}
+
+@media (hover: hover) {
+    .calendar-mini-note:hover {
+        filter: brightness(95%);
+        border-color: rgba(0, 0, 0, 0.3);
+    }
+}
+
+@media (max-width: 768px) {
+    .day-name-long {
+        display: none;
+        /* Hide long names on small screens */
+    }
+
+    .day-name-short {
+        display: inline;
+        /* Show short names on small screens */
+    }
+}
+
+/* Accordion Styles */
+.accordion-header {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /*font-weight: bold;*/
+    font-style: italic;
+    color: #1f3b52;
+    padding: 5px 0;
+}
+
+.accordion-arrow {
+    transition: transform 0.3s ease;
+}
+
+.accordion.active .accordion-arrow {
+    transform: rotate(180deg);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    /* Add some styling to the content area
+    background-color: rgba(0, 0, 0, 0.05);  
+    border-radius: 4px;*/
+    padding: 0 10px;
+    margin-top: 0px;
+}
+
+.accordion.active .accordion-content {
+    max-height: 2000px;
+}
+
+/* --- Стилове за Седмичен Календар --- */
+.weekly-list-container {
+    /* overflow-y: auto; Removed to allow full page scroll */
+    flex-grow: 1;
+    padding: 10px;
+}
+
+.weekly-day-row {
+    display: flex;
+    align-items: stretch;
+    /* Връщаме stretch, за да се разпъват елементите по височина */
+    justify-content: flex-start;
+    /* Подравнява датата и бележките вляво */
+    padding: 0px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+/* --- КОРЕКЦИЯ: Премахваме двойното разстояние над първия ред --- */
+.weekly-day-row:first-child {
+    padding-top: 0;
+}
+
+.today-row {
+    background-color: #bfc523;
+    /* var(--note-bg-0); - фон за днешния ден */
+    border-radius: 5px;
+    /* Леко заобляне на ъглите */
+}
+
+.weekly-date-info {
+    flex-shrink: 0;
+    width: 160px;
+    /* Увеличаваме ширината, за да се побере пълното име на деня */
+    text-align: center;
+    margin-right: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    /* Подравнява съдържанието (дата, ден) в горния край */
+    background-image: url('Notebook.png');
+    background-size: cover;
+    /* Разпъваме фона, за да покрие целия елемент */
+    border-radius: 8px;
+    /* Заобляме ъглите */
+    padding: 10px 5px;
+    /* Връщаме нормалния padding */
+    /* margin-bottom: 0px; КОРЕКЦИЯ: Добавяме margin-bottom, за да създадем 10px разстояние отдолу */
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+    /* Лека сянка за дълбочина */
+}
+
+.weekly-date-number {
+    font-size: 1.8em;
+    /* По-едър шрифт за датата */
+    font-weight: bold;
+}
+
+.weekly-day-name {
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+/* --- Стил за брояча на бележки в седмичния календар --- */
+.weekly-note-counter {
+    margin-top: 8px;
+    font-size: 1em;
+    color: #555;
+    font-weight: bold;
+}
+
+/* --- КОРЕКЦИЯ: Оцветяваме почивните дни в червено --- */
+.weekly-date-info.weekend-day .weekly-date-number,
+.weekly-date-info.weekend-day .weekly-day-name {
+    color: red;
+}
+
+/* --- КОРЕКЦИЯ: Стил за дните без бележки --- */
+.weekly-date-info.no-notes-day {
+    flex-direction: row;
+    /* Подреждаме на един ред */
+    align-items: center;
+    /* Центрираме вертикално */
+    justify-content: left;
+    /* Центрираме хоризонтално */
+    gap: 8px;
+    /* Добавяме разстояние между датата и деня */
+    width: 170px;
+    /* Увеличаваме ширината със 50px (120 + 50) */
+    padding: 5px;
+    /* Намаляваме вътрешното отстояние */
+    padding-left: 35px;
+    padding-top: 15px;
+    /* Запазваме горния padding за баланс */
+    margin-bottom: 5px;
+    /* Добавяме разстояние отдолу */
+}
+
+.weekly-date-info.no-notes-day .weekly-date-number,
+.weekly-date-info.no-notes-day .weekly-day-name {
+    font-size: 1em;
+    /* Уеднаквяваме размера на шрифта */
+}
+
+.weekly-notes-container {
+    display: flex;
+    flex-wrap: nowrap;
+    /* Предотвратява преминаването на нов ред */
+    overflow-x: auto;
+    /* Добавя хоризонтален скрол, ако е необходимо */
+    gap: 10px;
+    /* Добавяме разстояние между бележките */
+    /* --- КОРЕКЦИЯ: Намаляваме разстоянията около скролбара --- */
+    max-height: 280px;
+    /* КОРЕКЦИЯ: 260px за бележката + разстояние за скролбара */
+    /* --- СТИЛОВЕ ЗА СКРОЛБАР (копирани от .board-menu-container) --- */
+    scrollbar-color: #aaa #555;
+    /* thumb track - за Firefox */
+    scrollbar-width: thin;
+    /* за Firefox */
+}
+
+.weekly-notes-container::-webkit-scrollbar {
+    height: 8px;
+}
+
+.weekly-notes-container::-webkit-scrollbar-track {
+    background: #555;
+    border-radius: 4px;
+}
+
+.weekly-notes-container::-webkit-scrollbar-thumb {
+    background: #aaa;
+    border-radius: 4px;
+}
+
+.mini-note {
+    transform: scale(0.85);
+    transform-origin: top left;
+    /* Предотвратява преминаването на нов ред */
+    position: relative;
+    z-index: 1;
+}
+
+/* --- КОРЕКЦИЯ: Опаковката, която решава проблема с презастъпването --- */
+.mini-note-wrapper {
+    width: 220px;
+    /* 250px * 0.85 approx 212.5px */
+    height: 220px;
+    /* 250px * 0.85 approx 212.5px */
+    flex-shrink: 0;
+    /* Предотвратява свиването на опаковката */
+}
+
+.mini-note .note-background-canvas {
+    z-index: -1;
+    /* Гарантира, че фонът е зад съдържанието */
+}
+
+
+
+
+
+
+
+.settings-icon-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* Разстояние между иконата и текста */
+    margin-right: 10px;
+}
+
+.accordion-line {
+    flex-grow: 1;
+    /* Линията заема останалото пространство */
+    border: none;
+    /* Премахва стандартния стил на <hr> */
+    border-top: 1px solid #000;
+    /* Добавя тънка линия */
+    margin-left: 10px;
+    /* Разстояние между стрелката и линията */
+}
+
+/* Style for the 'With Photos' board button */
+.photos-filter-btn {
+    background-color: #6f42c1;
+    /* Purple */
+    color: white;
+}
+
+.photos-filter-btn:hover {
+    background-color: #5a32a3;
+    color: white;
+}
+
+.photos-filter-btn.selected-board {
+    background-color: #4a2293;
+    color: white;
+}
+
+/* Style for the 'With Video' board button */
+.videos-filter-btn {
+    background-color: #e83e8c;
+    /* Pink */
+    color: white;
+}
+
+.videos-filter-btn:hover {
+    background-color: #d63384;
+    color: white;
+}
+
+.videos-filter-btn.selected-board {
+    background-color: #c2185b;
+    color: white;
+}
+
+/* Style for the 'Other Attachments' board button */
+.other-filter-btn {
+    background-color: #00796b;
+    /* Teal */
+    color: white;
+}
+
+.other-filter-btn:hover {
+    background-color: #00695c;
+    color: white;
+}
+
+.other-filter-btn.selected-board {
+    background-color: #004d40;
+    color: white;
+}
+
+/* --- Responsive Header Logic --- */
+
+#boards-menu-container {
+    display: block;
+}
+
+
+
+/* Floating button visibility handled in its own class */
+
+/* .popup-menu-btn removed */
+
+/* --- Login Page Styles --- */
+.login-box {
+    text-align: center;
+    background: #afbac6;
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    /*margin-top: 10px;*/
+    max-width: 800px;
+    /* Limit width */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#authorize_button {
+    font-size: 1.2em;
+    padding: 10px 20px;
+    cursor: pointer;
+    background-color: #4285F4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+}
+
+#authorize_button:hover {
+    background-color: #357ae8;
+}
+
+#lang-switcher {
+    display: flex;
+    justify-content: center;
+    margin-left: auto;
+}
+
+/* Стилове за главния language switcher извън login-box */
+#lang-switcher-main {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+    margin-top: 0px;
+}
+
+/* Стилове за language switcher в login-box */
+#lang-switcher {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+#trialBtn {
+    background-color: #4CAF50;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    display: block;
+    margin: 10px auto;
+}
+
+#trialBtn:hover {
+    background-color: #45a049;
+}
+
+
+
+/* Login container to center content */
+#login-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    padding: 20px;
+}
+
+/* Weekend dates in monthly calendar (Saturday and Sunday) */
+.weekend-date {
+    color: red !important;
+    /* Red color for weekend dates */
+    background-color: #c8c8c8 !important;
+    /* Light pink/red background */
+    /* border-radius: 4px;
+    Slight rounding for better appearance */
+    /* padding: 0px 4px;
+    Small padding to make the background visible */
+}
+
+/* --- Selection Locking Logic --- */
+body.selection-locked .note .note-content {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+}
+
+body.selection-locked .note.active-selection-note .note-content {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+}
+
+/* Note Header Info & Board Links */
+.note-header-info {
+    display: flex;
+    align-items: center;
+    font-size: 0.8em;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+
+
+/* Show only when in global view mode */
+
+
+
+
+/* Modal Note Footer (inside toolbar) */
+.modal-note-footer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    /* Reduced gap */
+    color: #555;
+    font-size: 0.85em;
+    /* Slightly smaller font */
+    margin-right: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+    /* Limit width */
+    flex-shrink: 0;
+}
+
+.modal-note-footer[hidden] {
+    display: none;
+}
+
+
+
+.modal-note-footer .header-icon svg {
+    width: 16px;
+    height: 16px;
+    vertical-align: text-bottom;
+}
+
+/* Иконата и датата в лентата - точно 4px (b2.17): разстоянието идва само от gap-а, без margin и
+   без интервала в текста (началният интервал в анонимния flex елемент отпада). */
+.modal-note-footer .note-header-date,
+.modal-note-footer .note-header-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.modal-note-footer .note-header-date:empty,
+.modal-note-footer .note-header-time:empty {
+    display: none;
+}
+
+.modal-note-footer .header-icon {
+    display: inline-flex;
+}
+
+/* Boards Menu Modal Container - Center Align Container, Right Align Items */
+.all-boards-modal-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    /* Items align right relative to container set by fit-content */
+    gap: 10px;
+    width: fit-content;
+    /* Container shrinks to fit columns exactly */
+    margin: 0 auto;
+    /* Center the container horizontally */
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+/* Remove potential margins from clones to let gap handle spacing */
+.all-boards-modal-container .board-filter-link {
+    margin: 0 !important;
+    box-sizing: border-box;
+    /* Ensure width calculation matches reality @@*/
+}
+
+/* Override default fixed width for boards modal to allow dynamic calculation */
+#boards-menu-modal .modal-content-box {
+    width: auto;
+    max-width: 95vw;
+    display: block;
+    padding: 45px 0px 0 0;
+    /* Override flex display if needed to allow fit-content behavior on children properly? No, flex column is fine */
+}
+
+/* --- Promo Note Styles --- */
+.promo-note {
+    background-color: #fdfd96 !important;
+    padding: 5px !important;
+    width: 230px !important;
+    height: 230px !important;
+    margin: 15px;
+    /* margin-top: 15px !important;
+    padding-bottom: 5px !important;
+    margin-left: 20px;
+    Центрира я спрямо останалите (250px + 5px margin) */
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.2s;
+}
+
+.promo-note:hover {
+    transform: scale(1.02);
+}
+
+.promo-note .note-content {
+    padding: 0;
+    overflow: hidden;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+}
+
+.promo-note img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    /*border-radius: 4px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;*/
+}
+
+.promo-close:hover {
+    background: rgba(255, 255, 255, 0.9) !important;
+    transform: scale(1.1);
+}
+
+
+
+
+
+/* --- RESPONSIVE MODAL TOOLBARS --- */
+/* Three cells, not two: the board name, the row of window buttons, and Close on its own. Only the
+   name and the button row are allowed to give way, so however narrow the window is dragged, the
+   header stays exactly as wide as the box - nothing in it can be painted outside the box. */
+.modal-header-toolbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: grid;
+    /* minmax(0, ...) on both shrinkable cells: a plain max-content track refuses to go below the
+       buttons' own width and the whole grid overflows the box (that was the bug - the row-2 strip
+       then stretched to that overflowed width and its scroll started past the real right edge). */
+    grid-template-columns: minmax(0, 1fr) minmax(0, max-content) max-content;
+    column-gap: 8px;
+    grid-template-rows: auto auto;
+    align-items: center;
+    z-index: 10001;
+    pointer-events: none;
+    padding: 10px 15px;
+    background-color: transparent;
+    min-height: 40px;
+}
+
+/* Лентата на бележката НЕ се маркира (b2.81): нито с плъзгане с мишката, нито с двоен клик, нито
+   със задържане на пръст (на телефон тогава излиза менюто за копиране на iOS/Android). Правилото
+   важи за цялата лента и за всяко нейно дете - името на борда, кръгчетата, хиксчето, така че и
+   текст, добавен в лентата по-късно, е покрит. Същото и за реда с датата/часа в долната лента
+   (.modal-note-footer): оттам идва втората половина на оплакването, а той е един текстов ред без
+   нищо за писане в него. Селектируемостта на тялото НЕ се пипа: текстът в бележката
+   (.modal-content-box, редакторът) се маркира както досега, а полетата за писане в долната лента
+   (търсачката) остават извън правилото. Затова тук няма pointer-events (лентата е и дръжка за
+   местене на прозореца) и няма touch-action: none - то би спряло и плъзгането на реда с бутоните. */
+.modal-header-toolbar,
+.modal-header-toolbar *,
+.modal-note-footer,
+.modal-note-footer * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.modal-header-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    pointer-events: auto;
+    flex-wrap: nowrap;
+    /* No width: max-content here any more. As a grid item with min-width 0 the row shrinks with the
+       box; when its buttons no longer fit, it scrolls sideways inside the box (below) instead of
+       pushing the header wider than the window. */
+    min-width: 0;
+    justify-content: flex-start;
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* The scrollbar would eat 4-8px of the row's height and nothing here is worth a visible bar. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.modal-header-buttons::-webkit-scrollbar {
+    display: none;
+}
+
+/* Close: its own cell in row 1, so it is fully visible and clickable at every width, while the
+   button row to its left shrinks and scrolls under its own edge. */
+.modal-header-toolbar > .modal-close {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    pointer-events: auto;
+}
+
+.modal-footer-toolbar {
+    position: relative;
+    /* Change from absolute to relative to stay in flow with body results */
+    margin-top: auto;
+    padding: 5px 10px 10px 0px;
+    /* Reduced top padding to make footer smaller */
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    pointer-events: auto;
+    z-index: 10001;
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    /* Slight separation */
+}
+
+/* Base styles for individual toolbar components to ensure consistency */
+.modal-header-buttons button,
+.modal-header-toolbar > .modal-close,
+.modal-nav-btn,
+.modal-header-btn {
+    position: static !important;
+    /* Override absolute positioning */
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    background-color: transparent;
+    /* Return to transparent */
+    border: 1px solid #aaa;
+    flex-shrink: 0;
+    color: inherit;
+}
+
+.modal-footer-btn {
+    width: 40px;
+    height: 40px;
+    background-color: darkorange;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 3px 5px 8px rgba(0, 0, 0, 0.16), 3px 5px 8px rgba(0, 0, 0, 0.23);
+    cursor: pointer;
+    border: 1px solid #ccc;
+    flex-shrink: 0;
+    color: black;
+}
+
+.modal-footer-toolbar .modal-search-bar {
+    position: static !important;
+    width: 100%;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 0px;
+    height: 32px;
+    box-shadow: none;
+    margin-bottom: 0px;
+}
+
+/* Secondary header row shown only while a note is being edited. */
+/* One row, always: what does not fit scrolls sideways instead of wrapping. A second row made the
+   header taller than the fixed padding above the note text, and the text went under the header. */
+.modal-edit-toolbar {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 3px;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+    pointer-events: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Sized by the box itself: the header grid above never grows past the box, and the strip spans
+       every column of it, so clientWidth here is the box's inner width - the sideways scroll and the
+       is-scrollable fade at the right edge start at the real right edge. */
+    min-width: 0;
+    /* The strip scrolls with a finger, a trackpad and Shift+wheel; the scrollbar stays hidden -
+       it eats 4-8px of the strip's height and breaks the rounding of the buttons. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Лентата с инструменти за форматиране НЕ се маркира (b2.81): глифовете в нея са текстови знаци
+   (↶ ↷ ← → B I U S ▦), тоест плъзгане, двоен клик или задържане на пръст върху бутон
+   маркираше самия глиф като текст - синя селекция върху стрелката. Правилото важи за лентата и за
+   всяко нейно дете (и кръгчетата, дошли от хедъра - списъците - също). Кликането и дългото
+   натискане не се пипат: те работят с mousedown/mouseup/click и със собствени таймери, а
+   маркирането само пречи. Селекцията в редактора остава както досега - тя е в тялото на бележката. */
+.modal-edit-toolbar,
+.modal-edit-toolbar * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.modal-edit-toolbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* More buttons to the right: the right edge fades, so the strip reads as continuing. The mask is
+   painted on the strip's box, so it stays at the edge while the buttons scroll under it. */
+.modal-edit-toolbar.is-scrollable {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+}
+
+.modal-edit-toolbar-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid #aaa;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+/* Фонът при задържане е само за устройства с ИСТИНСКА мишка: на телефон браузърът оставя :hover
+   залепен за елемента след дълго натискане, затова стрелката изглежда натисната, докато не се
+   докосне другаде (собственикът, 25.10.2026: „след дълго натискане бутонът със стрелки остава
+   натиснат и след освобождаване - нека си връща първоначалния цвят"). Фокусът за клавиатура
+   остава извън блока, за да се вижда на десктоп. */
+@media (hover: hover) {
+
+    .modal-edit-toolbar-btn:hover {
+        background: rgba(255, 255, 255, 0.35);
+        border-color: #555;
+    }
+}
+
+.modal-edit-toolbar-btn:focus-visible {
+    background: rgba(255, 255, 255, 0.35);
+    border-color: #555;
+    outline: none;
+}
+
+.modal-edit-toolbar-btn.is-bold {
+    font-weight: 700;
+    font-size: 15px;
+}
+
+.modal-edit-toolbar-btn.is-italic {
+    font-style: italic;
+    font-size: 15px;
+}
+
+.modal-edit-toolbar-btn.is-underline {
+    text-decoration: underline;
+    font-size: 15px;
+}
+
+.modal-edit-toolbar-btn.is-strike {
+    text-decoration: line-through;
+    font-size: 15px;
+}
+
+
+
+
+
+/* The two list buttons are older elements carrying .modal-nav-btn, which the shared rule sizes at
+   32px: inside the strip they take its size, so all the buttons are one row of 28px circles. */
+.modal-edit-toolbar .modal-nav-btn {
+    width: 28px;
+    height: 28px;
+}
+
+/* History: ↶ undo and ↷ redo, first in the strip - the history is the text's, not navigation's. */
+.modal-edit-toolbar-btn.is-undo,
+.modal-edit-toolbar-btn.is-redo {
+    font-size: 15px;
+    line-height: 1;
+}
+
+/* An arrow that can do nothing right now: dimmed, but exactly the same size, so the strip never
+   shifts when a note opens with nothing to undo. */
+.modal-edit-toolbar-btn.is-disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.modal-edit-toolbar-btn.is-disabled:hover,
+.modal-edit-toolbar-btn.is-disabled:focus-visible {
+    background: transparent;
+    border-color: #aaa;
+}
+
+.modal-edit-toolbar-btn.is-table {
+    font-size: 16px;
+}
+
+.modal-edit-toolbar-btn.is-table.is-active {
+    background: #4a90e2;
+    border-color: #4a90e2;
+    color: #fff;
+}
+
+/* ▦ table fields: the content editor becomes text pieces + read-only table fields in place.
+   The note textarea stays underneath (hidden) as the source of truth. */
+.is-table-split > :is(#note-edit-textarea, .nw-note-edit-textarea),
+.is-table-split > :is(#note-edit-textarea-backdrop, .nw-note-edit-textarea-backdrop) {
+    visibility: hidden;
+}
+
+.note-table-split {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px 0;
+    box-sizing: border-box;
+}
+
+.note-table-split-seg {
+    position: relative;
+}
+
+.note-table-split-text,
+.note-table-split-backdrop {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0 10px;
+    box-sizing: border-box;
+    line-height: normal;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+.note-table-split-text {
+    position: relative;
+    z-index: 2;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    resize: none;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.note-table-split-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    color: transparent;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Modelled on .code-block: no wrapping, sideways scroll, monospace. A textarea you type in. */
+.note-table-field {
+    display: block;
+    width: calc(100% - 20px);
+    min-height: 0;
+    resize: none;
+    color: inherit;
+    margin: 6px 10px;
+    max-height: 50%;
+    padding: 8px;
+    box-sizing: border-box;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    overflow: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-wrap: normal;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+    scrollbar-color: #555 #c8a64b;
+    scrollbar-width: thin;
+    outline: none;
+}
+
+.note-table-field:focus-visible {
+    border-color: #4a90e2;
+}
+
+.note-table-field::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.note-table-field::-webkit-scrollbar-track {
+    background: #c8a64b;
+}
+
+.note-table-field::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+/* A table field with its backdrop: the wrapper takes the field's margin, the backdrop has the
+   field's metrics (border, padding, font, line-height, no wrapping) and draws the formatted text
+   under the transparent field text. JS sets its right/bottom to the field's scrollbars and keeps
+   its scroll in step with the field. */
+.note-table-field-seg {
+    margin: 6px 10px;
+}
+
+.note-table-field-seg > .note-table-field {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    margin: 0;
+    background-color: transparent;
+}
+
+.note-table-field-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    margin: 0;
+    padding: 8px;
+    box-sizing: border-box;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-wrap: normal;
+    word-wrap: normal;
+    color: inherit;
+    pointer-events: none;
+}
+
+/* The strip is one row at every width (see flex-wrap: nowrap above), so ▦ keeps its place on the
+   same row on phones too and the narrow-width gap override is no longer needed. */
+
+/* --- Редактор: отстъпът отгоре следва реалната височина на хедъра (30.10.2026) --------------------
+   Досега лентата пазеше 100px за хедъра, независимо колко е висок той: на телефон хедърът е 60-99px
+   според това дали редът с форматиране е отворен, и разликата оставаше празна ивица между лентата и
+   полето за редактиране. --nw-header-h се мери в main.js (wireNoteWindow) и се обновява при всяка
+   промяна на хедъра; мери се до линията под лентата, тоест без долния ѝ отстъп (b3.40). */
+.modal-content-box.has-edit-toolbar {
+    padding-top: calc(var(--nw-header-h, 100px) + 2px);
+}
+
+/* Текстът в режим Редактиране плътно до линиите на горния и долния хедър (b3.40).
+   Собственикът (31.10.2026): „добави и в режим Редактиране текста да приближава плътно до линиите,
+   отделящи горния и долния хедър - в момента има неизползвано пространство“.
+   Вертикалните отстъпи на полето за писане и на слоя с текста (createEditor в main.js) са 3px вместо
+   10px - иначе текстът стоеше 12px под линията на лентата с форматиране и 10px над линията на долната
+   лента. Страничните отстъпи остават 10px. */
+
+/* Adjustments for :is(#modal-board-name, .nw-modal-board-name) when in toolbar */
+.modal-header-toolbar :is(#modal-board-name, .nw-modal-board-name) {
+    position: static !important;
+    grid-column: 1;
+    grid-row: 1;
+    /* Only the name itself is clickable: it is as wide as its text (cut with … when long). The rest of
+       the strip lets the press through to the box (pointer-events: none on the toolbar), which drags
+       the window and does nothing on a click (b1.83). */
+    justify-self: start;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    pointer-events: auto;
+    font-size: 1.1em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Ред „час / повторение / до“ в модала на бележка с дата (b2.10). От b2.12 е лента точно под
+   долната лента - последният елемент в кутията. От b2.18 започва от левия вътрешен ръб (с текста и
+   датата в лентата). Цветовете са полупрозрачни, за да стоят върху всеки цвят на бележката. */
+.note-cal-row {
+    --note-cal-chip-bg: rgba(0, 0, 0, 0.06);
+    --note-cal-chip-border: rgba(0, 0, 0, 0.18);
+    --note-cal-label: rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    margin-top: 0;
+    padding: 0 0 10px 0;
+    font-size: 0.85em;
+    position: relative;
+    z-index: 10001;
+    pointer-events: auto;
+}
+
+.note-cal-row[hidden],
+.note-cal-row [hidden] {
+    display: none !important;
+}
+
+/* Лентата отгоре дава долния си отстъп на реда, за да стоят двете като една. */
+.modal-footer-toolbar:has(+ .note-cal-row:not([hidden])) {
+    padding-bottom: 6px;
+}
+
+.note-cal-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 30px;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: var(--note-cal-chip-bg);
+    border: 1px solid var(--note-cal-chip-border);
+    color: inherit;
+    white-space: nowrap;
+}
+
+.note-cal-lbl {
+    color: var(--note-cal-label);
+    font-size: 0.85em;
+}
+
+.note-cal-chip input,
+.note-cal-chip select {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    min-width: 0;
+    outline-offset: 2px;
+}
+
+.note-cal-chip select {
+    cursor: pointer;
+}
+
+.note-cal-chip option {
+    color: #000;
+}
+
+.note-cal-clear {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 1em;
+    line-height: 1;
+}
+
+.note-cal-clear:hover {
+    opacity: 1;
+}
+
+/* Час и „До“: видимият текст е по устройството (като в лентата); прозрачното нативно поле отгоре
+   само отваря избора (часът - от b2.15, иначе Chrome рисува „01:55 AM“). */
+.note-cal-time-field,
+.note-cal-until-field {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 5.5em;
+    font-variant-numeric: tabular-nums;
+}
+
+.note-cal-time-field {
+    min-width: 3em;
+    gap: 4px;
+}
+
+/* Часовникът в реда (b2.17) - на 4px от часа, като календара и датата в лентата. */
+.note-cal-time-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.note-cal-time-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* Празните полета (само в редакция): „час“ / „без“ / „до“ по-бледо. */
+.note-cal-chip.is-empty {
+    color: var(--note-cal-label);
+}
+
+.note-cal-chip .note-cal-until-input:disabled {
+    cursor: default;
+}
+
+.note-cal-chip .note-cal-time-input,
+.note-cal-chip .note-cal-until-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.note-cal-chip .note-cal-time-input::-webkit-calendar-picker-indicator,
+.note-cal-chip .note-cal-until-input::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    cursor: pointer;
+}
+
+/* Media query for very small screens */
+@media (max-width: 400px) {
+    .modal-header-buttons {
+        gap: 4px;
+    }
+
+    .modal-footer-toolbar {
+        gap: 5px;
+    }
+
+    .modal-footer-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    .modal-footer-toolbar .modal-search-bar {
+        width: 100%;
+    }
+
+    .note-cal-row {
+        gap: 4px;
+        padding-right: 5px;
+    }
+
+    .note-cal-chip {
+        padding: 2px 6px;
+    }
+}
+
+/* --- Бутон "Нареди" в менюто с бордове --- */
+.reorder-boards-btn {
+    font-weight: 600 !important;
+    letter-spacing: 0.3px;
+}
+
+@media (hover: hover) {
+    .reorder-boards-btn:hover {
+        background-color: #455A64 !important;
+    }
+}
+
+/* --- Overlay за пренареждане на бордовете --- */
+.reorder-overlay {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.reorder-item {
+    transition: background 0.2s, transform 0.2s;
+}
+
+.reorder-item:hover {
+    filter: brightness(0.95);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.reorder-item:active {
+    cursor: grabbing;
+    transform: scale(1.02);
+}
+
+#create-db-btn {
+    min-width: 160px;
+}
+
+#delete-db-btn {
+    min-width: 160px;
+}
+
+/* Unsynced Offline Changes indicator */
+.note.dirty::after {
+    content: '!';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ff9800;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+    animation: pulseSync 2s infinite;
+}
+
+@keyframes pulseSync {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.code-block {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin: 10px 0;
+    overflow: auto;
+    font-family: monospace;
+    white-space: pre !important;
+    display: block;
+}
+
+.code-block code {
+    white-space: pre !important;
+}
+
+.all-boards-filter-btn span {
+    text-align: center;
+    width: 100%;
+}
+
+.sounds-filter-btn {
+    color: #fcfcfc !important;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+:is(#copy-modal-btn, .nw-copy-modal-btn) svg {
+    width: 24px !important;
+    height: 24px !important;
+    stroke-width: 2 !important;
+}
+
+/* Clock styles from clock-1.html */
+.clock {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #444, #111);
+    position: relative;
+    box-shadow: inset 0 0 10px #000, 0 0 20px #000;
+    box-sizing: border-box;
+}
+
+.center {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #1df52f;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+}
+
+.hand {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-origin: bottom center;
+}
+
+.hour {
+    width: 6px;
+    height: 50px;
+    background: #fff;
+    border-radius: 3px;
+}
+
+.minute {
+    width: 4px;
+    height: 70px;
+    background: #1df52f;
+    border-radius: 2px;
+}
+
+.second {
+    width: 2px;
+    height: 80px;
+    background: #ff3b3b;
+    border-radius: 1px;
+    box-shadow: 0 0 6px #ff3b3b;
+}
+
+.mark {
+    position: absolute;
+    width: 4px;
+    height: 12px;
+    background: #eee;
+    top: 4px;
+    left: 50%;
+    transform-origin: center 96px;
+}
+
+/* Стилизиране на цифрите */
+.number {
+    position: absolute;
+    color: #fff;
+    font-size: 16px;
+    /* Малко по-малък размер, за да стоят по-елегантно до ръба */
+    font-weight: bold;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Позициониране максимално близо до периферията */
+.n12 {
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.n3 {
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.n6 {
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.n9 {
+    left: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* b3.59: остатък от таймера — седи точно над числото 6 в циферблата.
+   b3.60: вдигнат с 20px, за да не застъпва стрелките при по-дълъг текст (00:00 🔔). */
+.note-timer-readout {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    line-height: 1;
+    color: #1df52f;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.85);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.note-timer-readout[hidden] {
+    display: none;
+}
+
+.note-timer-readout.is-expired {
+    color: #ff3b3b;
+}
+
+/* b3.59: изборът на минути при Ctrl-клик / дълго натискане върху циферблата.
+   b3.61: фиксирана ширина, еднаква за двата режима (преди режимът „Аларма“ беше 145 px заради
+   полето за час, а „Таймер“ 99 px), за да не мени панелът ширина при смяна на режима. */
+.note-timer-picker {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 30;
+    box-sizing: border-box;
+    width: 112px;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 5px;
+    border-radius: 10px;
+    background: rgba(18, 18, 18, 0.94);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+}
+
+/* b3.62: нищо в панела не може да излезе извън рамката му — на телефон полето за час и „Задай“
+   излизаха от панела, когато браузърът поиска повече ширина за час и AM/PM. */
+.note-timer-picker > *,
+.note-timer-body > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.note-timer-picker[hidden] {
+    display: none;
+}
+
+/* b3.59: изборът започва с режим — обратно броене или аларма за точен час. */
+.note-timer-modes {
+    display: flex;
+    gap: 4px;
+}
+
+/* b3.61: всички бутони в панела са по-високи (25 → 31 px на екрана, 36 px в стиловете), за да
+   се натискат с пръст. */
+.note-timer-mode {
+    flex: 1 1 0;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 12px;
+    min-height: 36px;
+    padding: 4px 2px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.note-timer-mode.is-active {
+    background: rgba(29, 245, 47, 0.22);
+    border-color: rgba(29, 245, 47, 0.6);
+    color: #1df52f;
+}
+
+.note-timer-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.note-timer-body[hidden] {
+    display: none;
+}
+
+/* b3.61: полето за час и бутонът „Задай“ са един под друг, за да остане панелът тесен. */
+.note-timer-body[data-note-timer-body="alarm"] {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.note-timer-alarm-time {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 36px;
+    font: inherit;
+    font-size: 13px;
+    padding: 4px 2px;
+    text-align: center;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    overflow: hidden;
+}
+
+/* b3.62: вътрешните части на полето за час се свиват, за да не избутват панела (при 12-часов
+   вид браузърът иска повече място за AM/PM и за иконката на часовника). */
+.note-timer-alarm-time::-webkit-datetime-edit {
+    padding: 0;
+}
+
+.note-timer-alarm-time::-webkit-calendar-picker-indicator {
+    width: 13px;
+    margin: 0;
+    padding: 0;
+    opacity: 0.75;
+}
+
+/* b3.63: браузърът рисува стойността на полето по своя език (при английски Chrome — „2:05 PM“
+   дори при 24-часова система). Затова неговата рисунка става прозрачна, а видимият час идва от
+   .note-timer-alarm-face — собствен слой с текста по настройката на устройството. */
+.note-timer-alarm-field {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.note-timer-alarm-time {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: transparent;
+}
+
+.note-timer-alarm-face {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 17px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    color: #fff;
+    pointer-events: none;
+}
+
+.note-timer-alarm-set {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    font: inherit;
+    font-size: 13px;
+    min-height: 36px;
+    padding: 4px 2px;
+    border-radius: 6px;
+    border: 1px solid rgba(29, 245, 47, 0.45);
+    background: rgba(29, 245, 47, 0.18);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.note-timer-alarm-set:active {
+    background: rgba(29, 245, 47, 0.32);
+}
+
+.note-timer-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.note-timer-pick,
+.note-timer-stop {
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 13px;
+    min-height: 36px;
+    padding: 4px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.note-timer-pick:active {
+    background: rgba(29, 245, 47, 0.25);
+}
+
+.note-timer-stop {
+    background: rgba(255, 90, 90, 0.18);
+    border-color: rgba(255, 90, 90, 0.5);
+}
+
+/* Ripple ефект върху header бутони 
+.header-btn {
+    transition: transform .15s, box-shadow .15s;
+    overflow: hidden;
+}
+
+.header-btn:hover {
+    transform: scale(1.08);
+    filter: brightness(1.1);
+}
+
+.header-btn:active {
+    transform: scale(.92);
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-40px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+ 1. Hover: lift + rotate 
+.note {
+    transition: transform .2s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
+}
+
+.note:hover {
+    transform: translateY(-6px) scale(1.04) rotate(-1deg);
+    box-shadow: 6px 14px 24px rgba(0, 0, 0, .22);
+}
+
+ 2. Появяване на нова бележка 
+@keyframes noteAppear {
+    from {
+        opacity: 0;
+        transform: scale(.7) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.note-appear {
+    animation: noteAppear .35s cubic-bezier(.34, 1.56, .64, 1) both;
+} */
+
+/* MD отметки [ ] / [x] в прегледа и в картата на борда: системен чекбокс, зона за клик ~28px */
+.nmd-cb-hit {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 0;
+    text-indent: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nmd-cb-hit::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 28px;
+    height: 28px;
+    transform: translate(-50%, -50%);
+}
+
+.nmd-cb {
+    position: relative;
+    z-index: 1;
+    width: 1.05em;
+    height: 1.05em;
+    margin: 0;
+    vertical-align: top;
+    cursor: pointer;
+    accent-color: #3a6ff0;
+}
+
+/* Квадратчето и първата дума след него са една двойка: редът не се къса между тях, а 4px
+   резерв отзад кара тясната колона в таблицата да резервира място за цялата двойка. */
+.nmd-cb-pair {
+    white-space: nowrap;
+    padding-right: 4px;
+}
+
+/* Отметнатият ред само сменя цвета си на приглушен - без задраскване */
+.nmd-cb-done {
+    opacity: 0.55;
+}
+
+@supports (color: color-mix(in srgb, red 50%, transparent)) {
+    .nmd-cb-done {
+        opacity: 1;
+        color: color-mix(in srgb, currentColor 52%, transparent);
+    }
+}
+
+/* --- Several open notes (b1.82) ---
+   Every note window is a clone of #content-modal-template inside #note-windows-layer. The layer is
+   one stacking context at the old modal's level, so the windows' own z-index (10050 and up, last
+   pressed in front) never reaches the rest of the page. The windows do not block the page: the
+   list and the boards stay usable, so a second note opens from the same places as the first. */
+#note-windows-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    pointer-events: none;
+}
+#note-windows-layer:empty {
+    display: none;
+}
+/* Скрита бележка (b2.70): прозорецът остава отворен, но не се вижда и не прихваща кликове.
+   Класът 'visible' значи „отворена" и затова скриването НЕ го маха - то не е затваряне. */
+.note-window.note-window-hidden {
+    display: none !important;
+}
+.note-window.modal-overlay,
+.note-window.modal-overlay.visible {
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    pointer-events: none;
+    display: block;
+}
+.note-window.modal-overlay .modal-content-box {
+    position: absolute;
+    pointer-events: none;
+}
+.note-window.modal-overlay.visible .modal-content-box {
+    pointer-events: auto;
+}
+.note-window.note-window-moving .modal-content-box {
+    transition: none;
+    user-select: none;
+}
+/* --- Мобилна клавиатура (2.0x) -------------------------------------------------------------------
+   При фокус в поле на бележката тя застава на горния ръб и се скъсява до мястото, което реално се
+   вижда над клавиатурата. Досега таванът беше 55vh - число, което не знае колко е висока клавиатурата:
+   на телефон с 844px екран 55vh = 464px, а над клавиатурата остават около 520px, значи близо 60px
+   стояха празни. Сега височината идва от --nw-kb-visible: тя се пише в main.js от visualViewport
+   (колко пиксела от страницата се виждат над клавиатурата) и от височината на екрана, когато
+   видимата площ е цялата. Класът слага само !important правила: инлайн top/left, които местенето
+   пише, остават непокътнати, значи запомненото място не се променя и щом клавиатурата се затвори,
+   бележката се връща точно там, където е била. */
+.note-window.note-window-kb-top .modal-content-box {
+    top: 0 !important;
+    height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
+    max-height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
+}
+/* The quiet trace after a background sync took the new text in, and the question when it could not. */
+.note-window-sync-trace {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    transform: translateX(-50%);
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 10002;
+    opacity: 1;
+    transition: opacity 0.6s ease;
+}
+.note-window-sync-trace.is-fading {
+    opacity: 0;
+}
+.note-window-sync-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin: 0 0 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    color: #222;
+    font-size: 13px;
+    position: relative;
+    z-index: 10002;
+}
+.note-window-sync-banner span {
+    flex: 1 1 160px;
+}
+.note-window-sync-banner button {
+    font: inherit;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    background: #fff;
+    color: #222;
+    cursor: pointer;
+}
+/* "Close all notes": one more square in the boards menu grid, next to Reorder / Fullscreen. */
+#close-all-notes-btn {
+    font-size: 1.5em;
+    line-height: 1;
+}
+/* Single note mode (b1.83): the shade under the top note window, as the one modal had it before b1.82.
+   It sits inside #note-windows-layer right below the top window (main.js places it), so it takes
+   every press meant for the list, the boards or any other note window; a press on it closes the note. */
+#single-note-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+#single-note-overlay.visible {
+    display: block;
+}
+
+/* --- Лента на отворените бележки (b2.70) -------------------------------------------------------
+   Показва се при две и повече отворени бележки (собственикът, 29.10.2026), най-отдолу на екрана: плочка 40px на всяка бележка
+   (миниатюра или буквен квадрат в неин цвят) и бутон за затваряне на всички, който стои ИЗВЪН
+   приплъзващия се ред. Редът се приплъзва настрани, когато плочките не се побират; скролбарът е
+   скрит, а плочките не се свиват (flex: 0 0 40px). */
+#open-notes-bar {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    height: 52px;
+    padding: 6px 8px;
+    align-items: center;
+    gap: 8px;
+    /* Полупрозрачен (b2.74, собственикът): лентата е 50% прозрачна, за да не закрива плътно
+       съдържанието под себе си. Плочките и бутоните в нея остават плътни. */
+    background: rgba(55, 71, 79, 0.5);
+    border-top: 2px solid #546E7A;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    /* Слоят на прозорците не приема кликове; лентата приема своите. */
+    pointer-events: auto;
+}
+#open-notes-bar.is-visible {
+    display: flex;
+}
+.open-notes-bar-strip {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.open-notes-bar-strip::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+.open-notes-bar-tile {
+    position: relative;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Фонът идва в стойността на елемента - точният цвят на бележката. */
+    background: transparent;
+    box-shadow: none;
+    cursor: pointer;
+    /* Плъзгането с пръст върху плочка СКРОЛВА лентата, а не мести плочките (собственикът, 25.10.2026:
+       „Плъзгането на лентата при препълване не се получава, местят се плочките"). Затова е pan-x като на
+       самата лента, а местенето с пръст тръгва само след задържане (wireOpenNotesBarTileLongPress).
+       Жестът не бива нито да тегли картинката на плочката, нито да маркира буквите ѝ. */
+    touch-action: pan-x;
+    /* Жестът не бива да маркира буквите на плочката или да тегли картинката ѝ. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    /* Дългото натискане е НАШЕ (b2.88): то вдига плочката за местене. Родният жест на Android за
+       дълго натискане (меню за копиране/споделяне, маркиране) обаче поема жеста точно когато
+       плочката се вдигне, праща pointercancel и местенето умираше - собственикът, 25.10.2026:
+       „продължителното натискане води до кратко вибрация, но само толкова". Затова родният
+       callout се забранява, а сивото подсветване при докосване се маха - то оставаше върху плочката
+       след вдигането. */
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s ease;
+}
+/* Плъзганата плочка: леко повдигната над останалите, за да се вижда коя се мести. Сянката е през
+   filter, а не през box-shadow: плочката е с overflow: hidden (миниатюрата се реже по ъглите), значи
+   външна сянка на самата кутия не се вижда. */
+.open-notes-bar-tile.is-dragging {
+    opacity: 0.9;
+    transform: scale(1.06);
+    z-index: 3;
+    cursor: grabbing;
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+}
+/* Кантът и контурът се рисуват на ::after, а НЕ като box-shadow на самата плочка: когато плочката
+   има миниатюра, <img> покрива цялата ѝ площ и сянката на елемента остава ПОД картинката - точно
+   там, където контурът трябва да се вижда, той изчезва. ::after е последната нарисувана кутия в
+   плочката (z-index над картинката), значи контурът винаги е отгоре.
+   Нарисуван е ОТВЪТРЕ (inset), за да е изцяло видим: редът на лентата е висок точно колкото
+   плочката и е с overflow-y: hidden, тоест външен контур се реже отгоре и отдолу. */
+.open-notes-bar-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 2;
+    /* Неактивната плочка: тънък тъмен кант, за да не се слива светла бележка с тъмната лента. */
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+    transition: box-shadow 0.15s ease;
+}
+/* Активната бележка: жълт контур 2px, изцяло върху плочката. Под жълтото има тънка тъмна линия -
+   иначе жълтото изчезва върху бледа жълта бележка (#FBFF86 е цвят по подразбиране). */
+.open-notes-bar-tile.is-active::after {
+    box-shadow: inset 0 0 0 2px #FFD400, inset 0 0 0 3px rgba(0, 0, 0, 0.45);
+}
+.open-notes-bar-letters {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Цветът на текста се слага в стойността на елемента според фона на бележката (тъмен или бял). */
+    color: #fff;
+    /* Собственикът, 29.10.2026: в плочката стоят по 3 букви от първата и от втората дума на два реда
+       (виж openNotesBarLetters). Затова шрифтът е по-малък: 12px е достатъчно малък, че три главни
+       букви да се побират в 40px дори широки като „Ш", и достатъчно едър, за да се чете. Редовете
+       идват като \n от JS - затова white-space: pre-line. */
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    line-height: 1.1;
+    white-space: pre-line;
+    text-align: center;
+    padding: 0 1px;
+    user-select: none;
+}
+.open-notes-bar-thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    /* Картинката е под контура (::after е с по-висок z-index), за да не закрива жълтото. */
+    z-index: 1;
+}
+/* Съдържанието на плочката не приема показалеца (b2.88): жестът винаги попада върху САМАТА плочка,
+   а не върху <img>. Иначе дълъг натиск върху плочка със снимка отваряше родното меню на картинката
+   (собственикът, 25.10.2026: „ако на плочката има снимка ... се показва стандартното меню за
+   копиране, споделяне и така нататък на снимката"). Затова и родният callout се забранява, а
+   тегленето и маркирането - също. */
+.open-notes-bar-thumb,
+.open-notes-bar-letters {
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+}
+.open-notes-bar-tile.has-thumb .open-notes-bar-thumb {
+    display: block;
+}
+.open-notes-bar-tile.has-thumb .open-notes-bar-letters {
+    display: none;
+}
+/* Скрита бележка: плочката е приглушена - клик на нея я връща на екрана. */
+.open-notes-bar-tile.is-hidden {
+    opacity: 0.55;
+}
+.open-notes-bar-tile.is-hidden:hover {
+    opacity: 0.8;
+}
+.open-notes-bar-hide,
+.open-notes-bar-close {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #546E7A;
+    color: #fff;
+    cursor: pointer;
+}
+.open-notes-bar-hide {
+    background: #455A64;
+    color: #fff;
+    cursor: pointer;
+}
+.open-notes-bar-hide:hover,
+.open-notes-bar-close:hover {
+    background: #607D8B;
+}
+.open-notes-bar-hide svg,
+.open-notes-bar-close svg {
+    width: 22px;
+    height: 22px;
+}
+
+/* Тесни стрелки за скрол в двата края на лентата. Показват се само при препълване (иначе ги няма) и
+   стоят ИЗВЪН приплъзващия се ред, за да не се скролват с плочките. Тъмни са като останалите бутони на
+   лентата, но по-тесни - 18px, за да отнемат възможно най-малко от мястото на плочките. */
+.open-notes-bar-scroll {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.28);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+/* В края на лентата стрелката нататък е неактивна, но остава на мястото си - иначе плочките подскачат. */
+.open-notes-bar-scroll:disabled {
+    opacity: .35;
+    cursor: default;
+}
+.open-notes-bar-scroll[hidden] {
+    display: none;
+}
+.open-notes-bar-scroll svg {
+    width: 10px;
+    height: 10px;
+}
+
+/* Обхождането след включване на Google Календар (b2.11): брояч и лента в реда под ключа.
+   Лентата е в currentColor — следва цвета на текста в настройките, светли и тъмни. */
+.gcal-sync-progress {
+    display: block;
+    margin-top: 4px;
+}
+.gcal-sync-progress-text {
+    display: block;
+    font-variant-numeric: tabular-nums;
+}
+.gcal-sync-progress-bar {
+    display: block;
+    position: relative;
+    height: 4px;
+    margin-top: 3px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: rgba(127, 127, 127, 0.3);
+}
+.gcal-sync-progress-bar > span {
+    display: block;
+    height: 100%;
+    background: currentColor;
+    transition: width 0.2s ease;
+}
+
+/* b2.14: камбанката на мястото на календарчето мига 10 сек (само прозрачност, цветовете са на .header-btn). */
+.header-btn.cal-bell-flash svg {
+    animation: cal-bell-flash 0.8s ease-in-out infinite;
+}
+
+@keyframes cal-bell-flash {
+    50% {
+        opacity: 0.2;
+    }
+}
+/* --- МАСОВ ИЗБОР НА БЕЛЕЖКИ (b2.36) --- */
+/* Отметката е елемент в реда на кабарчето, точно преди кръгчето за закачане, и заема неговото
+   място: на избраните карти кръгчето се скрива с display: none, а отметката е неговият пряк
+   съсед в flex реда — същите размери, същото място, без абсолютно позициониране и без мерене. */
+.note-select-check {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(0, 0, 0, 0.45);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.9);
+    pointer-events: none;
+}
+
+.note-select-check.checked {
+    background: #1976d2;
+    border-color: #1976d2;
+}
+
+.note-select-check.checked::after {
+    content: '';
+    width: 4px;
+    height: 8px;
+    margin-top: -2px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+/* Избраната карта носи рамка, останалите в борда притъмняват. */
+.note.note-selected {
+    outline: 2px solid #1976d2;
+    outline-offset: -2px;
+}
+
+#notes-container.selection-mode .note:not(.note-selected) {
+    opacity: 0.75;
+}
+
+/* По време на избор закачането се крие — иначе се натиска по навик. Скриваме го с visibility,
+   за да си запази мястото в реда: неотбелязаните карти не мърдат при влизане в избор. */
+#notes-container.selection-mode .note-pin-btn {
+    visibility: hidden;
+}
+
+/* На избраната карта кръгчето освобождава мястото си на отметката — тя е точно преди него. */
+#notes-container.selection-mode .note.note-selected .note-pin-btn {
+    display: none;
+}
+
+/* Лентата с действията: само при непразен избор; не мести решетката и хедъра. */
+#selection-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    max-width: calc(100vw - 12px);
+    background: rgba(28, 28, 30, 0.94);
+    color: #fff;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.3);
+    font-size: 0.95em;
+}
+
+#selection-bar[hidden] {
+    display: none;
+}
+
+#selection-count {
+    white-space: nowrap;
+    font-weight: 600;
+    padding-right: 2px;
+}
+
+.selection-bar-btn {
+    font: inherit;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.selection-bar-btn:hover {
+    background: rgba(255, 255, 255, 0.26);
+}
+
+.selection-bar-danger {
+    background: #c22d1f;
+    border-color: #c22d1f;
+}
+
+.selection-bar-danger:hover {
+    background: #d8422f;
+}
+
+.selection-bar-icon {
+    padding: 6px 10px;
+    font-size: 1.1em;
+    line-height: 1;
+}
+
+/* Редът „Премести N бележки в…" в избора на борд. */
+.boards-modal-hint {
+    padding: 0 10px 10px 10px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 1em;
+    color: #333;
+}
+
+/* Бутон „Отмени" в съобщението. */
+.toast-undo-btn {
+    margin-left: 12px;
+    font: inherit;
+    font-weight: 700;
+    color: #000;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.toast-undo-btn:hover {
+    background: #fff;
+}
+
+@media (max-width: 480px) {
+    #selection-bar {
+        gap: 6px;
+        padding-left: 8px;
+        padding-right: 8px;
+        font-size: 0.9em;
+    }
+
+    .selection-bar-btn {
+        padding: 6px 9px;
+    }
+}
+
+/* =====================================================================
+   Демо режим (index.html?demo=1)
+   Бутон на началния екран и трайна лента в хедъра.
+   ===================================================================== */
+
+/* --- Бутонът на началния екран: в панела със заявката за достъп, под нея --- */
+.demo-start-btn {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    margin: 8px auto 0 auto;
+    box-sizing: border-box;
+}
+
+/* --- Лента на демо режима: точно един текстов ред под хедъра.
+   Без бутон, без flex-кутия и без допълнителен отстъп — височината е само от
+   line-height на текста. „Изход“ е inline текстова връзка в същия ред. --- */
+.demo-banner {
+    margin: 0;
+    padding: 1px 8px;
+    box-sizing: border-box;
+    background: #fff3cd;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: center;
+    white-space: normal;
+    color: #6a4b00;
+}
+
+.demo-banner[hidden] {
+    display: none;
+}
+
+.demo-banner-label {
+    font-weight: 600;
+}
+
+.demo-banner-label::after {
+    content: " · ";
+    font-weight: 400;
+}
+
+/* ================= Снимка в текста: маркер от един знак и меню с плъзгач (план 10) =================
+   Маркерът в редактора стои на мястото на звездичката в подложката под прозрачната текстова кутия.
+   Пази точно ширината на знака (самият знак остава в текста, само невидим), а миниатюрата е фон на
+   ::after: така подредбата не се променя и каретата не бяга от нарисувания текст.
+   Менюто е колкото бележката, но не повече от 300px (ширината се смята в main.js), редовете му са с
+   центриран текст, а плъзгачът е на стъпки по 10 - колкото е paramint 1..10 във файла на Android. */
+.nm-inline-mark {
+    position: relative;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+}
+
+.nm-inline-mark::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: .95em;
+    height: .95em;
+    transform: translate(-50%, -50%);
+    border-radius: 2px;
+    background-color: rgba(127, 127, 127, .35);
+    background-image: var(--nm-mark-img, linear-gradient(150deg, #a9c0ee, #bcd9c8));
+    background-size: cover;
+    background-position: center;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .22);
+    pointer-events: none;
+}
+
+/* Липсващ файл: пунктир с „?" на мястото на снимката - по него се вижда, че маркерът е жив. */
+.nm-inline-mark.is-missing::after {
+    background-image: none;
+    background-color: #efece5;
+    border: 1px dashed #b4534a;
+    box-shadow: none;
+}
+
+.nm-inline-mark.is-missing::before {
+    content: '?';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    color: #9d3f37;
+    font: 700 8px/1 system-ui, -apple-system, 'Segoe UI', sans-serif;
+    pointer-events: none;
+}
+
+/* Останалите знаци от диапазона (ако диапазонът е по-дълъг от един знак) заемат мястото си, но не
+   се виждат: иначе каретата би тръгнала напред спрямо нарисувания текст. */
+.nm-inline-mark-void {
+    visibility: hidden;
+}
+
+/* Менюто: излиза под маркера и се мести над него, когато долу няма място. Стои върху body, за да не
+   го реже никакъв overflow на бележката или на прозореца. */
+.nm-inline-menu {
+    position: fixed;
+    z-index: 10002;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid rgba(0, 0, 0, .18);
+    border-radius: 10px;
+    background: #fffdf8;
+    color: #22262b;
+    box-shadow: 0 14px 34px -16px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .12);
+    font-family: inherit;
+    text-align: center;
+}
+
+.nm-inline-menu-row {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    padding: 7px 8px;
+    border: 1px solid rgba(0, 0, 0, .14);
+    border-radius: 7px;
+    background: #f3f1ec;
+    color: #22262b;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    /* Тъч: редът е поне 30px висок, за да се уцели с пръст (менюто се ползва и на телефон). */
+    min-height: 30px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.nm-inline-menu-row:hover { background: #ece9e2; }
+.nm-inline-menu-row:active { background: #e4e0d7; }
+.nm-inline-menu-row:focus-visible { outline: 2px solid #3a6ff0; outline-offset: 1px; }
+
+/* Преглед: първият ред, синият - същият ход като днешния клик върху плочката. */
+.nm-inline-menu-row.is-preview {
+    border-color: rgba(58, 111, 240, .55);
+    background: rgba(58, 111, 240, .1);
+    color: #2d5ad0;
+}
+
+.nm-inline-menu-row.is-preview:hover { background: rgba(58, 111, 240, .16); }
+
+.nm-inline-menu-chip {
+    display: block;
+    flex: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    background-color: rgba(58, 111, 240, .3);
+    background-image: var(--nm-mark-img, linear-gradient(150deg, #a9c0ee, #bcd9c8));
+    background-size: cover;
+    background-position: center;
+}
+
+/* Сложи в текста: действието на плочката, затова е с акцент. */
+.nm-inline-menu-row.is-insert {
+    border-color: rgba(58, 111, 240, .45);
+    background: #eef2fd;
+    color: #2d5ad0;
+}
+
+.nm-inline-menu-row.is-insert:hover { background: #e4ebfc; }
+
+/* Махни: маха само това място от текста, файлът остава в лентата. */
+.nm-inline-menu-row.is-remove {
+    border-color: rgba(180, 83, 74, .34);
+    background: rgba(180, 83, 74, .08);
+    color: #9d3f37;
+}
+
+.nm-inline-menu-row.is-remove:hover { background: rgba(180, 83, 74, .14); }
+
+/* Отказ: връща ширината от отварянето на менюто. Неутрален, за да не се бърка с „Махни", което
+   маха снимката от текста (червеното е запазено за него). */
+.nm-inline-menu-row.is-cancel {
+    border-color: rgba(0, 0, 0, .2);
+    background: #f1efea;
+    color: #4a4e54;
+    font-weight: 600;
+}
+
+.nm-inline-menu-row.is-cancel:hover { background: #e8e5dd; }
+
+.nm-inline-menu-row:disabled,
+.nm-inline-menu-row.is-disabled {
+    opacity: .55;
+    cursor: default;
+}
+
+.nm-inline-menu-note {
+    margin: -2px 0 0;
+    color: #9d3f37;
+    font-size: 11px;
+    line-height: 1.3;
+    text-align: center;
+}
+
+.nm-inline-menu-width {
+    padding: 2px 2px 0;
+}
+
+.nm-inline-menu-wlabel {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin: 0 0 2px;
+    color: #6b6f76;
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.nm-inline-menu-wlabel b {
+    color: #22262b;
+    font-weight: 700;
+}
+
+.nm-inline-menu-range {
+    display: block;
+    width: 100%;
+    /* Плъзгачът е по цялата ширина на менюто и висок 28px - същото заради пръста. */
+    height: 28px;
+    margin: 0;
+    accent-color: #3a6ff0;
+    cursor: pointer;
+}
+
+.nm-inline-menu-scale {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 1px;
+    color: #8a8d93;
+    font-size: 10px;
+    line-height: 1.3;
+}
+
+.nm-inline-menu-scale b {
+    color: #22262b;
+    font-weight: 700;
+}
+
+/* Временният кадър, който показва избраната ширина, докато плъзгачът се мести: само за окото. */
+.nm-inline-ghost {
+    position: fixed;
+    z-index: 10001;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 3px 5px;
+    border: 1px solid rgba(0, 0, 0, .22);
+    border-radius: 6px;
+    background-color: rgba(127, 127, 127, .3);
+    background-image: var(--nm-mark-img, linear-gradient(150deg, #a9c0ee, #bcd9c8));
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 10px 24px -12px rgba(0, 0, 0, .6);
+    opacity: .94;
+    pointer-events: none;
+}
+
+.nm-inline-ghost span {
+    border-radius: 4px;
+    padding: 1px 5px;
+    background: rgba(0, 0, 0, .55);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+/* Кадърът при посочване/докосване на маркера (собственикът, 24.10.2026): показва снимката в РЕАЛНИЯ
+   ѝ размер, не ориентир за плъзгача. Затова е плътен - при 100% снимката трябва да се вижда точно
+   такава, каквато ще стои в бележката, а не през сиво. */
+.nm-inline-ghost.is-full {
+    opacity: 1;
+    border-color: rgba(0, 0, 0, .3);
+}
+
+/* Редакторът с лентата с прикачените файлове под него: тялото става колона, за да не изяде лентата
+   височината на редактора. Лентата я има само когато бележката има прикачени файлове. */
+:is(#modal-body, .nw-modal-body).nm-edit-with-strip {
+    display: flex;
+    flex-direction: column;
+    /* Лентата остава видима, редакторът взима останалото. Ако в прозореца няма място за двете,
+       тялото пак се плъзга - иначе съдържанието просто се отрязва. */
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+:is(#modal-body, .nw-modal-body).nm-edit-with-strip > .nm-attach-strip {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    padding: 6px 0 2px;
+    border-top: 1px solid rgba(0, 0, 0, .12);
+}
+
+/* Файл, влачен върху редактора: рамката казва, че ще влезе в лентата, не в текста. */
+:is(#modal-body, .nw-modal-body).nm-file-drop {
+    outline: 2px dashed rgba(58, 111, 240, .6);
+    outline-offset: -4px;
+}
+
+/* ---------------------------------------------------------------------------
+   Ko-fi: плаващата иконка за подкрепа
+   ---------------------------------------------------------------------------
+   Widget-ът се тегли от overlay-widget.js и сам слага .floatingchat-container-wrap с
+   <iframe class="floatingchat-container"> вътре (и -mobi вариантите за телефон). По подразбиране
+   контейнерът е 180x65, а iframe-ът 195x65, докато видимото лого е само 39x31 - значи голяма
+   прозрачна площ приема кликове и краде натисканията от това, което е под нея. Тук контейнерът се
+   свива до самия бутон, за да не застъпва нищо излишно, а логото остава цяло и кликаемо.
+   Мерено на живо (24.10.2026): бутонът вътре в iframe-а е точно 87x46 (лого 39 шир. + 8px отстъп +
+   20+20 padding). Затова прозорчето е 88x48 - с една идея по-голямо от бутона. При 62 ширина
+   съдържанието излизаше навън: вътре се появяваше хоризонтален скролбар, а отгоре се режеше логото.
+   НЕ свивай прозорчето под 88x48 - Ko-fi не се побира и пак се получава скролбар и отрязан връх.
+   Правилата започват с body, за да бият стиловете на Ko-fi: те се зареждат СЛЕД нашия style.css и
+   иначе при равна специфичност печелят те.
+   Докато лентата с отворените бележки е на екрана, иконката се качва над нея - със същата
+   променлива --open-notes-bar-h, с която се качват и останалите плаващи бутони. */
+body .floatingchat-container-wrap,
+body .floatingchat-container-wrap-mobi {
+    position: fixed;
+    left: 10px;
+    right: auto;
+    bottom: 12px;
+    width: 88px;
+    max-width: 88px;
+    height: 48px;
+    overflow: hidden;
+}
+
+body iframe.floatingchat-container,
+body iframe.floatingchat-container-mobi {
+    position: absolute;
+    top: auto;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    width: 88px;
+    height: 48px;
+    border: 0;
+}
+
+body.open-notes-bar-visible .floatingchat-container-wrap,
+body.open-notes-bar-visible .floatingchat-container-wrap-mobi {
+    bottom: calc(12px + var(--open-notes-bar-h) + 8px);
+}
+
+/* Прозорчето на Ko-fi се отваря над иконката: и то се качва, за да не застъпи лентата. */
+body.open-notes-bar-visible .floating-chat-kofi-popup-iframe,
+body.open-notes-bar-visible .floating-chat-kofi-popup-iframe-mobi {
+    bottom: calc(75px + var(--open-notes-bar-h));
+}
+
+/* --- Full screen при инсталиране (b3.06) ---------------------------------------------------------
+   Собственикът (26.10.2026): „добави опция за full screen“. Манифестът вече иска
+   display: fullscreen (с standalone като резерва в display_override), значи инсталираното приложение
+   покрива ЦЕЛИЯ екран - статус лентата и жестовата лента на Android вече не са отделни ленти, а
+   места, върху които страницата рисува. Без отстъпи хедърът влизаше под камерата, а лентата на
+   отворените бележки и плаващите бутони - под жестовата лента.
+   Отстъпите идват от env(safe-area-inset-*) и са 0px, когато ги няма (нормален браузър, екран без
+   изрез), значи извън full screen изгледът не се променя с нито един пиксел.
+   Плаващите бутони (kb-fab, add-note-fab, scrollTopBtn, popup-menu-btn-floating) получават инлайн
+   !important позиция от makeElementDraggable, затова техните отстъпи се слагат в setDefaultPosition
+   в main.js, а не тук. */
+:root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* Съдържанието в потока пази страничните изрези (в хоризонтално положение изрезът е отстрани). */
+body {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+}
+
+/* Залепеният хедър залепва за самия ръб на екрана и покрива изреза със своя фон - иначе между
+   ръба и хедъра оставаше тясна ивица, в която съдържанието се вижда как минава под камерата. */
+header {
+    padding-top: calc(5px + var(--safe-top));
+}
+
+/* Екранът за вход стои преди хедъра в готовото приложение, значи отстъпът се слага и на него. */
+.login-div {
+    padding-top: calc(1em + var(--safe-top));
+}
+
+/* Лентата на отворените бележки: фонът стига до долния ръб, а плочките остават над жестовата
+   лента. Височината расте с отстъпа, значи измерването в openNotesBarHeight() (което вдига
+   плаващите бутони над лентата) го отчита само. */
+#open-notes-bar {
+    height: calc(52px + var(--safe-bottom));
+    padding-bottom: calc(6px + var(--safe-bottom));
+}
+
+/* Закачени за долния ръб - същото място, но изместено над жестовата лента. */
+#selection-bar {
+    bottom: var(--safe-bottom);
+}
+
+.board-filter-popup {
+    bottom: calc(20px + var(--safe-bottom));
+}
+
+#kb-loading-panel {
+    bottom: calc(80px + var(--safe-bottom));
+}
+
+/* Прозорците на бележките са fixed върху целия екран, а вътрешната кутия се мести от JS по
+   координати. Скъсяваме самия прозорец до безопасната площ, за да не може хедърът на бележката
+   (с бутоните за затваряне и запис) да излезе под камерата, а долният ред - под жестовата лента.
+   В нормален браузър стойностите са 0px и правилата не променят нищо. */
+.note-window.modal-overlay,
+.note-window.modal-overlay.visible {
+    top: var(--safe-top);
+    left: var(--safe-left);
+    width: calc(100% - var(--safe-left) - var(--safe-right));
+    height: calc(100% - var(--safe-top) - var(--safe-bottom));
+}
+
+/* Съобщението за синхронизация стои на долния ръб на бележката - вдигаме го над жестовата лента. */
+.note-window-sync-trace {
+    bottom: calc(6px + var(--safe-bottom));
+}
+
+
+/* --- Телефон в завъртян екран (landscape): хедърът в ЕДИН ред (b3.07) -------------------------------
+   Досега редът се решаваше само по ширина (@media min-width:900px), а телефон в landscape е 740-915px
+   широк, значи оставаше в колоната от 4 реда, макар да има място. Тук хедърът е на един ред, логото се
+   скрива (60px височина само за картинка), а заглавието остава, докато се побира. Класът
+   .title-hidden слага syncHeaderTitleFit() в main.js, когато заглавието изяде мястото на полето.
+   Лентата с дъските остава на свой ред, както преди. max-height:500px пази таблети и малки прозорци в
+   портрет да не влизат тук. */
+@media (orientation: landscape) and (max-height: 500px) {
+    header {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+    }
+
+    .header-logo {
+        display: none;
+    }
+
+    /* Заглавието отстъпва първо: не се свива под 90px, за да не остане накъсан иконом */
+    /* Заглавието пази естествената си ширина и НЕ се свива — иначе остава накъсано до 100px.
+       Когато не се побира, syncHeaderTitleFit() го скрива с .title-hidden. */
+    header > div:first-child {
+        order: 1;
+        flex: 0 0 auto;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    header > div:first-child h1 {
+        font-size: 1.5rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+
+    /* 307px = точно 20 видими знака в полето (ch е ширината на „0“, а полето има 45+90px отстъп) */
+    #search-wrapper {
+        order: 2;
+        flex: 1 1 309px;
+        width: auto;
+        min-width: 309px;
+        max-width: none;
+        margin-left: 8px;
+        margin-right: 8px;
+    }
+
+    #header-buttons {
+        order: 3;
+        flex-shrink: 0;
+    }
+
+    .boards-note {
+        order: 4;
+        flex: 1 1 100%;
+    }
+}
+
+/* Няма място за заглавието — скрива се, за да остане полето поне 20 знака. Класът се слага от JS. */
+header.title-hidden > div:first-child {
+    /* !important, защото блокът на заглавието носи inline style="display:flex" в HTML-а */
+    display: none !important;
+}
+
+/* ===== Екран за поверителност (blur overlay при излизане от приложението) ===== */
+.privacy-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 10, 14, 0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(120%);
+    backdrop-filter: blur(20px) saturate(120%);
+    overscroll-behavior: contain;
+    touch-action: none;
+}
+
+.privacy-overlay.is-visible {
+    display: flex;
+}
+
+.privacy-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    transform-origin: center center;
+}
+
+.privacy-tile {
+    width: 300px;
+    height: 300px;
+    box-sizing: border-box;
+    border-radius: 22px;
+    background: linear-gradient(160deg, rgba(30, 34, 42, 0.86), rgba(13, 15, 19, 0.92));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.privacy-tile-clock .privacy-clock {
+    flex: 0 0 auto;
+    transform: scale(1.35);
+}
+
+.privacy-tile-calendar {
+    padding: 14px 14px 12px;
+    color: #e9edf2;
+}
+
+.privacy-cal {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.privacy-cal-month {
+    font-size: 17px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 8px;
+    text-transform: capitalize;
+    letter-spacing: 0.2px;
+    color: #f2f6fa;
+}
+
+.privacy-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+
+.privacy-cal-head span {
+    font-size: 11px;
+    text-align: center;
+    padding-bottom: 6px;
+    opacity: 0.55;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.privacy-cal-days {
+    flex: 1 1 auto;
+    grid-auto-rows: 1fr;
+    row-gap: 2px;
+}
+
+.privacy-cal-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 13px;
+    line-height: 1;
+    height: 100%;
+    /* Точките са процент от ширината на деня, затова денят е контейнер. */
+    container-type: inline-size;
+}
+
+.privacy-cal-num {
+    display: grid;
+    place-items: center;
+    width: 1.5em;
+    height: 1.5em;
+    border-radius: 50%;
+    font-style: normal;
+}
+
+.privacy-cal-day.is-today .privacy-cal-num {
+    background: #1df52f;
+    color: #07130a;
+    font-weight: 700;
+    box-shadow: 0 0 12px rgba(29, 245, 47, 0.45);
+}
+
+/* Две точки на един ред, цели: 24% от ширината на деня (бяха 28%, 2 Nov 2026 — по заявка
+   „една идея по-малки“). Мястото им е запазено и в дните без бележки, за да не мърдат числата
+   нагоре-надолу в редицата, затова слотът остава 28cqw, а точките в него са по-малки. */
+.privacy-cal-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    height: 28cqw;
+}
+
+.privacy-cal-dots i {
+    width: 24cqw;
+    height: 24cqw;
+    border-radius: 50%;
+}
+
+.privacy-close {
+    position: absolute;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 2;
+    padding: 8px 16px;
+    min-height: 36px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+}
+
+.privacy-close:active {
+    background: rgba(255, 255, 255, 0.24);
+}
+
+/* --- b3.54: „Валидност“ / изтекли бележки ------------------------------------------------ */
+
+/* Значката на карта, чиято дата е отминала. Стои под тялото, над долната лента на бележката, и е
+   тиха като реда с датата в картата (10.5px, цвят на текста на картата), а не червен етикет:
+   картата вече е извън борда си и не бива да крещи. Кликовете минават през нея
+   (pointer-events: none), за да не пречи да се отвори бележката, а дългият текст се реже с
+   многоточие, вместо да вдигне картата. */
+.note-expired-badge {
+    flex: 0 0 auto;
+    /* 13px = 8px + 5px: собственикът поиска (2 Nov 2026) информацията да стои 5px по-високо над
+       долния ръб на картата. */
+    margin: 0 10% 13px 8%;
+    padding: 1px 7px;
+    border-radius: 7px;
+    background: rgba(0, 0, 0, 0.10);
+    color: inherit;
+    font-family: Arial, sans-serif;
+    font-size: 10.5px;
+    line-height: 1.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+    pointer-events: none;
+}
+
+/* Значката е част от колоната на wrapper-а, но wrapper-ът е с height: 100% и така надхвърля
+   картата (тя е точно 250px, а под него стои още долната лента) - затова всичко в края му излиза
+   под долния ръб. С тези три реда той заема само остатъка над лентата, а тялото се свива с
+   височината на значката. */
+.note.has-expired-badge .note-content-wrapper {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.note.has-expired-badge .note-content-wrapper>.note-content {
+    min-height: 0;
+}
+
+/* Лентата над бележките в изгледа „Невалидни“: тъмна и заоблена като лентата на бордовете, със
+   същия шрифт и размер (14px Arial). Заглавието е отляво, броят - отдясно, а редът под него казва
+   как бележката се връща в борда си. */
+#expired-hint {
+    display: block;
+    box-sizing: border-box;
+    width: calc(100% - 16px);
+    margin: 6px 8px 8px 8px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: #2f2f2c;
+    color: #f3f0e5;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: left;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Атрибутът hidden трябва да победи display: block по-горе - иначе лентата стои и в другите изгледи. */
+#expired-hint[hidden] {
+    display: none;
+}
+
+#expired-hint .expired-hint-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+#expired-hint .expired-hint-title {
+    font-weight: 700;
+}
+
+#expired-hint .expired-hint-count {
+    flex-shrink: 0;
+    font-size: 13px;
+    color: #cfcabb;
+    white-space: nowrap;
+}
+
+#expired-hint .expired-hint-line {
+    margin-top: 2px;
+    font-size: 13px;
+    color: #cfcabb;
+}
+
+/* На тясно (390px) редът с адреса на бележката се пренася, вместо да излезе извън лентата. */
+@media (max-width: 430px) {
+    #expired-hint .expired-hint-head {
+        flex-wrap: wrap;
+        gap: 2px 10px;
+    }
+
+    #expired-hint .expired-hint-line {
+        white-space: normal;
+    }
+}

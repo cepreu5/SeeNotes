@@ -102,16 +102,15 @@ body:has(#login-page:not([hidden])) #kb-fab {
     display: none !important;
 }
 
-/* Иконата на асистента се качва с 60px, когато има разпъната бележка, за да не застава върху реда ѝ с
-   кръглите бутони. Собственикът (31.10.2026): „за да не покрива бутоните на бележката при максимизиране,
-   асистента трябва да се мести (-60px) от долния й край“.
-   Класът се дава от syncExpandedFabLift само докато иконата още стои на долния ръб (собственикът може да я
-   е преместил - тогава не се пипа). ДО b3.38 отстъпът се пропускаше, докато лентата на бележките е на
-   екрана, защото тя вдига същите 60px (b2.74). От b3.38 това не стига: вътрешността на разпънатата
-   бележка спира НАД лентата, значи редът с бутоните е по-високо от лентата и иконата пак стъпва върху му.
-   Затова двете отмествания се събират - те целят различни неща. */
+/* Иконата на асистента се вдига, когато има разпъната бележка, за да не застава върху реда ѝ с кръглите
+   бутони. От 3.11.2026 отстъпът не е твърд: смята се в main.js (syncExpandedFabLift) от ДОЛНИЯ РЪБ на
+   бележката - иконата спира 50px над него, колкото е и редът с бутоните на бележката.
+   Собственикът (3.11.2026): „при максимизиране да се взима долния край на бележката и бутонът на асистента
+   да се мести 50px по-нагоре“. Смята се и когато иконата е местена (позицията ѝ се пази като инлайн
+   top/right) - иначе оставаше плътно на долния ръб, точно върху бутоните. Икона, която вече е по-високо от
+   целта, не се дърпа надолу. */
 body.modal-note-expanded-fab-lift #kb-fab {
-    translate: 0 -60px;
+    translate: 0 calc(-1 * var(--expanded-fab-lift, 50px));
 }
 
 /* KB Assistant FAB - статичен в index.html; kb-assistant.css се зарежда при първо отваряне */
@@ -4608,6 +4607,59 @@ body.selection-locked .note.active-selection-note .note-content {
     min-width: 160px;
 }
 
+/* --- Настройки: дясната колона на бутоните ---
+   „Създай“ и „Изтрий“ стоят центрирани по две еднакви колони с отстояние между тях.
+   Другите бутони в секцията за данни („Избери“ и „Зареждане от архив“) ползват същата
+   колона: същата височина и същото дясно отстояние като „Изтрий“, за да са подравнени
+   по десния ръб. Отстоянието се смята от същите ширини, за да остане подравнено и
+   когато модалът е по-тесен. */
+#settings-modal-body {
+    --settings-btn-col: 160px;
+    --settings-btn-gap: 10px;
+    --settings-btn-inset: max(0px, calc((100% - (2 * var(--settings-btn-col) + var(--settings-btn-gap))) / 2));
+}
+
+#create-db-btn,
+#delete-db-btn,
+#delete-folder-btn,
+#select-arh-btn {
+    box-sizing: border-box;
+    min-width: var(--settings-btn-col);
+    height: 38px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+/* Тези два бутона не са в центрирания ред: застават до десния ръб на колоната на „Изтрий“. */
+#delete-folder-btn,
+#select-arh-btn {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+#delete-folder-wrapper,
+#arh-db-wrapper {
+    padding-right: var(--settings-btn-inset);
+}
+
+/* Под 360px редът на архива не се побира: бутонът минава на втори ред и пак остава
+   подравнен по десния ръб, а колоната се свива, за да се побират и двата бутона отгоре
+   в модала — иначе редът им излиза извън него и подравняването се разминава. */
+@media (max-width: 359px) {
+    #settings-modal-body {
+        --settings-btn-col: 130px;
+    }
+
+    #delete-folder-wrapper,
+    #arh-db-wrapper {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+}
+
 /* Unsynced Offline Changes indicator */
 .note.dirty::after {
     content: '!';
@@ -5424,6 +5476,14 @@ body.selection-locked .note.active-selection-note .note-content {
 .open-notes-bar-close:hover {
     background: #607D8B;
 }
+/* Блурът, вдигнат от самата лента (дълго натискане / Ctrl+клик на бутона за затваряне), се вижда
+   на бутона: жълтият контур е същият цвят като контура на активната плочка, значи се разчита без
+   обяснение. По-тъмният фон пази бутона различен и когато мишката не е върху него. */
+.open-notes-bar-close.is-shade-on,
+.open-notes-bar-close.is-shade-on:hover {
+    background: #37474F;
+    box-shadow: inset 0 0 0 2px #FFD400, inset 0 0 0 3px rgba(0, 0, 0, 0.45);
+}
 .open-notes-bar-hide svg,
 .open-notes-bar-close svg {
     width: 22px;
@@ -5459,32 +5519,6 @@ body.selection-locked .note.active-selection-note .note-content {
 .open-notes-bar-scroll svg {
     width: 10px;
     height: 10px;
-}
-
-/* Обхождането след включване на Google Календар (b2.11): брояч и лента в реда под ключа.
-   Лентата е в currentColor — следва цвета на текста в настройките, светли и тъмни. */
-.gcal-sync-progress {
-    display: block;
-    margin-top: 4px;
-}
-.gcal-sync-progress-text {
-    display: block;
-    font-variant-numeric: tabular-nums;
-}
-.gcal-sync-progress-bar {
-    display: block;
-    position: relative;
-    height: 4px;
-    margin-top: 3px;
-    border-radius: 2px;
-    overflow: hidden;
-    background: rgba(127, 127, 127, 0.3);
-}
-.gcal-sync-progress-bar > span {
-    display: block;
-    height: 100%;
-    background: currentColor;
-    transition: width 0.2s ease;
 }
 
 /* b2.14: камбанката на мястото на календарчето мига 10 сек (само прозрачност, цветовете са на .header-btn). */
@@ -5619,7 +5653,36 @@ body.selection-locked .note.active-selection-note .note-content {
     text-align: center;
     font-weight: 600;
     font-size: 1em;
-    color: #333;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* b5.15: редът „Папка: [избор]" в модала за преместване на партида.
+   b5.16: надписът е на свой ред, а изборът заема цялата ширина на модала. */
+.boards-modal-folder {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 0 10px 12px 10px;
+}
+
+.boards-modal-folder-label {
+    font-size: 0.95em;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.boards-modal-folder-select {
+    width: 100%;
+    box-sizing: border-box;
+    height: 34px;
+    padding: 0 8px;
+    font: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    background: #fff;
+    color: #000;
 }
 
 /* Бутон „Отмени" в съобщението. */
