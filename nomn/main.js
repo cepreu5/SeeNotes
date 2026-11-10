@@ -6943,6 +6943,10 @@ function showPrompt(message, defaultValue = '') {
             noButton.style.marginLeft = '10px';
             okButton.parentNode.appendChild(noButton);
         }
+        // b5.22: в този попъп „Отказ“ е първи, „Потвърди“ — втори (по снимка от собственика).
+        okButton.parentNode.insertBefore(noButton, okButton);
+        noButton.style.marginLeft = '0';
+        noButton.style.marginRight = '10px';
         messagePara.textContent = message;
         folderIdInput.style.display = 'block';
         folderIdInput.value = defaultValue;
@@ -6955,6 +6959,10 @@ function showPrompt(message, defaultValue = '') {
             noButton.removeEventListener('click', onCancel);
             folderIdInput.removeEventListener('keydown', onKeyDown);
             noButton.style.display = 'none';
+            // b5.22: връщаме „Отказ“ след „Потвърди“, за да не се мести в другите попъпи.
+            okButton.parentNode.appendChild(noButton);
+            noButton.style.marginLeft = '10px';
+            noButton.style.marginRight = '';
             okButton.addEventListener('click', handleSubmitFolderId);
         };
         const onOk = () => {
