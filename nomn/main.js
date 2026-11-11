@@ -5255,9 +5255,7 @@ async function permanentlyDeleteBoard(board, opts = {}) {
     }
 
     // 6. Ако изтритият борд е бил начален, приложението не бива да го търси при старт.
-    if (localStorage.getItem('startBoard') === boardKey) {
-        localStorage.removeItem('startBoard');
-    }
+    clearDeletedStartBoard(boardKey);
 
     return { ok: true, notes: deletedNotes };
 }
@@ -19693,6 +19691,23 @@ function syncFolderDataAsync() {
     }, 2000);
 }
 
+/**
+ * Изчиства стартовия борд, ако изтритият борд е бил начален.
+ * Маха глобалния ключ и ключа за активната папка, защото при старт ключът за папката
+ * има предимство. След това пише folders.json — иначе старата стойност се връща от Drive.
+ */
+function clearDeletedStartBoard(boardKey) {
+    const af = localStorage.getItem('active_folder_name') || 'CX-Notes';
+    if (localStorage.getItem('startBoard') === boardKey) {
+        localStorage.removeItem('startBoard');
+        localStorage.removeItem('startBoard_' + af);
+        syncGlobalFoldersJson().catch(e => console.warn('[Boards] Could not write folders.json:', e));
+    } else if (localStorage.getItem('startBoard_' + af) === boardKey) {
+        localStorage.removeItem('startBoard_' + af);
+        syncGlobalFoldersJson().catch(e => console.warn('[Boards] Could not write folders.json:', e));
+    }
+}
+
 async function loadGlobalFoldersJson() {
     console.log('[DEBUG] loadGlobalFoldersJson() called. isOffline:', isOffline);
     if (isOffline) return false;
@@ -20379,6 +20394,10 @@ async function createSettingsUI(boardsData, boardParseError) {
                             localStorage.setItem('lastNoteNumord_' + oldActiveFolderName, noteNumord.toString());
                             const currentBic = localStorage.getItem('boardIdCounter');
                             if (currentBic) localStorage.setItem('lastBoardId_' + oldActiveFolderName, currentBic);
+                            // Стартовият борд на излизаната папка се помни, за да се върне при
+                            // следващо влизане в нея, както е при останалите per-folder стойности.
+                            const currentSb = localStorage.getItem('startBoard');
+                            if (currentSb) localStorage.setItem('startBoard_' + oldActiveFolderName, currentSb);
                         }
                         activeFolderName = targetFolderName;
                         localStorage.setItem('active_folder_name', targetFolderName);
@@ -21012,6 +21031,11 @@ async function createSettingsUI(boardsData, boardParseError) {
         localStorage.setItem('startBoard', startBoardSelect.value);
         const af = localStorage.getItem('active_folder_name') || 'CX-Notes';
         localStorage.setItem('startBoard_' + af, startBoardSelect.value);
+        // Пишем и в folders.json за активната папка. Досега стойността оставаше само в
+        // браузъра и при следващо зареждане от Drive се връщаше старата.
+        if (typeof syncGlobalFoldersJson === 'function') {
+            syncGlobalFoldersJson().catch(e => console.warn('[Settings] Could not write folders.json:', e));
+        }
         showToast(_('settingSaved'), 2000);
     });
     // Max Searches
@@ -34171,9 +34195,7 @@ async function showNewBoardModal() {
                     } catch (e) { }
                     const boardId = (currentEditingBoard.gdid || currentEditingBoard.id).toString();
                     // Изчистваме стартовия борд, ако е изтритият
-                    if (localStorage.getItem('startBoard') === boardId) {
-                        localStorage.removeItem('startBoard');
-                    }
+                    clearDeletedStartBoard(boardId);
 
                     // Ако изтриваме активния борд, превключваме на друг
                     if (currentBoardFilter === boardId) {
