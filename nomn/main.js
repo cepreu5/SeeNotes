@@ -13491,6 +13491,10 @@ function applyNoteWindowSize(win, box, size) {
 // Мястото се чете от кутията спрямо dataset.baseGeometry и се записва с обикновения запис (uiState.pos).
 function rememberNoteWindowGeometry(win) {
     if (!win || win.body.dataset.isExpanded === 'true') return;
+    // Докато се пише, бележката е качена най-горе и е разпъната по цялата ширина и до клавиатурата
+    // (note-window-kb-top в style.css) - това не е нейният размер. Без тази проверка местене с пръст
+    // по време на писане би записало ширината на екрана като размера на бележката.
+    if (win.el && (win.el.classList.contains('note-window-kb-top') || noteKeyboardFocusInside(win.el))) return;
     const cur = { width: Math.round(win.box.offsetWidth), height: Math.round(win.box.offsetHeight) };
     if (!win.geomSize || win.geomSize.width !== cur.width || win.geomSize.height !== cur.height) {
         win.geomSize = cur;
