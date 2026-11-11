@@ -7768,7 +7768,7 @@ function initApp() {
         } else {
             saveSearchBtn.title = (typeof _ === 'function') ? _('searchSavedTip') : "Save search term";
         }
-        if (val === '/?' || val === '/help') {
+        if (isCommandsHelpInput(val)) {
             renderCommandsHelpPopup();
             saveSearchBtn.style.display = 'none';
             clearTimeout(searchDebounceTimeout);
@@ -7826,7 +7826,7 @@ function initApp() {
     });
 
     searchBox.addEventListener('focus', () => {
-        if (searchBox.value.trim() === '/?' || searchBox.value.trim() === '/help') {
+        if (isCommandsHelpInput(searchBox.value.trim())) {
             renderCommandsHelpPopup();
         } else {
             renderSavedSearchesPopup();
@@ -15973,6 +15973,12 @@ function initHeaderFullscreen() {
         }).observe(header, { attributes: true, attributeFilter: ['style', 'class'] });
         window.addEventListener('resize', adjustFullscreenSearchLayout);
     }
+}
+
+// b3.82: списъкът с командите се показва още при самото „/“, а не едва при „?“ или „/help“.
+function isCommandsHelpInput(value) {
+    const v = (value || '').trim();
+    return v === '/' || v === '/?' || v === '/help';
 }
 
 function renderCommandsHelpPopup() {
