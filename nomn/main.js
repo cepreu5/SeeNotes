@@ -14661,7 +14661,13 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
     // Special case: if titleFormatString is provided, format the title part separately.
-    displayContent = getFormattedNoteHtml(rawContent, formatString, titleFormatString, true);
+    // Снимката на асистента (промо картата) идва като готов HTML и се показва както е: през markdown
+    // renderer таговете излизат като текст. Обикновените бележки продължават да минават през него.
+    if (options.isHtml && options.id === 'promo' && !rawContent.includes('{{')) {
+        displayContent = rawContent;
+    } else {
+        displayContent = getFormattedNoteHtml(rawContent, formatString, titleFormatString, true);
+    }
     // Редакторът е строен с лента с прикачените файлове под себе си; щом тялото се рисува наново
     // (преглед, запис, отваряне на бележката), класът се маха заедно съдържанието.
     modalBody.classList.remove('nm-edit-with-strip', 'nm-file-drop');
@@ -14685,6 +14691,8 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         if (e.target.closest('a') || e.target.closest('.code-block-copy') || e.target.closest('.nm-attach-strip') || modalBody.querySelector('textarea')) {
             return;
         }
+        // Промо картата не е бележка: клик по нея не отваря редактор (там HTML-ът би излязъл като код).
+        if (options.isHtml && options.id === 'promo') return;
 
         const clickToEditEnabled = localStorage.getItem('clickToEdit') !== 'false'; // Default true
         if (!clickToEditEnabled || options.readonly) return;
