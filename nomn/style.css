@@ -5215,14 +5215,22 @@ body.selection-locked .note.active-selection-note .note-content {
    бележката при писане беше 400px и отстрани стоеше празно. Лявото стои на 0 по същата причина като
    top: инлайн left не се пипа, значи след клавиатурата бележката се връща на мястото си.
    Класът се слага само при груб показалец и екран под 768px (noteKeyboardDockApplies в main.js),
-   значи на компютър нищо не се променя. */
+   значи на компютър нищо не се променя.
+
+   Ширината е отделен клас (b5.27): Настройки -> „Разпъване при редактиране" я изключва, а качването
+   най-горе и таванът на височината остават - иначе клавиатурата закрива бележката. */
 .note-window.note-window-kb-top .modal-content-box {
     top: 0 !important;
+    height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
+    max-height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
+}
+/* Разпъването по ширина, докато се пише (Настройки -> „Разпъване при редактиране", по подразбиране
+   включено). Лявото стои на 0 по същата причина като top: инлайн left не се пипа, значи след
+   клавиатурата бележката се връща на мястото си. */
+.note-window.note-window-kb-top.note-window-kb-wide .modal-content-box {
     left: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
-    height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
-    max-height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
 }
 /* The quiet trace after a background sync took the new text in, and the question when it could not. */
 .note-window-sync-trace {
