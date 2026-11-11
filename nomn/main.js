@@ -16259,12 +16259,17 @@ function getNoteCalDateTimeTimestamp(noteData) {
 // Локален часовник на всеки 20 сек през allNotesData: без заявки към Google. Звъни бележка с дата и час,
 // чийто момент е настъпил в последната минута, докато приложението е отворено. Момент преди пускането на
 // часовника (отминал, при затворено приложение, при презареждане) не звъни; всяка двойка бележка+момент звъни веднъж.
+// b5.29 (по желание на собственика): часовникът се стартира подравнен към кръглата минута — първата
+// проверка е точно на :00 секунди, после на :20 и :40, значи всяка кръгла минута се проверява на самата
+// минута, а не на случаен момент от нея. 60000 се дели на 20000, затова подравняването се пази.
 const CAL_BELL_TICK_MS = 20000;
+const CAL_BELL_ROUND_MS = 60000;
 const CAL_BELL_WINDOW_MS = 60000;
 const CAL_BELL_SHOW_MS = 10000;
 const CAL_BELL_SVG = '<svg width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>';
 let calBellStartedAt = 0;
 let calBellInterval = null;
+let calBellAlignTimer = null; // изчакването до първата кръгла минута
 const calBellFired = new Set(); // '<id|gdid>@<момент>'
 let calBellQueue = []; // бележките на събитията, които звъннаха, докато камбанката е на екрана
 let calBellOpened = 0; // колко от опашката вече са отворени с клик
@@ -16912,11 +16917,22 @@ function calendarBellTick(now = Date.now()) {
     }
 }
 
+// Колко ms остават до следващата кръгла минута (:00.000). На самата минута връща 0.
+function calBellMsToRoundMinute(now = Date.now()) {
+    const ms = now % CAL_BELL_ROUND_MS;
+    return ms === 0 ? 0 : CAL_BELL_ROUND_MS - ms;
+}
+
 function startCalendarBellClock() {
-    if (calBellInterval) return;
+    if (calBellInterval || calBellAlignTimer) return;
     calBellStartedAt = Date.now();
     calendarBellTick(calBellStartedAt);
-    calBellInterval = setInterval(() => calendarBellTick(Date.now()), CAL_BELL_TICK_MS);
+    // b5.29: проверката се закача за кръглата минута, не за момента на пускане на приложението.
+    calBellAlignTimer = setTimeout(() => {
+        calBellAlignTimer = null;
+        calendarBellTick(Date.now());
+        calBellInterval = setInterval(() => calendarBellTick(Date.now()), CAL_BELL_TICK_MS);
+    }, calBellMsToRoundMinute());
     document.addEventListener('pointerdown', unlockCalBellAudio, true);
 }
 
@@ -16925,7 +16941,10 @@ window.calendarBell = {
     tick: calendarBellTick,
     expire: (now) => { if (calBellActive && now >= calBellUntil) restoreCalendarButton(); return !calBellActive; },
     restart: (startedAt) => { restoreCalendarButton(); calBellFired.clear(); calBellStartedAt = startedAt; calBellSoundCalls = 0; },
-    state: () => ({ active: calBellActive, until: calBellUntil, queue: calBellQueue.slice(), opened: calBellOpened, soundCalls: calBellSoundCalls, startedAt: calBellStartedAt })
+    state: () => ({ active: calBellActive, until: calBellUntil, queue: calBellQueue.slice(), opened: calBellOpened, soundCalls: calBellSoundCalls, startedAt: calBellStartedAt }),
+    // b5.29: за проверките — колко остава до кръглата минута и дали часовникът вече тиктака.
+    msToRoundMinute: (now) => calBellMsToRoundMinute(now),
+    clock: () => ({ waiting: !!calBellAlignTimer, ticking: !!calBellInterval, tickMs: CAL_BELL_TICK_MS, roundMs: CAL_BELL_ROUND_MS })
 };
 // Add an event listener to the modal's close button to reset button visibility
 document.querySelectorAll('.modal-close').forEach(btn => {
