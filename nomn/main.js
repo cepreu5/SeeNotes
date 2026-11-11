@@ -11305,6 +11305,8 @@ function normalizeNoteUiStateInMemory(noteObj) {
 // честотата (uiState.cRepeat.f), за да не се добавя нов ключ в бележката и да не се пипа вече
 // записаното: бележка с него НЕ прави запис в Google Календар, а щом датата ѝ (и часът, ако има)
 // отмине, бордът просто спира да я показва. „До“ при него няма смисъл - то е край на повторение.
+// b5.28: в модала вече няма избор за повторение - остава само квадратчето „Валидност“. Старите
+// стойности daily/weekly/monthly/yearly се четат както досега, но повече не се предлагат.
 const NOTE_CAL_VALIDITY_FREQ = 'validity';
 const NOTE_CAL_REPEAT_FREQS = ['daily', 'weekly', 'monthly', 'yearly', NOTE_CAL_VALIDITY_FREQ];
 
@@ -11396,14 +11398,15 @@ function applyNoteCalDraft(uiState, draft) {
     return u;
 }
 
-// Редът „час / повторение / до“ под долната лента на модала (b2.12). Показва се само при зададена дата;
+// Редът „час / валидност“ под долната лента на модала (b2.12). Показва се само при зададена дата;
 // без дата се скрива, но черновата и стойностите в бележката остават. Датата НЕ е в реда - тя е само в
 // лентата и се задава/маха от бутона с календара там (b2.15). Часът се вижда като в лентата (formatTime),
 // а не както Chrome рисува нативния input.
 // b2.17: часовникът и часът са само тук (не и в лентата) и оттук се задава часът. В преглед празните
-// полета (без час, „без“ повторение, без „До“) не се виждат, а без нищо за показване се скрива целият
-// ред; в редакция трите полета стоят винаги, празните като „час“ / „без“ / „до“.
+// полета (без час, без отметка) не се виждат, а без нищо за показване се скрива целият ред; в редакция
+// двете полета стоят винаги, празните като „час“ / празно квадратче.
 // b2.18: прегледът с окото се държи като обикновения изглед (без празни полета); редът е подравнен вляво.
+// b5.28: изборът за повторение и полето „До“ са махнати - остава само квадратчето „Валидност“.
 function buildNoteCalRow(modalBodyElem) {
     const row = document.createElement('div');
     row.className = 'note-cal-row';
@@ -11449,38 +11452,20 @@ function buildNoteCalRow(modalBodyElem) {
     const timeClear = clearBtn('noteCalClearTime', 'Remove the time (all day)', () => { timeInput.value = ''; commit(); });
     timeChip.append(timeField, timeClear);
 
-    const repeatChip = chip('noteCalRepeat', 'repeat');
-    repeatChip.classList.add('note-cal-repeat');
-    const repeatSelect = document.createElement('select');
-    repeatSelect.className = 'note-cal-repeat-select';
-    [['', 'noteCalRepeatNone', 'none'], ['daily', 'noteCalRepeatDaily', 'every day'], ['weekly', 'noteCalRepeatWeekly', 'every week'],
-    ['monthly', 'noteCalRepeatMonthly', 'every month'], ['yearly', 'noteCalRepeatYearly', 'every year'],
-    // b3.54: шестият избор. С него датата е срок, а не събитие - бележката не влиза в календара,
-    // а след като датата ѝ отмине, не се показва в борда си, а само в „Невалидни“.
-    [NOTE_CAL_VALIDITY_FREQ, 'noteCalRepeatValidity', 'Валидност']].forEach(([value, key, fallback]) => {
-        const opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = _(key) || fallback;
-        repeatSelect.appendChild(opt);
-    });
-    repeatChip.appendChild(repeatSelect);
+    // b5.28: вместо избор за повторение - квадратче „Валидност“ (собственик, 11.11.2026: повторенията
+    // вече не правят нищо, а „Валидност“ остава - с нея датата е срок, а не събитие: бележката не влиза
+    // в календара, а след като датата ѝ отмине, не се показва в борда си, а само в „Невалидни“ (b3.54).
+    const validityChip = document.createElement('label');
+    validityChip.className = 'note-cal-chip note-cal-validity';
+    const validityInput = document.createElement('input');
+    validityInput.type = 'checkbox';
+    validityInput.className = 'note-cal-validity-input';
+    const validityText = document.createElement('span');
+    validityText.className = 'note-cal-validity-text';
+    validityText.textContent = _('noteCalRepeatValidity') || 'Валидност';
+    validityChip.append(validityInput, validityText);
 
-    const untilChip = chip('noteCalUntil', 'until');
-    untilChip.classList.add('note-cal-until');
-    // Видимата дата е по устройството; прозрачното <input type="date"> отгоре само отваря избора.
-    const untilField = document.createElement('span');
-    untilField.className = 'note-cal-until-field';
-    const untilText = document.createElement('span');
-    untilText.className = 'note-cal-until-text';
-    const untilInput = document.createElement('input');
-    untilInput.type = 'date';
-    untilInput.className = 'note-cal-until-input';
-    untilInput.addEventListener('click', () => { try { untilInput.showPicker?.(); } catch (e) { /* старите браузъри отварят избора сами */ } });
-    untilField.append(untilText, untilInput);
-    const untilClear = clearBtn('noteCalClearUntil', 'No end date', () => { untilInput.value = ''; commit(); });
-    untilChip.append(untilField, untilClear);
-
-    row.append(timeChip, repeatChip, untilChip);
+    row.append(timeChip, validityChip);
 
     // Прегледът с окото е част от редакцията (промените чакат Save), но празните полета се виждат само
     // при истинска редакция - с textarea (b2.18).
@@ -11497,9 +11482,6 @@ function buildNoteCalRow(modalBodyElem) {
         const calDate = parseInt(modalBodyElem.dataset.calendarDate, 10) || 0;
         const draft = getModalCalDraft(modalBodyElem);
         const editing = showEmpty();
-        const hasUntil = !!(draft.repeat && draft.repeat.u);
-        // „Валидност“ не се повтаря, значи няма край на повторението (b3.54): полето „До“ се
-        // скрива винаги и не се избира, вместо да стои празно и да подвежда.
         const isValidity = !!(draft.repeat && draft.repeat.f === NOTE_CAL_VALIDITY_FREQ);
         row._noteCalEditing = editing;
         // Без редакция (и в прегледа с окото) ред без нищо за показване не стои като празна ивица (b2.17, b2.18).
@@ -11509,20 +11491,12 @@ function buildNoteCalRow(modalBodyElem) {
         timeClear.hidden = !draft.time;
         timeChip.hidden = !editing && !draft.time;
         timeChip.classList.toggle('is-empty', !draft.time);
-        repeatSelect.value = draft.repeat ? draft.repeat.f : '';
-        repeatChip.hidden = !editing && !draft.repeat;
-        repeatChip.classList.toggle('is-empty', !draft.repeat);
-        untilChip.hidden = isValidity || (!editing && !hasUntil);
-        untilChip.classList.toggle('is-empty', !hasUntil);
-        // „До“ има смисъл само при повторение: без него полето се вижда (в редакция), но не се избира.
-        untilInput.disabled = !draft.repeat || isValidity;
-        untilInput.value = hasUntil ? draft.repeat.u : '';
-        untilText.textContent = hasUntil ? formatDeviceDate(untilInput.value) : '';
-        untilClear.hidden = !hasUntil;
+        validityInput.checked = isValidity;
+        // В редакция квадратчето стои винаги (за да може да се отметне), извън нея - само при отметка.
+        validityChip.hidden = !editing && !isValidity;
     };
     const commit = () => {
-        const f = repeatSelect.value;
-        const repeat = NOTE_CAL_REPEAT_FREQS.includes(f) ? { f, u: untilInput.value || null } : null;
+        const repeat = validityInput.checked ? { f: NOTE_CAL_VALIDITY_FREQ, u: null } : null;
         setModalCalDraft(modalBodyElem, getNoteCalTime({ cTime: timeInput.value }), getNoteCalRepeat({ cRepeat: repeat }));
         sync();
         // Без редакция няма Save, който да я приложи: записва се веднага и тръгва сверката с календара (b2.16).
@@ -11530,8 +11504,7 @@ function buildNoteCalRow(modalBodyElem) {
         updateModalUiStateSaveUI();
     };
     timeInput.addEventListener('change', commit);
-    repeatSelect.addEventListener('change', commit);
-    untilInput.addEventListener('change', commit);
+    validityInput.addEventListener('change', commit);
     // Клавишите в полетата не стигат до клавишните комбинации на прозореца (стрелки, Delete...).
     row.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
     row._noteCalSync = sync;

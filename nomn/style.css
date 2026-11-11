@@ -4484,10 +4484,9 @@ body.selection-locked .note.active-selection-note .note-content {
     opacity: 1;
 }
 
-/* Час и „До“: видимият текст е по устройството (като в лентата); прозрачното нативно поле отгоре
+/* Часът: видимият текст е по устройството (като в лентата); прозрачното нативно поле отгоре
    само отваря избора (часът - от b2.15, иначе Chrome рисува „01:55 AM“). */
-.note-cal-time-field,
-.note-cal-until-field {
+.note-cal-time-field {
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -4516,12 +4515,32 @@ body.selection-locked .note.active-selection-note .note-content {
     color: var(--note-cal-label);
 }
 
-.note-cal-chip .note-cal-until-input:disabled {
-    cursor: default;
+/* Квадратчето „Валидност“ (b5.28) - на мястото на стария избор за повторение. Цялата плочка е
+   <label>, значи клик по надписа също отметва. */
+.note-cal-validity {
+    gap: 6px;
+    cursor: pointer;
 }
 
-.note-cal-chip .note-cal-time-input,
-.note-cal-chip .note-cal-until-input {
+.note-cal-chip .note-cal-validity-input {
+    appearance: auto;
+    -webkit-appearance: checkbox;
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: initial;
+    accent-color: currentColor;
+    cursor: pointer;
+}
+
+.note-cal-validity-text {
+    white-space: nowrap;
+}
+
+.note-cal-chip .note-cal-time-input {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -4530,8 +4549,7 @@ body.selection-locked .note.active-selection-note .note-content {
     cursor: pointer;
 }
 
-.note-cal-chip .note-cal-time-input::-webkit-calendar-picker-indicator,
-.note-cal-chip .note-cal-until-input::-webkit-calendar-picker-indicator {
+.note-cal-chip .note-cal-time-input::-webkit-calendar-picker-indicator {
     position: absolute;
     inset: 0;
     width: auto;

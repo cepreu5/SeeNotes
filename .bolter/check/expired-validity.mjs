@@ -405,7 +405,7 @@ ok(r.ok && !titles.includes('ИЗТЕКЛА ЧАСОВА'),
 
 ok(errs.length === 0, 'няма грешки в конзолата на страницата', errs.slice(0, 3));
 
-// --- 7) Самият избор в „повторение“ и правилата зад него -------------------------------------
+// --- 7) Самото квадратче „Валидност“ в реда (b5.28: няма избор за повторение и няма „До“) --------
 const openFuture = await openNote('БЪДЕЩА ВАЛИДНОСТ');
 ok(openFuture.ok, 'отваря се бележка с „Валидност“ и бъдеща дата', openFuture);
 const picker = await page.evaluate(() => {
@@ -416,26 +416,36 @@ const picker = await page.evaluate(() => {
     const body = w && w.body ? w.body : win.querySelector('.nw-modal-body');
     const row = win.querySelector('.note-cal-row');
     if (!body || !row) return { err: 'няма ред с датата', hasBody: !!body, hasRow: !!row };
-    // Редът се държи като в редакция (там празните полета се виждат) - иначе „До“ и без това е скрит.
+    // Редът се държи като в редакция (там празните полета се виждат).
     body.dataset.isPreview = 'true';
     row._noteCalSync();
-    const sel = row.querySelector('.note-cal-repeat-select');
-    const until = row.querySelector('.note-cal-until');
-    const untilInput = row.querySelector('.note-cal-until-input');
-    return {
-        options: [...sel.options].map(o => o.value),
-        labels: [...sel.options].map(o => o.textContent.trim()),
-        value: sel.value,
-        untilHidden: !!until && until.hidden,
-        untilDisabled: !!untilInput && untilInput.disabled
+    const box = row.querySelector('.note-cal-validity-input');
+    const text = row.querySelector('.note-cal-validity-text');
+    const out = {
+        isCheckbox: !!box && box.type === 'checkbox',
+        checked: !!box && box.checked,
+        label: text ? text.textContent.trim() : '',
+        noRepeatSelect: !row.querySelector('.note-cal-repeat-select'),
+        noUntil: !row.querySelector('.note-cal-until') && !row.querySelector('.note-cal-until-input')
     };
+    // Отмятане: черновата губи валидността (в преглед не се записва, чака Save).
+    if (box) {
+        box.checked = false;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        out.uncheckedDraft = body.dataset.cRepeat || '';
+        box.checked = true;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        out.recheckedDraft = body.dataset.cRepeat || '';
+    }
+    return out;
 });
-ok(picker.options && picker.options.join(',') === ',daily,weekly,monthly,yearly,validity',
-    'в „повторение“ има шест избора и последният е validity', picker.options);
-ok(picker.labels && picker.labels.includes('Валидност'), 'изборът се вижда като „Валидност“', picker.labels);
-ok(picker.value === 'validity', 'бележката показва избраното „Валидност“', picker.value);
-ok(picker.untilHidden === true && picker.untilDisabled === true,
-    'при „Валидност“ полето „До“ е скрито и не се избира', picker);
+ok(picker.isCheckbox === true && picker.checked === true,
+    '„Валидност“ е отметнато квадратче за бележка с валидност', picker);
+ok(picker.label === 'Валидност', 'квадратчето се чете като „Валидност“', picker.label);
+ok(picker.noRepeatSelect === true && picker.noUntil === true,
+    'в реда няма нито избор за повторение, нито поле „До“', picker);
+ok(picker.uncheckedDraft === '' && /"f":"validity"/.test(picker.recheckedDraft || ''),
+    'отмятането маха валидността, повторното отмятане я връща', [picker.uncheckedDraft, picker.recheckedDraft]);
 
 // --- 8) Правилата зад избора: срок, календар, стара дата ------------------------------------
 const rules = await page.evaluate(() => {
