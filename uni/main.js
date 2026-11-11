@@ -7533,6 +7533,11 @@ function initApp() {
         if (useLocCheckbox) useLocCheckbox.checked = localStorage.getItem('useLocalDb') === 'true';
         if (useArhCheckbox) useArhCheckbox.checked = localStorage.getItem('useArhDb') === 'true';
         if (useIdbCheckbox) useIdbCheckbox.checked = localStorage.getItem('useIndexedDb') === 'true';
+        // Квадратчето „Разпъване при редактиране" (b3.81) се сверява и тук, при отваряне на екрана:
+        // слушателят му се слага в createSettingsUI, но състоянието трябва да е вярно всеки път,
+        // когато собственикът погледне Настройки.
+        const expandOnEditCb = document.getElementById('expand-on-edit-checkbox');
+        if (expandOnEditCb) expandOnEditCb.checked = isExpandOnEditEnabled();
         settingsInitialState = {
             useGoogleDb: useGDCheckbox ? useGDCheckbox.checked : true,
             useLocalDb: useLocCheckbox ? useLocCheckbox.checked : false,
@@ -13817,6 +13822,7 @@ function onNoteWindowClosed(win) {
     // Затварянето маха и белега за мобилна клавиатура: следващото отваряне на прозореца започва от
     // запомненото му място, а не от горния ръб (b2.89).
     win.el.classList.remove('note-window-kb-top');
+    win.el.classList.remove('note-window-kb-wide');
     // Затворен viewer не трябва да оставя звук: плочката, която е свирила, вече я няма.
     stopAttachmentAudio();
     // Кадърът от посочване на маркер виси над документа (position: fixed) - със затварянето на
@@ -14029,6 +14035,14 @@ function isNoteKeyboardField(el) {
     return el.isContentEditable === true;
 }
 
+// Разпъване при редактиране (b3.81, порт от nomn b5.27): на телефон бележката заема цялата ширина на
+// екрана, докато се пише. Собственикът (11.11.2026) поиска това да е квадратче в Настройки, избрано по
+// подразбиране, затова липсваща стойност значи ВКЛЮЧЕНО. Само ширината се изключва: качването най-горе
+// остава, защото иначе клавиатурата закрива бележката.
+function isExpandOnEditEnabled() {
+    return localStorage.getItem('expandOnEdit') !== 'false';
+}
+
 // Само на телефон: фин показалец (мишка) и широк екран остават както досега - там клавиатура не
 // закрива бележката и местенето ѝ при писане би било изненада.
 function noteKeyboardDockApplies() {
@@ -14047,6 +14061,8 @@ function setNoteKeyboardDock(win, on) {
     if (on && !noteKeyboardDockApplies()) on = false;
     if (on) applyNoteKeyboardVisibleHeight(el);
     el.classList.toggle('note-window-kb-top', !!on);
+    // Ширината е отделен клас: Настройки -> „Разпъване при редактиране" маха само нея.
+    el.classList.toggle('note-window-kb-wide', !!on && isExpandOnEditEnabled());
     // Таванът на височината се сменя заедно с класа: слагането на класа при вече измерена стойност
     // не би преизчислило нищо, затова стойността се пише преди класа и се маха след него.
     if (!on) {
@@ -19488,7 +19504,7 @@ const PENDING_LANG_SYNC_KEY = 'pending_language_sync';
 const appSettingsKeys = [
     'zoomLevel', 'noteFontSize', 'modalFontSize', 'hideAssistant', 'privacyAutoProtect', 'privacyIdleLock', 'hideToast', 'trashSearch',
     'showBoardNoteCount', 'showWeeklyCalendar', 'showDatemod', 'singleNoteMode', 'showNewBoard', 'oneTapLink',
-    'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg',
+    'clickToEdit', 'closeAfterSave', 'automatedTimer', 'notesBgrd', 'imgBgrd', 'defaultNoteBg', 'expandOnEdit',
     'gcalNotes', 'gcalCalendarId', 'gcalState',
     'useGoogleDb', 'updateGDrive', 'useIndexedDb', 'useLocalDb', 'updateLocalFolder', 'useArhDb',
     'forceGDriveRead', 'checkEmptyBoards', 'mdBold', 'mdItalic', 'mdStrike', 'mdUnderline', 'mdClear',
@@ -21720,6 +21736,28 @@ async function createSettingsUI(boardsData, boardParseError) {
             }
             showToast(_('settingSaved'), 2000);
             oneTapLinkChanged = true;
+        });
+    }
+    // Разпъване при редактиране (телефон): бележката заема цялата ширина, докато се пише
+    const expandOnEditCheckbox = document.getElementById('expand-on-edit-checkbox');
+    if (expandOnEditCheckbox) {
+        expandOnEditCheckbox.checked = isExpandOnEditEnabled();
+        expandOnEditCheckbox.addEventListener('change', () => {
+            localStorage.setItem('expandOnEdit', expandOnEditCheckbox.checked);
+            // Класът се сменя веднага на отворените бележки, за да важи изборът и без да се затваря
+            // редакторът; при включване височината се мери наново, както при фокус.
+            noteWindows.forEach(w => {
+                if (!w.el) return;
+                const on = expandOnEditCheckbox.checked && w.el.classList.contains('note-window-kb-top');
+                if (on) applyNoteKeyboardVisibleHeight(w.el);
+                w.el.classList.toggle('note-window-kb-wide', on);
+            });
+            // Само localStorage не стига: при старт профилът презаписва ключа, значи изборът се губи
+            // при всяко презареждане. Затова се обновява и профилът, както при oneTapLink.
+            if (typeof saveSettingsToGDrive === 'function') {
+                saveSettingsToGDrive(true).catch(e => console.warn('Expand-on-edit settings sync failed:', e));
+            }
+            showToast(_('settingSaved'), 2000);
         });
     }
     // Click to edit

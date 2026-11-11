@@ -5159,6 +5159,15 @@ body.selection-locked .note.active-selection-note .note-content {
     height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
     max-height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
 }
+/* Разпъване по ширина, докато се пише (b3.81, порт от nomn b5.27). Собственикът (11.11.2026): при
+   писане бележката да заема максималната ширина на екрана на мобилни устройства, с квадратче в
+   Настройки -> „Разпъване при редактиране", избрано по подразбиране. Лявото стои на 0 по същата
+   причина като top: инлайн left не се пипа, значи след клавиатурата бележката се връща на мястото си. */
+.note-window.note-window-kb-top.note-window-kb-wide .modal-content-box {
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
 /* The quiet trace after a background sync took the new text in, and the question when it could not. */
 .note-window-sync-trace {
     position: absolute;

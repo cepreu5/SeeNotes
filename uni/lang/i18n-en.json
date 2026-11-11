@@ -346,6 +346,7 @@
     "loadingFromLocal": "Loading from local database...",
     "offlineStartButton": "Start Offline",
     "clickToEditLabel": "Click to edit:",
+    "expandOnEditLabel": "Expand while editing:",
     "searchInNoteTooltip": "Search in note",
     "addBoardTitle": "Board",
     "boardSelectLabel": "Select:",
