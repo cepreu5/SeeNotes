@@ -7084,7 +7084,15 @@ function extractAndFormat(text, onlyChecked = false) {
         // Втора защита: Ако редът започва с число, точка и веднага след това цифра (напр. 1733.90),
         // НЕ го пипаме, защото това е част от сумата.
         // Залепяме операторите (чистим интервалите omkring тях)
-        cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, '$1');
+        // b5.31: интервалите около оператор се махат само ако операторът не е залепен за буква.
+        // Иначе „Сопрал+ 19.10“ ставаше „Сопрал+19.10“ и числото изглеждаше залепено за буква —
+        // редът се изхвърляше и при маркиран текст в режим Преглед последният ред изчезваше
+        // (собственик, 13.11.2026: с табулатори резултатът беше 73.32+16.85 вместо 73.32+16.85+19.10).
+        cleanLine = cleanLine.replace(/\s*([\*\/\+\-])\s*/g, (match, op, offset, whole) => {
+            const before = offset > 0 ? whole.charAt(offset - 1) : '';
+            if (/\p{L}/u.test(before)) return match;
+            return op;
+        });
         // 4. Екстракция на математическия блок
         // Собственик (5.11.2026): взима се САМО последното число в реда, и то само ако редът
         // ЗАВЪРШВА с него. Не се брои, ако числото е залепено за буква отляво ("500 А1", "T1"),
@@ -7126,40 +7134,75 @@ function extractAndFormat(text, onlyChecked = false) {
     return (finalSequence);
 }
 
+// b5.31: маркировката се запомня още при натискане на бутона. Кликът върху бутона може да свие
+// маркировката в бележката и тогава калкулаторът падаше към клипборда, тоест резултатът зависеше
+// от това какво има в него (собственик, 13.11.2026). Сега при pointerdown запомняме текста и
+// handleCalculateClick го ползва, ако живата маркировка вече я няма.
+let calcSelectionSnapshot = '';
+function rememberCalcSelection() {
+    calcSelectionSnapshot = '';
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const text = sel.toString();
+    if (!text.trim()) return;
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    if (!el || !el.closest) return;
+    if (!el.closest('.nw-modal-body, #modal-body')) return;
+    calcSelectionSnapshot = text;
+}
+
 /**
  * Обработва клик върху бутона за калкулатор в модалния прозорец.
- * Взима маркирания текст, изчислява го като математически израз и замества селекцията с резултата.
+ * Взима маркирания текст (иначе клипборда), изчислява го и показва реда „израз = резултат“:
+ * в режим Преглед на нов ред в края на бележката, а в режим Редактиране след текста на бележката.
  */
 async function handleCalculateClick(checkList) {
-    const selection = window.getSelection();
-    const modalBody = document.getElementById('modal-body');
+    const modalBody = document.querySelector('.note-window-active .nw-modal-body') || document.getElementById('modal-body');
+    const editor = document.getElementById('note-edit-textarea');
+    const inEditMode = !!editor && editor.offsetParent !== null;
     let expression = '';
-    let isFromClipboard = false;
-    let range = null;
-    // Проверяваме дали има маркиран текст в модалния прозорез
-    if (selection.rangeCount > 0 && selection.toString().trim() !== '') {
-        const tempRange = selection.getRangeAt(0);
-        if (modalBody.contains(tempRange.commonAncestorContainer)) {
-            expression = selection.toString().trim();
-            range = tempRange;
+    let from = '';
+    // Маркиран текст: първо в полето за редактиране, после живата маркировка в бележката,
+    // накрая запазената при натискането на бутона.
+    let marked = '';
+    if (inEditMode) {
+        const selStart = editor.selectionStart || 0;
+        const selEnd = editor.selectionEnd || 0;
+        if (selEnd > selStart) marked = editor.value.slice(selStart, selEnd);
+    }
+    if (!marked.trim()) {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0 && selection.toString().trim() !== '') {
+            const tempRange = selection.getRangeAt(0);
+            if (modalBody && modalBody.contains(tempRange.commonAncestorContainer)) {
+                marked = selection.toString();
+            }
         }
     }
+    if (!marked.trim() && calcSelectionSnapshot) marked = calcSelectionSnapshot;
+    calcSelectionSnapshot = '';
     // Ако няма маркиран текст, опитваме да четем от клипборда
-    if (expression === '') {
+    if (marked.trim()) {
+        expression = marked;
+        from = 'selection';
+    } else {
         try {
             expression = await navigator.clipboard.readText();
             expression = expression.trim();
-            isFromClipboard = true;
+            from = 'clipboard';
         } catch (err) {
             console.log('Failed to read clipboard contents: ', err);
             // Добавяме грешката в края на бележката вместо toast
             const errorText = `\n${_('errorClipboardRead')}`;
             const errorNode = document.createTextNode(errorText);
-            modalBody.appendChild(errorNode);
+            if (modalBody) modalBody.appendChild(errorNode);
             return;
         }
     }
     if (expression === '') return;
+    let sanitizedExpression = '';
     try {
 
         /*/ Премахваме всички интервали от израза
@@ -7171,37 +7214,36 @@ async function handleCalculateClick(checkList) {
         if (sanitizedExpression !== expression) {
             throw new Error("Invalid characters in expression.");
         }*/
-        const sanitizedExpression = extractAndFormat(expression, checkList);
+        sanitizedExpression = extractAndFormat(expression, checkList);
         // Използваме Function конструктор, който е малко по-сигурен от директен eval()
         const result = new Function('return ' + sanitizedExpression)();
+        if (typeof result !== 'number' || !isFinite(result)) throw new Error('Not a number: ' + result);
         // Форматираме резултата с 2 десетични знака
         const formattedResult = result.toFixed(2);
-        const resultText = ` = ${formattedResult}`;
-
-        // Ако имаме селекция и не е от клипборда, вмъкваме резултата след маркирания текст
-        if (range && !isFromClipboard) {
-            // Създаваме текстов възел с резултата
-            const resultNode = document.createTextNode(resultText);
-            // Вмъкваме го след оригиналната селекция
-            range.collapse(false); // Свиваме обхвата до края му
-            range.insertNode(resultNode);
-            // Създаваме нов обхват (range), който да обхване само числото
-            const newRange = document.createRange();
-            newRange.setStart(resultNode, resultText.indexOf(formattedResult.toString())); // Начало на числото
-            newRange.setEnd(resultNode, resultText.length); // Край на текста
-            selection.removeAllRanges(); // Изчистваме старата селекция
-            selection.addRange(newRange); // Добавяме новата селекция
-        } else {
-            // Ако е от клипборда, добавяме цялото изчисление в края на бележката
-            const fullResultText = `\n${sanitizedExpression} = ${formattedResult}`;
-            const resultNode = document.createTextNode(fullResultText);
-            modalBody.appendChild(resultNode);
+        // b5.31: показва се и изразът, от който е излязъл резултатът, не само резултатът
+        const calcLine = `${sanitizedExpression} = ${formattedResult}`;
+        if (inEditMode) {
+            // Редактиране: редът отива след текста на бележката, в самото поле за писане
+            const trimmedEnd = editor.value.replace(/\s+$/, '');
+            const nextValue = (trimmedEnd ? trimmedEnd + '\n' : '') + calcLine;
+            editor.value = nextValue;
+            try { editor.setSelectionRange(nextValue.length, nextValue.length); } catch (err) { }
+            editor.dispatchEvent(new Event('input', { bubbles: true }));
+            if (typeof scrollCaretIntoView === 'function') scrollCaretIntoView(editor);
+        } else if (modalBody) {
+            // Преглед: нов ред в края на бележката, с израза и резултата
+            modalBody.appendChild(document.createTextNode(`\n${calcLine}`));
         }
+        console.log('Calculation:', from, calcLine);
     } catch (error) {
-        // Добавяме грешката в края на бележката вместо toast
-        const errorText = `\n${_('invalidExpression')}`;
-        const errorNode = document.createTextNode(errorText);
-        modalBody.appendChild(errorNode);
+        // b5.31: съобщението показва и самия израз, който не е сметнат
+        const badExpression = sanitizedExpression || expression;
+        const errorMessage = `${_('invalidExpression')} ${badExpression}`;
+        if (inEditMode && typeof showToast === 'function') {
+            showToast(errorMessage);
+        } else if (modalBody) {
+            modalBody.appendChild(document.createTextNode(`\n${errorMessage}`));
+        }
         console.log("Calculation error:", error);
     }
 }
@@ -14189,6 +14231,8 @@ function wireNoteWindow(win) {
     if (calculateBtn) {
         let longPressTimer;
         let isLongPress = false;
+        // b5.31: маркировката се запомня още при натискането, защото кликът може да я свие
+        calculateBtn.addEventListener('pointerdown', rememberCalcSelection, { capture: true });
         calculateBtn.addEventListener('click', (e) => {
             if (isLongPress) {
                 isLongPress = false;
