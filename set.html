@@ -791,6 +791,24 @@
                         }
                         foldersTitle.style.display = 'block';
                         foldersList.style.display = 'block';
+                        // Имена на стартовите бордове: първо от boardTitlesMap (бордовете на текущата папка),
+                        // иначе от самия борд файл в Drive (board.txt съдържа title).
+                        const startBoardTitles = {};
+                        const startBoardIds = [...new Set(parsed.folders
+                            .map(f => f && f.startBoard)
+                            .filter(Boolean)
+                            .map(String))];
+                        await Promise.all(startBoardIds.map(async (sbId) => {
+                            if (titlesMap[sbId]) { startBoardTitles[sbId] = titlesMap[sbId]; return; }
+                            if (!token) return;
+                            try {
+                                const txt = await getGDContent(sbId);
+                                if (!txt) return;
+                                const boardJson = JSON.parse(txt);
+                                const boardObj = Array.isArray(boardJson) ? boardJson[0] : boardJson;
+                                if (boardObj && boardObj.title) startBoardTitles[sbId] = boardObj.title;
+                            } catch (e) { console.warn('Start board title read failed:', sbId, e); }
+                        }));
                         parsed.folders.forEach((folder, idx) => {
                             const isCurrentActive = parsed.activeFolder === folder.name;
                             const activeBadge = isCurrentActive ? ' <span style="background:#27ae60; color:#fff; padding:2px 8px; border-radius:12px; font-size:0.75em; margin-left:8px;">Активна папка</span>' : '';
@@ -818,7 +836,14 @@
                                     return `<li>${title}${label}</li>`;
                                 }).join('') + '</ol>';
                             }
-                            fBody.innerHTML += `<div style="font-size:0.85em; color:#666; margin-top:10px; border-top:1px solid #eee; padding-top:10px;"><strong>Start Board:</strong> ${folder.startBoard || 'Default'}<br><strong>Last Note ID:</strong> ${folder.lastNoteId || '-'}<br><strong>Last Board ID:</strong> ${folder.lastBoardId || '-'}</div>`;
+                            const sbId = folder.startBoard ? String(folder.startBoard) : '';
+                            const sbTitle = sbId ? (startBoardTitles[sbId] || '') : '';
+                            const sbHtml = !sbId
+                                ? 'Default'
+                                : (sbTitle && sbTitle !== sbId
+                                    ? `<strong>${sbTitle}</strong> <small style="color:#888;">(${sbId})</small>`
+                                    : sbId);
+                            fBody.innerHTML += `<div style="font-size:0.85em; color:#666; margin-top:10px; border-top:1px solid #eee; padding-top:10px;"><strong>Start Board:</strong> ${sbHtml}<br><strong>Last Note ID:</strong> ${folder.lastNoteId || '-'}<br><strong>Last Board ID:</strong> ${folder.lastBoardId || '-'}</div>`;
                             const rawEdit = document.createElement('textarea');
                             rawEdit.className = 'json-edit';
                             rawEdit.id = `edit-folder-${idx}`;

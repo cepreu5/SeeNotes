@@ -335,6 +335,7 @@
     "loadingFromLocal": "Зареждане от локалната база данни...",
     "offlineStartButton": "Старт офлайн",
     "clickToEditLabel": "Редактиране с клик:",
+    "expandOnEditLabel": "Разпъване при редактиране:",
     "searchInNoteTooltip": "Търсене в бележката",
     "addBoardTitle": "Борд",
     "boardSelectLabel": "Изберете:",

@@ -4484,10 +4484,9 @@ body.selection-locked .note.active-selection-note .note-content {
     opacity: 1;
 }
 
-/* Час и „До“: видимият текст е по устройството (като в лентата); прозрачното нативно поле отгоре
+/* Часът: видимият текст е по устройството (като в лентата); прозрачното нативно поле отгоре
    само отваря избора (часът - от b2.15, иначе Chrome рисува „01:55 AM“). */
-.note-cal-time-field,
-.note-cal-until-field {
+.note-cal-time-field {
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -4516,12 +4515,32 @@ body.selection-locked .note.active-selection-note .note-content {
     color: var(--note-cal-label);
 }
 
-.note-cal-chip .note-cal-until-input:disabled {
-    cursor: default;
+/* Квадратчето „Валидност“ (b5.28) - на мястото на стария избор за повторение. Цялата плочка е
+   <label>, значи клик по надписа също отметва. */
+.note-cal-validity {
+    gap: 6px;
+    cursor: pointer;
 }
 
-.note-cal-chip .note-cal-time-input,
-.note-cal-chip .note-cal-until-input {
+.note-cal-chip .note-cal-validity-input {
+    appearance: auto;
+    -webkit-appearance: checkbox;
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: initial;
+    accent-color: currentColor;
+    cursor: pointer;
+}
+
+.note-cal-validity-text {
+    white-space: nowrap;
+}
+
+.note-cal-chip .note-cal-time-input {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -4530,8 +4549,7 @@ body.selection-locked .note.active-selection-note .note-content {
     cursor: pointer;
 }
 
-.note-cal-chip .note-cal-time-input::-webkit-calendar-picker-indicator,
-.note-cal-chip .note-cal-until-input::-webkit-calendar-picker-indicator {
+.note-cal-chip .note-cal-time-input::-webkit-calendar-picker-indicator {
     position: absolute;
     inset: 0;
     width: auto;
@@ -5206,11 +5224,31 @@ body.selection-locked .note.active-selection-note .note-content {
    (колко пиксела от страницата се виждат над клавиатурата) и от височината на екрана, когато
    видимата площ е цялата. Класът слага само !important правила: инлайн top/left, които местенето
    пише, остават непокътнати, значи запомненото място не се променя и щом клавиатурата се затвори,
-   бележката се връща точно там, където е била. */
+   бележката се връща точно там, където е била.
+
+   Ширина (b5.26): собственикът (11.11.2026) „когато се отвори бележка в модала за редактиране, тя се
+   разпъва на височина... нека в този режим да заема максималната ширина на екрана на мобилни
+   устройства". Затова тук ширината също се разпъва: досега класът слагаше само височина, а ширината
+   оставаше инлайн - от размера на бележката, иначе от modalWidth (400px), значи на 412px екран
+   бележката при писане беше 400px и отстрани стоеше празно. Лявото стои на 0 по същата причина като
+   top: инлайн left не се пипа, значи след клавиатурата бележката се връща на мястото си.
+   Класът се слага само при груб показалец и екран под 768px (noteKeyboardDockApplies в main.js),
+   значи на компютър нищо не се променя.
+
+   Ширината е отделен клас (b5.27): Настройки -> „Разпъване при редактиране" я изключва, а качването
+   най-горе и таванът на височината остават - иначе клавиатурата закрива бележката. */
 .note-window.note-window-kb-top .modal-content-box {
     top: 0 !important;
     height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
     max-height: calc(var(--nw-kb-visible, 55vh) - 4px) !important;
+}
+/* Разпъването по ширина, докато се пише (Настройки -> „Разпъване при редактиране", по подразбиране
+   включено). Лявото стои на 0 по същата причина като top: инлайн left не се пипа, значи след
+   клавиатурата бележката се връща на мястото си. */
+.note-window.note-window-kb-top.note-window-kb-wide .modal-content-box {
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
 }
 /* The quiet trace after a background sync took the new text in, and the question when it could not. */
 .note-window-sync-trace {
