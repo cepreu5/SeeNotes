@@ -5435,7 +5435,9 @@ function updateBoardCounterUI(boardIdOrGdid) {
     if (boardIdOrGdid === 'reminder') {
         const reminderLink = document.querySelector('.board-filter-link[data-boardid="reminder"]');
         if (reminderLink) {
-            const reminderNoteCount = allNotesData.filter(n => n.timer && n.timer > 0 && n.status !== 1).length;
+            // b5.32: същото правило като изгледа - изтеклата по „Валидност“ бележка не се показва
+            // в борда, значи не влиза и в броя му (иначе броят не съвпада с картите).
+            const reminderNoteCount = allNotesData.filter(n => n.timer && n.timer > 0 && n.status !== 1 && !noteValidityExpired(n)).length;
             reminderLink.textContent = showCount && reminderNoteCount > 0 ? `${_('reminder')} (${reminderNoteCount})` : _('reminder');
         }
         return;
