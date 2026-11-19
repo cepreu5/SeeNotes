@@ -1257,6 +1257,19 @@ code {
     vertical-align: text-bottom;
 }
 
+/* Хоризонтална линия в бележка: ред, който е само „/-“ (виж insertMdHrLines в main.js).
+   Линията е блок, затова <br>-овете около нея се махат - иначе остава празен ред.
+   Цветът следва текста, за да се вижда и на картата, и в модала. */
+.note-content .md-hr {
+    display: block;
+    width: 100%;
+    height: 0;
+    border: none;
+    border-top: 1px solid currentColor;
+    opacity: 0.45;
+    margin: 6px 0;
+}
+
 .note-footer {
     flex-shrink: 0;
     display: flex;

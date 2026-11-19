@@ -22254,6 +22254,12 @@ const CODE_BLOCK_PLACEHOLDER = '\uE000';
 // Markdown линкът [текст](адрес) също се заменя с ЕДИН символ (друг, за да не се бъркат слотовете)
 // и се връща в готовия низ - виж mdLinkSlots в processNoteContent.
 const MD_LINK_PLACEHOLDER = '\uE001';
+// Ред, който е само „/-“, е хоризонтална линия в Преглед (решение на собственика, 19.11.2026).
+// В режим Редактиране текстът си остава „/-“ - там се рисува друг проход (renderNoteEditBackdrop),
+// затова тук се пипа само Прегледът: модалът и картата на борда минават през processNoteContent.
+// Редът се заменя с ЕДИН символ, за да не го обвие списъчен блок, а линията влиза накрая.
+const MD_HR_PLACEHOLDER = '\uE003';
+const MD_HR_LINE = /^[ \t]*\/-[ \t]*$/;
 
 function buildCodeBlockHtml(block) {
     const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
@@ -22287,6 +22293,15 @@ function insertLinkSlots(html, mdLinkSlots) {
         out += (i - 1 < mdLinkSlots.length ? mdLinkSlots[i - 1] : MD_LINK_PLACEHOLDER) + parts[i];
     }
     return out;
+}
+
+/**
+ * Превръща маркерите на реда „/-“ в хоризонтална линия. Линията е блок, а редовете на бележката
+ * се делят с <br> - затова <br>-овете от двете ѝ страни се махат, иначе остава празен ред.
+ */
+function insertMdHrLines(html) {
+    if (html.indexOf(MD_HR_PLACEHOLDER) === -1) return html;
+    return html.replace(new RegExp(`(?:<br>)?${MD_HR_PLACEHOLDER}(?:<br>)?`, 'g'), '<hr class="md-hr">');
 }
 
 /**
@@ -22846,14 +22861,14 @@ function wrapNoteLineBlock(line, plainText, listMeasureEl) {
 // Всички редове на един пас: маркерният ред получава висящ отстъп (padding-left + отрицателен
 // text-indent), а редът-продължение - ред без маркер, който следва списъчен ред (текстът на булета
 // продължава на нов ред) - получава отстъп колкото маркера, за да застане под текста на булета.
-// Празен ред, заглавие и ред с кодов блок прекъсват продължението.
+// Празен ред, заглавие, ред с кодов блок и линията „/-“ прекъсват продължението.
 function wrapNoteLineBlocks(lines, listMeasureEl, plainTextOf) {
     if (!listMeasureEl) return lines;
     const out = [];
     let cont = 0;
     for (const line of lines) {
         const plain = plainTextOf ? plainTextOf(line) : line;
-        if (plain.indexOf(CODE_BLOCK_PLACEHOLDER) !== -1) { out.push(line); cont = 0; continue; }
+        if (plain.indexOf(CODE_BLOCK_PLACEHOLDER) !== -1 || plain.indexOf(MD_HR_PLACEHOLDER) !== -1) { out.push(line); cont = 0; continue; }
         const res = wrapNoteLineBlock(line, plain, listMeasureEl);
         if (res.heading) { out.push(res.html); cont = 0; continue; }
         if (res.indent !== null) { out.push(res.html); cont = res.indent; continue; }
@@ -22948,11 +22963,13 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     escapedText = replacePair(escapedText, symItalic, 'i');
     if (symItalic !== '*') escapedText = replacePair(escapedText, '*', 'i');
     escapedText = insertCodeBlocks(escapedText, codeBlocks);
-    const lines = escapedText.split('\n');
+    // „/-“ самостоятелно на ред става линия. Заменя се с един знак още тук, преди обвивките на
+    // редовете: иначе редът-продължение на списък би обхванал и линията.
+    const lines = escapedText.split('\n').map(line => (MD_HR_LINE.test(line) ? MD_HR_PLACEHOLDER : line));
     const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
     const processedLines = skipLineBlocks ? lines : wrapNoteLineBlocks(lines, listMeasureEl);
     // Линковете се връщат най-накрая, върху сглобения низ: дотук всеки беше един знак.
-    return insertLinkSlots(processedLines.join('<br>'), mdLinkSlots);
+    return insertMdHrLines(insertLinkSlots(processedLines.join('<br>'), mdLinkSlots));
 }
 
 function renderNoteContent(text) {
