@@ -21815,14 +21815,18 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
         const beforeLines = originalLines.slice(lastIndex, table.startIndex).join('\n');
         if (beforeLines.trim()) {
             if (finalHtml && !finalHtml.endsWith('<br>')) finalHtml += '<br>';
-            finalHtml += renderPart(beforeLines, lineStarts[lastIndex]) + '<br>';
+            const beforeHtml = renderPart(beforeLines, lineStarts[lastIndex]);
+            // Линията „/-“ е блок със собствен отстъп - допълнителният <br> под нея оставяше
+            // празен ред пред таблицата, затова се слага само след обикновен текст.
+            finalHtml += /<hr[^>]*>$/.test(beforeHtml) ? beforeHtml : beforeHtml + '<br>';
         }
         finalHtml += renderSingleTable(table);
         lastIndex = table.endIndex + 1;
     });
     const afterLines = originalLines.slice(lastIndex).join('\n');
     if (afterLines.trim()) {
-        finalHtml += '<br>' + renderPart(afterLines, lineStarts[lastIndex]);
+        const afterHtml = renderPart(afterLines, lineStarts[lastIndex]);
+        finalHtml += /^<hr[^>]*>/.test(afterHtml) ? afterHtml : '<br>' + afterHtml;
     }
     return finalHtml;
 }
