@@ -1260,7 +1260,7 @@ code {
 /* Хоризонтална линия в бележка: ред, който е само „/-“ (виж insertMdHrLines в main.js).
    Линията е блок, затова <br>-овете около нея се махат - иначе остава празен ред.
    Цветът следва текста, за да се вижда и на картата, и в модала. */
-.note-content .md-hr {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr {
     display: block;
     width: 100%;
     height: 0;
@@ -1272,16 +1272,16 @@ code {
 
 /* Дебела, двойна и пунктирана линия: същият ред „/-“, но с един знак след него
    (/-+  /=  /--) - виж buildMdHrHtml в main.js. */
-.note-content .md-hr-thick {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-thick {
     border-top-width: 3px;
 }
 
-.note-content .md-hr-dashed {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-dashed {
     border-top-style: dashed;
 }
 
 /* Двойна линия: две тънки линии, разделени от височината на елемента. */
-.note-content .md-hr-double {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-double {
     height: 3px;
     border-top: 1px solid currentColor;
     border-bottom: 1px solid currentColor;
@@ -1289,15 +1289,15 @@ code {
 
 /* Разделител със заглавие: „/- текст“ е по средата, „/-< текст“ отляво, „/-> текст“ отдясно.
    Линиите са две - отляво и отдясно на заглавието, а липсващата страна се скрива. */
-.note-content .md-hr-titled {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled {
     display: flex;
     align-items: center;
     gap: 8px;
     margin: 6px 0;
 }
 
-.note-content .md-hr-titled::before,
-.note-content .md-hr-titled::after {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled::before,
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled::after {
     content: '';
     flex: 1 1 0;
     min-width: 12px;
@@ -1305,12 +1305,12 @@ code {
     opacity: 0.45;
 }
 
-.note-content .md-hr-titled.md-hr-left::before,
-.note-content .md-hr-titled.md-hr-right::after {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled.md-hr-left::before,
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled.md-hr-right::after {
     display: none;
 }
 
-.note-content .md-hr-title {
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-title {
     flex: 0 1 auto;
     text-align: center;
 }
