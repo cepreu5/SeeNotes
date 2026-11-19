@@ -21816,9 +21816,10 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
         if (beforeLines.trim()) {
             if (finalHtml && !finalHtml.endsWith('<br>')) finalHtml += '<br>';
             const beforeHtml = renderPart(beforeLines, lineStarts[lastIndex]);
-            // Линията „/-“ е блок със собствен отстъп - допълнителният <br> под нея оставяше
+            // Разделителят „/-“ е блок със собствен отстъп - допълнителният <br> под него оставяше
             // празен ред пред таблицата, затова се слага само след обикновен текст.
-            finalHtml += /<hr[^>]*>$/.test(beforeHtml) ? beforeHtml : beforeHtml + '<br>';
+            finalHtml += /(?:<hr[^>]*>|<div class="md-hr-titled[^"]*">[\s\S]*?<\/div>)$/.test(beforeHtml)
+                ? beforeHtml : beforeHtml + '<br>';
         }
         finalHtml += renderSingleTable(table);
         lastIndex = table.endIndex + 1;
@@ -21826,7 +21827,7 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
     const afterLines = originalLines.slice(lastIndex).join('\n');
     if (afterLines.trim()) {
         const afterHtml = renderPart(afterLines, lineStarts[lastIndex]);
-        finalHtml += /^<hr[^>]*>/.test(afterHtml) ? afterHtml : '<br>' + afterHtml;
+        finalHtml += /^(?:<hr[^>]*>|<div class="md-hr-titled[^"]*">[\s\S]*?<\/div>)/.test(afterHtml) ? afterHtml : '<br>' + afterHtml;
     }
     return finalHtml;
 }
@@ -22258,12 +22259,20 @@ const CODE_BLOCK_PLACEHOLDER = '\uE000';
 // Markdown линкът [текст](адрес) също се заменя с ЕДИН символ (друг, за да не се бъркат слотовете)
 // и се връща в готовия низ - виж mdLinkSlots в processNoteContent.
 const MD_LINK_PLACEHOLDER = '\uE001';
-// Ред, който е само „/-“, е хоризонтална линия в Преглед (решение на собственика, 19.11.2026).
+// Ред, който започва с „/-“, е разделител в Преглед (решение на собственика, 19.11.2026):
+//   /-                тънка линия
+//   /--  /=  /-+      пунктирана, двойна, дебела линия
+//   /- текст          линия със заглавие по средата
+//   /-< текст         линия със заглавие отляво
+//   /-> текст         линия със заглавие отдясно
 // В режим Редактиране текстът си остава „/-“ - там се рисува друг проход (renderNoteEditBackdrop),
 // затова тук се пипа само Прегледът: модалът и картата на борда минават през processNoteContent.
-// Редът се заменя с ЕДИН символ, за да не го обвие списъчен блок, а линията влиза накрая.
+// Редът се заменя с ЕДИН символ, за да не го обвие списъчен блок. Видът и заглавието пътуват
+// в самия маркер, за да не се пази състояние между извикванията на processNoteContent.
 const MD_HR_PLACEHOLDER = '\uE003';
-const MD_HR_LINE = /^[ \t]*\/-[ \t]*$/;
+const MD_HR_END = '\uE004';
+const MD_HR_LINE = /^[ \t]*\/-([-=+]?)[ \t]*$/;
+const MD_HR_TITLE_LINE = /^[ \t]*\/-(&lt;|&gt;|<|>)?[ \t]+(.*\S)[ \t]*$/;
 
 function buildCodeBlockHtml(block) {
     const copyBtn = `<button class="code-block-copy" onclick="event.stopPropagation();copyCode(this)" title="${_('copyCodeBtn')}">${copyIconSvg}</button>`;
@@ -22300,12 +22309,31 @@ function insertLinkSlots(html, mdLinkSlots) {
 }
 
 /**
- * Превръща маркерите на реда „/-“ в хоризонтална линия. Линията е блок, а редовете на бележката
- * се делят с <br> - затова <br>-овете от двете ѝ страни се махат, иначе остава празен ред.
+ * Маркер за разделител: видът (или подравняването на заглавието) и заглавието пътуват в него.
+ */
+function buildMdHrMarker(kind, title) {
+    return MD_HR_PLACEHOLDER + kind + MD_HR_END + (title || '') + MD_HR_END;
+}
+
+/**
+ * HTML на разделителя. „<“ слага заглавието отляво, „>“ отдясно, без знак е по средата.
+ */
+function buildMdHrHtml(kind, title) {
+    const cls = kind === '-' ? ' md-hr-dashed' : kind === '=' ? ' md-hr-double' : kind === '+' ? ' md-hr-thick' : '';
+    const text = (title || '').trim();
+    if (!text) return `<hr class="md-hr${cls}">`;
+    const align = kind === '<' ? ' md-hr-left' : kind === '>' ? ' md-hr-right' : '';
+    return `<div class="md-hr-titled${align}"><span class="md-hr-title">${text}</span></div>`;
+}
+
+/**
+ * Превръща маркерите на реда „/-“ в разделител. Разделителят е блок, а редовете на бележката
+ * се делят с <br> - затова <br>-овете от двете му страни се махат, иначе остава празен ред.
  */
 function insertMdHrLines(html) {
     if (html.indexOf(MD_HR_PLACEHOLDER) === -1) return html;
-    return html.replace(new RegExp(`(?:<br>)?${MD_HR_PLACEHOLDER}(?:<br>)?`, 'g'), '<hr class="md-hr">');
+    const re = new RegExp(`(?:<br>)?${MD_HR_PLACEHOLDER}([-=+<>]?)${MD_HR_END}([\\s\\S]*?)${MD_HR_END}(?:<br>)?`, 'g');
+    return html.replace(re, (match, kind, title) => buildMdHrHtml(kind, title));
 }
 
 /**
@@ -22967,9 +22995,20 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     escapedText = replacePair(escapedText, symItalic, 'i');
     if (symItalic !== '*') escapedText = replacePair(escapedText, '*', 'i');
     escapedText = insertCodeBlocks(escapedText, codeBlocks);
-    // „/-“ самостоятелно на ред става линия. Заменя се с един знак още тук, преди обвивките на
-    // редовете: иначе редът-продължение на списък би обхванал и линията.
-    const lines = escapedText.split('\n').map(line => (MD_HR_LINE.test(line) ? MD_HR_PLACEHOLDER : line));
+    // „/-“ на самостоятелен ред става разделител. Заменя се с един знак още тук, преди обвивките
+    // на редовете: иначе редът-продължение на списък би обхванал и разделителя.
+    const lines = escapedText.split('\n').map(line => {
+        const plain = MD_HR_LINE.exec(line);
+        if (plain) return buildMdHrMarker(plain[1], '');
+        // Тук текстът вече е HTML-екраниран, затова знаците „<“ и „>“ идват като &lt; и &gt;.
+        const titled = MD_HR_TITLE_LINE.exec(line);
+        if (titled) {
+            const sign = titled[1] || '';
+            const align = sign === '&lt;' || sign === '<' ? '<' : (sign ? '>' : '');
+            return buildMdHrMarker(align, titled[2].trim());
+        }
+        return line;
+    });
     const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
     const processedLines = skipLineBlocks ? lines : wrapNoteLineBlocks(lines, listMeasureEl);
     // Линковете се връщат най-накрая, върху сглобения низ: дотук всеки беше един знак.

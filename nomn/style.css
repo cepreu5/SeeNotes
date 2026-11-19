@@ -1270,6 +1270,51 @@ code {
     margin: 6px 0;
 }
 
+/* Дебела, двойна и пунктирана линия: същият ред „/-“, но с един знак след него
+   (/-+  /=  /--) - виж buildMdHrHtml в main.js. */
+.note-content .md-hr-thick {
+    border-top-width: 3px;
+}
+
+.note-content .md-hr-dashed {
+    border-top-style: dashed;
+}
+
+/* Двойна линия: две тънки линии, разделени от височината на елемента. */
+.note-content .md-hr-double {
+    height: 3px;
+    border-top: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+}
+
+/* Разделител със заглавие: „/- текст“ е по средата, „/-< текст“ отляво, „/-> текст“ отдясно.
+   Линиите са две - отляво и отдясно на заглавието, а липсващата страна се скрива. */
+.note-content .md-hr-titled {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+}
+
+.note-content .md-hr-titled::before,
+.note-content .md-hr-titled::after {
+    content: '';
+    flex: 1 1 0;
+    min-width: 12px;
+    border-top: 1px solid currentColor;
+    opacity: 0.45;
+}
+
+.note-content .md-hr-titled.md-hr-left::before,
+.note-content .md-hr-titled.md-hr-right::after {
+    display: none;
+}
+
+.note-content .md-hr-title {
+    flex: 0 1 auto;
+    text-align: center;
+}
+
 .note-footer {
     flex-shrink: 0;
     display: flex;
