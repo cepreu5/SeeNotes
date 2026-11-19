@@ -1257,6 +1257,64 @@ code {
     vertical-align: text-bottom;
 }
 
+/* Хоризонтална линия в бележка: ред, който е само „/-“ (виж insertMdHrLines в main.js).
+   Линията е блок, затова <br>-овете около нея се махат - иначе остава празен ред.
+   Цветът следва текста, за да се вижда и на картата, и в модала. */
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr {
+    display: block;
+    width: 100%;
+    height: 0;
+    border: none;
+    border-top: 1px solid currentColor;
+    opacity: 0.45;
+    margin: 6px 0;
+}
+
+/* Дебела, двойна и пунктирана линия: същият ред „/-“, но с един знак след него
+   (/-+  /=  /--) - виж buildMdHrHtml в main.js. */
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-thick {
+    border-top-width: 3px;
+}
+
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-dashed {
+    border-top-style: dashed;
+}
+
+/* Двойна линия: две тънки линии, разделени от височината на елемента. */
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-double {
+    height: 3px;
+    border-top: 1px solid currentColor;
+    border-bottom: 1px solid currentColor;
+}
+
+/* Разделител със заглавие: „/- текст“ е по средата, „/-< текст“ отляво, „/-> текст“ отдясно.
+   Линиите са две - отляво и отдясно на заглавието, а липсващата страна се скрива. */
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+}
+
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled::before,
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled::after {
+    content: '';
+    flex: 1 1 0;
+    min-width: 12px;
+    border-top: 1px solid currentColor;
+    opacity: 0.45;
+}
+
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled.md-hr-left::before,
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-titled.md-hr-right::after {
+    display: none;
+}
+
+:is(.note-content, #modal-body, .nw-modal-body) .md-hr-title {
+    flex: 0 1 auto;
+    text-align: center;
+}
+
 .note-footer {
     flex-shrink: 0;
     display: flex;
