@@ -21752,6 +21752,13 @@ function parseMarkdownTable(text) {
     return tables.length > 0 ? tables[0] : null;
 }
 
+// Разделителят „/-“ е блок със собствен отстъп, затова <br> до него оставя празен ред.
+// Форматирането (увеличен шрифт от text_span) обвива реда в <span>, така че блокът може да
+// свършва с „…</div></span>“ - затова външните тагове се махат преди проверката.
+const MD_HR_BLOCK = '(?:<hr[^>]*>|<div class="md-hr-titled[^"]*">[\\s\\S]*?<\\/div>)';
+const MD_HR_AT_END = new RegExp(`${MD_HR_BLOCK}(?:<\\/[a-z][a-z0-9]*>)*$`);
+const MD_HR_AT_START = new RegExp(`^(?:<[a-z][a-z0-9]*(?:\\s[^>]*)?>)*${MD_HR_BLOCK}`);
+
 // formatString: обхватите на бележката (офсети в text). Всяка клетка и всеки блок извън таблицата
 // получава своя отрязък от тях; без обхвати изходът е същият като преди (processNoteContent).
 function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
@@ -21816,10 +21823,8 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
         if (beforeLines.trim()) {
             if (finalHtml && !finalHtml.endsWith('<br>')) finalHtml += '<br>';
             const beforeHtml = renderPart(beforeLines, lineStarts[lastIndex]);
-            // Разделителят „/-“ е блок със собствен отстъп - допълнителният <br> под него оставяше
-            // празен ред пред таблицата, затова се слага само след обикновен текст.
-            finalHtml += /(?:<hr[^>]*>|<div class="md-hr-titled[^"]*">[\s\S]*?<\/div>)$/.test(beforeHtml)
-                ? beforeHtml : beforeHtml + '<br>';
+            // Празен ред пред таблицата се слага само след обикновен текст, не след разделител.
+            finalHtml += MD_HR_AT_END.test(beforeHtml) ? beforeHtml : beforeHtml + '<br>';
         }
         finalHtml += renderSingleTable(table);
         lastIndex = table.endIndex + 1;
@@ -21827,7 +21832,7 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
     const afterLines = originalLines.slice(lastIndex).join('\n');
     if (afterLines.trim()) {
         const afterHtml = renderPart(afterLines, lineStarts[lastIndex]);
-        finalHtml += /^(?:<hr[^>]*>|<div class="md-hr-titled[^"]*">[\s\S]*?<\/div>)/.test(afterHtml) ? afterHtml : '<br>' + afterHtml;
+        finalHtml += MD_HR_AT_START.test(afterHtml) ? afterHtml : '<br>' + afterHtml;
     }
     return finalHtml;
 }
