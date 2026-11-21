@@ -3193,6 +3193,8 @@ async function showInitialDataFolderModal() {
         const descText = _('dataFolderSelectionDescription') || 'CX Notes requires a Google Drive folder to store your notes and settings. Please choose an option:';
         const option2Text = _('dataFolderOption2') || 'Create Empty CX-Notes';
         const option2Desc = _('dataFolderOption2Description') || 'Start fresh with a new CX-Notes folder and a default Main board.';
+        // Дребен текст под картата: как се пренасят бележките от MultiNotes.
+        const multinotesHint = _('dataFolderMultiNotesHint') || 'To work with your notes from MultiNotes, create an archive with the app (a zip file), unpack it into a folder on this device and use Load from archive in Settings.';
         messagePara.innerHTML = `
             <div style="text-align: left; margin: 15px 0;">
                 <h2 style="margin-top: 0; font-size: 1.3em; color: #222;">${titleText}</h2>
@@ -3201,6 +3203,7 @@ async function showInitialDataFolderModal() {
                     <strong style="font-size: 1.05em; display: block; margin-bottom: 4px; color: #1a73e8;">⊞ ${option2Text}</strong>
                     <p style="margin: 0; font-size: 0.9em; color: #555; line-height: 1.4;">${option2Desc}</p>
                 </div>
+                <p style="margin: 12px 0 0 0; font-size: 0.78em; color: #666; line-height: 1.45;">${multinotesHint}</p>
             </div>
         `;
         const cleanup = () => {
