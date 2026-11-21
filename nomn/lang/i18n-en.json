@@ -448,7 +448,7 @@
     "dataFolderSelectionDescription": "<b><big>CX Notes</big></b> uses a Google Drive folder to store your notes. Press the button below to start.",
     "dataFolderOption2": "Create an empty <b>CX-Notes</b> folder",
     "dataFolderOption2Description": "Start with a clean, empty folder.",
-    "dataFolderMultiNotesHint": "If you want to work with your notes from MultiNotes, create an archive with the app (a zip file), unpack it into a folder on this device and use “Load from archive” in Settings.",
+    "dataFolderMultiNotesHint": "If you want to work with your notes from MultiNotes, create an archive with the app (a zip file), unpack it into a folder on this device and use <i>Load from achive</i> in Settings.",
     "prevNoteTooltip": "Previous note",
     "nextNoteTooltip": "Next note",
     "bulletListTooltip": "Bulleted list",
