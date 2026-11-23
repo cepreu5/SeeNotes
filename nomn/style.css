@@ -6576,3 +6576,25 @@ header.title-hidden > div:first-child {
         white-space: normal;
     }
 }
+
+/* b5.39 (23.11.2026, по указание на собственика: „Направи същото подравняване на заглавния ред
+   (5px нагоре, календар по левия ръб на текста, ПИН по десния) и в nomn за бележка без графичен
+   фон“).
+   При изключен графичен фон картата е обикновена .note: border 1px, padding 10px 10px 5px.
+   Заглавният ред е absolute и се позиционира спрямо .note (нейния padding box), затова стоеше
+   на 26px от горния ръб (25 + 1px рамка), а собственото му padding 0 30px 0 20px местеше иконата
+   на календара на 21px и ПИН бутона на 31px от дясно. Текстът и заглавието започват на 11px от
+   ръба (10px padding + 1px рамка) и свършват на 11px от дясно.
+   Тук редът се вдига с 5px (20 + 1px рамка = 21px от ръба) и padding-ът се свива до текстовата
+   колона (10 + 1px = 11px), така че иконата да застане на левия ръб на текста, а ПИН бутонът -
+   на десния. Картата с графичен фон (.note-item) не се пипа: там редът остава на 25px, иконата
+   на 20px и ПИН бутонът на 30px. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    top: 20px;
+    padding: 0 10px;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info :is(.note-header-date, .note-header-time, .note-pin-btn) {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
