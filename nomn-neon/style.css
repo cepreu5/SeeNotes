@@ -6740,3 +6740,64 @@ textarea:focus-visible {
 #notes-container .note .note-header-info {
     color: rgba(24, 34, 56, .78) !important;
 }
+
+
+/* =========================================================
+   CX NOTES NEON CARDS — dark note surfaces
+   Keep board/system cards and image-based note items intact.
+   ========================================================= */
+#notes-container .note:not(.boards-note):not(.note-item) {
+    background: linear-gradient(145deg, #111b31 0%, #0c1428 58%, #10132b 100%) !important;
+    color: #eaf4ff !important;
+    border: 1px solid rgba(53, 231, 255, .68) !important;
+    border-radius: 12px;
+    box-shadow:
+        inset 0 0 18px rgba(53, 231, 255, .045),
+        0 5px 18px rgba(0, 0, 0, .42),
+        0 0 11px rgba(53, 231, 255, .16) !important;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item):hover {
+    border-color: #a66bff !important;
+    box-shadow:
+        inset 0 0 20px rgba(166, 107, 255, .07),
+        0 8px 24px rgba(0, 0, 0, .48),
+        0 0 17px rgba(53, 231, 255, .24),
+        0 0 22px rgba(166, 107, 255, .17) !important;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-background-canvas {
+    display: none !important;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper,
+#notes-container .note:not(.boards-note):not(.note-item) .note-content,
+#notes-container .note:not(.boards-note):not(.note-item) .note-title,
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-wrapper {
+    color: #eaf4ff !important;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    color: #9eb5d5 !important;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-content a {
+    color: #65dfff !important;
+    text-decoration-color: rgba(101, 223, 255, .55);
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon svg,
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer svg {
+    stroke: #72eaff !important;
+    color: #72eaff !important;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info svg {
+    stroke: #72eaff !important;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    #notes-container .note:not(.boards-note):not(.note-item) {
+        transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+    }
+}
