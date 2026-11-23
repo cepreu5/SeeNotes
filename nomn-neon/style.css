@@ -6576,3 +6576,139 @@ header.title-hidden > div:first-child {
         white-space: normal;
     }
 }
+
+
+/* =========================================================
+   CX NOTES NEON THEME — first visual pass
+   Keeps note colors and application behavior intact.
+   ========================================================= */
+:root {
+    --cx-neon-bg: #080b16;
+    --cx-neon-panel: rgba(15, 22, 42, .94);
+    --cx-neon-panel-soft: rgba(20, 29, 53, .88);
+    --cx-neon-cyan: #35e7ff;
+    --cx-neon-violet: #a66bff;
+    --cx-neon-blue: #527bff;
+    --cx-neon-text: #e8f3ff;
+    --cx-neon-muted: #9aaac7;
+    --cx-neon-line: rgba(80, 205, 255, .38);
+    --cx-neon-glow: 0 0 10px rgba(53, 231, 255, .24), 0 0 28px rgba(82, 123, 255, .12);
+}
+
+html {
+    color-scheme: dark;
+    background: var(--cx-neon-bg);
+}
+
+body {
+    color: var(--cx-neon-text);
+    background-color: var(--cx-neon-bg) !important;
+    background-image:
+        radial-gradient(ellipse at 12% 8%, rgba(35, 105, 180, .22), transparent 38%),
+        radial-gradient(ellipse at 88% 18%, rgba(126, 57, 190, .19), transparent 34%),
+        linear-gradient(145deg, #080b16 0%, #0b1224 52%, #090d1b 100%) !important;
+    background-attachment: fixed;
+}
+
+.login-div {
+    background-image: none !important;
+    color: var(--cx-neon-text);
+}
+
+header {
+    background: linear-gradient(110deg, rgba(9, 16, 34, .97), rgba(20, 24, 51, .96)) !important;
+    border-bottom: 1px solid rgba(53, 231, 255, .58);
+    box-shadow: 0 5px 24px rgba(0, 0, 0, .42), 0 1px 16px rgba(53, 231, 255, .12);
+    backdrop-filter: blur(14px);
+}
+
+header h1,
+#app-title {
+    color: #f2f8ff;
+    text-shadow: 0 0 8px rgba(53, 231, 255, .55), 0 0 22px rgba(166, 107, 255, .25);
+    letter-spacing: .04em;
+}
+
+.header-btn {
+    color: var(--cx-neon-cyan);
+    background: linear-gradient(145deg, rgba(28, 43, 76, .96), rgba(16, 23, 46, .96));
+    border: 1px solid rgba(53, 231, 255, .68);
+    box-shadow: inset 0 0 9px rgba(53, 231, 255, .08), var(--cx-neon-glow);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+.header-btn:hover {
+    color: #fff;
+    background: linear-gradient(145deg, rgba(48, 71, 117, .98), rgba(35, 35, 82, .98));
+    border-color: var(--cx-neon-violet);
+    box-shadow: 0 0 12px rgba(53, 231, 255, .42), 0 0 25px rgba(166, 107, 255, .24);
+    transform: translateY(-1px);
+}
+
+#search-box {
+    color: #f3f8ff;
+    background: rgba(7, 13, 29, .92);
+    border: 1px solid rgba(53, 231, 255, .62);
+    box-shadow: inset 0 0 12px rgba(53, 231, 255, .06), 0 0 13px rgba(53, 231, 255, .12);
+}
+
+#search-box::placeholder {
+    color: #8496b8;
+}
+
+#search-box:focus {
+    border-color: var(--cx-neon-violet);
+    box-shadow: 0 0 0 2px rgba(166, 107, 255, .18), 0 0 18px rgba(53, 231, 255, .2);
+}
+
+.note-counter {
+    color: #eafaff;
+    background: linear-gradient(135deg, rgba(24, 75, 105, .96), rgba(49, 35, 91, .96));
+    border: 1px solid rgba(53, 231, 255, .55);
+    box-shadow: 0 0 12px rgba(53, 231, 255, .2);
+}
+
+#notes-container .note {
+    border: 1px solid rgba(53, 231, 255, .62);
+    box-shadow: 0 5px 18px rgba(0, 0, 0, .38), 0 0 12px rgba(53, 231, 255, .14);
+    transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease;
+}
+
+#notes-container .note:hover {
+    border-color: var(--cx-neon-violet);
+    box-shadow: 0 7px 22px rgba(0, 0, 0, .44), 0 0 16px rgba(53, 231, 255, .25), 0 0 22px rgba(166, 107, 255, .16);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--cx-neon-cyan);
+    outline-offset: 2px;
+}
+
+.modal-content-box,
+#settings-modal .modal-content-box,
+#zoom-modal .modal-content-box {
+    color: var(--cx-neon-text);
+    background: linear-gradient(145deg, #111a31, #0b1225) !important;
+    border: 1px solid rgba(53, 231, 255, .52);
+    box-shadow: 0 0 24px rgba(53, 231, 255, .16), 0 18px 55px rgba(0, 0, 0, .55);
+}
+
+@media (max-width: 700px) {
+    header {
+        background: rgba(9, 16, 34, .98) !important;
+        padding-top: max(5px, env(safe-area-inset-top));
+    }
+    #notes-container .note {
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .38), 0 0 9px rgba(53, 231, 255, .12);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header-btn,
+    #notes-container .note {
+        transition: none !important;
+    }
+}
