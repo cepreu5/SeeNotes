@@ -6951,9 +6951,30 @@ header h1, #app-title {
         radial-gradient(ellipse at 78% 130%, transparent 48%, rgba(164,90,255,.95) 49%, transparent 50%);
     filter: drop-shadow(0 0 5px rgba(32,222,255,.9));
 }
-#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper,
-#notes-container .note:not(.boards-note):not(.note-item) .note-footer,
+/* Preserve the original note geometry: the header and footer must be
+   positioned against .note, not against the inner content wrapper. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
+    position: static !important;
+    z-index: auto !important;
+}
 #notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    position: absolute !important;
+    top: 25px !important;
+    left: 0 !important;
+    right: auto !important;
+    width: 100% !important;
+    z-index: 2 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer {
+    position: absolute !important;
+    bottom: 5px !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 30px !important;
+    z-index: 2 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-wrapper,
+#notes-container .note:not(.boards-note):not(.note-item) .note-content {
     position: relative;
     z-index: 1;
 }
@@ -7103,63 +7124,6 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
 
 
 
-/* CX Notes b5.54 — neon cards use the original note geometry.
-   No neon-specific positioning, spacing, padding or footer sizing:
-   date/time, title clearance and footer inherit the same rules as graphic-paper notes. */
-#notes-container .note:not(.boards-note):not(.note-item) {
-    padding: 10px 10px 5px !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    position: absolute !important;
-    top: 25px !important;
-    left: 0 !important;
-    right: auto !important;
-    width: 100% !important;
-    display: flex !important;
-    justify-content: flex-start !important;
-    align-items: center !important;
-    flex-direction: row !important;
-    gap: 6px !important;
-    padding: 0 30px 0 20px !important;
-    margin: 0 !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date,
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    position: static !important;
-    display: flex !important;
-    align-items: center !important;
-    flex: 0 0 auto !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
-    position: static !important;
-    display: inline-flex !important;
-    flex: 0 0 auto !important;
-    width: auto !important;
-    min-width: 0 !important;
-    margin: 0 !important;
-    transform: none !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
-    margin-top: 50px !important;
-    margin-bottom: 0 !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
-    padding-top: 0 !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-footer {
-    height: auto !important;
-    bottom: auto !important;
-    gap: initial !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon {
-    height: auto !important;
-    padding: initial !important;
-    line-height: normal !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon svg {
-    width: initial !important;
-    height: initial !important;
-}
+/* CX Notes b5.55 — use base note spacing and footer geometry.
+   No overrides for card padding, title margin, content padding or footer sizing:
+   those are inherited unchanged from nomn/style.css. */
