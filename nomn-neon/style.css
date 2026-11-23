@@ -7091,128 +7091,6 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
 }
 
 
-/* CX Notes — compact note-card layout (b5.46)
-   Reclaim vertical space for note content while keeping date/time readable. */
-#notes-container .note:not(.boards-note):not(.note-item) {
-    padding: 6px 8px 2px !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    top: 10px !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: auto !important;
-    padding: 0 12px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    gap: 8px !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    margin-right: auto !important;
-    flex: 0 1 auto !important;
-    min-width: 0 !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    margin-left: auto !important;
-    flex: 0 0 auto !important;
-    justify-content: flex-end !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
-    margin-top: 16px !important;
-    margin-bottom: 0 !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item).no-card-title .note-title-wrapper,
-#notes-container .note:not(.boards-note):not(.note-item) .note-borderless-table .note-title-wrapper {
-    flex: 0 0 34px !important;
-    min-height: 34px !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
-    min-height: 0 !important;
-    padding-top: 0 !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper > .note-content {
-    margin: 0 !important;
-    padding: 0 !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-footer {
-    height: 20px !important;
-    bottom: 2px !important;
-    gap: 6px !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon {
-    height: 18px !important;
-    padding: 0 !important;
-    line-height: 0 !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon svg {
-    width: 18px !important;
-    height: 18px !important;
-}
-
-
-/* CX Notes — final header alignment refinement (b5.47). */
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    top: 5px !important;              /* use the remaining 5px at the top */
-    left: 8px !important;             /* align calendar icon with note text */
-    right: 8px !important;            /* pin ends at the text's right edge */
-    width: auto !important;
-    padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 8px !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    margin-left: 0 !important;
-    margin-right: auto !important;
-    flex: 0 1 auto !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    margin-left: auto !important;
-    margin-right: 0 !important;
-    flex: 0 0 auto !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    flex: 0 0 22px !important;
-}
-
-
-/* CX Notes — correct header anchoring and safe pin inset (b5.48).
-   The previous z-index rule made the header relative; explicitly anchor it
-   to the card so left/right offsets are measured from the card border. */
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    position: absolute !important;
-    top: 5px !important;
-    left: 38px !important;       /* calendar icon aligns with content text inset */
-    right: 30px !important;      /* pin stays clear of the right border */
-    width: auto !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 8px !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    margin: 0 auto 0 0 !important;
-    flex: 0 1 auto !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    margin: 0 0 0 auto !important;
-    flex: 0 0 auto !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
-    margin: 0 !important;
-    flex: 0 0 22px !important;
-}
-
-
 /* SVG action icons remain visible on the dark neon header. */
 #header-buttons .header-btn .header-action-icon {
     display: block;
@@ -7223,229 +7101,65 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
     filter: drop-shadow(0 0 4px rgba(54,225,255,.42));
 }
 
-/* Stable three-column header: calendar/date left, clock/time right, pin inset.
-   Grid prevents date text and clock from colliding on narrow cards. */
+
+
+/* CX Notes b5.54 — neon cards use the original note geometry.
+   No neon-specific positioning, spacing, padding or footer sizing:
+   date/time, title clearance and footer inherit the same rules as graphic-paper notes. */
+#notes-container .note:not(.boards-note):not(.note-item) {
+    padding: 10px 10px 5px !important;
+}
 #notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
     position: absolute !important;
-    top: 5px !important;
-    left: 48px !important;
-    right: 42px !important;
-    width: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto 22px !important;
-    align-items: center !important;
-    column-gap: 10px !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    grid-column: 1 !important;
-    justify-self: start !important;
-    margin: 0 !important;
-    min-width: 0 !important;
-    flex: initial !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    grid-column: 2 !important;
-    justify-self: end !important;
-    margin: 0 !important;
-    flex: initial !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
-    grid-column: 3 !important;
-    justify-self: end !important;
-    margin: 0 !important;
-    width: 22px !important;
-    min-width: 22px !important;
-    flex: initial !important;
-}
-
-
-/* CX Notes b5.50 — restore the proven flex header row.
-   The three-column grid caused the date and time to overlap on real cards. */
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    position: absolute !important;
-    top: 5px !important;
-    left: 8px !important;
-    right: 8px !important;
-    width: auto !important;
-    margin: 0 !important;
-    padding: 0 22px 0 12px !important;
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 8px !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    display: inline-flex !important;
-    align-items: center !important;
-    flex: 0 1 auto !important;
-    min-width: 0 !important;
-    margin: 0 auto 0 0 !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    display: inline-flex !important;
-    align-items: center !important;
-    flex: 0 0 auto !important;
-    min-width: max-content !important;
-    margin: 0 8px 0 auto !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
-    display: inline-flex !important;
-    flex: 0 0 22px !important;
-    width: 22px !important;
-    min-width: 22px !important;
-    margin: 0 !important;
-    transform: translateX(-8px);
-}
-
-
-/* CX Notes b5.51 — header geometry and reserved content clearance.
-   The date stays at the left inset; the time is pushed to the right beside
-   the pin. Avoid two competing auto-margins which had pulled the time inward. */
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    position: absolute !important;
-    top: 5px !important;
-    left: 8px !important;
-    right: 30px !important;
-    width: auto !important;
-    padding: 0 0 0 12px !important;
-    margin: 0 !important;
-    display: flex !important;
-    flex-flow: row nowrap !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 8px !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    order: 1 !important;
-    flex: 0 1 auto !important;
-    min-width: 0 !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    order: 2 !important;
-    flex: 0 0 auto !important;
-    min-width: max-content !important;
-    margin: 0 0 0 auto !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
-    order: 3 !important;
-    flex: 0 0 22px !important;
-    width: 22px !important;
-    min-width: 22px !important;
-    margin: 0 0 0 8px !important;
-    transform: none !important;
-}
-/* Reserve a real content gap below the absolute header, even when a note has
-   no visible title line (image/link-only notes use their own body flow). */
-#notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
-    margin-top: 56px !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
-    padding-top: 8px !important;
-}
-
-
-/* CX Notes b5.52 — restore the original note-header layout.
-   The original flex row already aligns date left and time right; the previous
-   neon overrides changed its inset/width and caused the clock to collide. */
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    position: absolute !important;
-    top: 5px !important;
+    top: 25px !important;
     left: 0 !important;
     right: auto !important;
     width: 100% !important;
     display: flex !important;
-    flex-direction: row !important;
     justify-content: flex-start !important;
     align-items: center !important;
+    flex-direction: row !important;
     gap: 6px !important;
     padding: 0 30px 0 20px !important;
     margin: 0 !important;
     box-sizing: border-box !important;
 }
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    display: inline-flex !important;
-    align-items: center !important;
-    flex: 0 1 auto !important;
-    min-width: 0 !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date,
 #notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    display: inline-flex !important;
+    position: static !important;
+    display: flex !important;
     align-items: center !important;
     flex: 0 0 auto !important;
-    min-width: max-content !important;
-    margin: 0 0 0 auto !important;
+    margin: 0 !important;
     white-space: nowrap !important;
 }
 #notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
+    position: static !important;
     display: inline-flex !important;
-    flex: 0 0 22px !important;
-    width: 22px !important;
-    min-width: 22px !important;
-    margin: 0 !important;
-    transform: none !important;
-}
-
-
-/* CX Notes b5.53 — deterministic header columns and compact title start. */
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    position: absolute !important;
-    top: 5px !important;
-    left: 0 !important;
-    right: 0 !important;
+    flex: 0 0 auto !important;
     width: auto !important;
-    height: 26px !important;
-    padding: 0 30px 0 20px !important;
-    margin: 0 !important;
-    display: block !important;
-    box-sizing: border-box !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
-    position: absolute !important;
-    left: 20px !important;
-    top: 0 !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
-    position: absolute !important;
-    right: 70px !important;
-    top: 0 !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
-    position: absolute !important;
-    right: 30px !important;
-    top: 0 !important;
-    display: inline-flex !important;
-    width: 22px !important;
-    min-width: 22px !important;
+    min-width: 0 !important;
     margin: 0 !important;
     transform: none !important;
 }
 #notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
-    margin-top: 8px !important;
+    margin-top: 50px !important;
     margin-bottom: 0 !important;
 }
 #notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
     padding-top: 0 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer {
+    height: auto !important;
+    bottom: auto !important;
+    gap: initial !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon {
+    height: auto !important;
+    padding: initial !important;
+    line-height: normal !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon svg {
+    width: initial !important;
+    height: initial !important;
 }
