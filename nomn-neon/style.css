@@ -7150,3 +7150,33 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
     width: 18px !important;
     height: 18px !important;
 }
+
+
+/* CX Notes — final header alignment refinement (b5.47). */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    top: 5px !important;              /* use the remaining 5px at the top */
+    left: 8px !important;             /* align calendar icon with note text */
+    right: 8px !important;            /* pin ends at the text's right edge */
+    width: auto !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
+    margin-left: 0 !important;
+    margin-right: auto !important;
+    flex: 0 1 auto !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
+    margin-left: auto !important;
+    margin-right: 0 !important;
+    flex: 0 0 auto !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    flex: 0 0 22px !important;
+}
