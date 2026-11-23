@@ -7151,3 +7151,20 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
 /* CX Notes b5.55 — use base note spacing and footer geometry.
    No overrides for card padding, title margin, content padding or footer sizing:
    those are inherited unchanged from nomn/style.css. */
+
+/* CX Notes b5.57 — място за футъра само когато бележката има приложения (собственик,
+   23.11.2026: „Нека да се отделя място за footer на бележката в борда само когато има
+   приложения към нея"). Основното правило (.note) пази 35px отдолу за лентата с икони на
+   прикачените файлове независимо дали такива има; при бележка без приложения това е празна
+   ивица, която яде място от текста. Футърът се строи само при attachments.length > 0
+   (createNoteElement), значи мястото може да се дава само на картата, в която наистина
+   стои .note-footer. Долният отстъп на бележка без футър е 5px — същият, който носи
+   основното правило преди добавените 35px.
+   .boards-note и .note-item (графичен фон) не се пипат — те имат собствена геометрия. */
+#notes-container .note:not(.boards-note):not(.note-item) {
+    padding-bottom: 5px;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item):has(.note-footer) {
+    padding-bottom: 35px;
+}
