@@ -6965,6 +6965,30 @@ header h1, #app-title {
     width: 100% !important;
     z-index: 2 !important;
 }
+/* b5.56 (23.11.2026, по снимките на собственика): при изключен графичен фон картата е
+   обикновена .note с padding 10px и рамка 2px, а заглавният ред виси вътре в
+   .note-title-wrapper (той е position: relative). Затова редът стоеше с 12px по-ниско и
+   11px по-навътре отколкото при графичен фон, а беше и 22px по-тесен - оттам часът се
+   пренасяше на два реда и ПИН бутонът се свиваше. Тук редът се връща на същото място
+   спрямо картата: 25px от горния ръб, 21px от левия, 31px от десния (както при
+   графичния фон). */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    top: 13px !important;
+    left: -11px !important;
+    right: -11px !important;
+    width: auto !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info :is(.note-header-date, .note-header-time, .note-pin-btn) {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+/* Заглавието върви с реда: при графичен фон заглавието стои на 51px от ръба на картата
+   (редът свършва на 48px), а при изключен графичен фон wrapper-ът е с 12px по-надолу.
+   Затова тук маржът е с 12px по-малък (50 - 12), така че редът и заглавието да са на
+   същото разстояние като при графичния фон. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
+    margin-top: 38px !important;
+}
 #notes-container .note:not(.boards-note):not(.note-item) .note-footer {
     position: absolute !important;
     bottom: 5px !important;
