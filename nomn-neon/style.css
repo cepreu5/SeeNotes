@@ -7252,3 +7252,22 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
 .note-window .modal-header-toolbar {
     background: linear-gradient(180deg, rgba(8, 17, 42, .18), transparent) !important;
 }
+
+
+/* CX Notes b5.60 — modal paper preference and compact top spacing.
+   The base modal reserves 55px above its body although the header toolbar is overlaid.
+   Reduce that reserved gap while keeping a clear lane below the toolbar. */
+.note-window .modal-content-box {
+    padding-top: 25px !important;
+}
+
+/* When the preference is ON, explicitly restore the same paper asset as the base app.
+   The OFF class remains the sole switch that suppresses it. */
+body:not(.cx-img-bgrd-off) .note-window .modal-content-box:not(.no-bg-image) {
+    background-image: url('Note.jpg') !important;
+    background-size: 100% 100% !important;
+    background-repeat: no-repeat !important;
+}
+body.cx-img-bgrd-off .note-window .modal-content-box {
+    background-image: none !important;
+}
