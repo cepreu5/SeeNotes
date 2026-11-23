@@ -6920,48 +6920,19 @@ header h1, #app-title {
     box-shadow: 0 0 10px rgba(0,235,255,.75), inset 0 0 14px rgba(0,235,255,.2) !important;
 }
 
-/* Cards: alternate jewel-tone neon surfaces, like the supplied concept.
-   The canvas image (when enabled) is painted above this surface by the app. */
+/* Cards keep their own background color from the note data (JSON/inline style).
+   Only the neon frame and glow are themed here. */
 #notes-container .note:not(.boards-note):not(.note-item) {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    border-width: 2px !important;
+    border: 2px solid rgba(75, 225, 255, .9) !important;
     border-radius: 24px !important;
-    color: #f4f9ff !important;
     box-shadow: inset 0 1px 12px rgba(255,255,255,.12),
-                0 0 12px rgba(0,205,255,.42),
+                0 0 13px rgba(0,205,255,.48),
                 0 9px 24px rgba(0,0,0,.48) !important;
 }
-#notes-container .note:not(.boards-note):not(.note-item):nth-child(6n+1) {
-    background: linear-gradient(145deg, #124d82 0%, #05264c 62%, #111c67 100%) !important;
-    border-color: #35dfff !important;
-    box-shadow: inset 0 1px 12px rgba(130,235,255,.2), 0 0 15px rgba(0,203,255,.65), 0 9px 24px rgba(0,0,0,.48) !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item):nth-child(6n+2) {
-    background: linear-gradient(145deg, #145b80 0%, #082e50 58%, #29206c 100%) !important;
-    border-color: #65dfff !important;
-    box-shadow: inset 0 1px 12px rgba(130,235,255,.2), 0 0 15px rgba(83,157,255,.65), 0 9px 24px rgba(0,0,0,.48) !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item):nth-child(6n+3) {
-    background: linear-gradient(145deg, #68551a 0%, #332b1b 58%, #6d5100 100%) !important;
-    border-color: #ffe34d !important;
-    box-shadow: inset 0 1px 12px rgba(255,240,130,.2), 0 0 15px rgba(255,210,0,.62), 0 9px 24px rgba(0,0,0,.48) !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item):nth-child(6n+4) {
-    background: linear-gradient(145deg, #075d4a 0%, #063a35 58%, #064b69 100%) !important;
-    border-color: #28ff9b !important;
-    box-shadow: inset 0 1px 12px rgba(120,255,190,.2), 0 0 15px rgba(0,255,130,.55), 0 9px 24px rgba(0,0,0,.48) !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item):nth-child(6n+5) {
-    background: linear-gradient(145deg, #65501a 0%, #3b351e 58%, #745000 100%) !important;
-    border-color: #ffe45b !important;
-    box-shadow: inset 0 1px 12px rgba(255,240,130,.2), 0 0 15px rgba(255,210,0,.58), 0 9px 24px rgba(0,0,0,.48) !important;
-}
-#notes-container .note:not(.boards-note):not(.note-item):nth-child(6n) {
-    background: linear-gradient(145deg, #075b91 0%, #07375e 58%, #17206c 100%) !important;
-    border-color: #36eaff !important;
-    box-shadow: inset 0 1px 12px rgba(130,235,255,.2), 0 0 15px rgba(0,203,255,.62), 0 9px 24px rgba(0,0,0,.48) !important;
+#notes-container .note:not(.boards-note):not(.note-item):hover {
+    box-shadow: inset 0 1px 14px rgba(255,255,255,.16),
+                0 0 18px rgba(0,220,255,.68),
+                0 9px 24px rgba(0,0,0,.48) !important;
 }
 
 /* Curved neon light trails at the lower edge of every ordinary note. */
@@ -7024,4 +6995,45 @@ header h1, #app-title {
     #notes-container .note:not(.boards-note):not(.note-item) {
         border-radius: 20px !important;
     }
+}
+
+
+/* Board-name tabs: the real controls are .board-filter-link inside
+   .board-menu-container (not buttons inside #boards-menu-container). */
+header .board-menu-container .board-filter-link {
+    color: #effaff !important;
+    background: linear-gradient(145deg, rgba(20,48,86,.98), rgba(7,17,42,.99)) !important;
+    border: 1px solid rgba(74,220,255,.82) !important;
+    border-bottom: 2px solid rgba(74,220,255,.7) !important;
+    border-radius: 14px 14px 4px 4px !important;
+    text-shadow: 0 0 7px rgba(72,220,255,.35) !important;
+    box-shadow: inset 0 1px 8px rgba(255,255,255,.12),
+                0 0 10px rgba(0,190,255,.24) !important;
+}
+header .board-menu-container .board-filter-link::before {
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255,255,255,.12), transparent) !important;
+}
+header .board-menu-container .board-filter-link.active,
+header .board-menu-container .board-filter-link.selected-board {
+    color: #ffffff !important;
+    background: linear-gradient(145deg, #087f9d, #092e69) !important;
+    border: 2px solid #25edff !important;
+    box-shadow: 0 0 13px rgba(0,235,255,.8),
+                inset 0 0 15px rgba(0,235,255,.2) !important;
+}
+header .board-menu-container .board-filter-link.all-boards-filter-btn,
+header .board-menu-container .board-filter-link.all-boards-filter-btn.selected-board {
+    color: #f4fbff !important;
+    background: linear-gradient(145deg, #263b78, #101c49) !important;
+}
+header .board-menu-container .board-filter-link.trash-filter-btn,
+header .board-menu-container .board-filter-link.trash-filter-btn.active,
+header .board-menu-container .board-filter-link.trash-filter-btn.selected-board {
+    color: #fff !important;
+    background: linear-gradient(145deg, #8d2448, #42152f) !important;
+    border-color: #ff78ae !important;
+}
+header .board-menu-container {
+    scrollbar-color: #37dff5 #101a32;
 }
