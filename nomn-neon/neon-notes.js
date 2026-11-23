@@ -94,6 +94,9 @@
     document.querySelectorAll('.note-window .modal-content-box').forEach(box => {
       if (on) {
         box.classList.remove('no-bg-image');
+        // OFF state writes an inline "none", which otherwise masks the original CSS paper image.
+        // Clear only that inline override so the modal's normal graphic background is restored.
+        if (box.style.backgroundImage === 'none') box.style.removeProperty('background-image');
       } else {
         box.classList.add('no-bg-image');
         box.style.backgroundImage = 'none';
