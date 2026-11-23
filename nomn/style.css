@@ -6598,3 +6598,27 @@ header.title-hidden > div:first-child {
     flex: 0 0 auto;
     white-space: nowrap;
 }
+
+/* b5.40 (23.11.2026, собственик: „При изключен графичен фон винаги се слага футър, независимо дали
+   има приложения и разстоянието между хедъра и за главния ред е излишно голямо“).
+   1) Място за футъра. Основното правило (.note) пази 35px отдолу за лентата с икони на
+   прикачените файлове независимо дали такива има; футърът се строи само при
+   attachments.length > 0 (createNoteElement), значи мястото се дава само на картата, в която
+   наистина стои .note-footer. Без футър долният отстъп е 5px — същият, който носи основното
+   правило преди добавените 35px.
+   2) Разстояние ред → заглавие. При изключен графичен фон заглавието стои на 50px от content
+   box-а, тоест на 61px от ръба на картата, а редът (21px, висок 22px) свършва на 43px — 18px
+   празнина. При графичен фон редът е на 25px, заглавието на 50px, тоест 3px. Тук маржът пада на
+   35px (11px padding + рамка, плюс 35 = 46px от ръба), така че празнината е същата 3px.
+   .boards-note и .note-item (графичен фон) не се пипат — те имат собствена геометрия. */
+#notes-container .note:not(.boards-note):not(.note-item) {
+    padding-bottom: 5px;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item):has(.note-footer) {
+    padding-bottom: 35px;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
+    margin-top: 35px;
+}

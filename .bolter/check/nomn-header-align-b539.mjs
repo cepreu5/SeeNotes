@@ -167,7 +167,9 @@ const ok = (cond, msg, extra) => {
         ok(Math.abs(m.calIcon.l - m.title.l) <= 0.6, '1.4 иконата е подравнена и със заглавието', { icon: m.calIcon.l, title: m.title.l });
         ok(Math.abs(m.pin.r - textR) <= 0.6, '1.5 ПИН бутонът е подравнен с дясната граница на текста', { pin: m.pin.r, text: textR });
         ok(m.headerInfo.h <= 23, '1.6 редът е на един ред', m.headerInfo.h);
-        ok(m.headerInfo.b - m.title.t >= 6, '1.7 между реда и заглавието остава място, без застъпване', { headerBottomToTitle: +(m.headerInfo.b - m.title.t).toFixed(1) });
+        // b5.40 (23.11.2026) сви празнината от 18px на 3px — същото разстояние като при графичен
+        // фон, по указание на собственика. Тук се пази само условието редът да не застъпва заглавието.
+        ok(m.headerInfo.b - m.title.t >= 2.5, '1.7 между реда и заглавието остават 3px (b5.40), без застъпване', { headerBottomToTitle: +(m.headerInfo.b - m.title.t).toFixed(1) });
         ok(m.pin.l >= m.clockIcon.l + m.clockIcon.w, '1.8 ПИН бутонът не застъпва часовника', { pinLeft: m.pin.l, clockRight: +(m.clockIcon.l + m.clockIcon.w).toFixed(1) });
     }
     ok(errs.length === 0, '1.9 няма грешки в страницата', errs.slice(0, 3));
