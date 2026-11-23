@@ -16,11 +16,13 @@ let version = null;
 // Заедно с това идват и записите в конзолата и бутонът „System Data” в Настройки.
 const debug = true;
 
-// Името на кеша носи версията: 'cx-notes-b5.01' или 'nomn-b5.01' -> 'Beta 5.01'.
+// Името на кеша носи версията: 'cx-notes-b5.01', 'nomn-b5.01' или 'nomn-neon-b5.38' -> 'Beta 5.38'.
 // В nomn префиксът е nomn-, затова и двата се приемат — иначе надписът в Настройки
 // се скрива, защото нищо не съвпада (CX, 6.11.2026).
+// В nomn-neon префиксът е nomn-neon-, затова се приема и той (23.11.2026);
+// редуването го слага преди nomn-, за да не остане несвързан остатък от името.
 function versionFromCacheName(cacheName) {
-    const match = /^(?:cx-notes|nomn)-b(\d.*)$/.exec(String(cacheName || '').trim());
+    const match = /^(?:cx-notes|nomn-neon|nomn)-b(\d.*)$/.exec(String(cacheName || '').trim());
     return match ? `Beta ${match[1]}` : null;
 }
 
