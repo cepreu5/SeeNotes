@@ -7175,3 +7175,80 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
 #notes-container .note:not(.boards-note):not(.note-item):has(.note-footer) {
     padding-bottom: 35px;
 }
+
+
+/* CX Notes b5.59 — polished neon styling for the opened note window.
+   The selected graphic-paper image remains visible when the preference is ON. */
+.note-window .modal-content-box {
+    border: 1px solid rgba(65, 226, 255, .78) !important;
+    border-radius: 16px !important;
+    box-shadow:
+        inset 0 0 24px rgba(68, 220, 255, .10),
+        0 0 0 1px rgba(127, 85, 255, .28),
+        0 0 22px rgba(28, 208, 255, .34),
+        0 18px 48px rgba(0, 0, 0, .62) !important;
+    overflow: hidden;
+}
+.note-window .modal-content-box::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        linear-gradient(135deg, rgba(15, 25, 55, .16), transparent 42%, rgba(8, 16, 40, .20)),
+        radial-gradient(ellipse at 8% 0%, rgba(53, 231, 255, .14), transparent 42%),
+        radial-gradient(ellipse at 100% 100%, rgba(174, 83, 255, .12), transparent 46%);
+}
+.note-window .modal-header-toolbar,
+.note-window .nw-modal-body,
+.note-window .modal-resize-handle {
+    position: relative;
+    z-index: 1;
+}
+.note-window :is(#modal-board-name, .nw-modal-board-name) {
+    color: #eafaff !important;
+    text-shadow: 0 0 7px rgba(53, 231, 255, .48), 0 1px 3px rgba(0, 0, 0, .85) !important;
+}
+.note-window .modal-note-footer {
+    color: #eafaff !important;
+    text-shadow: 0 0 7px rgba(53, 231, 255, .40), 0 1px 3px rgba(0, 0, 0, .8) !important;
+}
+.note-window .modal-note-footer svg,
+.note-window .modal-note-footer .header-icon svg {
+    stroke: #65eaff !important;
+    filter: drop-shadow(0 0 4px rgba(53, 231, 255, .72));
+}
+.note-window .modal-header-buttons :is(.nw-copy-modal-btn, .nw-prev-note-btn, .nw-next-note-btn, .nw-delete-modal-btn, .nw-modal-expand-btn),
+.note-window .modal-edit-toolbar .modal-edit-toolbar-btn {
+    color: #eafaff !important;
+    border-color: rgba(104, 231, 255, .78) !important;
+    background: linear-gradient(145deg, rgba(24, 49, 83, .78), rgba(10, 19, 45, .88)) !important;
+    box-shadow: inset 0 1px 5px rgba(255,255,255,.13), 0 0 9px rgba(53, 231, 255, .22) !important;
+    text-shadow: 0 0 6px rgba(53, 231, 255, .48);
+}
+.note-window .modal-header-buttons :is(.nw-copy-modal-btn, .nw-prev-note-btn, .nw-next-note-btn, .nw-delete-modal-btn, .nw-modal-expand-btn) svg,
+.note-window .modal-edit-toolbar .modal-edit-toolbar-btn svg {
+    stroke: currentColor !important;
+    color: currentColor !important;
+    filter: drop-shadow(0 0 3px rgba(53, 231, 255, .45));
+}
+.note-window .modal-edit-toolbar-btn.is-undo,
+.note-window .modal-edit-toolbar-btn.is-redo {
+    color: #eafaff !important;
+    font-weight: 700;
+    text-shadow: 0 0 7px rgba(53, 231, 255, .65);
+}
+.note-window .modal-header-buttons :is(button:hover, button:focus-visible),
+.note-window .modal-edit-toolbar .modal-edit-toolbar-btn:not(.is-disabled):hover {
+    color: #ffffff !important;
+    border-color: #b58aff !important;
+    box-shadow: 0 0 13px rgba(53, 231, 255, .52), 0 0 16px rgba(174, 83, 255, .30) !important;
+}
+.note-window .modal-edit-toolbar {
+    border-bottom-color: rgba(100, 224, 255, .38) !important;
+}
+.note-window .modal-header-toolbar {
+    background: linear-gradient(180deg, rgba(8, 17, 42, .18), transparent) !important;
+}
