@@ -81,3 +81,41 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();
+
+
+/* Keep the app-wide "Graphical background (note)" preference authoritative
+   after note edits/re-renders. Missing key means OFF, matching app defaults. */
+(() => {
+  'use strict';
+  const enabled = () => localStorage.getItem('imgBgrd') === 'true';
+  const sync = () => {
+    const on = enabled();
+    document.body.classList.toggle('cx-img-bgrd-off', !on);
+    document.querySelectorAll('.note-window .modal-content-box').forEach(box => {
+      if (on) {
+        box.classList.remove('no-bg-image');
+      } else {
+        box.classList.add('no-bg-image');
+        box.style.backgroundImage = 'none';
+      }
+    });
+  };
+  const observe = () => {
+    sync();
+    document.addEventListener('change', event => {
+      if (event.target && event.target.id === 'img-bgrd-checkbox') {
+        // Let the app persist the checkbox value first, then re-apply the visual state.
+        Promise.resolve().then(sync);
+      }
+    }, true);
+    window.addEventListener('storage', event => {
+      if (event.key === 'imgBgrd') sync();
+    });
+    const observer = new MutationObserver(records => {
+      if (records.some(record => record.type === 'childList' && record.addedNodes.length)) sync();
+    });
+    observer.observe(document.body, {childList:true, subtree:true});
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe);
+  else observe();
+})();
