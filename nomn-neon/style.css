@@ -7180,3 +7180,34 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
     margin-right: 0 !important;
     flex: 0 0 22px !important;
 }
+
+
+/* CX Notes — correct header anchoring and safe pin inset (b5.48).
+   The previous z-index rule made the header relative; explicitly anchor it
+   to the card so left/right offsets are measured from the card border. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    position: absolute !important;
+    top: 5px !important;
+    left: 38px !important;       /* calendar icon aligns with content text inset */
+    right: 30px !important;      /* pin stays clear of the right border */
+    width: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
+    margin: 0 auto 0 0 !important;
+    flex: 0 1 auto !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
+    margin: 0 0 0 auto !important;
+    flex: 0 0 auto !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
+    margin: 0 !important;
+    flex: 0 0 22px !important;
+}
