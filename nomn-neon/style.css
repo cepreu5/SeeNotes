@@ -7080,3 +7080,12 @@ header .board-menu-container {
 #notes-container .note.cx-neon-ready:not(.boards-note):not(.note-item) .note-content a {
     color: hsl(var(--cx-note-h) 100% 78%) !important;
 }
+
+
+/* App-wide OFF state wins over graphic paper layers re-created during editing. */
+body.cx-img-bgrd-off #notes-container .note-background-canvas {
+    display: none !important;
+}
+body.cx-img-bgrd-off .note-window .modal-content-box {
+    background-image: none !important;
+}
