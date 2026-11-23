@@ -6712,3 +6712,31 @@ textarea:focus-visible {
         transition: none !important;
     }
 }
+
+
+/* Readability correction: keep the neon treatment on the app chrome,
+   but use dark ink on the original pastel note cards. */
+#notes-container .note,
+#notes-container .note .note-content,
+#notes-container .note .note-content *,
+#notes-container .note .note-title-wrapper,
+#notes-container .note .note-title-wrapper *,
+#notes-container .note .note-header-info,
+#notes-container .note .note-header-info * {
+    color: #182238 !important;
+    text-shadow: none !important;
+}
+
+#notes-container .note .note-content a {
+    color: #174b9a !important;
+    text-decoration: underline;
+}
+
+#notes-container .note .note-content :is(code, pre) {
+    color: #182238 !important;
+    background: rgba(20, 35, 55, .10);
+}
+
+#notes-container .note .note-header-info {
+    color: rgba(24, 34, 56, .78) !important;
+}
