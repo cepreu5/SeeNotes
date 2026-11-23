@@ -7262,3 +7262,46 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
     min-width: 22px !important;
     flex: initial !important;
 }
+
+
+/* CX Notes b5.50 — restore the proven flex header row.
+   The three-column grid caused the date and time to overlap on real cards. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    position: absolute !important;
+    top: 5px !important;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 22px 0 12px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
+    display: inline-flex !important;
+    align-items: center !important;
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    margin: 0 auto 0 0 !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
+    display: inline-flex !important;
+    align-items: center !important;
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
+    margin: 0 8px 0 auto !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
+    display: inline-flex !important;
+    flex: 0 0 22px !important;
+    width: 22px !important;
+    min-width: 22px !important;
+    margin: 0 !important;
+    transform: translateX(-8px);
+}
