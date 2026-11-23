@@ -7211,3 +7211,54 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
     margin: 0 !important;
     flex: 0 0 22px !important;
 }
+
+
+/* SVG action icons remain visible on the dark neon header. */
+#header-buttons .header-btn .header-action-icon {
+    display: block;
+    width: 26px;
+    height: 26px;
+    color: #eafaff;
+    stroke: currentColor;
+    filter: drop-shadow(0 0 4px rgba(54,225,255,.42));
+}
+
+/* Stable three-column header: calendar/date left, clock/time right, pin inset.
+   Grid prevents date text and clock from colliding on narrow cards. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    position: absolute !important;
+    top: 5px !important;
+    left: 48px !important;
+    right: 42px !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto 22px !important;
+    align-items: center !important;
+    column-gap: 10px !important;
+    box-sizing: border-box !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
+    grid-column: 1 !important;
+    justify-self: start !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    flex: initial !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
+    grid-column: 2 !important;
+    justify-self: end !important;
+    margin: 0 !important;
+    flex: initial !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
+    grid-column: 3 !important;
+    justify-self: end !important;
+    margin: 0 !important;
+    width: 22px !important;
+    min-width: 22px !important;
+    flex: initial !important;
+}
