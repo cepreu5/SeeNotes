@@ -7355,3 +7355,47 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
 #notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
     padding-top: 8px !important;
 }
+
+
+/* CX Notes b5.52 — restore the original note-header layout.
+   The original flex row already aligns date left and time right; the previous
+   neon overrides changed its inset/width and caused the clock to collide. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    position: absolute !important;
+    top: 5px !important;
+    left: 0 !important;
+    right: auto !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 0 30px 0 20px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
+    display: inline-flex !important;
+    align-items: center !important;
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
+    display: inline-flex !important;
+    align-items: center !important;
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
+    margin: 0 0 0 auto !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
+    display: inline-flex !important;
+    flex: 0 0 22px !important;
+    width: 22px !important;
+    min-width: 22px !important;
+    margin: 0 !important;
+    transform: none !important;
+}
