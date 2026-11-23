@@ -7271,3 +7271,19 @@ body:not(.cx-img-bgrd-off) .note-window .modal-content-box:not(.no-bg-image) {
 body.cx-img-bgrd-off .note-window .modal-content-box {
     background-image: none !important;
 }
+
+
+/* CX Notes b5.61 — keep Undo / Redo dark, as in the original toolbar. */
+.note-window .modal-edit-toolbar-btn.is-undo,
+.note-window .modal-edit-toolbar-btn.is-redo {
+    color: #263449 !important;
+    text-shadow: none !important;
+    filter: none !important;
+    font-weight: 700;
+}
+.note-window .modal-edit-toolbar-btn.is-undo svg,
+.note-window .modal-edit-toolbar-btn.is-redo svg {
+    stroke: #263449 !important;
+    color: #263449 !important;
+    filter: none !important;
+}
