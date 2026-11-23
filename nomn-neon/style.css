@@ -7305,3 +7305,53 @@ body.cx-img-bgrd-off .note-window .modal-content-box {
     margin: 0 !important;
     transform: translateX(-8px);
 }
+
+
+/* CX Notes b5.51 — header geometry and reserved content clearance.
+   The date stays at the left inset; the time is pushed to the right beside
+   the pin. Avoid two competing auto-margins which had pulled the time inward. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    position: absolute !important;
+    top: 5px !important;
+    left: 8px !important;
+    right: 30px !important;
+    width: auto !important;
+    padding: 0 0 0 12px !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
+    order: 1 !important;
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
+    order: 2 !important;
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
+    margin: 0 0 0 auto !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-pin-btn {
+    order: 3 !important;
+    flex: 0 0 22px !important;
+    width: 22px !important;
+    min-width: 22px !important;
+    margin: 0 0 0 8px !important;
+    transform: none !important;
+}
+/* Reserve a real content gap below the absolute header, even when a note has
+   no visible title line (image/link-only notes use their own body flow). */
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
+    margin-top: 56px !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
+    padding-top: 8px !important;
+}
