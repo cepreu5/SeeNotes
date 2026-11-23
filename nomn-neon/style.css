@@ -7089,3 +7089,64 @@ body.cx-img-bgrd-off #notes-container .note-background-canvas {
 body.cx-img-bgrd-off .note-window .modal-content-box {
     background-image: none !important;
 }
+
+
+/* CX Notes — compact note-card layout (b5.46)
+   Reclaim vertical space for note content while keeping date/time readable. */
+#notes-container .note:not(.boards-note):not(.note-item) {
+    padding: 6px 8px 2px !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
+    top: 10px !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: auto !important;
+    padding: 0 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-date {
+    margin-right: auto !important;
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-time {
+    margin-left: auto !important;
+    flex: 0 0 auto !important;
+    justify-content: flex-end !important;
+    white-space: nowrap !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-truncated {
+    margin-top: 16px !important;
+    margin-bottom: 0 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item).no-card-title .note-title-wrapper,
+#notes-container .note:not(.boards-note):not(.note-item) .note-borderless-table .note-title-wrapper {
+    flex: 0 0 34px !important;
+    min-height: 34px !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper {
+    min-height: 0 !important;
+    padding-top: 0 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper > .note-content {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer {
+    height: 20px !important;
+    bottom: 2px !important;
+    gap: 6px !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon {
+    height: 18px !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+}
+#notes-container .note:not(.boards-note):not(.note-item) .note-footer .footer-icon svg {
+    width: 18px !important;
+    height: 18px !important;
+}
