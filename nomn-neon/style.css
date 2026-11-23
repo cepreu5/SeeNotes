@@ -6970,13 +6970,20 @@ header h1, #app-title {
    .note-title-wrapper (той е position: relative). Затова редът стоеше с 12px по-ниско и
    11px по-навътре отколкото при графичен фон, а беше и 22px по-тесен - оттам часът се
    пренасяше на два реда и ПИН бутонът се свиваше. Тук редът се връща на същото място
-   спрямо картата: 25px от горния ръб, 21px от левия, 31px от десния (както при
-   графичния фон). */
+   спрямо картата: 25px от горния ръб.
+   b5.58 (23.11.2026: „вдигни хедъра 5px нагоре, подравни иконата на календара пред датата
+   с лявата граница на текста, подравни пин бутона с дясната граница на текста"):
+   .note-title-wrapper съвпада точно с текстовата колона на картата (12px от всеки ръб),
+   затова редът се закача за него без отстъп. Иначе собственото му padding 0 30px 0 20px
+   местеше иконата с 9px надясно, а ПИН бутона с 19px наляво спрямо текста.
+   Резултат: ред 20px от горния ръб, иконата на 12px (лявата граница на текста), ПИН
+   бутонът до 238px при карта 250px (дясната граница на текста). */
 #notes-container .note:not(.boards-note):not(.note-item) .note-header-info {
-    top: 13px !important;
-    left: -11px !important;
-    right: -11px !important;
+    top: 8px !important;
+    left: 0 !important;
+    right: 0 !important;
     width: auto !important;
+    padding: 0 !important;
 }
 #notes-container .note:not(.boards-note):not(.note-item) .note-header-info :is(.note-header-date, .note-header-time, .note-pin-btn) {
     flex: 0 0 auto;
