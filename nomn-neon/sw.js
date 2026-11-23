@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomn-neon-b5.62';;;;;;;;;;;;;;;;;;
+const CACHE_NAME = 'nomn-neon-b5.60';;;;;;;;;;;;;;;;
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
@@ -124,27 +124,14 @@ function swLog(...args) {
 
 self.addEventListener('install', (event) => {
   swLog('[SW] Install event triggered.');
-  // Do not let this worker activate (and delete the previous cache) until the
-  // new cache has finished its initial population. Without waitUntil(), the
-  // browser may terminate this worker while cache.add() calls are still pending.
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return Promise.allSettled(
-        ASSETS_TO_CACHE.map(url =>
-          cache.add(url).catch(err => {
-            swLog(`Failed to cache ${url}:`, err);
-            return null;
-          })
-        )
-      );
-    }).then(results => {
-      const failed = results.filter(result => result.status === 'rejected').length;
-      swLog('[SW] Initial cache population finished.', {
-        total: ASSETS_TO_CACHE.length,
-        failed: failed
-      });
-    })
-  );
+  // Start caching assets without blocking the page load
+  caches.open(CACHE_NAME).then((cache) => {
+    return Promise.allSettled(
+      ASSETS_TO_CACHE.map(url =>
+        cache.add(url).catch(err => swLog(`Failed to cache ${url}:`, err))
+      )
+    );
+  });
   // Без поемане на контрола при install: новият SW изчаква. main.js го пуска
   // (SKIP_WAITING) веднага щом страницата се зареди, ако потребителят още не е
   // пипал приложението - тогава обикновен refresh вдига версията. Ако вече се
