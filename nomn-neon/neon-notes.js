@@ -107,17 +107,34 @@
     sync();
     document.addEventListener('change', event => {
       if (event.target && event.target.id === 'img-bgrd-checkbox') {
-        // Let the app persist the checkbox value first, then re-apply the visual state.
+        // The app persists the checkbox synchronously during the same change event.
+        // Run after its listeners have completed.
         Promise.resolve().then(sync);
       }
     }, true);
     window.addEventListener('storage', event => {
       if (event.key === 'imgBgrd') sync();
     });
+
+    // Note windows are cloned once and then REUSED. Opening a note often changes only
+    // the existing modal's class/style attributes, not its child list. Watching only
+    // childList misses that transition and leaves the modal in the previous OFF state.
     const observer = new MutationObserver(records => {
-      if (records.some(record => record.type === 'childList' && record.addedNodes.length)) sync();
+      const relevant = records.some(record => {
+        if (record.type === 'childList') return record.addedNodes.length > 0;
+        const target = record.target;
+        return target instanceof Element &&
+          (target.matches('.note-window, .note-window .modal-content-box') ||
+           !!target.closest('.note-window'));
+      });
+      if (relevant) sync();
     });
-    observer.observe(document.body, {childList:true, subtree:true});
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style']
+    });
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe);
   else observe();
