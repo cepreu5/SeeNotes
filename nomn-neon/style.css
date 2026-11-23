@@ -7037,3 +7037,46 @@ header .board-menu-container .board-filter-link.trash-filter-btn.selected-board 
 header .board-menu-container {
     scrollbar-color: #37dff5 #101a32;
 }
+
+
+/* CX Notes b5.44: dark neon surfaces with the hue of the original note color.
+   Variables are populated before this class is added, so the saved color can
+   be read without modifying the JSON or the graphic-background preference. */
+#notes-container .note.cx-neon-ready:not(.boards-note):not(.note-item) {
+    --cx-glow: hsl(var(--cx-note-h) var(--cx-note-s) 59%);
+    --cx-glow-soft: hsl(var(--cx-note-h) var(--cx-note-s) 55% / .52);
+    --cx-glow-faint: hsl(var(--cx-note-h) var(--cx-note-s) 50% / .20);
+    background: linear-gradient(145deg,
+        hsl(var(--cx-note-h) 43% 20%) 0%,
+        hsl(var(--cx-note-h) 39% 11%) 57%,
+        hsl(var(--cx-note-h) 45% 16%) 100%) !important;
+    border: 2px solid var(--cx-glow) !important;
+    border-radius: 24px !important;
+    box-shadow: inset 0 1px 13px hsl(var(--cx-note-h) 80% 80% / .12),
+                inset 0 0 22px var(--cx-glow-faint),
+                0 0 10px var(--cx-glow-soft),
+                0 0 22px var(--cx-glow-faint),
+                0 9px 24px rgba(0,0,0,.55) !important;
+}
+#notes-container .note.cx-neon-ready:not(.boards-note):not(.note-item):hover {
+    border-color: hsl(var(--cx-note-h) 100% 72%) !important;
+    box-shadow: inset 0 0 24px var(--cx-glow-faint),
+                0 0 18px var(--cx-glow-soft),
+                0 0 32px var(--cx-glow-faint),
+                0 9px 24px rgba(0,0,0,.55) !important;
+}
+#notes-container .note.cx-neon-ready:not(.boards-note):not(.note-item)::after {
+    background:
+        radial-gradient(ellipse at 28% 125%, transparent 48%,
+            hsl(var(--cx-note-h) 100% 70% / .98) 49%, transparent 50%),
+        radial-gradient(ellipse at 78% 130%, transparent 48%,
+            hsl(var(--cx-note-h) 100% 62% / .84) 49%, transparent 50%) !important;
+    filter: drop-shadow(0 0 6px var(--cx-glow)) !important;
+}
+#notes-container .note.cx-neon-ready:not(.boards-note):not(.note-item) .note-header-info svg,
+#notes-container .note.cx-neon-ready:not(.boards-note):not(.note-item) .note-footer svg {
+    stroke: hsl(var(--cx-note-h) 100% 73%) !important;
+}
+#notes-container .note.cx-neon-ready:not(.boards-note):not(.note-item) .note-content a {
+    color: hsl(var(--cx-note-h) 100% 78%) !important;
+}
