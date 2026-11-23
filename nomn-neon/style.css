@@ -6747,7 +6747,7 @@ textarea:focus-visible {
    Keep board/system cards and image-based note items intact.
    ========================================================= */
 #notes-container .note:not(.boards-note):not(.note-item) {
-    background: linear-gradient(145deg, #111b31 0%, #0c1428 58%, #10132b 100%) !important;
+    /* Keep the note's own JSON/inline background color. */
     color: #eaf4ff !important;
     border: 1px solid rgba(53, 231, 255, .68) !important;
     border-radius: 12px;
