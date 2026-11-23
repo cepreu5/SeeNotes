@@ -6766,9 +6766,8 @@ textarea:focus-visible {
         0 0 22px rgba(166, 107, 255, .17) !important;
 }
 
-#notes-container .note:not(.boards-note):not(.note-item) .note-background-canvas {
-    display: none !important;
-}
+/* Не скриваме note-background-canvas глобално: видимостта му се управлява от настройката
+   за графичен фон, за да останат лепящите листчета достъпни при включен режим. */
 
 #notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper,
 #notes-container .note:not(.boards-note):not(.note-item) .note-content,
@@ -6800,4 +6799,49 @@ textarea:focus-visible {
     #notes-container .note:not(.boards-note):not(.note-item) {
         transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
     }
+}
+
+
+/* CX NOTES — readable text in both background modes.
+   The note canvas remains controlled by the user's graphic-background setting. */
+#notes-container .note:not(.boards-note):not(.note-item) .note-content-wrapper,
+#notes-container .note:not(.boards-note):not(.note-item) .note-content,
+#notes-container .note:not(.boards-note):not(.note-item) .note-content *,
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-wrapper,
+#notes-container .note:not(.boards-note):not(.note-item) .note-title-wrapper *,
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info,
+#notes-container .note:not(.boards-note):not(.note-item) .note-header-info * {
+    color: #eaf4ff !important;
+    text-shadow: none !important;
+}
+
+#notes-container .note:not(.boards-note):not(.note-item) .note-content a {
+    color: #65dfff !important;
+    text-decoration-color: rgba(101, 223, 255, .7);
+}
+
+/* Preview/open note: apply the same neon paper only when graphic background is off. */
+.note-window .modal-content-box.no-bg-image {
+    background: linear-gradient(145deg, #111b31 0%, #0c1428 58%, #10132b 100%) !important;
+    border: 1px solid rgba(53, 231, 255, .68) !important;
+    border-radius: 12px;
+    box-shadow: inset 0 0 18px rgba(53, 231, 255, .045),
+                0 8px 28px rgba(0, 0, 0, .5),
+                0 0 16px rgba(53, 231, 255, .18) !important;
+}
+
+.note-window .modal-content-box.no-bg-image :is(#modal-body, .nw-modal-body),
+.note-window .modal-content-box.no-bg-image :is(#modal-body, .nw-modal-body) *,
+.note-window .modal-content-box.no-bg-image :is(#modal-board-name, .nw-modal-board-name),
+.note-window .modal-content-box.no-bg-image :is(#modal-board-name, .nw-modal-board-name) * {
+    color: #eaf4ff !important;
+    text-shadow: none !important;
+}
+
+.note-window .modal-content-box.no-bg-image :is(#modal-body, .nw-modal-body) a {
+    color: #65dfff !important;
+}
+
+.note-window .modal-content-box.no-bg-image .modal-resize-handle {
+    color: #72eaff !important;
 }
