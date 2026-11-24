@@ -606,5 +606,14 @@
     "noteTimerModeTimer": "Таймер",
     "noteTimerModeAlarm": "Аларма",
     "noteTimerSet": "Задай",
-    "noteTimerStop": "Стоп"
+    "noteTimerStop": "Стоп",
+    "lockNoteTooltip": "Заключи бележката",
+    "unlockNoteTooltip": "Отключи бележката",
+    "passSet": "Парола за заключените бележки (запомни я — без нея бележката не се възстановява):",
+    "passAsk": "Парола за заключените бележки:",
+    "passWrong": "Грешна парола.",
+    "passNeededToSave": "Без парола бележката не се записва.",
+    "noteLocked": "Бележката е заключена.",
+    "noteUnlocked": "Бележката е отключена.",
+    "exportMdLockedNote": "_Тялото на тази бележка е заключено и не влиза в експорта._"
 }

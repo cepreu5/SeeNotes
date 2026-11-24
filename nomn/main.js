@@ -628,6 +628,142 @@ const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
 const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2.4" stroke="currentColor" fill="none"><circle class="pin-dot" cx="12" cy="12" r="7"></circle></svg>`;
+
+/* ---------------------------------------------------------------------------------------------
+   Криптиране на заключените бележки (b5.53).
+
+   Решение на собственика (24.11.2026): ЕДНА парола за всички заключени бележки; заглавието
+   преди '|' остава открито на борда; старите бележки с pass:true НЕ се пипат; файловете към
+   бележката НЕ се шифроват; забравена парола значи загубена бележка.
+
+   Как стои в записа: "заглавие|nmenc:1:<base64>" — заглавието е открито, тялото е шифротекст.
+   Ключът се извежда от паролата с PBKDF2-SHA256 (310 000 итерации) и сол, която е различна за
+   всяка бележка; самата сол и IV-то стоят в плика до шифротекста. Шифроването е AES-GCM 256.
+   Паролата НЕ се пази никъде. В паметта на страницата остава само изведеният ключ и то за
+   сесията — при презареждане или нов таб се пита отново.
+   --------------------------------------------------------------------------------------------- */
+const NM_ENC_PREFIX = 'nmenc:1:';
+const NM_ENC_ITERATIONS = 310000;
+// Изведените ключове за сесията: сол (base64) -> CryptoKey. Паролата не влиза тук.
+const nmEncKeyCache = new Map();
+// Откритите текстове на заключените бележки за сесията: gdid/id -> plaintext с '|'.
+// Записът в allNotesData остава ШИФРОВАН; откритият текст живее само тук, за да може
+// сравнението „има ли промяна" и записът да работят с истинския текст.
+const nmEncPlainCache = new Map();
+// Иска ли бележката парола при отваряне (има плика в тялото си).
+function nmEncIsEncrypted(text) {
+    return typeof text === 'string' && text.indexOf(NM_ENC_PREFIX) !== -1;
+}
+// Отключващ ключ за тази бележка. Има ли вече изведен ключ за солта, не се пита.
+function nmEncB64ToBytes(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+function nmEncBytesToB64(bytes) {
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+}
+async function nmEncDeriveKey(password, saltBytes) {
+    const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password),
+        { name: 'PBKDF2' }, false, ['deriveKey']);
+    return crypto.subtle.deriveKey({
+        name: 'PBKDF2', salt: saltBytes, iterations: NM_ENC_ITERATIONS, hash: 'SHA-256'
+    }, material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+// Ключ за вече съществуващ плик: солта идва от плика, ключът се взима от кеша или се извежда
+// от парола, която се пита в момента.
+async function nmEncKeyForSalt(saltB64, askMessage) {
+    if (nmEncKeyCache.has(saltB64)) return nmEncKeyCache.get(saltB64);
+    const password = await showPrompt(askMessage || (_('passAsk') || 'Парола за заключените бележки:'));
+    if (!password) return null;
+    const key = await nmEncDeriveKey(password, nmEncB64ToBytes(saltB64));
+    nmEncKeyCache.set(saltB64, key);
+    return key;
+}
+// Шифрова тялото на бележката. Заглавието (всичко преди първия '|') остава открито.
+// previousStoredText е сегашният запис на бележката: ако той вече е плик, солта се взима от него,
+// за да не се пита паролата наново при всеки запис (нов ключ за нова сол = ново питане).
+async function nmEncEncryptNoteText(plainText, previousStoredText) {
+    const text = String(plainText || '');
+    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(text) : text.indexOf('|');
+    const title = pipeIndex !== -1 ? text.substring(0, pipeIndex) : '';
+    const body = pipeIndex !== -1 ? text.substring(pipeIndex + 1) : text;
+    let saltBytes = null;
+    let saltB64 = '';
+    const prev = String(previousStoredText || '');
+    const prevMark = prev.indexOf(NM_ENC_PREFIX);
+    if (prevMark !== -1) {
+        try {
+            const prevEnv = JSON.parse(atob(prev.substring(prevMark + NM_ENC_PREFIX.length)));
+            if (prevEnv && prevEnv.s) { saltB64 = prevEnv.s; saltBytes = nmEncB64ToBytes(prevEnv.s); }
+        } catch (e) { }
+    }
+    if (!saltBytes) {
+        saltBytes = crypto.getRandomValues(new Uint8Array(16));
+        saltB64 = nmEncBytesToB64(saltBytes);
+    }
+    const key = await nmEncKeyForSalt(saltB64, _('passSet') || 'Парола за заключените бележки (запомни я — без нея бележката не се възстановява):');
+    if (!key) return null;
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(body));
+    const envelope = JSON.stringify({ s: saltB64, v: nmEncBytesToB64(iv), c: nmEncBytesToB64(new Uint8Array(cipher)) });
+    return title + '|' + NM_ENC_PREFIX + btoa(envelope);
+}
+// Отваря тялото на заключена бележка. Връща null, ако паролата е отказана или е грешна.
+async function nmEncDecryptNoteText(storedText) {
+    const text = String(storedText || '');
+    const markerIndex = text.indexOf(NM_ENC_PREFIX);
+    if (markerIndex === -1) return null;
+    const title = text.substring(0, markerIndex).replace(/\|$/, '');
+    let envelope;
+    try { envelope = JSON.parse(atob(text.substring(markerIndex + NM_ENC_PREFIX.length))); } catch (e) { return null; }
+    if (!envelope || !envelope.s || !envelope.v || !envelope.c) return null;
+    let key = nmEncKeyCache.get(envelope.s) || null;
+    let tries = 0;
+    // Грешна парола се разбира едва при декриптирането (AES-GCM не пуска). Пита се пак, но
+    // най-много два пъти — иначе човек остава в цикъл от въпроси.
+    while (tries < 2) {
+        if (!key) {
+            key = await nmEncKeyForSalt(envelope.s, _('passAsk') || 'Парола за заключените бележки:');
+            if (!key) return null;
+        }
+        try {
+            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nmEncB64ToBytes(envelope.v) },
+                key, nmEncB64ToBytes(envelope.c));
+            return title + '|' + new TextDecoder().decode(plain);
+        } catch (e) {
+            nmEncKeyCache.delete(envelope.s);
+            key = null;
+            tries++;
+            if (tries >= 2) {
+                showToast(_('passWrong') || 'Грешна парола.', 3000);
+                return null;
+            }
+        }
+    }
+    return null;
+}
+// Ключ за бележка по нейните id-та (за кеша на откритите текстове).
+function nmEncCacheKeyFor(note) {
+    if (!note) return '';
+    if (note.gdid) return 'g:' + String(note.gdid);
+    if (note.id !== undefined && note.id !== null) return 'i:' + String(note.id);
+    return '';
+}
+// Текстът, с който се сравнява „има ли промяна" и с който се строи бележката: за заключена
+// бележка това е откритият текст от сесията, а не шифротекстът в записа.
+function nmEncPlainTextOf(note) {
+    if (!note) return '';
+    const key = nmEncCacheKeyFor(note);
+    if (key && nmEncPlainCache.has(key)) return nmEncPlainCache.get(key);
+    return note.notetxt !== undefined ? note.notetxt : (note.text || '');
+}
 const saveSearchSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>`;
 const attachmentIcons = [
     { type: 1, svg: `<svg xmlns="http://www.w3.org/2000/svg" height="24" width="24" fill="none" stroke="black" stroke-width="1" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6l1.5-2h3L15 6"/><circle cx="12" cy="13" r="3"/></svg>` },
@@ -13943,6 +14079,23 @@ function pickNoteWindowForShow(options) {
 }
 
 function showModal(options, noteElement = null) {
+    // Заключена бележка (b5.53): в записа тялото е шифротекст, а модалът работи с открит текст.
+    // Затова тук се сменя raw с открития текст — веднъж от кеша за сесията, иначе след запитване
+    // за парола. Всички извиквания на showModal минават оттук, значи нито едно не вижда плика.
+    if (options && typeof options === 'object' && nmEncIsEncrypted(options.raw)) {
+        const cacheKey = nmEncCacheKeyFor({ gdid: options.gdid, id: options.id });
+        const cached = cacheKey ? nmEncPlainCache.get(cacheKey) : null;
+        if (cached) {
+            showModal({ ...options, raw: cached, nmEncLocked: true }, noteElement);
+            return;
+        }
+        nmEncDecryptNoteText(options.raw).then(plain => {
+            if (!plain) return; // паролата е отказана или грешна: бележката остава затворена
+            if (cacheKey) nmEncPlainCache.set(cacheKey, plain);
+            showModal({ ...options, raw: plain, nmEncLocked: true }, noteElement);
+        });
+        return;
+    }
     const pick = pickNoteWindowForShow(options);
     if (!pick) return;
     if (pick.background) {
@@ -14943,6 +15096,9 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         modalBoardNameEl.style.textDecoration = 'none';
     }
     currentModalContent = rawContent;
+    // Заключена бележка, чието тяло е шифротекст: белегът казва на записа да шифрова пак.
+    if (options && options.nmEncLocked) modalBody.dataset.nmEncLocked = 'true';
+    else delete modalBody.dataset.nmEncLocked;
     // For notes with a preview (pass: true), the '|' is a separator.
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
@@ -15573,6 +15729,25 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     const prevBtn = document.getElementById('prev-note-btn');
     const nextBtn = document.getElementById('next-note-btn');
     const deleteBtn = document.getElementById('delete-modal-btn');
+    // --- Катинарче (b5.53): заключва бележката и пита за парола, ако още няма ключ за сесията ---
+    const lockBtn = document.getElementById('lock-modal-btn');
+    if (lockBtn) {
+        const lockableNote = (currentNoteObj || noteElement) && !isPromo && !options.readonly
+            && (useIndexedDb || updateGDrive || useLocalFolder);
+        lockBtn.style.display = lockableNote ? 'flex' : 'none';
+        if (lockableNote) {
+            const isLockedNow = !!currentNoteObj && currentNoteObj.pass === true;
+            lockBtn.classList.toggle('nw-lock-on', isLockedNow);
+            lockBtn.title = isLockedNow ? (_('unlockNoteTooltip') || 'Отключи бележката') : (_('lockNoteTooltip') || 'Заключи бележката');
+            const newLockBtn = lockBtn.cloneNode(true);
+            lockBtn.parentNode.replaceChild(newLockBtn, lockBtn);
+            newLockBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                await toggleNoteLock(newLockBtn);
+            });
+        }
+    }
 
     // Показваме/скриваме бутона за изтриване
     // --- КОРЕКЦИЯ: Разрешаваме изтриване и в режим "Локална папка" ---
@@ -32919,7 +33094,7 @@ function getNoteUnsavedKind() {
         const processedText = editedState.text;
         const finalFormat = editedState.format;
         const finalTitleFormat = editedState.titleFormat;
-        const originalContent = noteObj.notetxt || "";
+        const originalContent = nmEncPlainTextOf(noteObj);
         const originalFormat = noteObj.text_span || "";
         const originalTitleFormat = noteObj.title_span || "";
         // Промяна има само ако редакторът се различава и от записаното, и от състоянието при отваряне:
@@ -33155,12 +33330,15 @@ function saveEditedNote(forceClose = false) {
             console.error("Note object not found for saving.");
             return;
         }
-        const originalContent = noteObj ? (noteObj.notetxt || "") : "";
+        const originalContent = noteObj ? nmEncPlainTextOf(noteObj) : "";
         let newCalendarDate = modalBodyElem.dataset.calendarDate ? parseInt(modalBodyElem.dataset.calendarDate, 10) : (noteObj ? (noteObj.calendarDate || 0) : 0);
         let newColor = getModalColorValue(modalBodyElem, noteObj ? (noteObj.color || 0) : 0);
 
         // --- Conflict Resolution Logic ---
-        if (updateGDriveNow && modalGdid && noteObj) {
+        // Заключена бележка не минава оттук: mergeNotes сравнява текстове, а при нея записаният
+        // текст е шифротекст, докато редакторът дава открит. Смесването би дало безсмислица.
+        const skipEncConflictMerge = !!(noteObj && noteObj.pass === true);
+        if (updateGDriveNow && modalGdid && noteObj && !skipEncConflictMerge) {
 
             try {
                 const serverRaw = await fetchGDriveFileContent(modalGdid);
@@ -33201,6 +33379,25 @@ function saveEditedNote(forceClose = false) {
             } catch (e) { console.error("Conflict check failed:", e); }
         }
 
+        // Заключена бележка (b5.53): в записа тялото стои като шифротекст, заглавието преди '|'
+        // остава открито. Шифроването става ТУК, преди сравнението и преди всеки запис, за да не
+        // излезе открит текст към Drive, локалната папка или IndexedDB. Откритият текст остава в
+        // кеша за сесията, иначе следващото отваряне пак би питало за парола.
+        let storedText = processedText;
+        const isEncLockedSave = !!(noteObj && noteObj.pass === true && modalBodyElem.dataset.nmEncLocked === 'true');
+        if (isEncLockedSave) {
+            const encrypted = await nmEncEncryptNoteText(processedText, noteObj.notetxt);
+            if (encrypted) {
+                storedText = encrypted;
+                const encCacheKey = nmEncCacheKeyFor(noteObj);
+                if (encCacheKey) nmEncPlainCache.set(encCacheKey, processedText);
+            } else {
+                // Паролата е отказана: записът не бива да остави открит текст в заключена бележка.
+                showToast(_('passNeededToSave') || 'Без парола бележката не се записва.', 4000);
+                return;
+            }
+        }
+
         // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
         const hasDrafts = !!modalBodyElem.dataset.draftText;
         const previousIsExpanded = getNoteExpanded(noteObj?.uiState);
@@ -33213,7 +33410,7 @@ function saveEditedNote(forceClose = false) {
             if (noteObj.version) noteObj.version = parseInt(noteObj.version, 10) + 1;
             else noteObj.version = 1;
 
-            noteObj.notetxt = processedText;
+            noteObj.notetxt = storedText;
             noteObj.color = newColor;
             noteObj.text_span = finalFormat;
             noteObj.title_span = finalTitleFormat;
@@ -33374,6 +33571,80 @@ function saveEditedNote(forceClose = false) {
             syncFolderDataAsync();
         }
     })(); // End of async background function
+}
+
+// Запис на една бележка към всички включени източници (b5.53). Ползва се от катинарчето, за да
+// стигне промяната до Drive, локалната папка и IndexedDB по същия ред, по който върви и записът.
+async function persistSingleNote(noteObj) {
+    if (!noteObj) return;
+    const updateGDriveNow = useGoogleDb && !isOffline;
+    const updateLocalFolderNow = localStorage.getItem('updateLocalFolder') === 'true';
+    const useIndexedDbNow = localStorage.getItem('useIndexedDb') !== 'false';
+    if (updateGDriveNow) {
+        try {
+            await syncSingleNoteToGDrive(noteObj);
+        } catch (e) { console.error('[Lock] GDrive save failed:', e); showToast(_('errorSaveGDrive') || 'Грешка при запис в Drive'); }
+    }
+    if (updateLocalFolderNow) {
+        try {
+            if (noteObj.gdid) await updateLocalFile(noteObj.gdid, JSON.stringify(noteObj));
+        } catch (e) { console.error('[Lock] Local folder save failed:', e); }
+    }
+    if (updateGDriveNow) noteObj.type = 0;
+    else if (useIndexedDbNow) noteObj.type = -1;
+    if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
+}
+
+// Катинарчето в заглавния ред: заключва бележката (шифрова тялото с общата парола) или я отключва.
+async function toggleNoteLock(btn) {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return;
+    const noteGdid = modalBodyElem.dataset.gdid;
+    const noteId = modalBodyElem.dataset.id;
+    const noteObj = allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId)));
+    if (!noteObj) return;
+    const isLockedNow = noteObj.pass === true;
+    const plainNow = nmEncPlainTextOf(noteObj);
+    if (!isLockedNow) {
+        // Заключване: пита се паролата, ако за сесията още няма ключ.
+        const encrypted = await nmEncEncryptNoteText(plainNow);
+        if (!encrypted) return; // паролата е отказана: нищо не се променя
+        const cacheKey = nmEncCacheKeyFor(noteObj);
+        if (cacheKey) nmEncPlainCache.set(cacheKey, plainNow);
+        noteObj.notetxt = encrypted;
+        noteObj.pass = true;
+        modalBodyElem.dataset.nmEncLocked = 'true';
+    } else {
+        // Отключване: тялото се връща като открит текст в записа.
+        if (!plainNow || nmEncIsEncrypted(plainNow)) {
+            showToast(_('passAsk') || 'Парола за заключените бележки:', 3000);
+            return;
+        }
+        noteObj.notetxt = plainNow;
+        noteObj.pass = false;
+        delete modalBodyElem.dataset.nmEncLocked;
+    }
+    noteObj.datemod = Date.now();
+    noteObj.version = (parseInt(noteObj.version, 10) || 0) + 1;
+    // Бутонът се пребоядисва ВЕДНАГА, преди прерисуването на картата: ако нещо по-нататък се
+    // спъне, състоянието на катинарчето пак да отговаря на истината.
+    if (btn) {
+        btn.classList.toggle('nw-lock-on', noteObj.pass === true);
+        btn.title = noteObj.pass ? (_('unlockNoteTooltip') || 'Отключи бележката') : (_('lockNoteTooltip') || 'Заключи бележката');
+    }
+    // Картата се строи наново: заключената показва катинар, отключената - текста.
+    const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
+    if (noteEl) {
+        const updatedEl = await createNoteElement(noteObj);
+        if (updatedEl) {
+            updatedEl.style.display = noteEl.style.display;
+            noteEl.replaceWith(updatedEl);
+        }
+    }
+    await persistSingleNote(noteObj);
+    // applyFilters НЕ се вика: картата вече е сменена, а пълното филтриране би презаредило
+    // борда заради едно катинарче.
+    showToast(noteObj.pass ? (_('noteLocked') || 'Бележката е заключена.') : (_('noteUnlocked') || 'Бележката е отключена.'), 2500);
 }
 
 async function updateNoteCalendarDate(noteRef, selectedDate) {

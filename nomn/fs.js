@@ -247,6 +247,19 @@ async function exportNotesToMarkdown() {
     lines.push('');
     boardNotes.forEach(note => {
       const stamp = notesMdStamp(note.date, true);
+      // Заключена бележка (b5.53): тялото е шифротекст, значи в експорта влиза само заглавието
+      // преди '|' и бележка, че тялото е заключено. Иначе файлът би носил безсмислен base64.
+      const storedRaw = String(note.notetxt || '');
+      if (note.pass === true && storedRaw.indexOf('nmenc:1:') !== -1) {
+        const lockedTitle = storedRaw.split('|')[0].trim();
+        lines.push(`### ${stamp}${lockedTitle ? ' — ' + lockedTitle : ''}`);
+        lines.push('');
+        lines.push(typeof _ === 'function' ? (_('exportMdLockedNote') || '_Тялото на тази бележка е заключено и не влиза в експорта._') : '_Тялото на тази бележка е заключено и не влиза в експорта._');
+        lines.push('');
+        lines.push('---');
+        lines.push('');
+        return;
+      }
       const { title, body } = notesMdSplit(note.notetxt);
       lines.push(`### ${stamp}${title ? ' — ' + title : ''}`);
       lines.push('');

@@ -606,5 +606,14 @@
     "noteTimerModeTimer": "Timer",
     "noteTimerModeAlarm": "Alarm",
     "noteTimerSet": "Set",
-    "noteTimerStop": "Stop"
+    "noteTimerStop": "Stop",
+    "lockNoteTooltip": "Lock note",
+    "unlockNoteTooltip": "Unlock note",
+    "passSet": "Password for locked notes (remember it — without it the note cannot be recovered):",
+    "passAsk": "Password for locked notes:",
+    "passWrong": "Wrong password.",
+    "passNeededToSave": "The note is not saved without a password.",
+    "noteLocked": "Note locked.",
+    "noteUnlocked": "Note unlocked.",
+    "exportMdLockedNote": "_The body of this note is locked and is not included in the export._"
 }
