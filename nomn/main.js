@@ -6434,10 +6434,12 @@ async function handleShareTarget(externalData = null) {
     const normUrl = normalize(cleanUrl);
     if (cleanTitle) {
         const isTitleInText = cleanText && normText.includes(normTitle);
-        // Споделена снимка от сайт: текстът е само линкът към снимката, а заглавието е служебно
-        // (Chrome праща „Action“) - тогава бележката е само линкът, който се показва като снимка.
+        // Споделена снимка от сайт: текстът е само линкът към снимката, а Chrome слага служебно
+        // заглавие „Action“. То не е заглавие на бележката, затова се пропуска, а линкът остава
+        // сам - вижда се като снимка. Всяко друго заглавие си остава.
+        const isServiceShareTitle = /^(action|share|споделяне)$/i.test(cleanTitle);
         const isImageLinkShare = !!nmImageUrlFromLine(cleanText) && (!cleanUrl || cleanUrl === cleanText);
-        if (!isTitleInText && !isImageLinkShare) parts.push(cleanTitle);
+        if (!isTitleInText && !(isServiceShareTitle && isImageLinkShare)) parts.push(cleanTitle);
     }
     if (cleanText) {
         parts.push(cleanText);
