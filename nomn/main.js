@@ -27760,6 +27760,15 @@ function navigateBoard(direction) {
             else console.error('exportToIndividualFiles function not found');
         });
     }
+    // Всички бележки в един .md файл за NotebookLM. Настройките остават отворени -
+    // изтеглянето не иска избор на папка и човек може да го пусне пак веднага.
+    const exportMdBtn = document.getElementById('export-md-btn');
+    if (exportMdBtn) {
+        exportMdBtn.addEventListener('click', () => {
+            if (typeof exportNotesToMarkdown === 'function') exportNotesToMarkdown();
+            else console.error('exportNotesToMarkdown function not found');
+        });
+    }
 })();
 
 // --- Settings Close (×) Button ---
