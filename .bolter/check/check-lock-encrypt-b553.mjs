@@ -168,6 +168,14 @@ const locked = await page.evaluate(async () => {
   const btn = document.getElementById('lock-modal-btn');
   if (!btn) return { err: 'няма бутон' };
   btn.click();
+  // b5.54: заключването минава през формата със заглавие и текст — потвърждаваме я.
+  for (let i = 0; i < 40; i++) {
+    const f = document.getElementById('note-lock-form');
+    if (f && f.classList.contains('show')) break;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  const okBtn = document.getElementById('note-lock-form-ok');
+  if (okBtn) okBtn.click();
   // Изчакваме записа (криптирането е асинхронно)
   for (let i = 0; i < 60; i++) {
     const n = window.allNotesData.find(x => String(x.gdid) === 'enc-test-1');

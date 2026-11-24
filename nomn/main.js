@@ -650,6 +650,32 @@ const nmEncKeyCache = new Map();
 // Записът в allNotesData остава ШИФРОВАН; откритият текст живее само тук, за да може
 // сравнението „има ли промяна" и записът да работят с истинския текст.
 const nmEncPlainCache = new Map();
+// Запомнената парола (b5.54). Решение на собственика (24.11.2026): нулирането в Настройки не иска
+// стара парола — задава се нова и тя се помни на това устройство. Пази се САМО в localStorage на
+// устройството, не в профила в Drive, за да не излиза паролата извън него.
+const NM_ENC_PASSWORD_KEY = 'noteLockPassword';
+function nmEncStoredPassword() {
+    try { return localStorage.getItem(NM_ENC_PASSWORD_KEY) || ''; } catch (e) { return ''; }
+}
+function nmEncSetStoredPassword(password) {
+    try {
+        if (password) localStorage.setItem(NM_ENC_PASSWORD_KEY, password);
+        else localStorage.removeItem(NM_ENC_PASSWORD_KEY);
+    } catch (e) { }
+}
+// Нулиране на паролата от Настройки (b5.54). Решение на собственика (24.11.2026): не се иска
+// стара парола — задава се нова и тя се помни на това устройство. Слушателят е на документа,
+// за да работи и когато Настройки се рисуват наново.
+document.addEventListener('click', async (e) => {
+    const target = e.target && e.target.closest ? e.target.closest('#lock-pass-reset-btn') : null;
+    if (!target) return;
+    e.preventDefault();
+    const newPass = await showPrompt(_('lockPassNew') || 'Нова парола за заключените бележки:');
+    if (!newPass) return; // отказ или празно поле: нищо не се променя
+    nmEncSetStoredPassword(newPass);
+    nmEncKeyCache.clear();
+    showToast(_('lockPassChanged') || 'Паролата е сменена и се помни на това устройство.', 4000);
+});
 // Иска ли бележката парола при отваряне (има плика в тялото си).
 function nmEncIsEncrypted(text) {
     return typeof text === 'string' && text.indexOf(NM_ENC_PREFIX) !== -1;
@@ -678,8 +704,16 @@ async function nmEncDeriveKey(password, saltBytes) {
 }
 // Ключ за вече съществуващ плик: солта идва от плика, ключът се взима от кеша или се извежда
 // от парола, която се пита в момента.
-async function nmEncKeyForSalt(saltB64, askMessage) {
+async function nmEncKeyForSalt(saltB64, askMessage, forcePrompt) {
     if (nmEncKeyCache.has(saltB64)) return nmEncKeyCache.get(saltB64);
+    // Запомнена парола: не се пита. forcePrompt се вдига, когато тя не отваря бележката (стар ключ
+    // от преди нулирането) — тогава питаме, за да не остане бележката заключена завинаги.
+    const stored = (!forcePrompt && nmEncStoredPassword()) || '';
+    if (stored) {
+        const key = await nmEncDeriveKey(stored, nmEncB64ToBytes(saltB64));
+        nmEncKeyCache.set(saltB64, key);
+        return key;
+    }
     const password = await showPrompt(askMessage || (_('passAsk') || 'Парола за заключените бележки:'));
     if (!password) return null;
     const key = await nmEncDeriveKey(password, nmEncB64ToBytes(saltB64));
@@ -726,11 +760,14 @@ async function nmEncDecryptNoteText(storedText) {
     if (!envelope || !envelope.s || !envelope.v || !envelope.c) return null;
     let key = nmEncKeyCache.get(envelope.s) || null;
     let tries = 0;
+    // Вторият опит пита паролата дори при запомнена такава: бележка, заключена с по-стара парола,
+    // иначе остава нечетима.
+    let forcePrompt = false;
     // Грешна парола се разбира едва при декриптирането (AES-GCM не пуска). Пита се пак, но
     // най-много два пъти — иначе човек остава в цикъл от въпроси.
     while (tries < 2) {
         if (!key) {
-            key = await nmEncKeyForSalt(envelope.s, _('passAsk') || 'Парола за заключените бележки:');
+            key = await nmEncKeyForSalt(envelope.s, _('passAsk') || 'Парола за заключените бележки:', forcePrompt);
             if (!key) return null;
         }
         try {
@@ -740,6 +777,7 @@ async function nmEncDecryptNoteText(storedText) {
         } catch (e) {
             nmEncKeyCache.delete(envelope.s);
             key = null;
+            forcePrompt = true;
             tries++;
             if (tries >= 2) {
                 showToast(_('passWrong') || 'Грешна парола.', 3000);
@@ -7311,6 +7349,121 @@ function showSyncChoiceModal(noteSummary) {
         popup.classList.add('show');
     });
 }
+// Форма за заключване (b5.54): заглавие и текст в отделни полета, както в модала. Заглавието
+// остава открито в записа, текстът се шифрова. Връща {title, text} или null при отказ.
+function showLockNoteForm(title, text) {
+    return new Promise(resolve => {
+        let popup = document.getElementById('note-lock-form');
+        if (!popup) {
+            popup = document.createElement('div');
+            popup.id = 'note-lock-form';
+            popup.className = 'note-lock-form-popup';
+            popup.innerHTML = `
+                <div class="note-lock-form-box">
+                    <p class="note-lock-form-heading" data-key="lockFormHeading">Заключване на бележката</p>
+                    <label class="note-lock-form-label" for="note-lock-form-title" data-key="lockFormTitleLabel">Заглавие:</label>
+                    <input type="text" id="note-lock-form-title" class="note-lock-form-input">
+                    <label class="note-lock-form-label" for="note-lock-form-text" data-key="lockFormTextLabel">Текст:</label>
+                    <textarea id="note-lock-form-text" class="note-lock-form-textarea"></textarea>
+                    <div class="note-lock-form-buttons">
+                        <button id="note-lock-form-cancel" class="zoom-btn" data-key="cancel">Отказ</button>
+                        <button id="note-lock-form-ok" class="zoom-btn zoom-btn-primary" data-key="submitButton">Потвърди</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(popup);
+        }
+        const titleInput = popup.querySelector('#note-lock-form-title');
+        const textInput = popup.querySelector('#note-lock-form-text');
+        const okBtn = popup.querySelector('#note-lock-form-ok');
+        const cancelBtn = popup.querySelector('#note-lock-form-cancel');
+        titleInput.value = title || '';
+        textInput.value = text || '';
+        const cleanup = () => {
+            popup.classList.remove('show');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            textInput.removeEventListener('keydown', onKeyDown);
+        };
+        const onOk = () => {
+            const result = { title: titleInput.value, text: textInput.value };
+            cleanup();
+            resolve(result);
+        };
+        const onCancel = () => {
+            cleanup();
+            resolve(null);
+        };
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        };
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        textInput.addEventListener('keydown', onKeyDown);
+        popup.classList.add('show');
+        titleInput.focus();
+    });
+}
+
+// Заключване на текущата бележка през формата: заглавието и текстът се въвеждат в две отделни
+// полета. С редактор (нова или отворена за редактиране бележка) резултатът влиза в него и записът
+// минава по обичайния път; без редактор (режим преглед) бележката се заключва направо от формата.
+// Връща true, когато формата е показана — тогава въпросът е приключен тук, независимо от избора.
+async function openNoteLockForm() {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return false;
+    const titleEl = document.getElementById('note-edit-title-textarea');
+    const bodyEl = document.getElementById('note-edit-textarea');
+    const noteObj = nmEncModalNoteObj();
+    if (!noteObj && !bodyEl) return false;
+    const plain = noteObj ? nmEncPlainTextOf(noteObj) : '';
+    const pipe = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(plain) : plain.indexOf('|');
+    const currentTitle = titleEl ? titleEl.value : (pipe !== -1 ? plain.substring(0, pipe) : '');
+    const currentText = (bodyEl && bodyEl.value !== '') ? bodyEl.value : (pipe !== -1 ? plain.substring(pipe + 1) : plain);
+    const res = await showLockNoteForm(currentTitle, currentText);
+    if (!res) return true; // Отказ: нищо не се променя
+    if (!bodyEl) {
+        // Режим преглед: няма редактор, затова бележката се заключва направо от полетата.
+        const plainText = res.title ? (res.title + '|' + res.text) : res.text;
+        const encrypted = await nmEncEncryptNoteText(plainText, noteObj.notetxt);
+        if (!encrypted) return true;
+        const cacheKey = nmEncCacheKeyFor(noteObj);
+        if (cacheKey) nmEncPlainCache.set(cacheKey, plainText);
+        noteObj.notetxt = encrypted;
+        noteObj.pass = true;
+        noteObj.datemod = Date.now();
+        noteObj.version = (parseInt(noteObj.version, 10) || 0) + 1;
+        modalBodyElem.dataset.nmEncLocked = 'true';
+        const noteEl = document.querySelector(`.note[data-g="${noteObj.gdid}"]`) || document.querySelector(`.note[data-i="${noteObj.id}"]`);
+        if (noteEl) {
+            const updatedEl = await createNoteElement(noteObj);
+            if (updatedEl) {
+                updatedEl.style.display = noteEl.style.display;
+                noteEl.replaceWith(updatedEl);
+            }
+        }
+        await persistSingleNote(noteObj);
+        showToast(_('noteLocked') || 'Бележката е заключена.', 2500);
+        return true;
+    }
+    // Текстът се въвежда наново във формата, затова старите формати не важат: чистят се, иначе
+    // подравняването им с новия текст дава разместени диапазони.
+    if (titleEl) {
+        titleEl.value = res.title;
+        bodyEl.value = res.text;
+    } else {
+        // Няма отделно поле за заглавие (нова бележка): заглавието върви пред '|', за да остане
+        // открито в записа, а тялото след него се шифрова.
+        bodyEl.value = res.title ? (res.title + '|' + res.text) : res.text;
+    }
+    modalBodyElem.dataset.format = '';
+    modalBodyElem.dataset.titleFormat = '';
+    if (modalBodyElem.dataset.draftText !== undefined) modalBodyElem.dataset.draftText = res.text;
+    if (modalBodyElem.dataset.draftTitle !== undefined) modalBodyElem.dataset.draftTitle = res.title;
+    modalBodyElem.dataset.nmEncPending = 'lock';
+    await saveEditedNote();
+    return true;
+}
+
 function showPrompt(message, defaultValue = '') {
     return new Promise(resolve => {
         const popup = document.getElementById('folderIdPromptPopup');
@@ -32585,11 +32738,32 @@ function initNoteEditUI() {
         });
     }
 
+    // Катинарче в footer-а (b5.54): при нова бележка в заглавния ред няма катинарче, защото още
+    // няма запис. Тук то само отбелязва „заключи при запис“; шифроването става в saveEditedNote,
+    // заедно с текста от редактора.
+    const hasModalEditor = !!(modalBodyEl && modalBodyEl.querySelector('textarea'));
+    let lockBtnEl = (!IS_DEMO_MODE && hasModalEditor) ? document.getElementById('note-lock-btn') : null;
+    if (!IS_DEMO_MODE && hasModalEditor && !lockBtnEl) {
+        lockBtnEl = document.createElement('div');
+        lockBtnEl.id = 'note-lock-btn';
+        lockBtnEl.className = 'modal-footer-btn';
+        lockBtnEl.innerHTML = lockIconSvg;
+        lockBtnEl.title = (typeof _ === 'function') ? _('lockNoteTooltip') || "Lock the note" : "Lock the note";
+        lockBtnEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleModalNoteLockPending();
+        });
+    }
+
     if (footerToolbar) {
         // Редът е: Attach, Preview, Search (вече съществува, само се мести), Save.
         // В демо режим кламерът липсва, затова останалите три се подреждат едни след други.
         const searchBtnEl = document.getElementById('note-search-btn');
         if (attachBtnEl) footerToolbar.appendChild(attachBtnEl);
+        if (lockBtnEl) {
+            footerToolbar.appendChild(lockBtnEl);
+            syncModalNoteLockBtn(lockBtnEl);
+        }
         if (previewBtnEl) footerToolbar.appendChild(previewBtnEl);
         if (searchBtnEl) footerToolbar.appendChild(searchBtnEl);
         if (saveBtnEl) footerToolbar.appendChild(saveBtnEl);
@@ -33308,7 +33482,9 @@ function saveEditedNote(forceClose = false) {
                 if (oldEl) {
                     oldEl.replaceWith(newEl);
                 } else {
-                    notesContainer.prepend(newEl);
+                    // Липсваща дъска (например екран, който още не е готов) не бива да спира
+                    // записа: бележката е важна, картата може да се появи по-късно.
+                    if (notesContainer) notesContainer.prepend(newEl);
                 }
                 // Update dataset for subsequent saves
                 modalBodyElem.dataset.id = newNote.id;
@@ -33384,18 +33560,29 @@ function saveEditedNote(forceClose = false) {
         // излезе открит текст към Drive, локалната папка или IndexedDB. Откритият текст остава в
         // кеша за сесията, иначе следващото отваряне пак би питало за парола.
         let storedText = processedText;
-        const isEncLockedSave = !!(noteObj && noteObj.pass === true && modalBodyElem.dataset.nmEncLocked === 'true');
+        const pendingLockState = modalBodyElem.dataset.nmEncPending || '';
+        const wasLocked = !!(noteObj && noteObj.pass === true);
+        let isEncLockedSave = !!(wasLocked && modalBodyElem.dataset.nmEncLocked === 'true');
+        // Катинарчето в footer-а (b5.54) решава вместо старото състояние: при нова бележка то е
+        // единственият начин тя да се запише заключена.
+        if (pendingLockState === 'lock') isEncLockedSave = true;
+        else if (pendingLockState === 'unlock') isEncLockedSave = false;
+        // Смяната на катинарчето е промяна дори когато текстът не е пипан.
+        const lockStateChanged = !!noteObj && wasLocked !== isEncLockedSave;
         if (isEncLockedSave) {
-            const encrypted = await nmEncEncryptNoteText(processedText, noteObj.notetxt);
+            const encrypted = await nmEncEncryptNoteText(processedText, noteObj ? noteObj.notetxt : '');
             if (encrypted) {
                 storedText = encrypted;
                 const encCacheKey = nmEncCacheKeyFor(noteObj);
                 if (encCacheKey) nmEncPlainCache.set(encCacheKey, processedText);
+                modalBodyElem.dataset.nmEncLocked = 'true';
             } else {
                 // Паролата е отказана: записът не бива да остави открит текст в заключена бележка.
                 showToast(_('passNeededToSave') || 'Без парола бележката не се записва.', 4000);
                 return;
             }
+        } else {
+            delete modalBodyElem.dataset.nmEncLocked;
         }
 
         // Check for changes (comparing processed versions to avoid repeated postEdit if nothing changed)
@@ -33403,7 +33590,7 @@ function saveEditedNote(forceClose = false) {
         const previousIsExpanded = getNoteExpanded(noteObj?.uiState);
         const previousEditorSize = getValidEditorSize(noteObj?.uiState);
         const hasEditorSizeChanged = JSON.stringify(editorSize) !== JSON.stringify(previousEditorSize);
-        const hasChanges = isNewNote || hasDrafts || hasCalChanged || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color || isExpanded !== previousIsExpanded || hasEditorSizeChanged || hasWindowGeometryChanged);
+        const hasChanges = isNewNote || hasDrafts || hasCalChanged || lockStateChanged || (processedText !== originalContent || finalFormat !== (noteObj?.text_span || "") || finalTitleFormat !== (noteObj?.title_span || "") || newCalendarDate !== noteObj?.calendarDate || newColor !== noteObj?.color || isExpanded !== previousIsExpanded || hasEditorSizeChanged || hasWindowGeometryChanged);
 
         if (hasChanges) {
             // --- Apply Changes ---
@@ -33411,6 +33598,10 @@ function saveEditedNote(forceClose = false) {
             else noteObj.version = 1;
 
             noteObj.notetxt = storedText;
+            // Катинарчето: заключената бележка пази pass:true, отключената (или отключена през
+            // footer-а) — pass:false, за да не остане бележка с шифротекст и pass:false.
+            if (!isNewNote) noteObj.pass = isEncLockedSave;
+            else if (isEncLockedSave) noteObj.pass = true;
             noteObj.color = newColor;
             noteObj.text_span = finalFormat;
             noteObj.title_span = finalTitleFormat;
@@ -33595,6 +33786,46 @@ async function persistSingleNote(noteObj) {
     if (useIndexedDbNow) await bulkPutDB(NOTE_STORE_NAME, [noteObj], true);
 }
 
+// Катинарчето в footer-а (b5.54): показва какво ще стане при запис.
+function nmEncModalNoteObj() {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return null;
+    const noteGdid = modalBodyElem.dataset.gdid;
+    const noteId = modalBodyElem.dataset.id;
+    return allNotesData.find(n => (n.gdid && String(n.gdid) === String(noteGdid)) || (n.id && String(n.id) === String(noteId))) || null;
+}
+// Иска ли записът да остави бележката заключена. Редът е: изричното намерение от footer-а, иначе
+// това, което бележката е сега.
+function nmEncModalLockTarget() {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return false;
+    const pending = modalBodyElem.dataset.nmEncPending || '';
+    if (pending === 'lock') return true;
+    if (pending === 'unlock') return false;
+    const noteObj = nmEncModalNoteObj();
+    return !!(noteObj && noteObj.pass === true);
+}
+function syncModalNoteLockBtn(btn) {
+    const el = btn || document.getElementById('note-lock-btn');
+    if (!el) return;
+    const locked = nmEncModalLockTarget();
+    el.classList.toggle('nw-lock-on', locked);
+    el.title = locked ? (_('unlockNoteTooltip') || 'Отключи бележката') : (_('lockNoteTooltip') || 'Заключи бележката');
+}
+// Натискането при заключване отваря формата със заглавие и текст (b5.54); при отключване само
+// обръща намерението, а записът решава дали тялото остава открито.
+async function toggleModalNoteLockPending() {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return;
+    if (!nmEncModalLockTarget()) {
+        await openNoteLockForm();
+        return;
+    }
+    modalBodyElem.dataset.nmEncPending = 'unlock';
+    syncModalNoteLockBtn();
+    showToast(_('noteWillUnlock') || 'Бележката ще се запише отключена.', 2500);
+}
+
 // Катинарчето в заглавния ред: заключва бележката (шифрова тялото с общата парола) или я отключва.
 async function toggleNoteLock(btn) {
     const modalBodyElem = document.getElementById('modal-body');
@@ -33606,6 +33837,17 @@ async function toggleNoteLock(btn) {
     const isLockedNow = noteObj.pass === true;
     const plainNow = nmEncPlainTextOf(noteObj);
     if (!isLockedNow) {
+        // Заключването минава през формата със заглавие и текст (b5.54). Ако формата не може да се
+        // покаже (няма отворена бележка), остава старото поведение: шифрова се записаното тяло.
+        if (await openNoteLockForm()) {
+            const lockedNow = noteObj.pass === true;
+            if (btn) {
+                btn.classList.toggle('nw-lock-on', lockedNow);
+                btn.title = lockedNow ? (_('unlockNoteTooltip') || 'Отключи бележката') : (_('lockNoteTooltip') || 'Заключи бележката');
+            }
+            syncModalNoteLockBtn();
+            return;
+        }
         // Заключване: пита се паролата, ако за сесията още няма ключ.
         const encrypted = await nmEncEncryptNoteText(plainNow);
         if (!encrypted) return; // паролата е отказана: нищо не се променя

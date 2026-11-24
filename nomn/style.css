@@ -2102,10 +2102,68 @@ code {
 }
 
 /* Катинарчето в заглавния ред (b5.53): заключената бележка се вижда по запълнения бутон. */
-:is(#lock-modal-btn, .nw-lock-modal-btn).nw-lock-on {
+:is(#lock-modal-btn, .nw-lock-modal-btn, #note-lock-btn).nw-lock-on {
     background-color: #444;
     border-color: #444;
     color: #fff;
+}
+
+/* Форма за заключване (b5.54): заглавие и текст в отделни полета. */
+.note-lock-form-popup {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 20000;
+}
+.note-lock-form-popup.show {
+    display: flex;
+}
+.note-lock-form-box {
+    background: #2b2b2b;
+    color: #eee;
+    border-radius: 10px;
+    padding: 16px;
+    width: min(92vw, 520px);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-sizing: border-box;
+}
+.note-lock-form-heading {
+    margin: 0 0 6px;
+    font-weight: 600;
+}
+.note-lock-form-label {
+    font-size: 13px;
+    color: #bbb;
+}
+.note-lock-form-input,
+.note-lock-form-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    background: #1e1e1e;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 8px;
+    font: inherit;
+}
+.note-lock-form-input {
+    height: 36px;
+}
+.note-lock-form-textarea {
+    min-height: 160px;
+    resize: vertical;
+}
+.note-lock-form-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
 }
 
 /* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
