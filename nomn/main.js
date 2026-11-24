@@ -343,19 +343,21 @@ function showShareDebugPanel(entries, reason) {
     }
 }
 
-// Показва панела, ако току-що е имало споделяне (до 3 минути) или ако е поискан с ?share_debug=1.
+// Показва панела САМО когато дебъгът е поискан: ?share_debug=1 в адреса или докосване на реда
+// с версията в Настройки (force). Не се отваря сам след споделяне — затова по-рано изскачаше
+// непоискано (собственик, 24.11.2026: „Но все пак се отваря панела“).
 async function maybeShowShareDebug(force = false) {
     try {
         const url = new URL(window.location.href);
         const asked = url.searchParams.has('share_debug');
+        if (!force && !asked) return;
         const entries = await readShareDebug();
-        const newest = entries.length ? (entries[0].ts || 0) : 0;
-        const ageMs = newest ? (Date.now() - newest) : Infinity;
-        if (!force && !asked && ageMs > 3 * 60 * 1000) return;
         let reason;
         if (asked) reason = 'Отворено с share_debug=1 — показвам последните записи.';
-        else if (newest) reason = 'Последно споделяне преди ' + Math.round(ageMs / 1000) + ' s.';
-        else reason = 'Няма нито един запис от service worker-а — споделянето не е стигнало до него.';
+        else if (entries.length) {
+            const newest = entries[0].ts || 0;
+            reason = 'Последно споделяне преди ' + Math.round((Date.now() - newest) / 1000) + ' s.';
+        } else reason = 'Няма нито един запис от service worker-а — споделянето не е стигнало до него.';
         if (!document.body) {
             document.addEventListener('DOMContentLoaded', () => showShareDebugPanel(entries, reason), { once: true });
         } else {
