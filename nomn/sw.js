@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomn-b5.50';
+const CACHE_NAME = 'nomn-b5.51';
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
@@ -262,19 +262,50 @@ self.addEventListener('fetch', (event) => {
           return Response.redirect(target.toString(), 303);
         };
         try {
+          // Панелът трябва да покаже и какво точно е дошло в тялото, не само какво е
+          // успял да прочете парсерът. При снимка от Chrome тялото пристига с граница
+          // в content-type, но с нула части — без дължината и началото на тялото не се
+          // знае дали Chrome не е пратил нищо, или парсерът не е разпознал нещо.
+          let rawLen = '?';
+          let rawHead = '';
+          try {
+            const raw = await event.request.clone().arrayBuffer();
+            rawLen = raw.byteLength;
+            rawHead = new TextDecoder('utf-8', { fatal: false })
+              .decode(raw.slice(0, 260))
+              .replace(/\s+/g, ' ')
+              .trim();
+          } catch (bodyErr) {
+            rawHead = 'тялото не се прочете: ' + ((bodyErr && bodyErr.name) || '');
+          }
+
           await recordShareDebug({
             stage: 'post',
             note: 'POST пристигна',
             path: url.pathname,
             bytes: event.request.headers.get('content-length') || '?',
+            real: rawLen,
+            head: rawHead,
             ctype: event.request.headers.get('content-type') || '?'
           });
           const formData = await event.request.formData();
           const title = (formData.get('shared_title') || '').toString();
           const text = (formData.get('shared_text') || '').toString();
           const sharedUrl = (formData.get('shared_url') || '').toString();
-          const imageFiles = formData.getAll('shared_image').filter(f => f && f.size > 0);
+          const allImageParts = formData.getAll('shared_image');
+          const imageFiles = allImageParts.filter(f => f && f.size > 0);
           const sid = 'sh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+
+          // Всички части, както са дошли — преди филтъра по размер. Част с размер 0
+          // значи, че Chrome е дал файла, но приложението не може да го прочете.
+          const partNames = [];
+          for (const [name, value] of formData.entries()) {
+            if (value && typeof value === 'object' && 'size' in value) {
+              partNames.push(name + ' [' + (value.type || '?') + ', ' + value.size + 'B]');
+            } else {
+              partNames.push(name + '=' + String(value).slice(0, 40));
+            }
+          }
 
           await recordShareDebug({
             stage: 'fields',
@@ -283,7 +314,8 @@ self.addEventListener('fetch', (event) => {
             title: title.slice(0, 100),
             text: text.slice(0, 200),
             url: sharedUrl.slice(0, 200),
-            files: imageFiles.length
+            files: allImageParts.length,
+            parts: partNames.join(' | ').slice(0, 240) || '(нито една част)'
           });
 
           const cache = await caches.open('share-target-image');
