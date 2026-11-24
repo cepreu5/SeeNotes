@@ -6363,6 +6363,32 @@ function nmYoutubePreviewHtml(url) {
         `<span class="nm-yt-play" aria-hidden="true"></span></a>`;
 }
 
+/**
+ * Линк, който сочи точно към картинка (…/gettyimages-2275810483.jpg, …/photo.png?w=800).
+ * 24.11.2026, доклад на собственика: споделяне на снимка от сайт стига като ЛИНК, не като файл
+ * (в дебъг панела title=Action, text=…jpg, files=0). Затова линкът се показва като снимка.
+ * Разширението се гледа само в пътя, без ?query и #hash, иначе всеки линк щеше да стане картинка.
+ */
+function nmImageUrlFromLine(url) {
+    const clean = String(url || '').trim();
+    if (!/^https?:\/\/\S+$/i.test(clean)) return null;
+    const path = clean.split('#')[0].split('?')[0];
+    return /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(path) ? clean : null;
+}
+
+/**
+ * Линк към картинка на самостоятелен ред като снимка в бележката; целият блок е линкът, значи
+ * кликът отваря оригинала. Само се ПОКАЗВА от адреса - сайтът не дава файла на приложението
+ * (fetch е блокиран от CORS), затова в Drive нищо не се сваля.
+ * url е вече екраниран текст (минава през escapeHtml преди това), затова не се екранира втори път.
+ */
+function nmImagePreviewHtml(url) {
+    const src = nmImageUrlFromLine(url);
+    if (!src) return null;
+    return `<a class="nm-img-card" href="${src}" target="_blank" rel="noopener noreferrer" title="Отвори снимката">` +
+        `<img class="nm-img-shot" src="${src}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`;
+}
+
 async function handleShareTarget(externalData = null) {
     const url = new URL(window.location.href);
     let data = externalData;
@@ -6408,7 +6434,10 @@ async function handleShareTarget(externalData = null) {
     const normUrl = normalize(cleanUrl);
     if (cleanTitle) {
         const isTitleInText = cleanText && normText.includes(normTitle);
-        if (!isTitleInText) parts.push(cleanTitle);
+        // Споделена снимка от сайт: текстът е само линкът към снимката, а заглавието е служебно
+        // (Chrome праща „Action“) - тогава бележката е само линкът, който се показва като снимка.
+        const isImageLinkShare = !!nmImageUrlFromLine(cleanText) && (!cleanUrl || cleanUrl === cleanText);
+        if (!isTitleInText && !isImageLinkShare) parts.push(cleanTitle);
     }
     if (cleanText) {
         parts.push(cleanText);
@@ -22498,6 +22527,8 @@ const MD_LINK_PLACEHOLDER = '\uE001';
 // YouTube линкът на самостоятелен ред става карта с thumbnail и play (вж. nmYoutubePreviewHtml).
 // Като другите слотове е ЕДИН знак, докато редовете и списъците се обработват, и се връща накрая.
 const YT_CARD_PLACEHOLDER = '\uE003';
+// Линк към картинка на самостоятелен ред става снимка в бележката (вж. nmImagePreviewHtml).
+const IMG_CARD_PLACEHOLDER = '\uE005';
 // Ред, който започва с „/-“, е разделител в Преглед (решение на собственика, 19.11.2026):
 //   /-                тънка линия
 //   /--  /=  /-+      пунктирана, двойна, дебела линия
@@ -22558,6 +22589,33 @@ function insertYoutubeCards(html, ytCardSlots) {
         out += (i - 1 < ytCardSlots.length ? ytCardSlots[i - 1] : YT_CARD_PLACEHOLDER) + parts[i];
     }
     return out;
+}
+
+/**
+ * Връща готовите снимки на местата на техните маркери, по ред (вж. nmImagePreviewHtml).
+ */
+function insertImageCards(html, imgCardSlots) {
+    if (!imgCardSlots.length || html.indexOf(IMG_CARD_PLACEHOLDER) === -1) return html;
+    const parts = html.split(IMG_CARD_PLACEHOLDER);
+    let out = parts[0];
+    for (let i = 1; i < parts.length; i++) {
+        out += (i - 1 < imgCardSlots.length ? imgCardSlots[i - 1] : IMG_CARD_PLACEHOLDER) + parts[i];
+    }
+    return out;
+}
+
+/**
+ * Линк към картинка, който стои на самостоятелен ред, се маскира с ЕДИН знак, а готовият блок се
+ * пази по ред. Прави се ПРЕДИ urlRegex, иначе адресът става обикновена котва, а снимката - котва
+ * в котва. Маскира се и в двете места, които правят HTML от текст (модал и борд).
+ */
+function maskImageCardLines(escapedText, imgCardSlots, disabled) {
+    return escapedText.replace(/(^|\n)[ \t]*(https?:\/\/[^\s<]+?)[ \t]*(?=\n|$)/gi, (match, pre, linkUrl) => {
+        const card = disabled ? null : nmImagePreviewHtml(linkUrl);
+        if (!card) return match;
+        imgCardSlots.push(card);
+        return pre + IMG_CARD_PLACEHOLDER;
+    });
 }
 
 /**
@@ -23200,6 +23258,10 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
             ytCardSlots.push(card);
             return pre + YT_CARD_PLACEHOLDER;
         });
+    // Линк към картинка на самостоятелен ред става снимка - по същата причина и по същия начин.
+    // В клетка на Markdown таблица не се слага (noYoutubeCard): таблицата е с фиксирани ширини.
+    const imgCardSlots = [];
+    escapedText = maskImageCardLines(escapedText, imgCardSlots, noYoutubeCard);
     const oneTapLinksEnabled = isOneTapLinksEnabled();
     // Markdown линкът [текст](адрес) се маскира с ЕДИН символ ОЩЕ ПРЕДИ прохода по urlRegex, защото
     // иначе urlRegex обвива адреса и в href="…", и в текста на етикета (получава се котва в котва и
@@ -23277,7 +23339,7 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
     const processedLines = skipLineBlocks ? lines : wrapNoteLineBlocks(lines, listMeasureEl);
     // Линковете се връщат най-накрая, върху сглобения низ: дотук всеки беше един знак.
-    return insertYoutubeCards(insertMdHrLines(insertLinkSlots(processedLines.join('<br>'), mdLinkSlots)), ytCardSlots);
+    return insertImageCards(insertYoutubeCards(insertMdHrLines(insertLinkSlots(processedLines.join('<br>'), mdLinkSlots)), ytCardSlots), imgCardSlots);
 }
 
 function renderNoteContent(text) {
@@ -23301,12 +23363,15 @@ function renderNoteContent(text) {
             ytCardSlots.push(card);
             return pre + YT_CARD_PLACEHOLDER;
         });
+    // Линк към картинка на самостоятелен ред става снимка - същото като в модала.
+    const imgCardSlots = [];
+    escapedText = maskImageCardLines(escapedText, imgCardSlots, false);
     // Then, find URLs in the *escaped* text and wrap them in <a> tags.
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
     let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     html = insertCodeBlocks(html, codeBlocks);
 
-    return insertYoutubeCards(html, ytCardSlots);
+    return insertImageCards(insertYoutubeCards(html, ytCardSlots), imgCardSlots);
 }
 
 // Next mdClear marker (default --) at or after 'from', skipping the dashes of a Markdown table

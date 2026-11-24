@@ -1257,6 +1257,30 @@ code {
     vertical-align: text-bottom;
 }
 
+/* Линк към картинка на самостоятелен ред: показва се като снимка в ширината на бележката, а целият
+   блок е линкът - кликът отваря оригинала (вж. nmImagePreviewHtml в main.js). Така пристига
+   споделена снимка от сайт: Chrome праща само линка, не файла. Таванът по височина пази картата
+   в борда да не се разтегне на цял екран. */
+:is(.note-content, #modal-body, .nw-modal-body) .nm-img-card {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: 4px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.04);
+    line-height: 0;
+    text-decoration: none;
+}
+:is(.note-content, #modal-body, .nw-modal-body) .nm-img-shot {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 45vh;
+    object-fit: contain;
+    object-position: left center;
+}
+
 /* YouTube линк в бележката: карта с thumbnail на видеото и триъгълник „play“ в средата, а самата
    карта е линкът - кликът отваря видеото в YouTube (вж. nmYoutubePreviewHtml в main.js).
    Ширината е до 320px, за да се побира и на картата в борда, и в модала на телефон. */
