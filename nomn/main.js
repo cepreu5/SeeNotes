@@ -132,27 +132,75 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
 // Затова тук взимаме данните от кеша (който пръв ги вземе, той ги обработва) и
 // връщаме потвърждение по port-а - само тогава прозорецът на споделянето се затваря.
 const SHARE_PAYLOAD_CACHE = 'share-target-image';
-const SHARE_PAYLOAD_KEY = 'share-payload';
+const SHARE_PAYLOAD_KEY = 'share-payload';            // стар формат: едно чакащо споделяне
+const SHARE_PAYLOAD_PREFIX = 'share-payload-';        // нов формат: по едно на споделяне, по sid
+const SHARE_DEBUG_KEY = 'share-debug';
 const SHARE_PAYLOAD_MAX_AGE_MS = 10 * 60 * 1000;
 let shareHandlingInProgress = false;
 
 async function takePendingShare(expectedSid = null) {
     try {
         const cache = await caches.open(SHARE_PAYLOAD_CACHE);
-        const res = await cache.match(SHARE_PAYLOAD_KEY);
-        if (!res) return null;
-        const payload = await res.json();
-        if (!payload || !payload.sid) return null;
-        if (expectedSid && payload.sid !== expectedSid) return null;
-        if (payload.ts && (Date.now() - payload.ts) > SHARE_PAYLOAD_MAX_AGE_MS) return null;
-        // Изтриваме веднага: ако два прозореца се събудят, само един обработва споделеното.
-        await cache.delete(SHARE_PAYLOAD_KEY);
-        const files = Array.isArray(payload.files) ? payload.files : [];
+        const keys = await cache.keys();
+        const found = [];
+        for (const key of keys) {
+            const name = (new URL(key.url).pathname.split('/').pop() || '');
+            const isLegacy = name === SHARE_PAYLOAD_KEY;
+            const isCurrent = name.startsWith(SHARE_PAYLOAD_PREFIX);
+            if (!isLegacy && !isCurrent) continue;
+            let payload = null;
+            try {
+                const res = await cache.match(key);
+                payload = res ? await res.json() : null;
+            } catch (e) {
+                payload = null;
+            }
+            // Изтриваме веднага: ако два прозореца се събудят, само един обработва споделеното.
+            await cache.delete(key);
+            if (!payload || !payload.sid) continue;
+            if (payload.ts && (Date.now() - payload.ts) > SHARE_PAYLOAD_MAX_AGE_MS) continue;
+            found.push(payload);
+        }
+        if (found.length === 0) return null;
+        // Споделянията се обработват по реда на пристигане. Ако приложението е било затворено и
+        // са се събрали няколко, всички влизат в една бележка — иначе по-старото се губи.
+        found.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        const lead = expectedSid ? found.find(p => p.sid === expectedSid) : found[0];
+        if (!lead) {
+            // Търсеното споделяне вече е взето от друг прозорец: връщаме останалите наопаки,
+            // за да не се загубят.
+            for (const p of found) {
+                await restorePendingShare({
+                    sid: p.sid,
+                    shared_title: p.title || '',
+                    shared_text: p.text || '',
+                    shared_url: p.url || '',
+                    files: Array.isArray(p.files) ? p.files : []
+                });
+            }
+            return null;
+        }
+        const ordered = [lead].concat(found.filter(p => p !== lead));
+        const texts = [];
+        const urls = [];
+        const files = [];
+        let title = '';
+        for (const p of ordered) {
+            if (!title && p.title) title = p.title;
+            if (p.text && texts.indexOf(p.text) === -1) texts.push(p.text);
+            if (p.url && urls.indexOf(p.url) === -1) urls.push(p.url);
+            if (Array.isArray(p.files) && p.files.length > 0) files.push.apply(files, p.files);
+        }
+        // Липсващите линкове влизат в текста: съдържанието на бележката се строи от него.
+        const joinedText = texts.join('\n');
+        const extraUrls = urls.slice(1).filter(u => joinedText.indexOf(u) === -1);
+        const fullText = [joinedText].concat(extraUrls).filter(Boolean).join('\n');
         return {
-            sid: payload.sid,
-            shared_title: payload.title || '',
-            shared_text: payload.text || '',
-            shared_url: payload.url || '',
+            sid: lead.sid,
+            sids: ordered.map(p => p.sid),
+            shared_title: title,
+            shared_text: fullText,
+            shared_url: urls.length > 0 ? urls[0] : '',
             shared_image: files.length > 0 ? String(files.length) : '0',
             files: files
         };
@@ -162,13 +210,32 @@ async function takePendingShare(expectedSid = null) {
     }
 }
 
+// Запис в същия дебъг дневник, който service worker-ът пълни — за да се вижда на телефона
+// и какво е направило приложението с пристигналото споделяне.
+async function appendShareDebug(entry) {
+    try {
+        const cache = await caches.open(SHARE_PAYLOAD_CACHE);
+        const res = await cache.match(SHARE_DEBUG_KEY);
+        let list = [];
+        if (res) {
+            try { list = await res.json(); } catch (e) { list = []; }
+        }
+        if (!Array.isArray(list)) list = [];
+        list.unshift(Object.assign({ ts: Date.now() }, entry));
+        await cache.put(SHARE_DEBUG_KEY, new Response(JSON.stringify(list.slice(0, 8)), {
+            headers: { 'Content-Type': 'application/json' }
+        }));
+    } catch (e) {
+        /* дебъгът не бива да чупи споделянето */
+    }
+}
+
 async function restorePendingShare(payload) {
     if (!payload || !payload.sid) return;
     try {
         const cache = await caches.open(SHARE_PAYLOAD_CACHE);
-        const res = await cache.match(SHARE_PAYLOAD_KEY);
-        if (res) return; // вече има по-ново споделяне
-        await cache.put(SHARE_PAYLOAD_KEY, new Response(JSON.stringify({
+        // Връщаме под ключа на самото споделяне: друго чакащо споделяне не се засяга.
+        await cache.put(SHARE_PAYLOAD_PREFIX + payload.sid, new Response(JSON.stringify({
             sid: payload.sid,
             title: payload.shared_title || '',
             text: payload.shared_text || '',
@@ -6423,6 +6490,16 @@ async function handleShareTarget(externalData = null) {
             console.error('Error retrieving shared files from cache:', e);
         }
     }
+    // Какво е взело приложението — влиза в същия дебъг панел, за да се вижда на телефона дали
+    // файлът е стигнал до бележката, а не само до service worker-а.
+    appendShareDebug({
+        stage: 'app',
+        note: 'приложението взе споделянето',
+        sid: data && data.sid ? data.sid : '?',
+        shares: (data && data.sids) ? data.sids.length : 1,
+        files: sharedFiles.length,
+        wanted: sharedFileList ? sharedFileList.length : 0
+    });
     // Показваме модала със споделеното съдържание
     setTimeout(async () => {
         if (typeof showModal === 'function') {
@@ -6453,6 +6530,7 @@ async function handleShareTarget(externalData = null) {
                 }
             }).filter(Boolean);
             if (sharedAsFiles.length > 0) {
+                appendShareDebug({ stage: 'attach', note: 'прикачвам файловете към бележката', files: sharedAsFiles.length });
                 setTimeout(() => { attachFilesToModal(sharedAsFiles); }, 300);
             }
         }

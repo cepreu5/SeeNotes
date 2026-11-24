@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomn-b5.43';
+const CACHE_NAME = 'nomn-b5.44';
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
@@ -128,6 +128,45 @@ const SHARE_DEBUG_CACHE = 'share-target-image';
 const SHARE_DEBUG_KEY = 'share-debug';
 const SHARE_DEBUG_MAX = 8;
 
+// Чакащите споделяния се пазят по едно на споделяне, всяко под ключ със своя sid.
+// Така ново споделяне не трие предишното, което приложението още не е взело (иначе снимка,
+// споделена преди приложението да се отвори, изчезва при следващо споделяне).
+const SHARE_PAYLOAD_PREFIX = 'share-payload-';
+const SHARE_FILE_PREFIX = 'shared-file-';
+const SHARE_PAYLOAD_MAX_AGE_MS = 10 * 60 * 1000;
+
+async function removeStaleShares(cache) {
+  try {
+    const keys = await cache.keys();
+    const liveSids = {};
+    for (const key of keys) {
+      const name = (new URL(key.url).pathname.split('/').pop() || '');
+      if (!name.startsWith(SHARE_PAYLOAD_PREFIX)) continue;
+      try {
+        const res = await cache.match(key);
+        const payload = res ? await res.json() : null;
+        if (!payload || !payload.ts || (Date.now() - payload.ts) > SHARE_PAYLOAD_MAX_AGE_MS) {
+          await cache.delete(key);
+        } else {
+          liveSids[payload.sid] = 1;
+        }
+      } catch (e) {
+        await cache.delete(key);
+      }
+    }
+    // Файл без чакащо споделяне е боклук (взет, изтекъл или от стария формат).
+    for (const key of keys) {
+      const name = (new URL(key.url).pathname.split('/').pop() || '');
+      if (!name.startsWith(SHARE_FILE_PREFIX)) continue;
+      const rest = name.slice(SHARE_FILE_PREFIX.length);
+      const sid = rest.slice(0, rest.lastIndexOf('-'));
+      if (!sid || !liveSids[sid]) await cache.delete(key);
+    }
+  } catch (e) {
+    swLog('[SW] Share cleanup failed:', e && e.message);
+  }
+}
+
 async function recordShareDebug(entry) {
   try {
     const cache = await caches.open(SHARE_DEBUG_CACHE);
@@ -248,14 +287,13 @@ self.addEventListener('fetch', (event) => {
           });
 
           const cache = await caches.open('share-target-image');
-          const staleKeys = await cache.keys();
-          // Записът на дебъга не се трие — той разказва какво е пристигнало.
-          await Promise.all(staleKeys.map(k => (k.url.endsWith('/' + SHARE_DEBUG_KEY) ? null : cache.delete(k))));
+          // Ново споделяне НЕ трие предишното, което още не е взето — махат се само изтеклите.
+          await removeStaleShares(cache);
 
           const files = [];
           for (let i = 0; i < imageFiles.length; i++) {
             const f = imageFiles[i];
-            const key = 'shared-file-' + i;
+            const key = SHARE_FILE_PREFIX + sid + '-' + i;
             const name = f.name || ('shared_' + Date.now() + '_' + i);
             const type = f.type || 'application/octet-stream';
             const headers = new Headers({
@@ -281,7 +319,7 @@ self.addEventListener('fetch', (event) => {
           }
 
           const payload = { sid: sid, title: title, text: text, url: sharedUrl, files: files, ts: Date.now() };
-          await cache.put('share-payload', new Response(JSON.stringify(payload), {
+          await cache.put(SHARE_PAYLOAD_PREFIX + sid, new Response(JSON.stringify(payload), {
             headers: { 'Content-Type': 'application/json' }
           }));
           swLog('[SW] Share stored:', sid, files.length, 'file(s)');
