@@ -38,10 +38,16 @@ await page.addInitScript(() => {
   localStorage.setItem('singleNoteMode', 'false');
 });
 
-const swVersion = await page.evaluate(async () => {
-  try { const t = await (await fetch('sw.js', { cache: 'no-store' })).text(); const m = t.match(/CACHE_NAME\s*=\s*'([^']+)'/); return m ? m[1] : ''; } catch (e) { return ''; }
+// Версията се чете в отделен контекст без service worker: иначе старият SW отговаря от кеша
+// със старото име и проверката пада, макар файлът на сървъра да е новият.
+const plainCtx = await browser.newContext({ serviceWorkers: 'block' });
+const plainPage = await plainCtx.newPage();
+await plainPage.goto(URL, { waitUntil: 'domcontentloaded' });
+const swVersion = await plainPage.evaluate(async () => {
+  try { const t = await (await fetch('sw.js?v=' + Date.now(), { cache: 'reload' })).text(); const m = t.match(/CACHE_NAME\s*=\s*'([^']+)'/); return m ? m[1] : ''; } catch (e) { return ''; }
 });
-check('sw.js е на версия b5.49', /b5\.49/.test(swVersion), swVersion);
+await plainCtx.close();
+check('sw.js е на версия b5.50', /b5\.50/.test(swVersion), swVersion);
 
 const panel = () => page.evaluate(() => !!document.getElementById('share-debug-panel'));
 
@@ -91,6 +97,24 @@ await page.evaluate(async () => {
 });
 await page.waitForTimeout(400);
 check('ръчният вход (версия) отваря панела', await panel());
+
+// 6) Панелът виси на общия флаг debug: и двата входа го проверяват.
+// `const debug` е лексикална променлива, не window.debug — затова се чете от самия файл.
+const mainSource = await page.evaluate(async () => {
+  try { return await (await fetch('main.js', { cache: 'reload' })).text(); } catch (e) { return ''; }
+});
+const guard = /typeof debug === 'undefined' \|\| !debug/g;
+const guardCount = (mainSource.match(guard) || []).length;
+check('двата входа висят на общия флаг debug', guardCount >= 2, 'намерени проверки: ' + guardCount);
+const inMaybe = /async function maybeShowShareDebug[\s\S]{0,200}typeof debug === 'undefined' \|\| !debug/.test(mainSource);
+const inTrigger = /function initShareDebugTrigger[\s\S]{0,200}typeof debug === 'undefined' \|\| !debug/.test(mainSource);
+check('проверката е в maybeShowShareDebug и в initShareDebugTrigger', inMaybe && inTrigger, JSON.stringify({ inMaybe, inTrigger }));
+
+// 7) Service worker-ът не слага share_debug в адреса при пренасочване след споделяне.
+const swSource = await page.evaluate(async () => {
+  try { return await (await fetch('sw.js', { cache: 'reload' })).text(); } catch (e) { return ''; }
+});
+check('SW не включва дебъга сам при споделяне', !/searchParams\.set\('share_debug'/.test(swSource), (swSource.match(/share_debug[^\n]*/g) || []).join(' | ').slice(0, 120));
 
 check('без грешки в конзолата', errors.length === 0, errors.slice(0, 3).join(' | '));
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomn-b5.49';
+const CACHE_NAME = 'nomn-b5.50';
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
@@ -257,8 +257,8 @@ self.addEventListener('fetch', (event) => {
         const redirectToApp = (sid) => {
           const target = new URL(url.pathname || './index.html', self.location.origin);
           if (sid) target.searchParams.set('share_id', sid);
-          // Заедно със споделянето отваряме приложението с включен дебъг панел.
-          target.searchParams.set('share_debug', '1');
+          // Дебъг панелът НЕ се включва сам: отваря се само когато човек поиска - ?share_debug=1
+          // в адреса или докосване на реда с версията в Настройки (собственик, 24.11.2026).
           return Response.redirect(target.toString(), 303);
         };
         try {

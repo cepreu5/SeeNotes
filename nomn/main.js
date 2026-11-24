@@ -343,11 +343,12 @@ function showShareDebugPanel(entries, reason) {
     }
 }
 
-// Показва панела САМО когато дебъгът е поискан: ?share_debug=1 в адреса или докосване на реда
-// с версията в Настройки (force). Не се отваря сам след споделяне — затова по-рано изскачаше
-// непоискано (собственик, 24.11.2026: „Но все пак се отваря панела“).
+// Показва панела за споделянето само в дебъг режим: общият флаг `debug` (main.js, ред 18) трябва
+// да е включен. Тогава се отваря с ?share_debug=1 в адреса или от докосване на реда с версията
+// в Настройки. Сам не се отваря след споделяне (собственик, 24.11.2026).
 async function maybeShowShareDebug(force = false) {
     try {
+        if (typeof debug === 'undefined' || !debug) return;
         const url = new URL(window.location.href);
         const asked = url.searchParams.has('share_debug');
         if (!force && !asked) return;
@@ -372,9 +373,10 @@ async function maybeShowShareDebug(force = false) {
     }
 }
 
-// Ръчен вход към панела на телефон: Настройки → докосване на реда с версията.
+// Ръчен вход към панела на телефон: Настройки → докосване на реда с версията. Само в дебъг режим.
 function initShareDebugTrigger() {
     try {
+        if (typeof debug === 'undefined' || !debug) return;
         const label = document.querySelector('.modal-version');
         if (!label || label.dataset.shareDebugBound === '1') return;
         label.dataset.shareDebugBound = '1';
