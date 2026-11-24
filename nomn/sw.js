@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nomn-b5.41';
+const CACHE_NAME = 'nomn-b5.42';
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
@@ -121,6 +121,32 @@ function swLog(...args) {
   }
 }
 
+// --- Дебъг на споделянето ---
+// На телефон няма конзола, затова всяко споделяне оставя кратък запис в кеша
+// (какво е пристигнало, кои файлове, какво е паднало). Приложението го показва на екран.
+const SHARE_DEBUG_CACHE = 'share-target-image';
+const SHARE_DEBUG_KEY = 'share-debug';
+const SHARE_DEBUG_MAX = 8;
+
+async function recordShareDebug(entry) {
+  try {
+    const cache = await caches.open(SHARE_DEBUG_CACHE);
+    const res = await cache.match(SHARE_DEBUG_KEY);
+    let list = [];
+    if (res) {
+      try { list = await res.json(); } catch (e) { list = []; }
+    }
+    if (!Array.isArray(list)) list = [];
+    list.unshift(Object.assign({ ts: Date.now() }, entry));
+    if (list.length > SHARE_DEBUG_MAX) list = list.slice(0, SHARE_DEBUG_MAX);
+    await cache.put(SHARE_DEBUG_KEY, new Response(JSON.stringify(list), {
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {
+    swLog('[SW] share debug write failed:', e && e.message);
+  }
+}
+
 self.addEventListener('install', (event) => {
   swLog('[SW] Install event triggered.');
   // Start caching assets without blocking the page load
@@ -192,9 +218,18 @@ self.addEventListener('fetch', (event) => {
         const redirectToApp = (sid) => {
           const target = new URL(url.pathname || './index.html', self.location.origin);
           if (sid) target.searchParams.set('share_id', sid);
+          // Заедно със споделянето отваряме приложението с включен дебъг панел.
+          target.searchParams.set('share_debug', '1');
           return Response.redirect(target.toString(), 303);
         };
         try {
+          await recordShareDebug({
+            stage: 'post',
+            note: 'POST пристигна',
+            path: url.pathname,
+            bytes: event.request.headers.get('content-length') || '?',
+            ctype: event.request.headers.get('content-type') || '?'
+          });
           const formData = await event.request.formData();
           const title = (formData.get('shared_title') || '').toString();
           const text = (formData.get('shared_text') || '').toString();
@@ -202,21 +237,47 @@ self.addEventListener('fetch', (event) => {
           const imageFiles = formData.getAll('shared_image').filter(f => f && f.size > 0);
           const sid = 'sh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
 
+          await recordShareDebug({
+            stage: 'fields',
+            note: 'полета',
+            sid: sid,
+            title: title.slice(0, 100),
+            text: text.slice(0, 200),
+            url: sharedUrl.slice(0, 200),
+            files: imageFiles.length
+          });
+
           const cache = await caches.open('share-target-image');
           const staleKeys = await cache.keys();
-          await Promise.all(staleKeys.map(k => cache.delete(k)));
+          // Записът на дебъга не се трие — той разказва какво е пристигнало.
+          await Promise.all(staleKeys.map(k => (k.url.endsWith('/' + SHARE_DEBUG_KEY) ? null : cache.delete(k))));
 
           const files = [];
           for (let i = 0; i < imageFiles.length; i++) {
             const f = imageFiles[i];
             const key = 'shared-file-' + i;
             const name = f.name || ('shared_' + Date.now() + '_' + i);
+            const type = f.type || 'application/octet-stream';
             const headers = new Headers({
-              'Content-Type': f.type || 'application/octet-stream',
+              'Content-Type': type,
               'X-Filename': encodeURIComponent(name)
             });
-            await cache.put(key, new Response(f, { headers }));
-            files.push({ key: key, name: name, type: f.type || 'application/octet-stream' });
+            // Файл, който не се събере в кеша, не бива да отменя цялото споделяне:
+            // записваме грешката и продължаваме, за да стигне поне текстът/линкът.
+            try {
+              await cache.put(key, new Response(f, { headers }));
+              files.push({ key: key, name: name, type: type, size: f.size });
+              await recordShareDebug({ stage: 'file', note: 'файл записан', name: name, type: type, size: f.size });
+            } catch (fileErr) {
+              await recordShareDebug({
+                stage: 'file-error',
+                note: 'файлът не се записа',
+                name: name,
+                type: type,
+                size: f.size,
+                error: (fileErr && fileErr.name ? fileErr.name + ': ' : '') + (fileErr && fileErr.message)
+              });
+            }
           }
 
           const payload = { sid: sid, title: title, text: text, url: sharedUrl, files: files, ts: Date.now() };
@@ -258,6 +319,7 @@ self.addEventListener('fetch', (event) => {
             });
 
             if (acked) {
+              await recordShareDebug({ stage: 'delivered', note: 'отворен прозорец прие споделянето' });
               try {
                 await existingClient.focus();
               } catch (focusErr) {
@@ -272,11 +334,22 @@ self.addEventListener('fetch', (event) => {
               );
             }
             swLog('[SW] No confirmation from the open window - opening the app instead.');
+          } else {
+            swLog('[SW] No open window to hand the share to.');
           }
 
+          await recordShareDebug({
+            stage: 'redirect',
+            note: existingClient ? 'няма потвърждение от отворения прозорец, отварям приложението' : 'няма отворен прозорец, отварям приложението'
+          });
           return redirectToApp(sid);
         } catch (err) {
           swLog('[SW] CRITICAL ERROR in Share Target:', err.message);
+          await recordShareDebug({
+            stage: 'error',
+            note: 'грешка при споделянето',
+            error: (err && err.name ? err.name + ': ' : '') + (err && err.message)
+          });
           return redirectToApp(null);
         }
       })());

@@ -181,6 +181,141 @@ async function restorePendingShare(payload) {
     }
 }
 
+// --- Дебъг панел за споделяне (телефон без конзола) ---
+// Service worker-ът оставя в кеша кратък запис за всяко споделяне (какво е пристигнало,
+// кои файлове, какво е паднало). Тук го показваме на екран, за да се вижда и без конзола.
+async function readShareDebug() {
+    try {
+        const cache = await caches.open(SHARE_PAYLOAD_CACHE);
+        const res = await cache.match('share-debug');
+        if (!res) return [];
+        const list = await res.json();
+        return Array.isArray(list) ? list : [];
+    } catch (e) {
+        console.warn('[Main] Could not read share debug:', e);
+        return [];
+    }
+}
+
+function showShareDebugPanel(entries, reason) {
+    try {
+        const old = document.getElementById('share-debug-panel');
+        if (old) old.remove();
+        const pad = (n) => String(n).padStart(2, '0');
+        const lines = ['ДЕБЪГ НА СПОДЕЛЯНЕТО'];
+        const swControlled = ('serviceWorker' in navigator && navigator.serviceWorker.controller) ? 'да' : 'не';
+        lines.push('SW контролира: ' + swControlled);
+        if (reason) lines.push(reason);
+        lines.push('');
+        if (!entries || entries.length === 0) {
+            lines.push('Няма запис — до приложението не е пристигнало споделяне.');
+        } else {
+            entries.forEach(e => {
+                const t = new Date(e.ts || Date.now());
+                const skipKeys = { ts: 1, stage: 1, note: 1 };
+                const rest = Object.keys(e)
+                    .filter(k => !skipKeys[k])
+                    .map(k => k + '=' + e[k])
+                    .join(' | ');
+                lines.push(pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds()) +
+                    ' ' + (e.stage || '?') + (e.note ? ' — ' + e.note : ''));
+                if (rest) lines.push('   ' + rest);
+            });
+        }
+        const text = lines.join('\n');
+
+        const box = document.createElement('div');
+        box.id = 'share-debug-panel';
+        box.style.cssText = 'position:fixed;left:6px;right:6px;top:6px;bottom:6px;z-index:2147483000;' +
+            'background:#111;color:#eee;border:1px solid #666;border-radius:10px;padding:10px;' +
+            'display:flex;flex-direction:column;gap:8px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace';
+
+        const pre = document.createElement('div');
+        pre.style.cssText = 'flex:1;overflow:auto;white-space:pre-wrap;word-break:break-word;' +
+            'user-select:text;-webkit-user-select:text';
+        pre.textContent = text;
+        box.appendChild(pre);
+
+        const bar = document.createElement('div');
+        bar.style.cssText = 'display:flex;gap:8px';
+        const mkBtn = (label) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = label;
+            b.style.cssText = 'flex:1;padding:10px;border-radius:8px;border:1px solid #666;' +
+                'background:#222;color:#eee;font:inherit';
+            return b;
+        };
+        const copyBtn = mkBtn('Копирай');
+        const closeBtn = mkBtn('Затвори');
+        copyBtn.onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(text);
+                copyBtn.textContent = 'Копирано';
+            } catch (e) {
+                // Без клипборд: маркираме текста, за да го копира човекът сам.
+                try {
+                    const range = document.createRange();
+                    range.selectNodeContents(pre);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    copyBtn.textContent = 'Маркирано';
+                } catch (e2) {
+                    copyBtn.textContent = 'Не стана';
+                }
+            }
+        };
+        closeBtn.onclick = () => box.remove();
+        bar.appendChild(copyBtn);
+        bar.appendChild(closeBtn);
+        box.appendChild(bar);
+        document.body.appendChild(box);
+    } catch (e) {
+        console.warn('[Main] Could not show share debug panel:', e);
+    }
+}
+
+// Показва панела, ако току-що е имало споделяне (до 3 минути) или ако е поискан с ?share_debug=1.
+async function maybeShowShareDebug(force = false) {
+    try {
+        const url = new URL(window.location.href);
+        const asked = url.searchParams.has('share_debug');
+        const entries = await readShareDebug();
+        const newest = entries.length ? (entries[0].ts || 0) : 0;
+        const ageMs = newest ? (Date.now() - newest) : Infinity;
+        if (!force && !asked && ageMs > 3 * 60 * 1000) return;
+        let reason;
+        if (asked) reason = 'Отворено с share_debug=1 — показвам последните записи.';
+        else if (newest) reason = 'Последно споделяне преди ' + Math.round(ageMs / 1000) + ' s.';
+        else reason = 'Няма нито един запис от service worker-а — споделянето не е стигнало до него.';
+        if (!document.body) {
+            document.addEventListener('DOMContentLoaded', () => showShareDebugPanel(entries, reason), { once: true });
+        } else {
+            showShareDebugPanel(entries, reason);
+        }
+        if (asked) {
+            url.searchParams.delete('share_debug');
+            window.history.replaceState({}, document.title, url.pathname + url.search);
+        }
+    } catch (e) {
+        console.warn('[Main] maybeShowShareDebug failed:', e);
+    }
+}
+
+// Ръчен вход към панела на телефон: Настройки → докосване на реда с версията.
+function initShareDebugTrigger() {
+    try {
+        const label = document.querySelector('.modal-version');
+        if (!label || label.dataset.shareDebugBound === '1') return;
+        label.dataset.shareDebugBound = '1';
+        label.style.cursor = 'pointer';
+        label.addEventListener('click', () => { maybeShowShareDebug(true); });
+    } catch (e) {
+        console.warn('[Main] Could not bind share debug trigger:', e);
+    }
+}
+
 const handleShareEvent = async (eventData, source, ackPort) => {
     if (!eventData || eventData.type !== 'SHARE_TARGET_EVENT') return;
     const sid = eventData.data && eventData.data.sid ? eventData.data.sid : null;
@@ -195,6 +330,8 @@ const handleShareEvent = async (eventData, source, ackPort) => {
         if (!payload) {
             console.log(`[Main] Share ${sid || ''} from ${source}: not in cache (already taken or stale).`);
             if (ackPort) { try { ackPort.postMessage({ type: 'SHARE_TARGET_ACK', sid: sid }); } catch (e) { } }
+            // Споделянето е стигнало до приложението, но данните не са в кеша — показваме какво знаем.
+            await maybeShowShareDebug(true);
             return;
         }
         console.log(`[Main] Handling share ${payload.sid} from ${source}`);
@@ -209,6 +346,7 @@ const handleShareEvent = async (eventData, source, ackPort) => {
     } catch (e) {
         console.error('[Main] Share handling failed:', e);
         await restorePendingShare(payload); // остава за следващия прозорец
+        await maybeShowShareDebug(true); // на телефон това е единственият начин да се види какво е станало
     } finally {
         shareHandlingInProgress = false;
     }
@@ -6122,6 +6260,8 @@ async function deleteFromDB(storeName, key) {
 // II. ИНИЦИАЛИЗАЦИЯ НА ПРИЛОЖЕНИЕТО
 // =================================================================================
 // --- Web Share Target API Handler ---
+// Връща true, ако от споделеното е направена бележка, и false, ако е нямало какво да се обработи
+// (тогава приложението показва дебъг панела, за да се види какво е пристигнало).
 async function handleShareTarget(externalData = null) {
     const url = new URL(window.location.href);
     let data = externalData;
@@ -6138,7 +6278,7 @@ async function handleShareTarget(externalData = null) {
     const sharedUrl = data ? data.shared_url : url.searchParams.get('shared_url');
     const _rawSharedImage = data ? data.shared_image : url.searchParams.get('shared_image');
     const hasSharedImage = (_rawSharedImage && parseInt(_rawSharedImage, 10) > 0) ? _rawSharedImage : null;
-    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
+    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return false;
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
     // if (sharedTitle) parts.push(sharedTitle);
@@ -6304,6 +6444,7 @@ async function handleShareTarget(externalData = null) {
             }
         }
     }, 500);
+    return true;
 }
 
 // --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
@@ -6506,7 +6647,20 @@ async function startApp(isExplicitLogin = false) {
         };
         initDraggableButtons();
         await mainLogic();
-        handleShareTarget();
+        initShareDebugTrigger();
+        handleShareTarget().then((handled) => {
+            if (!handled) {
+                // Няма бележка от споделеното — показваме панела, ако току-що е имало споделяне.
+                maybeShowShareDebug();
+                return;
+            }
+            // Споделянето е дало бележка: махаме share_debug от адреса, за да не изскача панелът после.
+            const cleanUrl = new URL(window.location.href);
+            if (cleanUrl.searchParams.has('share_debug')) {
+                cleanUrl.searchParams.delete('share_debug');
+                window.history.replaceState({}, document.title, cleanUrl.pathname + cleanUrl.search);
+            }
+        }).catch(() => { });
     } catch (err) {
         console.error("Error in startApp:", err);
         // Fallback for network errors during mainLogic
