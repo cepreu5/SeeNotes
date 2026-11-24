@@ -440,6 +440,7 @@
     "errorFolderNotEmpty": "The folder is not empty! Operation stopped for data protection.",
     "confirmSaveDbToFolder": "This will save all notes and boards from memory to the current folder. Do you want to continue?",
     "sharedContentReceived": "Shared content received",
+    "shareEmptyReceived": "Nothing arrived from the share. Share the page link, or the file from the gallery.",
     "uploadingSharedImage": "Uploading image...",
     "openLink": "Open",
     "systemBoardSortLabel": "System board:",

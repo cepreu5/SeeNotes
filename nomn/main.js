@@ -6278,7 +6278,20 @@ async function handleShareTarget(externalData = null) {
     const sharedUrl = data ? data.shared_url : url.searchParams.get('shared_url');
     const _rawSharedImage = data ? data.shared_image : url.searchParams.get('shared_image');
     const hasSharedImage = (_rawSharedImage && parseInt(_rawSharedImage, 10) > 0) ? _rawSharedImage : null;
-    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return false;
+    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) {
+        // Споделянето дойде празно: има запис от service worker-а (значи нещо е споделено),
+        // но нито текст, нито линк, нито файл. Така пристига, когато приложението източник
+        // не предаде файла (на Android Chrome прави така със снимка от собствената си страница).
+        // Казваме на човека какво да направи, а дебъг панелът пак излиза — той показва подробностите.
+        if (data && data.sid) {
+            setTimeout(() => {
+                try {
+                    showToast(_('shareEmptyReceived') || 'От споделеното не пристигна нищо. Сподели линка на страницата или файла от галерията.', 8000);
+                } catch (e) { }
+            }, 800);
+        }
+        return false;
+    }
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
     // if (sharedTitle) parts.push(sharedTitle);
