@@ -6288,91 +6288,20 @@ async function handleShareTarget(externalData = null) {
             }, 150);
         }
         showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
-        // --- Качваме всички споделени файлове асинхронно (не блокираме UI) ---
-        if (sharedFiles.length > 0 && !isOffline) {
-            const targetNoteId = noteId; // Capture the local ID for closures
-            // Стартираме качването на заден план - не await-ваме
-            (async () => {
+        // Споделените файлове влизат в бележката веднага, по същия път като прикачане с кламерчето:
+        // плочката със снимката се вижда преди запис, а качването и връзката със записа вървят след нея.
+        // В демото няма Drive папка, затова там не се прикача (както и кламерчето не се показва).
+        if (sharedFiles.length > 0 && !IS_DEMO_MODE && typeof attachFilesToModal === 'function') {
+            const sharedAsFiles = sharedFiles.map(sharedFile => {
                 try {
-                    showToast(_('uploadingSharedImage') || '📤 Uploading files...', 5000);
-                    const folderId = await getFolderID();
-                    if (!folderId) throw new Error('Folder ID not available');
-                    for (let i = 0; i < sharedFiles.length; i++) {
-                        const { blob, filename, mimeType } = sharedFiles[i];
-                        // Същото правило като при пейста: името, което влиза в Drive, е и името в
-                        // media.txt, и то не бива да повтаря вече заето - иначе текстът търси по него
-                        // и намира чужд файл.
-                        const attachName = nmUniqueAttachmentName(filename);
-                        try {
-                            const fileType = mimeType.startsWith('video') ? 'Video' : (mimeType.startsWith('audio') ? 'Sound' : 'Images');
-                            let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
-                            if (!targetFolderId) {
-                                targetFolderId = await createNewGDriveFolder(fileType, folderId);
-                                if (targetFolderId) {
-                                    folderIds[fileType] = targetFolderId;
-                                    localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
-                                }
-                            }
-                            if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
-                            const fileGdid = await uploadBlobToGDrive(targetFolderId, attachName, blob, mimeType);
-                            if (!fileGdid) throw new Error(`Upload failed: ${attachName}`);
-                            if (fileType === 'Images') rememberFreshAttachmentBlob(fileGdid, blob);
-                            // Изчакваме бележката да получи gdid (до 30 мин)
-                            const noteGdid = await new Promise(resolve => {
-                                const check = (attempts = 0) => {
-                                    const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
-                                    if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                        resolve(noteInData.gdid);
-                                    } else if (attempts < 3600) {
-                                        setTimeout(() => check(attempts + 1), 500);
-                                    } else {
-                                        resolve(null);
-                                    }
-                                };
-                                check();
-                            });
-                            if (!noteGdid) {
-                                console.warn(`[ShareTarget] Note gdid timeout for ${attachName}`);
-                                showToast((_('attachLinkFailedMsg') || '⚠️ {name} uploaded, but link to note failed.').replace('{name}', attachName), 7000);
-                                continue;
-                            }
-                            const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
-                            const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-                            const mediaEntry = {
-                                datemod: now,
-                                description: '',
-                                gdid: '',
-                                id: maxMediaId + 1,
-                                noteid: noteGdid,
-                                path: attachName,
-                                pathGD: fileGdid,
-                                type: mediaTypeNum
-                            };
-                            const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                            if (mediaFileGdid) {
-                                mediaEntry.gdid = mediaFileGdid;
-                                await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                                mediaData.push(mediaEntry);
-                                if (useIndexedDb) {
-                                    await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                                }
-                                showToast((_('attachSuccessMsg') || '✅ Attached: {name}').replace('{name}', attachName), 3000);
-                                if (typeof refreshNoteUI === 'function') {
-                                    await refreshNoteUI(noteGdid);
-                                } else {
-                                    renderNotes();
-                                }
-                            }
-                        } catch (fileErr) {
-                            console.error(`[ShareTarget] Error processing file ${attachName}:`, fileErr);
-                            showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', fileErr.message), 5000);
-                        }
-                    }
-                } catch (e) {
-                    console.error('[ShareTarget] Error in upload loop:', e);
-                    showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message), 5000);
+                    return new File([sharedFile.blob], sharedFile.filename || 'shared', { type: sharedFile.mimeType || 'application/octet-stream' });
+                } catch (makeFileErr) {
+                    return null;
                 }
-            })();
+            }).filter(Boolean);
+            if (sharedAsFiles.length > 0) {
+                setTimeout(() => { attachFilesToModal(sharedAsFiles); }, 300);
+            }
         }
     }, 500);
 }
