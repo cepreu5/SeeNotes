@@ -6329,6 +6329,40 @@ async function deleteFromDB(storeName, key) {
 // --- Web Share Target API Handler ---
 // Връща true, ако от споделеното е направена бележка, и false, ако е нямало какво да се обработи
 // (тогава приложението показва дебъг панела, за да се види какво е пристигнало).
+/**
+ * Видео id от YouTube адрес: youtu.be/<id>, youtube.com/shorts|embed|live|v/<id> и watch?v=<id>.
+ * 24.11.2026, доклад на собственика: „От YouTube не показа thumbnail" и после „както е тук в твоя
+ * редактор - картинка на видеото с опция play". Затова линкът в бележката става карта с
+ * thumbnail и триъгълник, който отваря видеото (вж. nmYoutubePreviewHtml).
+ */
+function nmYoutubeVideoId(url) {
+    if (!url) return null;
+    const patterns = [
+        /youtu\.be\/([A-Za-z0-9_-]{6,})/,
+        /youtube(?:-nocookie)?\.com\/(?:shorts|embed|live|v)\/([A-Za-z0-9_-]{6,})/,
+        /youtube(?:-nocookie)?\.com\/watch[^\s]*[?&]v=([A-Za-z0-9_-]{6,})/
+    ];
+    for (const re of patterns) {
+        const m = String(url).match(re);
+        if (m) return m[1];
+    }
+    return null;
+}
+
+/**
+ * Линк към YouTube като карта: thumbnail на видеото и триъгълник „play" в средата, а цялата карта
+ * е линк - кликът отваря видеото в YouTube. Идва на мястото на самия адрес в бележката, значи
+ * текстът на бележката не се пипа (в Редактиране човек вижда пак адреса).
+ * url е вече екраниран текст (минава през escapeHtml преди това), затова не се екранира втори път.
+ */
+function nmYoutubePreviewHtml(url) {
+    const id = nmYoutubeVideoId(url);
+    if (!id) return null;
+    return `<a class="nm-yt-card" href="${url}" target="_blank" rel="noopener noreferrer" title="Гледай в YouTube">` +
+        `<img class="nm-yt-thumb" src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="" loading="lazy" referrerpolicy="no-referrer">` +
+        `<span class="nm-yt-play" aria-hidden="true"></span></a>`;
+}
+
 async function handleShareTarget(externalData = null) {
     const url = new URL(window.location.href);
     let data = externalData;
@@ -21992,7 +22026,7 @@ function renderMarkdownTableAsPseudoGraphic(text, formatString = null) {
             const starts = (formats.length && lineIndex !== undefined) ? getCellStarts(lineIndex) : [];
             return row.map((cell, c) => {
                 const cellText = String(cell || '');
-                const html = starts[c] !== undefined ? renderPart(cellText, starts[c]) : processNoteContent(cellText, true);
+                const html = starts[c] !== undefined ? renderPart(cellText, starts[c]) : processNoteContent(cellText, true, false, undefined, true);
                 // Подравняване само при двоеточие в разделителя - иначе HTML-ът е същият като преди.
                 const align = table.alignments ? table.alignments[c] : null;
                 const attr = align ? ` style="text-align: ${align};"` : '';
@@ -22461,6 +22495,9 @@ const CODE_BLOCK_PLACEHOLDER = '\uE000';
 // Markdown линкът [текст](адрес) също се заменя с ЕДИН символ (друг, за да не се бъркат слотовете)
 // и се връща в готовия низ - виж mdLinkSlots в processNoteContent.
 const MD_LINK_PLACEHOLDER = '\uE001';
+// YouTube линкът на самостоятелен ред става карта с thumbnail и play (вж. nmYoutubePreviewHtml).
+// Като другите слотове е ЕДИН знак, докато редовете и списъците се обработват, и се връща накрая.
+const YT_CARD_PLACEHOLDER = '\uE003';
 // Ред, който започва с „/-“, е разделител в Преглед (решение на собственика, 19.11.2026):
 //   /-                тънка линия
 //   /--  /=  /-+      пунктирана, двойна, дебела линия
@@ -22506,6 +22543,19 @@ function insertLinkSlots(html, mdLinkSlots) {
     let out = parts[0];
     for (let i = 1; i < parts.length; i++) {
         out += (i - 1 < mdLinkSlots.length ? mdLinkSlots[i - 1] : MD_LINK_PLACEHOLDER) + parts[i];
+    }
+    return out;
+}
+
+/**
+ * Връща готовите карти на YouTube линковете на местата на техните маркери, по ред.
+ */
+function insertYoutubeCards(html, ytCardSlots) {
+    if (!ytCardSlots.length || html.indexOf(YT_CARD_PLACEHOLDER) === -1) return html;
+    const parts = html.split(YT_CARD_PLACEHOLDER);
+    let out = parts[0];
+    for (let i = 1; i < parts.length; i++) {
+        out += (i - 1 < ytCardSlots.length ? ytCardSlots[i - 1] : YT_CARD_PLACEHOLDER) + parts[i];
     }
     return out;
 }
@@ -23127,7 +23177,7 @@ function isOneTapLinksEnabled() {
 
 // skipLineBlocks: текстът е част от ред (сегмент на formatText) - блоковете на редовете
 // се слагат от извикващия върху завършените редове.
-function processNoteContent(text, isForModal = false, skipLineBlocks = false, listIndentMeasureEl = undefined) {
+function processNoteContent(text, isForModal = false, skipLineBlocks = false, listIndentMeasureEl = undefined, noYoutubeCard = false) {
     if (!text) return '';
     const codeBlocks = [];
     const codeTagRegex = /\{\{([\s\S]*?)\}\}|```([\s\S]*?)```/g;
@@ -23137,6 +23187,19 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
         return CODE_BLOCK_PLACEHOLDER;
     });
     let escapedText = escapeHtml(textWithoutCode);
+    // YouTube линк на самостоятелен ред става карта с thumbnail и play (вж. nmYoutubePreviewHtml).
+    // Маскира се ПРЕДИ urlRegex, иначе адресът щеше да стане обикновена котва, а картата - котва
+    // в котва. Редът остава в текста на бележката такъв, какъвто е - в Редактиране се вижда адресът.
+    const ytCardSlots = [];
+    escapedText = escapedText.replace(/(^|\n)[ \t]*(https?:\/\/(?:[a-z0-9-]+\.)*(?:youtube\.com|youtu\.be)\/[^\s<]*?)[ \t]*(?=\n|$)/gi,
+        (match, pre, ytUrl) => {
+            // В клетка на Markdown таблица карта не се слага: таблицата се рисува с фиксирани ширини
+            // и картинка в клетка би разтегнала целия ред (noYoutubeCard идва оттам).
+            const card = noYoutubeCard ? null : nmYoutubePreviewHtml(ytUrl);
+            if (!card) return match;
+            ytCardSlots.push(card);
+            return pre + YT_CARD_PLACEHOLDER;
+        });
     const oneTapLinksEnabled = isOneTapLinksEnabled();
     // Markdown линкът [текст](адрес) се маскира с ЕДИН символ ОЩЕ ПРЕДИ прохода по urlRegex, защото
     // иначе urlRegex обвива адреса и в href="…", и в текста на етикета (получава се котва в котва и
@@ -23214,7 +23277,7 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
     const processedLines = skipLineBlocks ? lines : wrapNoteLineBlocks(lines, listMeasureEl);
     // Линковете се връщат най-накрая, върху сглобения низ: дотук всеки беше един знак.
-    return insertMdHrLines(insertLinkSlots(processedLines.join('<br>'), mdLinkSlots));
+    return insertYoutubeCards(insertMdHrLines(insertLinkSlots(processedLines.join('<br>'), mdLinkSlots)), ytCardSlots);
 }
 
 function renderNoteContent(text) {
@@ -23228,13 +23291,22 @@ function renderNoteContent(text) {
     });
 
     // First, escape the entire remaining text to neutralize any HTML
-    const escapedText = escapeHtml(textWithoutCode);
+    let escapedText = escapeHtml(textWithoutCode);
+    // YouTube линк на самостоятелен ред става карта с thumbnail и play - същото като в модала.
+    const ytCardSlots = [];
+    escapedText = escapedText.replace(/(^|\n)[ \t]*(https?:\/\/(?:[a-z0-9-]+\.)*(?:youtube\.com|youtu\.be)\/[^\s<]*?)[ \t]*(?=\n|$)/gi,
+        (match, pre, ytUrl) => {
+            const card = nmYoutubePreviewHtml(ytUrl);
+            if (!card) return match;
+            ytCardSlots.push(card);
+            return pre + YT_CARD_PLACEHOLDER;
+        });
     // Then, find URLs in the *escaped* text and wrap them in <a> tags.
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
     let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     html = insertCodeBlocks(html, codeBlocks);
 
-    return html;
+    return insertYoutubeCards(html, ytCardSlots);
 }
 
 // Next mdClear marker (default --) at or after 'from', skipping the dashes of a Markdown table

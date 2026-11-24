@@ -1257,6 +1257,51 @@ code {
     vertical-align: text-bottom;
 }
 
+/* YouTube линк в бележката: карта с thumbnail на видеото и триъгълник „play“ в средата, а самата
+   карта е линкът - кликът отваря видеото в YouTube (вж. nmYoutubePreviewHtml в main.js).
+   Ширината е до 320px, за да се побира и на картата в борда, и в модала на телефон. */
+:is(.note-content, #modal-body, .nw-modal-body) .nm-yt-card {
+    display: inline-block;
+    position: relative;
+    width: 100%;
+    max-width: 320px;
+    margin: 4px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    line-height: 0;
+    text-decoration: none;
+    vertical-align: top;
+}
+:is(.note-content, #modal-body, .nw-modal-body) .nm-yt-card .nm-yt-thumb {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+}
+:is(.note-content, #modal-body, .nw-modal-body) .nm-yt-play {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 46px;
+    height: 46px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+}
+:is(.note-content, #modal-body, .nw-modal-body) .nm-yt-play::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-35%, -50%);
+    border-left: 14px solid #fff;
+    border-top: 9px solid transparent;
+    border-bottom: 9px solid transparent;
+}
+
 /* Хоризонтална линия в бележка: ред, който е само „/-“ (виж insertMdHrLines в main.js).
    Линията е блок, затова <br>-овете около нея се махат - иначе остава празен ред.
    Цветът следва текста, за да се вижда и на картата, и в модала. */
