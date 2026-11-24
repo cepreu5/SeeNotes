@@ -20817,6 +20817,20 @@ async function createSettingsUI(boardsData, boardParseError) {
         scaleSlider.value = value;
         scaleInput.value = value;
     };
+    // Zoom се пази и в профила, не само в localStorage: при старт loadSettingsFromGDrive прилага
+    // zoomLevel от settings.json върху localStorage, значи всеки нов избор се губеше при
+    // следваща версия. Записът е асинхронен и се събира, за да не тръгва заявка на всяко
+    // движение на плъзгача — праща се веднъж, 600 ms след последната смяна.
+    let zoomProfileSaveTimer = null;
+    const saveZoomToProfile = () => {
+        if (zoomProfileSaveTimer) clearTimeout(zoomProfileSaveTimer);
+        zoomProfileSaveTimer = setTimeout(() => {
+            zoomProfileSaveTimer = null;
+            if (typeof saveSettingsToGDrive === 'function') {
+                saveSettingsToGDrive(true).catch(e => console.warn('Zoom settings sync failed:', e));
+            }
+        }, 600);
+    };
     let savedZoom = localStorage.getItem('zoomLevel');
     if (savedZoom) {
         scaleSlider.value = savedZoom;
@@ -20845,6 +20859,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             val = Math.max(25, val - 1);
             updateZoom(val);
             localStorage.setItem('zoomLevel', val);
+            saveZoomToProfile();
             stepBtnOpacity();
         });
     }
@@ -20854,6 +20869,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             val = Math.min(175, val + 1);
             updateZoom(val);
             localStorage.setItem('zoomLevel', val);
+            saveZoomToProfile();
             stepBtnOpacity();
         });
     }
@@ -20930,6 +20946,7 @@ async function createSettingsUI(boardsData, boardParseError) {
         const zoomValue = scaleInput.value;
         updateZoom(zoomValue);
         localStorage.setItem('zoomLevel', zoomValue);
+        saveZoomToProfile();
         showToast(_('settingSaved'), 2000);
         // Keep transparency for 5 seconds
         if (typeof startOpacityChange === 'function') {
@@ -20956,11 +20973,13 @@ async function createSettingsUI(boardsData, boardParseError) {
         const zoomValue = scaleInput.value;
         updateZoom(zoomValue);
         localStorage.setItem('zoomLevel', zoomValue);
+        saveZoomToProfile();
     });
     scaleSlider.addEventListener('input', () => {
         const zoomValue = scaleSlider.value;
         updateZoom(zoomValue);
         localStorage.setItem('zoomLevel', zoomValue);
+        saveZoomToProfile();
     });
     // --- Прозрачност при използване на плъзгача ---
     scaleSlider.addEventListener('mousedown', startOpacityChange);
@@ -20985,6 +21004,7 @@ async function createSettingsUI(boardsData, boardParseError) {
             scaleSlider.value = newValue;
             updateZoom(newValue);
             localStorage.setItem('zoomLevel', newValue);
+            saveZoomToProfile();
         }
     });
     // Make modal transparent when typing in scaleInput
