@@ -690,6 +690,21 @@ function nmEncLockedTitleOnly(storedText) {
     if (mark === -1) return '';
     return text.substring(0, mark).replace(/\|$/, '') + '|';
 }
+// Заглавието не бива да стои и като първи ред на тялото (b5.59). При заключване заглавието се пише
+// в отделно поле, а същият ред често остава и в текста — тогава картата показва реда два пъти:
+// веднъж като заглавие и веднъж като първи ред на тялото. Работи и за вече записани бележки.
+function nmEncStripDupTitleLine(text) {
+    const src = String(text || '');
+    const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(src) : src.indexOf('|');
+    if (pipeIndex === -1) return src;
+    const title = src.substring(0, pipeIndex).trim();
+    if (!title) return src;
+    const body = src.substring(pipeIndex + 1);
+    const nl = body.indexOf('\n');
+    const firstLine = (nl === -1 ? body : body.substring(0, nl)).trim();
+    if (firstLine !== title) return src;
+    return src.substring(0, pipeIndex + 1) + (nl === -1 ? '' : body.substring(nl + 1));
+}
 // Отключващ ключ за тази бележка. Има ли вече изведен ключ за солта, не се пита.
 function nmEncB64ToBytes(b64) {
     const bin = atob(b64);
@@ -786,7 +801,7 @@ async function nmEncDecryptNoteText(storedText) {
         try {
             const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nmEncB64ToBytes(envelope.v) },
                 key, nmEncB64ToBytes(envelope.c));
-            return title + '|' + new TextDecoder().decode(plain);
+            return nmEncStripDupTitleLine(title + '|' + new TextDecoder().decode(plain));
         } catch (e) {
             nmEncKeyCache.delete(envelope.s);
             key = null;
@@ -26457,10 +26472,14 @@ async function createNoteElement(noteContent) {
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
         const previewContent = pipeIndex !== -1 ? fileContent.substring(0, pipeIndex) : '';
+        // Първият ред на открития откъс СТАВА заглавие, значи не бива да стои втори път в тялото
+        // (b5.59, доклад на собственика: „Първият ред от заглавието на заключена бележка се повтаря
+        // два пъти"). Дотук тялото беше целият откъс, а заглавието - първият му ред.
+        const previewBody = previewContent.split('\n').slice(1).join('\n').replace(/^\n+/, '');
         const titleFormatSource = (titleSpan && titleSpan.trim() !== '') ? titleSpan : null;
-        contentEl.innerHTML = getFormattedNoteHtml(previewContent, null, titleFormatSource, isForModal, noteListMeasureEl);
+        contentEl.innerHTML = getFormattedNoteHtml(previewBody, null, titleFormatSource, isForModal, noteListMeasureEl);
         hydrateInlineImages(contentEl);
-        setNoteCheckboxSource(contentEl, 0, previewContent.length);
+        setNoteCheckboxSource(contentEl, 0, previewBody.length);
     } else {
         renderPreviewContent(displayContent);
     }
@@ -33284,9 +33303,21 @@ function saveEditedNote(forceClose = false) {
         let processedText, finalFormat, finalTitleFormat;
         if ((isHiddenNote || ((titleTextarea || hasPreviewTitle) && titleText !== "")) && (titleTextarea || hasPreviewTitle)) {
             // Handle hidden note OR normal note with split content
+            // Заглавието не бива да стои и като първи ред на тялото (b5.59, доклад на собственика:
+            // „Първият ред от заглавието на заключена бележка се повтаря два пъти"). При заключване
+            // заглавието се пише в отделно поле, а същият ред остава и в текста. Изрязва се ПРЕДИ
+            // postEdit, а форматите се разместват, за да отговарят на изрязания текст.
+            let bodySource = newText;
+            let bodyFormatSource = formatStr;
+            const bodyFirstLines = newText.split('\n');
+            if (titleText.trim() !== '' && bodyFirstLines[0].trim() === titleText.trim()) {
+                const cleanedBody = bodyFirstLines.slice(1).join('\n').replace(/^\n+/, '');
+                if (bodyFormatSource) bodyFormatSource = nmShiftFormatsAfterRemoval(bodyFormatSource, 0, newText.length - cleanedBody.length);
+                bodySource = cleanedBody;
+            }
             const titleRes = postEdit(titleText, parseFormatsString(titleFormatStr), maskedLinks);
             finalTitleFormat = stringifyFormatsArray(titleRes.formats);
-            const bodyRes = postEdit(newText, parseFormatsString(formatStr), maskedLinks);
+            const bodyRes = postEdit(bodySource, parseFormatsString(bodyFormatSource), maskedLinks);
             finalFormat = stringifyFormatsArray(bodyRes.formats);
             processedText = titleRes.text + '|' + bodyRes.text;
             notifyRemovedLinkMarkers(titleRes.removedLinkMarkers + bodyRes.removedLinkMarkers);
