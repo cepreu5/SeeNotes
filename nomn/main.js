@@ -32650,16 +32650,17 @@ function initNoteEditUI() {
     }
 
     if (footerToolbar) {
-        // Редът е: Attach, Preview, Search (вече съществува, само се мести), Save.
-        // В демо режим кламерът липсва, затова останалите три се подреждат едни след други.
+        // Редът е: Attach, Preview, Search (вече съществува, само се мести), Lock, Save.
+        // В демо режим кламерът липсва, затова останалите се подреждат едни след други.
+        // b5.57: катинарчето е между лупата и дискетата, както поиска собственикът.
         const searchBtnEl = document.getElementById('note-search-btn');
         if (attachBtnEl) footerToolbar.appendChild(attachBtnEl);
+        if (previewBtnEl) footerToolbar.appendChild(previewBtnEl);
+        if (searchBtnEl) footerToolbar.appendChild(searchBtnEl);
         if (lockBtnEl) {
             footerToolbar.appendChild(lockBtnEl);
             syncModalNoteLockBtn(lockBtnEl);
         }
-        if (previewBtnEl) footerToolbar.appendChild(previewBtnEl);
-        if (searchBtnEl) footerToolbar.appendChild(searchBtnEl);
         if (saveBtnEl) footerToolbar.appendChild(saveBtnEl);
     }
     if (footerToolbar) {
