@@ -14233,6 +14233,12 @@ function onNoteWindowClosed(win) {
     // остава в DOM-а като idle, и да се появи отново при следващото му отваряне.
     win.hidden = false;
     win.el.classList.remove('note-window-hidden');
+    // Намерението „заключи/отключи“ важи само докато бележката е отворена (b5.61): иначе то
+    // остава по прозореца и следващата бележка в него се записва заключена.
+    if (win.body && win.body.dataset) {
+        delete win.body.dataset.nmEncPending;
+        delete win.body.dataset.nmEncPendingKey;
+    }
     // Затварянето маха и белега за мобилна клавиатура: следващото отваряне на прозореца започва от
     // запомненото му място, а не от горния ръб (b2.89).
     win.el.classList.remove('note-window-kb-top');
@@ -15170,6 +15176,16 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
     // записва — иначе празното тяло би заменило истинското.
     if (options && options.nmEncNeedsPassword) modalBody.dataset.nmEncNeedsPassword = 'true';
     else delete modalBody.dataset.nmEncNeedsPassword;
+    // Белегът „чака заключване“ важи само за бележката, за която е натиснато катинарчето (b5.61):
+    // прозорецът се използва наново, значи белегът от предишната бележка не бива да остава.
+    // Белег без ключ или „g:" (нова бележка, още без id) се пази: той е на нея, а по време на
+    // запис тя получава id след този рендер.
+    if (modalBody.dataset.nmEncPendingKey
+        && modalBody.dataset.nmEncPendingKey !== 'g:'
+        && modalBody.dataset.nmEncPendingKey !== ('i:' + String(noteId || ''))) {
+        delete modalBody.dataset.nmEncPending;
+        delete modalBody.dataset.nmEncPendingKey;
+    }
     // For notes with a preview (pass: true), the '|' is a separator.
     // For the full view in the modal, we want to show the entire content,
     // just replacing the separator with a newline for better readability.
@@ -33503,7 +33519,7 @@ function saveEditedNote(forceClose = false) {
             showToast(_('noteLockedOpenFirst') || 'Натисни катинарчето, за да видиш текста на заключената бележка.', 4000);
             return;
         }
-        const pendingLockState = modalBodyElem.dataset.nmEncPending || '';
+        const pendingLockState = nmEncPendingLockState(modalBodyElem);
         const wasLocked = !!(noteObj && noteObj.pass === true);
         let isEncLockedSave = !!(wasLocked && modalBodyElem.dataset.nmEncLocked === 'true');
         // Катинарчето в footer-а (b5.54) решава вместо старото състояние: при нова бележка то е
@@ -33745,12 +33761,37 @@ function nmEncModalNoteObj() {
     } catch (e) { }
     return null;
 }
+// Ключ на бележката, за която е натиснато катинарчето (b5.61). Прозорците се използват наново,
+// затова белегът „чака заключване“ не бива да се пренася на следващата бележка в същия прозорец.
+// Ключът е само id: то не се мени между натискането и записа, докато gdid се появява при записа,
+// а numord се мести.
+function nmEncPendingLockKey(modalBodyElem) {
+    const el = modalBodyElem || document.getElementById('modal-body');
+    if (!el) return '';
+    const ds = el.dataset || {};
+    const id = String(ds.id || '');
+    if (id) return 'i:' + id;
+    return 'g:' + String(ds.gdid || '');
+}
+// „Чака заключване/отключване“ важи само за бележката, за която е натиснато катинарчето. Белег
+// без ключ (от по-стар запис в паметта) се чете както досега, за да не се губи намерението.
+function nmEncPendingLockState(modalBodyElem) {
+    const el = modalBodyElem || document.getElementById('modal-body');
+    if (!el) return '';
+    const pending = el.dataset.nmEncPending || '';
+    if (!pending) return '';
+    const storedKey = el.dataset.nmEncPendingKey || '';
+    // „g:" е белег върху нова бележка още без id; по време на запис тя получава id, но намерението
+    // си остава нейно — затова такъв ключ се приема за съответстващ.
+    if (storedKey && storedKey !== 'g:' && storedKey !== nmEncPendingLockKey(el)) return '';
+    return pending;
+}
 // Иска ли записът да остави бележката заключена. Редът е: изричното намерение от footer-а, иначе
 // това, което бележката е сега.
 function nmEncModalLockTarget() {
     const modalBodyElem = document.getElementById('modal-body');
     if (!modalBodyElem) return false;
-    const pending = modalBodyElem.dataset.nmEncPending || '';
+    const pending = nmEncPendingLockState(modalBodyElem);
     if (pending === 'lock') return true;
     if (pending === 'unlock') return false;
     const noteObj = nmEncModalNoteObj();
@@ -33835,11 +33876,13 @@ async function toggleModalNoteLockPending() {
     // текст. Записът (и заключването) остава за бутона Запис, за да може заглавието да се въведе.
     if (wantLock && ensureModalNoteTitleField(modalBodyElem)) {
         modalBodyElem.dataset.nmEncPending = 'lock';
+        modalBodyElem.dataset.nmEncPendingKey = nmEncPendingLockKey(modalBodyElem);
         syncModalNoteLockBtn();
         showToast(_('noteWillLock') || 'Напиши заглавие и натисни Запис — бележката се заключва.', 4000);
         return;
     }
     modalBodyElem.dataset.nmEncPending = wantLock ? 'lock' : 'unlock';
+    modalBodyElem.dataset.nmEncPendingKey = nmEncPendingLockKey(modalBodyElem);
     syncModalNoteLockBtn();
     await saveEditedNote();
     syncModalNoteLockBtn();
