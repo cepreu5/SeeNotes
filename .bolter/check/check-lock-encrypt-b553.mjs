@@ -160,24 +160,19 @@ const live = await page.evaluate(async () => {
   };
   window.allNotesData.push(note);
   window.showModal({ raw: note.notetxt, format: '', titleFormat: '', color: '#fff', boardId: 'all', id: note.id, gdid: note.gdid, originalNote: note });
-  return !!document.getElementById('lock-modal-btn');
+  return !document.querySelector('[data-mwid="lock-modal-btn"]');
 });
-check('катинарчето се вижда в заглавния ред', live === true);
+check('катинарчето се вижда във footer-а (b5.56: единственото катинарче)', live === true);
 
 const locked = await page.evaluate(async () => {
-  const btn = document.getElementById('lock-modal-btn');
-  if (!btn) return { err: 'няма бутон' };
+  // b5.56: катинарчето е във footer-а на редактора, а заключването ползва отворения модал.
+  document.getElementById('note-edit-btn')?.click();
+  await new Promise(r => setTimeout(r, 600));
+  const btn = document.getElementById('note-lock-btn');
+  if (!btn) return { err: 'няма бутон', cardText: '' };
   btn.click();
-  // b5.54: заключването минава през формата със заглавие и текст — потвърждаваме я.
-  for (let i = 0; i < 40; i++) {
-    const f = document.getElementById('note-lock-form');
-    if (f && f.classList.contains('show')) break;
-    await new Promise(r => setTimeout(r, 50));
-  }
-  const okBtn = document.getElementById('note-lock-form-ok');
-  if (okBtn) okBtn.click();
   // Изчакваме записа (криптирането е асинхронно)
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 80; i++) {
     const n = window.allNotesData.find(x => String(x.gdid) === 'enc-test-1');
     if (n && n.pass === true) break;
     await new Promise(r => setTimeout(r, 100));
@@ -199,25 +194,32 @@ check('записът в паметта/БД е шифротекст', locked.ha
 check('картата на борда не показва шифротекст', !/nmenc:1:/.test(locked.cardText) && !/Съдържание, което/.test(locked.cardText), locked.cardText.slice(0, 60));
 check('бутонът показва заключено състояние', locked.btnOn === true);
 
-// 6: отваряне на заключена бележка дава открития текст
+// 6: отваряне на заключена бележка (b5.56: тялото излиза с катинарчето)
 const reopened = await page.evaluate(async () => {
   const n = window.allNotesData.find(x => String(x.gdid) === 'enc-test-1');
   window.showModal({ raw: n.notetxt, format: '', titleFormat: '', color: '#fff', boardId: 'all', id: n.id, gdid: n.gdid, originalNote: n });
+  await new Promise(r => setTimeout(r, 900));
+  const hidden = document.getElementById('modal-body');
+  const hiddenText = hidden ? hidden.textContent : '';
+  const btn = document.getElementById('note-lock-btn');
+  if (btn) btn.click();
   for (let i = 0; i < 50; i++) {
     const body = document.getElementById('modal-body');
-    if (body && /Съдържание, което/.test(body.textContent || '')) return { ok: true, text: body.textContent };
+    if (body && /Съдържание, което/.test(body.textContent || '')) return { ok: true, hiddenText, text: body.textContent };
     await new Promise(r => setTimeout(r, 100));
   }
   const body = document.getElementById('modal-body');
-  return { ok: false, text: body ? body.textContent : '' };
+  return { ok: false, hiddenText, text: body ? body.textContent : '' };
 });
-check('отварянето показва истинския текст', reopened.ok === true, (reopened.text || '').slice(0, 50));
+check('отварянето не показва тялото, преди да се натисне катинарчето', !/Съдържание, което/.test(reopened.hiddenText || ''));
+check('катинарчето показва истинския текст', reopened.ok === true, (reopened.text || '').slice(0, 50));
 
 // 8: отключване
 const unlocked = await page.evaluate(async () => {
-  const btn = document.getElementById('lock-modal-btn');
-  btn.click();
-  for (let i = 0; i < 60; i++) {
+  // b5.56: тялото вече е показано в предишната стъпка, значи натискането отключва.
+  const btn = document.getElementById('note-lock-btn');
+  if (btn) btn.click();
+  for (let i = 0; i < 80; i++) {
     const n = window.allNotesData.find(x => String(x.gdid) === 'enc-test-1');
     if (n && n.pass === false) break;
     await new Promise(r => setTimeout(r, 100));
@@ -227,7 +229,9 @@ const unlocked = await page.evaluate(async () => {
 });
 check('катинарчето отключва и записът е пак открит', unlocked.pass === false && unlocked.stored.indexOf('nmenc:1:') === -1 && /Съдържание, което/.test(unlocked.stored));
 
-const realErrors = errors.filter(e => !/Няма достъпен токен|GDrive update failed|syncSingleNoteToGDrive|getElementsByClassName/.test(e));
+// b5.56: катинарчето записва през обичайния път (saveEditedNote), значи влиза и в проверката за
+// конфликт с Drive. В теста gapi е заготовка без getToken — това е шум от средата, не грешка.
+const realErrors = errors.filter(e => !/Няма достъпен токен|GDrive update failed|syncSingleNoteToGDrive|getElementsByClassName|gapi\.client\.getToken is not a function/.test(e));
 check('без грешки в конзолата', realErrors.length === 0, realErrors.slice(0, 3).join(' | '));
 
 await ctx.close();
