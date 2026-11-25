@@ -130,7 +130,7 @@ for (const [w, h] of [[432, 900], [412, 915], [390, 844], [360, 800], [320, 720]
     // b5.66: око до полето — собственикът: „сега паролата не се вижда като пишеш“
     const e1 = await page.evaluate(() => {
         const b = document.getElementById('prompt-eye-btn');
-        return { hidden: b.hidden, title: b.title, off: b.querySelector('.prompt-eye-off').hidden, on: b.querySelector('.prompt-eye-on').hidden, w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) };
+        return { hidden: b.hidden, title: b.title, off: b.querySelector('.prompt-eye-off').hasAttribute('hidden'), on: b.querySelector('.prompt-eye-on').hasAttribute('hidden'), w: Math.round(b.getBoundingClientRect().width), h: Math.round(b.getBoundingClientRect().height) };
     });
     ok(e1.hidden === false, 'окото е видимо при парола', e1);
     ok(e1.off === false && e1.on === true, 'окото показва „покажи“ (отворено око)', e1);
@@ -141,7 +141,7 @@ for (const [w, h] of [[432, 900], [412, 915], [390, 844], [360, 800], [320, 720]
     const e2 = await page.evaluate(() => {
         const i = document.getElementById('folderIdInput');
         const b = document.getElementById('prompt-eye-btn');
-        return { type: i.type, val: i.value, title: b.title, off: b.querySelector('.prompt-eye-off').hidden, on: b.querySelector('.prompt-eye-on').hidden, focused: document.activeElement === i };
+        return { type: i.type, val: i.value, title: b.title, off: b.querySelector('.prompt-eye-off').hasAttribute('hidden'), on: b.querySelector('.prompt-eye-on').hasAttribute('hidden'), focused: document.activeElement === i };
     });
     ok(e2.type === 'text' && e2.val === 'testparola', 'след натискане на окото паролата се вижда', e2);
     ok(e2.off === true && e2.on === false, 'иконата сменя на задраскано око', e2);
