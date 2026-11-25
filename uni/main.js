@@ -7236,8 +7236,17 @@ function showPrompt(message, defaultValue = '', isPassword = false) {
         const setEye = (shown) => {
             folderIdInput.type = (isPassword && !shown) ? 'password' : 'text';
             if (!eyeBtn) return;
-            if (eyeOff) eyeOff.hidden = !!shown;
-            if (eyeOn) eyeOn.hidden = !shown;
+            // b3.86 (порт на b5.71): `hidden` като СВОЙСТВО не важи за <svg> — не слага атрибута
+            // и иконата не се крие (затова се виждаха двете икони една до друга). Сменя се
+            // атрибутът, а CSS го крие: .prompt-eye-icon[hidden] { display: none }.
+            if (eyeOff) {
+                if (shown) eyeOff.setAttribute('hidden', '');
+                else eyeOff.removeAttribute('hidden');
+            }
+            if (eyeOn) {
+                if (shown) eyeOn.removeAttribute('hidden');
+                else eyeOn.setAttribute('hidden', '');
+            }
             const label = shown
                 ? ((typeof _ === 'function' && _('lockEyeHide')) || 'Скрий паролата')
                 : ((typeof _ === 'function' && _('lockEyeShow')) || 'Покажи паролата');

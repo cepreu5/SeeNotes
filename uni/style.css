@@ -2869,13 +2869,19 @@ code {
     padding-right: 44px;
 }
 
+/* b5.71 (uni b3.86): собственикът, 25 Nov 2026 (снимка от телефон) — окото стърчеше извън
+   полето и се виждаха ДВЕ икони една до друга (отворено и задраскано око). Причина: `hidden`
+   не важи за <svg>, значи задрасканото око не се криеше; а бутонът беше на 14px отдясно на
+   реда, докато полето е с 20px по-тясно от реда, и висеше 10px по-високо от средата на полето.
+   Сега: иконата се крие с CSS, бутонът е ВЪТРЕ в полето и е центриран по височина. */
 .folder-id-prompt-popup #prompt-eye-btn {
     position: absolute;
-    right: 14px;
-    top: 0;
-    bottom: 20px;
+    /* полето е с 20px по-тясно от реда (calc(100% - 20px)) — 26px = 20 + 6px отстъп от ръба */
+    right: 26px;
+    top: 50%;
+    transform: translateY(-50%);
     width: 38px;
-    height: auto;
+    height: 38px;
     padding: 0;
     margin: 0;
     background: transparent;
@@ -2889,6 +2895,18 @@ code {
 }
 
 .folder-id-prompt-popup #prompt-eye-btn[hidden] {
+    display: none;
+}
+
+.folder-id-prompt-popup .prompt-eye-icon {
+    display: block;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+}
+
+/* b3.86: това е поправката за двете икони — `hidden` върху <svg> не го крие. */
+.folder-id-prompt-popup .prompt-eye-icon[hidden] {
     display: none;
 }
 
