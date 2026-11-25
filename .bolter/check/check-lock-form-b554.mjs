@@ -8,8 +8,9 @@
 //      заглавието пред '|' остава открито;
 //   4) Отказ във формата не заключва нищо;
 //   5) отключване през footer-а връща открит текст;
-//   6) запомнена парола (нулиране в Настройки) значи без питане при заключване;
-//   7) бутонът за нулиране в Настройки записва новата парола в localStorage;
+//   6) зададена парола (нулиране в Настройки) значи без питане при заключване;
+//   7) нулирането в Настройки пази новата парола само в променлива (b5.55: не в localStorage),
+//      старата парола от b5.54 се маха от localStorage при зареждане, след презареждане се пита пак;
 //   8) без грешки в конзолата.
 
 import path from 'path';
@@ -252,22 +253,27 @@ check('Отказ в нея не заключва', !headerForm.pass, String(hea
 check('без грешки в конзолата', errors.length === 0, errors.slice(0, 3).join(' | '));
 await ctx.close();
 
-// 6-7: запомнена парола и нулирането в Настройки (отделен контекст, за да няма кеширан ключ)
+// 6-8 (b5.55): нулиране в Настройки → новата парола живее само в променлива, не в localStorage
 const second = await newPage('ignored-pass');
 await second.page.evaluate(() => {
-    localStorage.setItem('noteLockPassword', 'remembered-pass');
+    localStorage.setItem('noteLockPassword', 'stara-ot-b554');
 });
+// Презареждане: старият запис от b5.54 трябва да се изчисти още при зареждане.
+await second.page.reload();
+await second.page.waitForTimeout(400);
+const leftover = await second.page.evaluate(() => localStorage.getItem('noteLockPassword'));
+check('старата парола от b5.54 се маха от localStorage при зареждане', leftover === null, String(leftover));
 const resetState = await second.page.evaluate(async () => {
     const btn = document.getElementById('lock-pass-reset-btn');
     if (!btn) return { exists: false };
-    localStorage.removeItem('noteLockPassword');
     window.__nmTestPassword = 'nova-parola-1';
     btn.click();
     await new Promise(r => setTimeout(r, 600));
-    return { exists: true, stored: localStorage.getItem('noteLockPassword') };
+    return { exists: true, stored: localStorage.getItem('noteLockPassword'), memory: window.nmEncStoredPassword() };
 });
 check('в Настройки има бутон за нулиране на паролата', resetState.exists === true);
-check('нулирането запомня новата парола', resetState.stored === 'nova-parola-1', String(resetState.stored));
+check('нулирането пази паролата в променлива', resetState.memory === 'nova-parola-1', String(resetState.memory));
+check('нулирането НЕ пише паролата в localStorage', resetState.stored === null, String(resetState.stored));
 
 const noPromptLock = await second.page.evaluate(async () => {
     const promptsBefore = window.__nmPromptCount;
@@ -276,8 +282,14 @@ const noPromptLock = await second.page.evaluate(async () => {
     const promptsAfter = window.__nmPromptCount;
     return { ok: String(enc || '').indexOf('nmenc:1:') !== -1, asked: promptsAfter > promptsBefore };
 });
-check('със запомнена парола шифроването не пита', noPromptLock.ok && !noPromptLock.asked, `asked=${noPromptLock.asked}`);
+check('със запомнена парола в променливата шифроването не пита', noPromptLock.ok && !noPromptLock.asked, `asked=${noPromptLock.asked}`);
 check('без грешки в конзолата (втора страница)', second.errors.length === 0, second.errors.slice(0, 3).join(' | '));
+
+// 9: след презареждане паролата вече я няма и се пита отново
+await second.page.reload();
+await second.page.waitForTimeout(400);
+const afterReload = await second.page.evaluate(() => ({ memory: window.nmEncStoredPassword(), stored: localStorage.getItem('noteLockPassword') }));
+check('след презареждане паролата е забравена', afterReload.memory === '' && afterReload.stored === null, `${afterReload.memory} / ${afterReload.stored}`);
 await second.ctx.close();
 
 await browser.close();

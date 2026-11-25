@@ -639,8 +639,8 @@ const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" 
    Как стои в записа: "заглавие|nmenc:1:<base64>" — заглавието е открито, тялото е шифротекст.
    Ключът се извежда от паролата с PBKDF2-SHA256 (310 000 итерации) и сол, която е различна за
    всяка бележка; самата сол и IV-то стоят в плика до шифротекста. Шифроването е AES-GCM 256.
-   Паролата НЕ се пази никъде. В паметта на страницата остава само изведеният ключ и то за
-   сесията — при презареждане или нов таб се пита отново.
+   Паролата НЕ се пази никъде на диска. В паметта на страницата остава изведеният ключ за
+   сесията и (b5.55) зададената парола в променлива — при презареждане или нов таб се пита отново.
    --------------------------------------------------------------------------------------------- */
 const NM_ENC_PREFIX = 'nmenc:1:';
 const NM_ENC_ITERATIONS = 310000;
@@ -650,19 +650,21 @@ const nmEncKeyCache = new Map();
 // Записът в allNotesData остава ШИФРОВАН; откритият текст живее само тук, за да може
 // сравнението „има ли промяна" и записът да работят с истинския текст.
 const nmEncPlainCache = new Map();
-// Запомнената парола (b5.54). Решение на собственика (24.11.2026): нулирането в Настройки не иска
-// стара парола — задава се нова и тя се помни на това устройство. Пази се САМО в localStorage на
-// устройството, не в профила в Drive, за да не излиза паролата извън него.
+// Запомнената парола (b5.54, променена в b5.55). Решение на собственика (24.11.2026): нулирането
+// в Настройки не иска стара парола — задава се нова и тя се помни. Решение на собственика
+// (25.11.2026): паролата НЕ се пази в localStorage, а само в променлива — значи живее до
+// презареждане на страницата и не остава на диска на устройството.
 const NM_ENC_PASSWORD_KEY = 'noteLockPassword';
+let nmEncSessionPassword = '';
 function nmEncStoredPassword() {
-    try { return localStorage.getItem(NM_ENC_PASSWORD_KEY) || ''; } catch (e) { return ''; }
+    return nmEncSessionPassword;
 }
 function nmEncSetStoredPassword(password) {
-    try {
-        if (password) localStorage.setItem(NM_ENC_PASSWORD_KEY, password);
-        else localStorage.removeItem(NM_ENC_PASSWORD_KEY);
-    } catch (e) { }
+    nmEncSessionPassword = password ? String(password) : '';
 }
+// Стари устройства може да имат парола, записана от b5.54 в localStorage. Маха се веднъж при
+// зареждане, за да не остане на диска.
+try { localStorage.removeItem(NM_ENC_PASSWORD_KEY); } catch (e) { }
 // Нулиране на паролата от Настройки (b5.54). Решение на собственика (24.11.2026): не се иска
 // стара парола — задава се нова и тя се помни на това устройство. Слушателят е на документа,
 // за да работи и когато Настройки се рисуват наново.
@@ -670,11 +672,11 @@ document.addEventListener('click', async (e) => {
     const target = e.target && e.target.closest ? e.target.closest('#lock-pass-reset-btn') : null;
     if (!target) return;
     e.preventDefault();
-    const newPass = await showPrompt(_('lockPassNew') || 'Нова парола за заключените бележки:');
+    const newPass = await showPrompt(_('lockPassNew') || 'Нова парола за заключените бележки (помни се до затваряне на приложението):');
     if (!newPass) return; // отказ или празно поле: нищо не се променя
     nmEncSetStoredPassword(newPass);
     nmEncKeyCache.clear();
-    showToast(_('lockPassChanged') || 'Паролата е сменена и се помни на това устройство.', 4000);
+    showToast(_('lockPassChanged') || 'Паролата е сменена и се помни до затваряне на приложението.', 4000);
 });
 // Иска ли бележката парола при отваряне (има плика в тялото си).
 function nmEncIsEncrypted(text) {
