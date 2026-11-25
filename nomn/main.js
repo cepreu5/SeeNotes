@@ -22955,34 +22955,6 @@ function insertMdHrLines(html) {
 }
 
 /**
- * Разделител в края на частта преди „|“. Картата показва заглавието на ЕДИН ред със засичане,
- * затова ред-разделител, сложен точно преди „|“, изчезваше от борда (b5.73, доклад на
- * собственика: „Линията в тази бележка не се рендира в борда“). Тук такива редове се откъсват от
- * заглавието и се връщат като готов HTML, който картата слага в началото на тялото - там линията
- * се вижда, както в модала.
- */
-function nmSplitTitleTrailingDividers(rawTitle) {
-    const lines = String(rawTitle || '').split('\n');
-    const dividers = [];
-    while (lines.length) {
-        const last = lines[lines.length - 1];
-        if (!last.trim()) { lines.pop(); continue; }
-        const plain = MD_HR_LINE.exec(last);
-        if (plain) { dividers.unshift(buildMdHrHtml(plain[1], '')); lines.pop(); continue; }
-        const titled = MD_HR_TITLE_LINE.exec(last);
-        if (titled) {
-            const sign = titled[1] || '';
-            const align = (sign === '<' || sign === '&lt;') ? '<' : (sign ? '>' : '');
-            dividers.unshift(buildMdHrHtml(align, escapeHtml(titled[2].trim())));
-            lines.pop();
-            continue;
-        }
-        break;
-    }
-    return { title: lines.join('\n').trim(), dividers };
-}
-
-/**
  * Премахва {#L<n>#} от текст за показване и измества форматите за премахнатите символи:
  * позиция след маркер се мести наляво с дължината на всички маркери преди нея,
  * позиция вътре в маркер отива на неговото начало.
@@ -26206,8 +26178,6 @@ async function createNoteElement(noteContent) {
     // форматите на тялото се сериализират отделно), затова офсетът на заглавието НЕ се изважда.
     // Без '|' (първият ред се показва като заглавие) форматите са спрямо целия текст и офсетът важи.
     let isPipeBodyContent = false;
-    // Готови разделители, откъснати от края на частта преди „|“ (вж. nmSplitTitleTrailingDividers).
-    let pipeTitleDividers = [];
     let isBorderlessTableNote = false;
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
@@ -26223,11 +26193,7 @@ async function createNoteElement(noteContent) {
             noteTitle = markdownTable.borderless ? '' : headerCells.filter(Boolean).join(' ').trim();
             displayContent = fileContent;
         } else if (pipeIndex !== -1) {
-            // Разделител, сложен точно преди „|“, иначе влиза в заглавието и на картата се губи,
-            // защото заглавието е един ред със засичане. Изважда се и се рисува в началото на тялото.
-            const titleChunk = nmSplitTitleTrailingDividers(fileContent.substring(0, pipeIndex));
-            noteTitle = titleChunk.title;
-            pipeTitleDividers = titleChunk.dividers;
+            noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
             // text_span е тяло-относителен при '|' — offset не се прилага в renderPreviewContent.
             isPipeBodyContent = true;
@@ -26568,8 +26534,6 @@ async function createNoteElement(noteContent) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
         contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
-        // Разделителят, откъснат от заглавието, застава в началото на тялото - точно под заглавието.
-        if (pipeTitleDividers.length) contentEl.insertAdjacentHTML('afterbegin', pipeTitleDividers.join(''));
         hydrateInlineImages(contentEl); // вградените картинки (type=8) влизат в рамките си
         setNoteCheckboxSource(contentEl, rawOffset !== -1 ? rawOffset : null, rawOffset + String(contentForPreview || '').length);
     };
