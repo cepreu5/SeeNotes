@@ -334,7 +334,28 @@
     <div id="folderIdPromptPopup" class="folder-id-prompt-popup">
         <div class="popup-content">
             <p data-key="promptFolderId"></p>
-            <input type="text" id="folderIdInput">
+            <!-- b5.66: око до полето за парола. Собственикът, 25 Nov 2026: „сега паролата не се
+                 вижда като пишеш“ — затова маскираното поле има бутон, който я показва. -->
+            <div class="prompt-input-row">
+                <input type="text" id="folderIdInput">
+                <button type="button" id="prompt-eye-btn" class="prompt-eye-btn" hidden
+                    data-key-title="lockEyeShow" aria-label="Покажи паролата" title="Покажи паролата">
+                    <svg class="prompt-eye-icon prompt-eye-off" viewBox="0 0 24 24" width="22" height="22"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <svg class="prompt-eye-icon prompt-eye-on" viewBox="0 0 24 24" width="22" height="22"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true" hidden>
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path>
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path>
+                        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>
+                </button>
+            </div>
             <button id="submitFolderIdBtn" data-key="submitButton" title=""></button>
         </div>
     </div>
@@ -1035,6 +1056,17 @@
                                     <img src="Folder.png" alt="Folder" style="width:24px; height:24px;">
                                     <span data-key="deleteFolderBtn">Delete</span>
                                 </button>
+                            </div>
+
+                            <!-- Парола за заключените бележки (b5.54): нулирането не иска стара парола.
+                                 Стои в Разширени настройки, до редовете за папките и архива. -->
+                            <div class="settings-mobile-row zoom-control-wrapper" id="lock-pass-wrapper"
+                                style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #404040;">
+                                <!-- b5.65: етикетът е на един ред, бутонът застава вдясно като „Изтрий“. -->
+                                <span class="settings-icon-label" id="lock-pass-label"
+                                    data-key="lockPassLabel">Парола за бележките:</span>
+                                <button id="lock-pass-reset-btn" class="zoom-btn"
+                                    data-key="lockPassResetBtn">Нулиране</button>
                             </div>
 
                             <div class="settings-mobile-row zoom-control-wrapper" id="force-gdrive-read"

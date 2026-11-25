@@ -67,9 +67,8 @@ body.open-notes-bar-visible #selection-bar {
 body.open-notes-bar-visible .toast-notification {
     bottom: calc(0px + var(--open-notes-bar-h) + 8px);
 }
-body.open-notes-bar-visible #kb-fab {
-    bottom: calc(10px + var(--open-notes-bar-h) + 8px);
-}
+/* Иконата на асистента не се вдига от лентата (b5.70): тя се вижда само когато няма отворена бележка,
+   а лентата се показва само при отворена бележка - значи двете никога не са на екрана заедно. */
 body.open-notes-bar-visible #add-note-fab {
     bottom: calc(10px + var(--open-notes-bar-h) + 8px);
 }
@@ -102,15 +101,14 @@ body:has(#login-page:not([hidden])) #kb-fab {
     display: none !important;
 }
 
-/* Иконата на асистента се вдига, когато има разпъната бележка, за да не застава върху реда ѝ с кръглите
-   бутони. От 3.11.2026 отстъпът не е твърд: смята се в main.js (syncExpandedFabLift) от ДОЛНИЯ РЪБ на
-   бележката - иконата спира 50px над него, колкото е и редът с бутоните на бележката.
-   Собственикът (3.11.2026): „при максимизиране да се взима долния край на бележката и бутонът на асистента
-   да се мести 50px по-нагоре“. Смята се и когато иконата е местена (позицията ѝ се пази като инлайн
-   top/right) - иначе оставаше плътно на долния ръб, точно върху бутоните. Икона, която вече е по-високо от
-   целта, не се дърпа надолу. */
-body.modal-note-expanded-fab-lift #kb-fab {
-    translate: 0 calc(-1 * var(--expanded-fab-lift, 50px));
+/* Иконата на асистента се вижда САМО когато няма отворена бележка (b5.70).
+   Собственикът (25.11.2026): „За да опростим нещата иконата на асистента да е видима само когато няма
+   отворена бележка. Махни всички други проверки и настройки които правихме и автоматично местене на
+   асистента.“ Затова условието е просто: щом има отворена бележка - в прозорец, разпъната на цял екран
+   или скрита с „скрий всички“ - иконата я няма. Няма смятане на отстъп и няма местене: нито заради
+   лентата с отворените бележки, нито заради бутоните на бележката. */
+body:has(.note-window.visible) #kb-fab {
+    display: none !important;
 }
 
 /* KB Assistant FAB - статичен в index.html; kb-assistant.css се зарежда при първо отваряне */
@@ -2032,6 +2030,27 @@ code {
     /*font-weight: bold;*/
 }
 
+/* Катинарчето във footer-а (b5.63): състоянието се вижда по картинката — отключено или заключено
+   катинарче (unlockIconSvg / lockIconSvg в main.js), а не по фон на бутона. */
+
+/* Заключена бележка, чието тяло още не е показано (b5.56): подсказка на мястото на текста. */
+.nm-enc-locked-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.06);
+    font-size: 0.95em;
+    opacity: 0.85;
+}
+
+.nm-enc-locked-hint svg {
+    flex: 0 0 auto;
+}
+
+
 /* Позиционираме бутоните за навигация вдясно, преди бутона за затваряне */
 /* Бутон за затваряне (X) е на right: 15px */
 /* Бутон < (предишен) ще е на 15px + 32px ширина + 10px отстояние = 57px */
@@ -2834,6 +2853,47 @@ code {
 
 .folder-id-prompt-popup button:hover {
     background-color: #357ae8;
+}
+
+/* Око до полето за парола (b5.66). Собственикът: „полето да е тип password“ (без подсказки),
+   после „сега паролата не се вижда като пишеш“ — затова маскираното поле има бутон, който
+   показва написаното, без да връща подсказките на Chrome. */
+.folder-id-prompt-popup .prompt-input-row {
+    position: relative;
+    width: 100%;
+}
+
+.folder-id-prompt-popup #folderIdInput {
+    box-sizing: border-box;
+    width: calc(100% - 20px);
+    padding-right: 44px;
+}
+
+.folder-id-prompt-popup #prompt-eye-btn {
+    position: absolute;
+    right: 14px;
+    top: 0;
+    bottom: 20px;
+    width: 38px;
+    height: auto;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.folder-id-prompt-popup #prompt-eye-btn[hidden] {
+    display: none;
+}
+
+.folder-id-prompt-popup #prompt-eye-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
 }
 
 
@@ -6520,4 +6580,28 @@ header.title-hidden > div:first-child {
     #expired-hint .expired-hint-line {
         white-space: normal;
     }
+}
+
+/* „Парола за бележките“ (b5.65): етикетът е на един ред, а „Нулиране“ застава вдясно като другите
+   бутони в Настройки. В uni редът живее в Разширени настройки, до редовете за папките и архива,
+   затова тук няма #arh-db-wrapper / var(--settings-btn-inset) правило, което да сподели отстъпа
+   (както е в nomn): отстъпът идва от самия .zoom-control-wrapper (padding-right: 20px), а бутонът
+   се избутва до дясната колона с margin-left: auto. */
+#lock-pass-label {
+    flex: 0 0 auto;
+    font-size: 15px;
+    margin-right: 0;
+    white-space: nowrap;
+}
+
+#lock-pass-reset-btn {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    height: 38px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    white-space: nowrap;
 }

@@ -68,7 +68,7 @@ ok(/if \(isCommandsHelpInput\(val\)\) \{\s*\n\s*renderCommandsHelpPopup\(\);/.te
     'при въвеждане показването минава през isCommandsHelpInput');
 ok(/if \(isCommandsHelpInput\(searchBox\.value\.trim\(\)\)\) \{\s*\n\s*renderCommandsHelpPopup\(\);/.test(mainJs),
     'при фокус показването минава през isCommandsHelpInput');
-ok(/CACHE_NAME = 'cx-notes-b3\.82'/.test(sw), 'sw.js е вдигнат на cx-notes-b3.82');
+ok(/CACHE_NAME = 'cx-notes-b3\.(8[2-9]|9\d)'/.test(sw), 'sw.js е вдигнат поне на cx-notes-b3.82 (сега b3.84)', (sw.match(/CACHE_NAME = '[^']+'/) || [''])[0]);
 
 // --- 2. Живият път ----------------------------------------------------------------------------
 const browser = await chromium.launch({ executablePath: CHROME, args: ['--num-raster-threads=4'] });
