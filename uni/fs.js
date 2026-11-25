@@ -132,6 +132,155 @@ async function exportNotes() {
   await processAndDownloadExport(boards, notes, media);
 }
 
+/**
+ * Името е постоянно, за да подменя едно и също копие в NotebookLM при всяко ново изтегляне.
+ */
+const NOTES_MD_FILENAME = 'cx-notes.md';
+
+function notesMdPad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** Дата (и час) за реда на бележката в markdown файла. */
+function notesMdStamp(ms, withTime) {
+  const d = new Date(Number(ms) || 0);
+  if (isNaN(d.getTime())) return '';
+  const date = `${notesMdPad2(d.getDate())}.${notesMdPad2(d.getMonth() + 1)}.${d.getFullYear()}`;
+  if (!withTime) return date;
+  return `${date} ${notesMdPad2(d.getHours())}:${notesMdPad2(d.getMinutes())}`;
+}
+
+/**
+ * Първият ред на бележката е заглавието (така го пази и самото приложение).
+ * Ако бележката е само един ред, той влиза само в заглавието, за да не се повтаря.
+ */
+function notesMdSplit(text) {
+  const raw = String(text || '');
+  const lines = raw.split('\n');
+  let firstIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== '') { firstIndex = i; break; }
+  }
+  if (firstIndex === -1) return { title: '', body: '' };
+  const firstLine = lines[firstIndex].trim();
+  const clean = firstLine.replace(/^#+\s*/, '').trim();
+  const title = clean.length <= 90 ? clean : clean.slice(0, 90).trim() + '…';
+  let body = lines.slice(firstIndex + 1).join('\n').trim();
+  if (!body && title !== clean) body = clean; // дългият първи ред не се губи
+  return { title, body };
+}
+
+/**
+ * Събира всички бележки без тези в кошчето в ЕДИН markdown файл, подредени по бордове,
+ * всяка с дата, заглавие и текст. За качване в NotebookLM.
+ */
+async function exportNotesToMarkdown() {
+  let boards = [];
+  let notes = [];
+  const inMemBoards = (typeof boardsData !== 'undefined' && boardsData.length > 0);
+  const inMemNotes = (typeof allNotesData !== 'undefined' && allNotesData.length > 0);
+  if (inMemBoards || inMemNotes) {
+    boards = JSON.parse(JSON.stringify(boardsData || []));
+    notes = JSON.parse(JSON.stringify(allNotesData || []));
+  } else {
+    try {
+      const dbExistsLive = typeof checkDbExists === 'function' ? await checkDbExists('NotesDB') : false;
+      if (dbExistsLive) {
+        boards = await exportData('NotesDB', 'boards');
+        notes = await exportData('NotesDB', 'notes');
+      }
+    } catch (e) {
+      console.error('Error reading IndexedDB for markdown export:', e);
+    }
+  }
+
+  // Кошчето (status = 1) не влиза, нито празните бележки.
+  const visibleNotes = (notes || []).filter(n => Number(n.status) !== 1 && String(n.notetxt || '').trim() !== '');
+  if (!visibleNotes.length) {
+    const msg = typeof _ === 'function' ? (_('noDataToExport') || 'No data to export!') : 'No data to export!';
+    if (typeof showToast === 'function') showToast(msg, 3000); else alert(msg);
+    return;
+  }
+
+  const liveBoards = (boards || []).filter(b => Number(b.status) !== 1);
+  const boardKey = b => String(b.gdid || b.id || '');
+  const notesByBoard = new Map();
+  visibleNotes.forEach(n => {
+    const key = String(n.boardid || '');
+    if (!notesByBoard.has(key)) notesByBoard.set(key, []);
+    notesByBoard.get(key).push(n);
+  });
+
+  const byDateAsc = (a, b) => (Number(a.date) || 0) - (Number(b.date) || 0);
+  const noBoardLabel = typeof _ === 'function' ? (_('exportMdNoBoard') || 'No board') : 'No board';
+
+  const orderedBoards = liveBoards
+    .map(b => ({ board: b, notes: (notesByBoard.get(boardKey(b)) || []).slice().sort(byDateAsc) }))
+    .filter(entry => entry.notes.length > 0);
+  const knownBoardKeys = new Set(orderedBoards.map(entry => boardKey(entry.board)));
+  let orphanNotes = [];
+  notesByBoard.forEach((list, key) => {
+    if (!knownBoardKeys.has(key)) orphanNotes = orphanNotes.concat(list);
+  });
+  orphanNotes.sort(byDateAsc);
+  if (orphanNotes.length) {
+    orderedBoards.push({ board: { title: noBoardLabel }, notes: orphanNotes });
+  }
+
+  const lines = [];
+  const header = typeof _ === 'function' ? (_('exportMdTitle') || 'SeeNotes') : 'SeeNotes';
+  const exportedLabel = typeof _ === 'function' ? (_('exportMdExported') || 'Exported') : 'Exported';
+  const notesLabel = typeof _ === 'function' ? (_('exportMdNotesWord') || 'notes') : 'notes';
+  const boardsLabel = typeof _ === 'function' ? (_('exportMdBoardsWord') || 'boards') : 'boards';
+  const noteWord = visibleNotes.length === 1 && typeof _ === 'function'
+    ? (_('exportMdNoteOne') || notesLabel) : notesLabel;
+  const boardWord = orderedBoards.length === 1 && typeof _ === 'function'
+    ? (_('exportMdBoardOne') || boardsLabel) : boardsLabel;
+  lines.push(`# ${header}`);
+  lines.push('');
+  lines.push(`${exportedLabel}: ${notesMdStamp(Date.now(), true)} · ${visibleNotes.length} ${noteWord} · ${orderedBoards.length} ${boardWord}`);
+  lines.push('');
+
+  orderedBoards.forEach(({ board, notes: boardNotes }) => {
+    const boardTitle = String(board.title || '').trim() || noBoardLabel;
+    lines.push(`## ${boardTitle.replace(/^#+\s*/, '')}`);
+    lines.push('');
+    boardNotes.forEach(note => {
+      const stamp = notesMdStamp(note.date, true);
+      // Заключена бележка (както в nomn b5.53): тялото е шифротекст, значи в експорта влиза само
+      // заглавието преди '|' и ред, че тялото е заключено. Иначе файлът би носил безсмислен base64.
+      const storedRaw = String(note.notetxt || '');
+      if (note.pass === true && storedRaw.indexOf('nmenc:1:') !== -1) {
+        const lockedTitle = storedRaw.split('|')[0].trim();
+        lines.push(`### ${stamp}${lockedTitle ? ' — ' + lockedTitle : ''}`);
+        lines.push('');
+        lines.push(typeof _ === 'function' ? (_('exportMdLockedNote') || '_Тялото на тази бележка е заключено и не влиза в експорта._') : '_Тялото на тази бележка е заключено и не влиза в експорта._');
+        lines.push('');
+        lines.push('---');
+        lines.push('');
+        return;
+      }
+      const { title, body } = notesMdSplit(note.notetxt);
+      lines.push(`### ${stamp}${title ? ' — ' + title : ''}`);
+      lines.push('');
+      if (body) {
+        lines.push(body);
+        lines.push('');
+      }
+      lines.push('---');
+      lines.push('');
+    });
+  });
+
+  const content = lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+  downloadAsFile(NOTES_MD_FILENAME, content);
+
+  const doneMsg = typeof _ === 'function'
+    ? (_('exportMdDone') || 'Saved cx-notes.md with {count} notes').replace('{count}', visibleNotes.length)
+    : `Saved cx-notes.md with ${visibleNotes.length} notes`;
+  if (typeof showToast === 'function') showToast(doneMsg, 4000);
+}
+
 async function processAndDownloadExport(boards, notes, media) {
   // Helper map for converting Note Google IDs to Note Numeric IDs
   const noteGdidToId = new Map();

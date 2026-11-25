@@ -4,7 +4,7 @@
 //
 // Проверява се:
 //  1) статично: nmEnc* функциите и катинарчето са в uni/main.js, окото в index.html,
-//     правилата в style.css, CACHE_NAME е cx-notes-b3.84, ключовете bg/en съвпадат;
+//     правилата в style.css, CACHE_NAME е поне cx-notes-b3.84, ключовете bg/en съвпадат;
 //  2) шифроването пази заглавието преди '|' открито, а тялото не се чете в записа; със същата
 //     парола тялото се връща точно; втори запис не пита паролата наново;
 //  3) катинарчето във footer-а заключва бележката: записът носи pass:true и nmenc:1:, тялото го
@@ -87,7 +87,8 @@ ok(/body:has\(\.note-window\.visible\) #kb-fab\s*\{\s*display: none !important;/
 ok(/\.nm-enc-locked-hint\s*\{/.test(styleCss), 'style.css: подсказката за заключена бележка');
 ok(/#prompt-eye-btn\s*\{/.test(styleCss) && /#lock-pass-label\s*\{/.test(styleCss) && /#lock-pass-reset-btn\s*\{/.test(styleCss),
     'style.css: правилата за окото и за реда с паролата');
-ok(/const CACHE_NAME = 'cx-notes-b3\.84';/.test(swJs), 'sw.js: CACHE_NAME е cx-notes-b3.84');
+// Версията расте с всеки комит; проверката иска поне b3.84 (където дойде ключалката).
+ok(/const CACHE_NAME = 'cx-notes-b3\.(8[4-9]|9\d)';/.test(swJs), 'sw.js: CACHE_NAME е поне cx-notes-b3.84', { got: (swJs.match(/const CACHE_NAME = '([^']+)'/) || [])[1] });
 
 const bgKeys = Object.keys(bg), enKeys = Object.keys(en);
 const keyDiff = bgKeys.filter(k => !(k in en)).concat(enKeys.filter(k => !(k in bg)));
