@@ -11752,8 +11752,6 @@ function makeElementDraggable(element, storageKey, onlyRestore = false, onLongPr
         if (hasMoved) {
             localStorage.setItem(storageKey, JSON.stringify({ top: element.style.top, right: element.style.right }));
             scheduleFloatingPositionSettingsSave();
-            // Иконата на асистента може да е местена и при разпъната бележка - отстъпът ѝ се смята наново.
-            if (element.id === 'kb-fab') syncExpandedFabLift();
         }
     };
     element.addEventListener('mousedown', onDragStart);
@@ -12102,133 +12100,15 @@ function applyExpandedModalSize(modalContentBox, isExpanded) {
     modalContentBox.style.maxHeight = 'none';
 }
 
-// Разпънатата бележка закрива долния ръб на екрана, а там е редът с кръглите ѝ бутони (той е 50px висок).
-// До 25.11.2026 иконата се вдигаше сметнато над долния ръб на разпънатата бележка (собственик, 3.11.2026:
-// „бутонът на асистента да се мести 50px по-нагоре“). От 25.11.2026 се мести само при застъпване с бутон.
-// Собственик (25.11.2026): „Местни тази икона само ако тя закрива бутон на модала има taskbar-а“ и „при
-// показване и при спиране на асистента, когато taskbar-ът е показан, иконата не бива да закрива съседен
-// бутон“. Затова отстъпът вече НЕ е твърдо число над долния ръб на бележката: иконата се мести само когато
-// основното ѝ място закрива бутон на показаната бележка или плочка на лентата с отворените бележки, и то
-// точно толкова, колкото да го подмине. Иначе не мърда.
-// Основното място се смята, като от мереното се свали вече приложеният отстъп (translate). По-рано мереното
-// се връщаше с число, а иконата има transition: all .3s - значи меренето при преход хващаше междинна
-// стойност и всеки клик местеше иконата с няколко пиксела.
-// b5.69 (собственик, 25.11.2026): „мести се с две стъпки - веднъж заради лентата и може би веднъж заради
-// бутоните на бележката и отива много над лентата“. Причината беше същата анимация: докато иконата пътуваше
-// над лентата, меренето я хващаше още върху плочките ѝ, даваше отстъп, а след прехода го махаше. Затова
-// в style.css местенето вече не се анимира (bottom и translate сменят мястото веднага) - меренето вижда
-// само окончателното място и втора стъпка няма.
-const EXPANDED_FAB_LIFT_CLASS = 'modal-note-expanded-fab-lift';
-/** Въздухът между иконата и бутона, който тя подминава. */
-const FAB_AVOID_GAP = 8;
-/** Отстъпът, който е приложен в момента. */
-let expandedFabLiftPx = 0;
-/** Има ли вече насрочено премерване (scroll и кликове идват на тълпи). */
-let fabLiftFrameId = 0;
-
-/** Основният правоъгълник на иконата: мереното, върнато със свален приложен отстъп (translate). */
-function fabBaseRect(fab) {
-    const rect = fab.getBoundingClientRect();
-    let dy = 0;
-    const translate = getComputedStyle(fab).translate;
-    if (translate && translate !== 'none') {
-        const parts = translate.split(/\s+/);
-        const y = parseFloat(parts.length > 1 ? parts[1] : parts[0]);
-        if (Number.isFinite(y)) dy = y;
-    }
-    return {
-        left: rect.left,
-        right: rect.right,
-        width: rect.width,
-        height: rect.height,
-        top: rect.top - dy,
-        bottom: rect.bottom - dy
-    };
-}
-
-/**
- * Бутоните, които иконата не бива да закрива: всички бутони на показаната бележка (заглавен ред, ред с
- * кръглите бутони, модалните) и плочките/бутоните на лентата с отворените бележки (taskbar-а).
- */
-function fabProtectedRects() {
-    const rects = [];
-    const push = el => {
-        const rect = el.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) rects.push(rect);
-    };
-    // Само горната видима бележка: бутоните на задна (скрита) бележка не са на екрана и не бива да местят иконата.
-    const windows = Array.from(document.querySelectorAll('.note-window.visible'))
-        .filter(win => win.getBoundingClientRect().height > 0);
-    const top = windows.find(win => win.classList.contains('note-window-active')) || windows[windows.length - 1];
-    if (top) {
-        // Редът с кръглите бутони се пази целият: иконата не бива да стъпва и на празното място в него - то е
-        // част от реда и на по-тесен екран там вече има бутон.
-        const footer = top.querySelector('.modal-footer-toolbar');
-        if (footer) push(footer);
-        top.querySelectorAll('button').forEach(push);
-    }
-    const bar = document.getElementById('open-notes-bar');
-    if (bar && bar.classList.contains('is-visible')) {
-        bar.querySelectorAll('button, .open-notes-bar-tile').forEach(push);
-    }
-    return rects;
-}
-
-/** Колко трябва да се вдигне иконата, за да не закрива нито един от тия бутони (0, ако не закрива). */
-function fabAvoidLift(base, rects) {
-    let lift = 0;
-    rects.forEach(rect => {
-        const overlaps = base.left < rect.right && base.right > rect.left && base.top < rect.bottom && base.bottom > rect.top;
-        if (!overlaps) return;
-        lift = Math.max(lift, Math.ceil(base.bottom - rect.top) + FAB_AVOID_GAP);
-    });
-    return lift;
-}
-
-/**
- * Отстъпът на иконата на асистента се смята наново при всяка промяна (разпъване, свиване, лента, завъртане,
- * скрол, клик) - но иконата се мести САМО когато основното ѝ място закрива бутон.
- * Докато бележката е разпъната на цял екран, тя минава НАД иконата (body.modal-note-expanded в style.css,
- * b5.69), значи хартията я закрива цялата - няма какво да се подминава и иконата не се мести.
- */
-function syncExpandedFabLift() {
-    if (!document.body) return;
-    const fab = document.getElementById('kb-fab');
-    let lift = 0;
-    const noteOnTop = document.body.classList.contains('modal-note-expanded');
-    // Скрита икона (hideAssistant) няма какво да закрива.
-    if (!noteOnTop && fab && getComputedStyle(fab).display !== 'none' && fab.getBoundingClientRect().width > 0) {
-        const base = fabBaseRect(fab);
-        lift = fabAvoidLift(base, fabProtectedRects());
-        // Иконата не се вдига извън екрана: вдигането спира, когато горният ѝ ръб стигне до ръба на екрана.
-        // За икона на долния ръб това не се случва - нужното вдигане е височината на реда с бутоните.
-        lift = Math.min(lift, Math.max(0, Math.round(base.top - FAB_AVOID_GAP)));
-    }
-    expandedFabLiftPx = lift;
-    document.body.style.setProperty('--expanded-fab-lift', lift + 'px');
-    document.body.classList.toggle(EXPANDED_FAB_LIFT_CLASS, lift > 0);
-}
-
-/** Измерването се насрочва веднъж на кадър - scroll и кликове идват на тълпи. */
-function scheduleFabLiftSync() {
-    if (fabLiftFrameId) return;
-    fabLiftFrameId = requestAnimationFrame(() => {
-        fabLiftFrameId = 0;
-        syncExpandedFabLift();
-    });
-}
-
-// Долният ръб на бележката се мести при завъртане, при клавиатура и при поява на лентата - отстъпът се смята
-// наново, за да не остане иконата върху бутон. Скролът и кликовете в бележката местят бутоните под иконата,
-// затова и те предизвикват премерване (веднъж на кадър).
-window.addEventListener('resize', syncExpandedFabLift);
-if (window.visualViewport) window.visualViewport.addEventListener('resize', syncExpandedFabLift);
-document.addEventListener('scroll', scheduleFabLiftSync, true);
-document.addEventListener('click', scheduleFabLiftSync, true);
+// b5.70 (собственик, 25.11.2026): „За да опростим нещата иконата на асистента да е видима само когато няма
+// отворена бележка. Махни всички други проверки и настройки които правихме и автоматично местене на
+// асистента.“ Затова иконата вече НЕ се мести никога: цялото смятане на отстъп (fabBaseRect,
+// fabProtectedRects, fabAvoidLift, syncExpandedFabLift, слушателите за scroll/click/resize) е махнато.
+// Скриването ѝ, докато има отворена бележка, е в style.css с едно правило: body:has(.note-window.visible)
+// #kb-fab → display: none.
 
 function setExpandedModalFloatingControls(isExpanded) {
     document.body.classList.toggle('modal-note-expanded', isExpanded);
-    syncExpandedFabLift();
 }
 
 function updateModalExpandButton(isExpanded) {
@@ -12919,12 +12799,14 @@ async function closeHiddenNoteWindows() {
 // Механизъм: височината на лентата се мери и се записва в --open-notes-bar-h, а класът
 // body.open-notes-bar-visible включва правилата, които я ползват. Класът се маха и променливата се
 // връща на 0px, щом лентата изчезне - тогава нищо не остава отместено.
-// Бутоните, които местенето слага с инлайн !important (kb-fab, add-note-fab, scrollTopBtn), не могат
+// Бутоните, които местенето слага с инлайн !important (add-note-fab, scrollTopBtn), не могат
 // да бъдат вдигнати от stylesheet - затова тук инлайн стойността им се обвива в calc() със същата
 // променлива. Обвивката се разпознава и се разгъва при всяко викане, значи местене на бутон, докато
 // лентата е видима, не оставя сметката сгрешена.
+// Иконата на асистента НЕ е в списъка (b5.70): тя се вижда само когато няма отворена бележка, а лентата
+// се показва само при отворена бележка - двете не са на екрана заедно, значи няма какво да се вдига.
 const OPEN_NOTES_BAR_LIFT_GAP = 8;
-const OPEN_NOTES_BAR_FLOATERS = ['kb-fab', 'add-note-fab', 'scrollTopBtn'];
+const OPEN_NOTES_BAR_FLOATERS = ['add-note-fab', 'scrollTopBtn'];
 const OPEN_NOTES_BAR_LIFT_RE = /^calc\((.+?)\s*[+-]\s*var\(--open-notes-bar-h\)\s*[+-]\s*8px\)$/;
 
 /** Височината на лентата в пиксели, или 0, ако не се вижда. */
@@ -12986,9 +12868,6 @@ function syncOpenNotesBarLift(visible) {
         setOpenNotesBarHeightVar(0);
     }
     applyOpenNotesBarLift();
-    // Състоянието на лентата решава и дали иконата на асистента има нужда от отстъп при разпъната
-    // бележка - иначе двете отмествания се събират.
-    syncExpandedFabLift();
 }
 
 /**

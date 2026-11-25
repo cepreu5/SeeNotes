@@ -267,9 +267,8 @@ const checkStopsAtBar = (g, tag) => {
     const stacks = Object.entries(g.underBar || {});
     const bad = stacks.filter(([, st]) => st.some(e => e.inWindow && !e.inExpandedWin));
     ok(stacks.length > 0 && bad.length === 0, `${tag}: под лентата не се показва друга бележка`, bad.slice(0, 2));
-    // Иконата на асистента: отстъп при разпъната бележка и без застъпване с реда с бутоните.
-    ok(g.fabLiftClass, `${tag}: иконата на асистента е с отстъп при разпъната бележка`, { cls: g.bodyCls, fab: g.fab });
-    ok(!!g.fab && !!paper.foot && g.fab.bottom <= paper.foot.top + 1, `${tag}: иконата не застава върху реда с бутоните на бележката`, { fab: g.fab, foot: paper.foot });
+    // Иконата на асистента (b5.70): при отворена бележка я няма - нито отстъп, нито застъпване.
+    ok(!g.fabLiftClass && !g.fab, `${tag}: иконата на асистента я няма при разпъната бележка`, { cls: g.bodyCls, fab: g.fab });
 };
 
 // ---------------------------------------------------------------- 1) 390x844, две бележки
@@ -282,7 +281,7 @@ const checkStopsAtBar = (g, tag) => {
     const before = await geo(page);
     ok(opened === 2 && before.wins.length === 2, '1: две бележки са отворени', before.wins.length);
     ok(before.barShown, '1: лентата на отворените бележки се вижда преди разпъването');
-    ok(before.fabLiftClass === false && before.fabTranslate === 'none', '1: без разпъната бележка иконата не е отместена', { lift: before.fabLiftClass, tr: before.fabTranslate });
+    ok(before.fabLiftClass === false && before.fabTranslate === 'none' && !before.fab, '1: при отворена бележка иконата я няма и не е отместена', { lift: before.fabLiftClass, tr: before.fabTranslate, fab: before.fab });
 
     ok(await expandActive(page), '1: бутонът за разпъване е намерен и натиснат');
     await page.waitForTimeout(900);
@@ -321,8 +320,7 @@ const checkStopsAtBar = (g, tag) => {
     ok(g.barShown === false, '2: лентата я няма при една отворена бележка', g.barShown);
     ok(!!paper && Math.abs(paper.box.bottom - g.vh) <= 1, '2: хартията стига до долния ръб и без лента', paper && paper.box);
     ok(!!paper && paper.padBottom === 0, '2: без лента няма долен отстъп', paper && paper.padBottom);
-    ok(g.fabLiftClass, '2: иконата на асистента е с отстъп и без лента', { cls: g.bodyCls });
-    ok(!!g.fab && !!paper && !!paper.foot && g.fab.bottom <= paper.foot.top + 1, '2: иконата не застава върху реда с бутоните и без лента', { fab: g.fab, foot: paper && paper.foot });
+    ok(!g.fabLiftClass && !g.fab, '2: иконата на асистента я няма и без лента', { cls: g.bodyCls, fab: g.fab });
     ok(errs.length === 0, '2: няма изключения в конзолата', errs.slice(0, 3));
     await ctx.close();
 }

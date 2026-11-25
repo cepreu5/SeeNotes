@@ -989,9 +989,8 @@ ok(!hidden(barR) && barR.bodyClass && numPx(barR.varH) > 0,
     `лентата е видима и височината ѝ е в променливата (${barR.varH}, лента ${barR.rectH}px)`, barR);
 ok(numPx(barR.varH) === Math.round(barR.rectH),
     `променливата е измерената височина на лентата (${barR.varH} срещу ${barR.rectH}px)`, barR);
-ok(numPx(fabR.bottom) > numPx(barR.rectTop) || numPx(fabR.bottom) > 0,
-    `bottom на асистента е по-голям от bottom на лентата (${fabR.bottom} срещу 0px)`, { fabR, barR });
-ok(noOverlap(fabR, barR), `асистентът стои НАД лентата, без застъпване (${fabR.rectBottom} <= ${barR.rectTop})`, { fabR, barR });
+ok(fabR.display === 'none' || fabR.rectH === 0,
+    `асистентът го няма, докато има отворена бележка - значи не може да закрие лентата (display ${fabR.display})`, fabR);
 ok(numPx(addR.bottom) > numPx(fabR.bottom) - numPx(fabR.bottom) + 0 && numPx(addR.bottom) > 0,
     `„+" също е вдигнат (bottom ${addR.bottom}, display ${addR.display})`, addR);
 ok(numPx(addR.bottom) > numPx(barR.rectTop) || numPx(addR.bottom) > 0,
@@ -1073,11 +1072,11 @@ ok(!!barBg && Math.abs(barBg.alpha - 0.5) < 0.001,
 ok(!!barBg && barBg.rgb.join(',') === '55,71,79',
     `тонът на фона е същият като преди, #37474F (${barBg && barBg.rgb})`, barBg);
 
-// --- 16) Разпъната бележка: иконата на асистента не се мести два пъти (b2.74) --------------
-// Собственикът: „expanded режим на бележката да проверява дали иконата на асистента е най-долу и тогава
-// да я мести, защото когато лентата вече я е преместила се получава двойно преместване - излишно".
-// Отстъпът на иконата при разпъната бележка е 60px; лентата вдига СЪЩИТЕ 60px. Значи двете заедно
-// дават 130px от долния ръб вместо 70 - това е двойното преместване.
+// --- 16) Иконата на асистента се вижда само когато няма отворена бележка (b5.70) --------------
+// Собственикът (25.11.2026): „За да опростим нещата иконата на асистента да е видима само когато няма
+// отворена бележка. Махни всички други проверки и настройки които правихме и автоматично местене на
+// асистента.“ Досегашните проверки за отстъп (60px при разпъната бележка, вдигане от лентата, вдигане
+// при застъпване с бутон) отпадат заедно с кода: иконата не мърда - тя просто я няма, докато има бележка.
 const bodyFlags = () => page.evaluate(() => ({
     expanded: document.body.classList.contains('modal-note-expanded'),
     lift: document.body.classList.contains('modal-note-expanded-fab-lift'),
@@ -1094,94 +1093,71 @@ const clickExpand = () => page.evaluate(() => {
     btn.click();
     return true;
 });
-// Разстоянието на иконата от долния ръб: bottom от изчисления стил плюс отрицателния translate (с
-// който я качва отстъпът при разпъната бележка). В този тестов режим бутонът е display: none, значи
-// мярката се взима от стиловете (bottom/translate), а не от getBoundingClientRect.
-const fabOffset = (f) => {
-    const shift = (String(f.translate).match(/-([\d.]+)px/) || [])[1];
-    return numPx(f.bottom) + (shift ? parseFloat(shift) : 0);
-};
+// b5.70: иконата на асистента вече НЕ се мести - тя просто я няма, докато има отворена бележка.
+// Затова тук се мери точно това, а не отстъпи: без бележка иконата се вижда на мястото си; при отворена
+// (свита или разпъната) е display: none; щом бележките се затворят, се връща без отстъп.
+const fabProbe = () => page.evaluate(() => {
+    const fab = document.getElementById('kb-fab');
+    if (!fab) return null;
+    const cs = getComputedStyle(fab);
+    const r = fab.getBoundingClientRect();
+    return {
+        display: cs.display,
+        opacity: parseFloat(cs.opacity),
+        bottom: cs.bottom,
+        translate: cs.translate,
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+    };
+});
+const fabShown = (f) => !!f && f.display !== 'none' && f.w > 0 && f.h > 0 && f.opacity > 0;
+const fabGone = (f) => !!f && (f.display === 'none' || f.w === 0 || f.h === 0);
 
 await closeAllOpenNotes();
 await settle();
 await page.setViewportSize({ width: 1280, height: 900 });
 await settle();
 let flags = await bodyFlags();
-let fab = await floaterState('kb-fab');
-barR = await barRect();
-// Основното място на иконата се мери БЕЗ отворена бележка: лентата вече се показва и при една
-// (прагът е 1), значи „отворена бележка без лента" не се стига по нормалния път.
-ok(!flags.bar && !flags.expanded && !flags.lift && fab.present,
-    `изходно: без отворени бележки, без лента, без отстъп (${JSON.stringify(flags)})`, flags);
-const fabOffsetPlain = fabOffset(fab);
-ok(Math.abs(fabOffsetPlain - 10) <= 0.6,
-    `без бележка в разпънат вид иконата е на 10px от долния ръб (${fabOffsetPlain})`, fab);
+let fab = await fabProbe();
+ok(!flags.bar && !flags.expanded && !flags.lift && fabShown(fab),
+    `изходно: без отворена бележка иконата на асистента се вижда (${JSON.stringify(fab)})`, { flags, fab });
+ok(Math.abs(numPx(fab.bottom) - 10) <= 0.6,
+    `без бележка иконата е на 10px от долния ръб (${fab.bottom})`, fab);
+ok(/^(0px|none)$/.test(String(fab.translate)),
+    `иконата не носи никакъв отстъп (translate ${fab.translate})`, fab);
 
-// а) ЕДНА отворена бележка: лентата вече е на екрана и е вдигнала иконата.
+// а) ЕДНА отворена бележка: иконата я няма.
 await openNote('photo');
 await settle();
 flags = await bodyFlags();
-barR = await barRect();
-const fabInBar = await floaterState('kb-fab');
-const expectedOffset = 10 + numPx(barR.varH) + 8;
-ok(flags.bar && !hidden(barR),
-    `1 бележка → лентата е на екрана и вдига бутоните (${JSON.stringify(flags)})`, { flags, barR });
-ok(Math.abs(fabOffset(fabInBar) - expectedOffset) <= 0.6,
-    `лентата е вдигнала иконата с височината си + 8px (${fabOffset(fabInBar)} срещу ${expectedOffset})`, { fabInBar, barR });
+fab = await fabProbe();
+ok(flags.bar && fabGone(fab),
+    `при отворена бележка иконата е скрита (${JSON.stringify(fab)})`, { flags, fab });
 
-// б) Разпъване при ВИДИМАТА лента: лентата вече я е вдигнала и втори отстъп (60px) не се дава.
-ok(await clickExpand(), 'разпъването на активната бележка минава при видима лента');
+// б) Разпъване: иконата пак я няма и нищо не ѝ се смята (класът за отстъп не се появява).
+ok(await clickExpand(), 'разпъването на активната бележка минава');
 await settle();
 flags = await bodyFlags();
-fab = await floaterState('kb-fab');
-ok(flags.expanded && flags.bar && !flags.lift,
-    `при видима лента иконата НЕ получава втори отстъп (${JSON.stringify(flags)})`, flags);
-ok(!/-\s*60px/.test(String(fab.translate)),
-    `translate на иконата не носи вторите 60px (translate ${fab.translate})`, fab);
-ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
-    `иконата стои на ${expectedOffset}px от долния ръб, не на ${expectedOffset + 60}px (${fabOffset(fab)})`,
-    { fab, expectedOffset });
-ok(fabOffset(fab) > numPx(barR.rectH),
-    `иконата е над лентата и в разпъната бележка (${fabOffset(fab)} > ${numPx(barR.rectH)})`, { fab, barR });
+fab = await fabProbe();
+ok(flags.expanded && fabGone(fab),
+    `при разпъната бележка иконата е скрита (${JSON.stringify(fab)})`, { flags, fab });
+ok(!flags.lift, `при разпъната бележка няма клас за отстъп (${JSON.stringify(flags)})`, flags);
 
-// в) Свиване при видима лента: нищо не се размества, лентата продължава да я вдига.
-ok(await clickExpand(), 'свиването минава при видима лента');
+// в) Свиване: пак я няма, докато бележката е отворена.
+ok(await clickExpand(), 'свиването минава');
 await settle();
-flags = await bodyFlags();
-fab = await floaterState('kb-fab');
-ok(!flags.expanded && !flags.lift && flags.bar,
-    `свито при видима лента: пак без отстъп, лентата я вдига (${JSON.stringify(flags)})`, flags);
-ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
-    `иконата остава на ${expectedOffset}px от долния ръб (${fabOffset(fab)})`, fab);
+fab = await fabProbe();
+ok(fabGone(fab), `отворена, но свита бележка: иконата пак я няма (${JSON.stringify(fab)})`, fab);
 
-// г) Отстъпът при разпъната бележка (b2.74) остава верен и когато лентата я няма на екрана: тогава
-// иконата получава своите 60px, а щом лентата се върне, отстъпът изчезва и я вдига тя. Лентата
-// слиза от екрана с ТОЧНО това, което прави и приложението (refreshOpenNotesBar →
-// syncOpenNotesBarLift(false)).
-ok(await clickExpand(), 'разпъването минава и за проверката с отстъпа');
-await settle();
-await page.evaluate(() => {
-    const bar = document.getElementById('open-notes-bar');
-    if (bar) bar.classList.remove('is-visible');
-    syncOpenNotesBarLift(false);
-});
+// г) Затваряне на бележката: иконата се връща на мястото си, без отстъп.
+await closeAllOpenNotes();
 await settle();
 flags = await bodyFlags();
-fab = await floaterState('kb-fab');
-ok(flags.expanded && !flags.bar && flags.lift,
-    `без лента при разпъната бележка иконата получава отстъпа (${JSON.stringify(flags)})`, flags);
-ok(Math.abs(fabOffset(fab) - (fabOffsetPlain + 60)) <= 1.5,
-    `без лента иконата отстъпва точно 60px (${fabOffset(fab)} срещу ${fabOffsetPlain + 60})`, { fab, fabOffsetPlain });
-await page.evaluate(() => refreshOpenNotesBar());
-await settle();
-flags = await bodyFlags();
-fab = await floaterState('kb-fab');
-ok(flags.expanded && flags.bar && !flags.lift,
-    `щом лентата се върне, отстъпът изчезва (${JSON.stringify(flags)})`, flags);
-ok(Math.abs(fabOffset(fab) - expectedOffset) <= 1.5,
-    `иконата пак е на ${expectedOffset}px, вдигната от лентата (${fabOffset(fab)})`, fab);
-ok(await clickExpand(), 'свиването след това минава');
-await settle();
+fab = await fabProbe();
+ok(!flags.expanded && !flags.bar && !flags.lift && fabShown(fab),
+    `след затваряне на бележката иконата се връща (${JSON.stringify(fab)})`, { flags, fab });
+ok(Math.abs(numPx(fab.bottom) - 10) <= 0.6,
+    `върнала се е на 10px от долния ръб (${fab.bottom})`, fab);
 
 // --- 17) „Скрий/покажи всички": иконите са стрелки, не око (b2.74) -------------------------
 // Собственикът: „бутонът око да стане със стрелки вместо око". Двойна стрелка НАДОЛУ значи „скрий
