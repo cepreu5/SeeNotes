@@ -129,27 +129,74 @@ if (window.location.hash && window.location.hash.includes('access_token')) {
 // Затова тук взимаме данните от кеша (който пръв ги вземе, той ги обработва) и
 // връщаме потвърждение по port-а - само тогава прозорецът на споделянето се затваря.
 const SHARE_PAYLOAD_CACHE = 'share-target-image';
-const SHARE_PAYLOAD_KEY = 'share-payload';
+const SHARE_PAYLOAD_KEY = 'share-payload';            // стар формат: едно чакащо споделяне
+const SHARE_PAYLOAD_PREFIX = 'share-payload-';        // нов формат: по едно на споделяне, по sid
 const SHARE_PAYLOAD_MAX_AGE_MS = 10 * 60 * 1000;
 let shareHandlingInProgress = false;
 
 async function takePendingShare(expectedSid = null) {
     try {
         const cache = await caches.open(SHARE_PAYLOAD_CACHE);
-        const res = await cache.match(SHARE_PAYLOAD_KEY);
-        if (!res) return null;
-        const payload = await res.json();
-        if (!payload || !payload.sid) return null;
-        if (expectedSid && payload.sid !== expectedSid) return null;
-        if (payload.ts && (Date.now() - payload.ts) > SHARE_PAYLOAD_MAX_AGE_MS) return null;
-        // Изтриваме веднага: ако два прозореца се събудят, само един обработва споделеното.
-        await cache.delete(SHARE_PAYLOAD_KEY);
-        const files = Array.isArray(payload.files) ? payload.files : [];
+        const keys = await cache.keys();
+        const found = [];
+        for (const key of keys) {
+            const name = (new URL(key.url).pathname.split('/').pop() || '');
+            const isLegacy = name === SHARE_PAYLOAD_KEY;
+            const isCurrent = name.startsWith(SHARE_PAYLOAD_PREFIX);
+            if (!isLegacy && !isCurrent) continue;
+            let payload = null;
+            try {
+                const res = await cache.match(key);
+                payload = res ? await res.json() : null;
+            } catch (e) {
+                payload = null;
+            }
+            // Изтриваме веднага: ако два прозореца се събудят, само един обработва споделеното.
+            await cache.delete(key);
+            if (!payload || !payload.sid) continue;
+            if (payload.ts && (Date.now() - payload.ts) > SHARE_PAYLOAD_MAX_AGE_MS) continue;
+            found.push(payload);
+        }
+        if (found.length === 0) return null;
+        // Споделянията се обработват по реда на пристигане. Ако приложението е било затворено и
+        // са се събрали няколко, всички влизат в една бележка — иначе по-старото се губи.
+        found.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        const lead = expectedSid ? found.find(p => p.sid === expectedSid) : found[0];
+        if (!lead) {
+            // Търсеното споделяне вече е взето от друг прозорец: връщаме останалите наопаки,
+            // за да не се загубят.
+            for (const p of found) {
+                await restorePendingShare({
+                    sid: p.sid,
+                    shared_title: p.title || '',
+                    shared_text: p.text || '',
+                    shared_url: p.url || '',
+                    files: Array.isArray(p.files) ? p.files : []
+                });
+            }
+            return null;
+        }
+        const ordered = [lead].concat(found.filter(p => p !== lead));
+        const texts = [];
+        const urls = [];
+        const files = [];
+        let title = '';
+        for (const p of ordered) {
+            if (!title && p.title) title = p.title;
+            if (p.text && texts.indexOf(p.text) === -1) texts.push(p.text);
+            if (p.url && urls.indexOf(p.url) === -1) urls.push(p.url);
+            if (Array.isArray(p.files) && p.files.length > 0) files.push.apply(files, p.files);
+        }
+        // Липсващите линкове влизат в текста: съдържанието на бележката се строи от него.
+        const joinedText = texts.join('\n');
+        const extraUrls = urls.slice(1).filter(u => joinedText.indexOf(u) === -1);
+        const fullText = [joinedText].concat(extraUrls).filter(Boolean).join('\n');
         return {
-            sid: payload.sid,
-            shared_title: payload.title || '',
-            shared_text: payload.text || '',
-            shared_url: payload.url || '',
+            sid: lead.sid,
+            sids: ordered.map(p => p.sid),
+            shared_title: title,
+            shared_text: fullText,
+            shared_url: urls.length > 0 ? urls[0] : '',
             shared_image: files.length > 0 ? String(files.length) : '0',
             files: files
         };
@@ -163,9 +210,8 @@ async function restorePendingShare(payload) {
     if (!payload || !payload.sid) return;
     try {
         const cache = await caches.open(SHARE_PAYLOAD_CACHE);
-        const res = await cache.match(SHARE_PAYLOAD_KEY);
-        if (res) return; // вече има по-ново споделяне
-        await cache.put(SHARE_PAYLOAD_KEY, new Response(JSON.stringify({
+        // Връщаме под ключа на самото споделяне: друго чакащо споделяне не се засяга.
+        await cache.put(SHARE_PAYLOAD_PREFIX + payload.sid, new Response(JSON.stringify({
             sid: payload.sid,
             title: payload.shared_title || '',
             text: payload.shared_text || '',
@@ -6418,7 +6464,19 @@ async function handleShareTarget(externalData = null) {
     const sharedUrl = data ? data.shared_url : url.searchParams.get('shared_url');
     const _rawSharedImage = data ? data.shared_image : url.searchParams.get('shared_image');
     const hasSharedImage = (_rawSharedImage && parseInt(_rawSharedImage, 10) > 0) ? _rawSharedImage : null;
-    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) return;
+    if (!sharedTitle && !sharedText && !sharedUrl && !hasSharedImage) {
+        // Споделянето дойде празно: има запис от service worker-а (значи нещо е споделено),
+        // но нито текст, нито линк, нито файл. Така пристига, когато приложението източник
+        // не предаде файла (на Android Chrome прави така със снимка от собствената си страница).
+        if (data && data.sid) {
+            setTimeout(() => {
+                try {
+                    showToast(_('shareEmptyReceived') || 'От споделеното не пристигна нищо. Сподели линка на страницата или файла от галерията.', 8000);
+                } catch (e) { }
+            }, 800);
+        }
+        return false;
+    }
     // Съставяме съдържанието на бележката от споделените данни
     const parts = [];
     // if (sharedTitle) parts.push(sharedTitle);
@@ -6434,7 +6492,12 @@ async function handleShareTarget(externalData = null) {
     const normUrl = normalize(cleanUrl);
     if (cleanTitle) {
         const isTitleInText = cleanText && normText.includes(normTitle);
-        if (!isTitleInText) parts.push(cleanTitle);
+        // Споделена снимка от сайт: текстът е само линкът към снимката, а Chrome слага служебно
+        // заглавие „Action“. То не е заглавие на бележката, затова се пропуска, а линкът остава
+        // сам - вижда се като снимка. Всяко друго заглавие си остава.
+        const isServiceShareTitle = /^(action|share|споделяне)$/i.test(cleanTitle);
+        const isImageLinkShare = !!nmImageUrlFromLine(cleanText) && (!cleanUrl || cleanUrl === cleanText);
+        if (!isTitleInText && !(isServiceShareTitle && isImageLinkShare)) parts.push(cleanTitle);
     }
     if (cleanText) {
         parts.push(cleanText);
@@ -6568,93 +6631,23 @@ async function handleShareTarget(externalData = null) {
             }, 150);
         }
         showToast(_('sharedContentReceived') || '📥 Shared content received', 3000);
-        // --- Качваме всички споделени файлове асинхронно (не блокираме UI) ---
-        if (sharedFiles.length > 0 && !isOffline) {
-            const targetNoteId = noteId; // Capture the local ID for closures
-            // Стартираме качването на заден план - не await-ваме
-            (async () => {
+        // Споделените файлове влизат в бележката веднага, по същия път като прикачане с кламерчето:
+        // плочката със снимката се вижда преди запис, а качването и връзката със записа вървят след нея.
+        // В демото няма Drive папка, затова там не се прикача (както и кламерчето не се показва).
+        if (sharedFiles.length > 0 && !IS_DEMO_MODE && !isOffline && typeof attachFilesToModal === 'function') {
+            const sharedAsFiles = sharedFiles.map(sharedFile => {
                 try {
-                    showToast(_('uploadingSharedImage') || '📤 Uploading files...', 5000);
-                    const folderId = await getFolderID();
-                    if (!folderId) throw new Error('Folder ID not available');
-                    for (let i = 0; i < sharedFiles.length; i++) {
-                        const { blob, filename, mimeType } = sharedFiles[i];
-                        // Същото правило като при пейста: името, което влиза в Drive, е и името в
-                        // media.txt, и то не бива да повтаря вече заето - иначе текстът търси по него
-                        // и намира чужд файл.
-                        const attachName = nmUniqueAttachmentName(filename);
-                        try {
-                            const fileType = mimeType.startsWith('video') ? 'Video' : (mimeType.startsWith('audio') ? 'Sound' : 'Images');
-                            let targetFolderId = folderIds[fileType] || localStorage.getItem(`gdrive_folder_id_${fileType}`);
-                            if (!targetFolderId) {
-                                targetFolderId = await createNewGDriveFolder(fileType, folderId);
-                                if (targetFolderId) {
-                                    folderIds[fileType] = targetFolderId;
-                                    localStorage.setItem(`gdrive_folder_id_${fileType}`, targetFolderId);
-                                }
-                            }
-                            if (!targetFolderId) throw new Error(`Could not get/create ${fileType} folder`);
-                            const fileGdid = await uploadBlobToGDrive(targetFolderId, attachName, blob, mimeType);
-                            if (!fileGdid) throw new Error(`Upload failed: ${attachName}`);
-                            if (fileType === 'Images') rememberFreshAttachmentBlob(fileGdid, blob);
-                            // Изчакваме бележката да получи gdid (до 30 мин)
-                            const noteGdid = await new Promise(resolve => {
-                                const check = (attempts = 0) => {
-                                    const noteInData = allNotesData.find(n => String(n.id) === String(targetNoteId));
-                                    if (noteInData && noteInData.gdid && typeof noteInData.gdid === 'string' && noteInData.gdid.length > 10) {
-                                        resolve(noteInData.gdid);
-                                    } else if (attempts < 3600) {
-                                        setTimeout(() => check(attempts + 1), 500);
-                                    } else {
-                                        resolve(null);
-                                    }
-                                };
-                                check();
-                            });
-                            if (!noteGdid) {
-                                console.warn(`[ShareTarget] Note gdid timeout for ${attachName}`);
-                                showToast((_('attachLinkFailedMsg') || '⚠️ {name} uploaded, but link to note failed.').replace('{name}', attachName), 7000);
-                                continue;
-                            }
-                            const mediaTypeNum = fileType === 'Images' ? 1 : (fileType === 'Sound' ? 2 : (fileType === 'Video' ? 4 : 5));
-                            const maxMediaId = mediaData.reduce((max, m) => Math.max(max, +(m.id || 0)), 0);
-                            const mediaEntry = {
-                                datemod: now,
-                                description: '',
-                                gdid: '',
-                                id: maxMediaId + 1,
-                                noteid: noteGdid,
-                                path: attachName,
-                                pathGD: fileGdid,
-                                type: mediaTypeNum
-                            };
-                            const mediaFileGdid = await createGDriveFile(folderId, 'media.txt', JSON.stringify(mediaEntry));
-                            if (mediaFileGdid) {
-                                mediaEntry.gdid = mediaFileGdid;
-                                await updateGDriveFile(mediaFileGdid, JSON.stringify(mediaEntry));
-                                mediaData.push(mediaEntry);
-                                if (useIndexedDb) {
-                                    await bulkPutDB(MEDIA_STORE_NAME, [mediaEntry], true);
-                                }
-                                showToast((_('attachSuccessMsg') || '✅ Attached: {name}').replace('{name}', attachName), 3000);
-                                if (typeof refreshNoteUI === 'function') {
-                                    await refreshNoteUI(noteGdid);
-                                } else {
-                                    renderNotes();
-                                }
-                            }
-                        } catch (fileErr) {
-                            console.error(`[ShareTarget] Error processing file ${attachName}:`, fileErr);
-                            showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', fileErr.message), 5000);
-                        }
-                    }
-                } catch (e) {
-                    console.error('[ShareTarget] Error in upload loop:', e);
-                    showToast((_('attachErrorMsg') || '❌ Error: {msg}').replace('{msg}', e.message), 5000);
+                    return new File([sharedFile.blob], sharedFile.filename || 'shared', { type: sharedFile.mimeType || 'application/octet-stream' });
+                } catch (makeFileErr) {
+                    return null;
                 }
-            })();
+            }).filter(Boolean);
+            if (sharedAsFiles.length > 0) {
+                setTimeout(() => { attachFilesToModal(sharedAsFiles); }, 300);
+            }
         }
     }, 500);
+    return true;
 }
 
 // --- Support for LaunchQueue (Modern browsers like Chrome/Edge) ---
@@ -23402,6 +23395,8 @@ const CODE_BLOCK_PLACEHOLDER = '\uE000';
 // Markdown линкът [текст](адрес) също се заменя с ЕДИН символ (друг, за да не се бъркат слотовете)
 // и се връща в готовия низ - виж mdLinkSlots в processNoteContent.
 const MD_LINK_PLACEHOLDER = '\uE001';
+// Линк към картинка на самостоятелен ред става снимка в бележката (вж. nmImagePreviewHtml).
+const IMG_CARD_PLACEHOLDER = '\uE005';
 // Ред, който започва с „/-“, е разделител в Преглед (решение на собственика, 19.11.2026):
 //   /-                тънка линия
 //   /--  /=  /-+      пунктирана, двойна, дебела линия
@@ -23449,6 +23444,59 @@ function insertLinkSlots(html, mdLinkSlots) {
         out += (i - 1 < mdLinkSlots.length ? mdLinkSlots[i - 1] : MD_LINK_PLACEHOLDER) + parts[i];
     }
     return out;
+}
+
+/**
+ * Линк, който сочи точно към картинка (…/gettyimages-2270483.jpg, …/photo.png?w=800).
+ * 24.11.2026, доклад на собственика: споделяне на снимка от сайт стига като ЛИНК, не като файл
+ * (в дебъг панела title=Action, text=…jpg, files=0). Затова линкът се показва като снимка.
+ * Разширението се гледа само в пътя, без ?query и #hash, иначе всеки линк щеше да стане картинка.
+ */
+function nmImageUrlFromLine(url) {
+    const clean = String(url || '').trim();
+    if (!/^https?:\/\/\S+$/i.test(clean)) return null;
+    const path = clean.split('#')[0].split('?')[0];
+    return /\.(jpe?g|png|webp|gif|avif|bmp)$/i.test(path) ? clean : null;
+}
+
+/**
+ * Линк към картинка на самостоятелен ред като снимка в бележката; целият блок е линкът, значи
+ * кликът отваря оригинала. Само се ПОКАЗВА от адреса - сайтът не дава файла на приложението
+ * (fetch е блокиран от CORS), затова в Drive нищо не се сваля.
+ * url е вече екраниран текст (минава през escapeHtml преди това), затова не се екранира втори път.
+ */
+function nmImagePreviewHtml(url) {
+    const src = nmImageUrlFromLine(url);
+    if (!src) return null;
+    return `<a class="nmd-img-card" href="${src}" target="_blank" rel="noopener noreferrer" title="Отвори снимката">` +
+        `<img class="nmd-img-shot" src="${src}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`;
+}
+
+/**
+ * Връща готовите снимки на местата на техните маркери, по ред (вж. nmImagePreviewHtml).
+ */
+function insertImageCards(html, imgCardSlots) {
+    if (!imgCardSlots.length || html.indexOf(IMG_CARD_PLACEHOLDER) === -1) return html;
+    const parts = html.split(IMG_CARD_PLACEHOLDER);
+    let out = parts[0];
+    for (let i = 1; i < parts.length; i++) {
+        out += (i - 1 < imgCardSlots.length ? imgCardSlots[i - 1] : IMG_CARD_PLACEHOLDER) + parts[i];
+    }
+    return out;
+}
+
+/**
+ * Линк към картинка, който стои на самостоятелен ред, се маскира с ЕДИН знак, а готовият блок се
+ * пази по ред. Прави се ПРЕДИ urlRegex, иначе адресът става обикновена котва, а снимката - котва
+ * в котва. Маскира се и в двете места, които правят HTML от текст (модал и борд).
+ */
+function maskImageCardLines(escapedText, imgCardSlots, disabled) {
+    return escapedText.replace(/(^|\n)[ \t]*(https?:\/\/[^\s<]+?)[ \t]*(?=\n|$)/gi, (match, pre, linkUrl) => {
+        const card = disabled ? null : nmImagePreviewHtml(linkUrl);
+        if (!card) return match;
+        imgCardSlots.push(card);
+        return pre + IMG_CARD_PLACEHOLDER;
+    });
 }
 
 /**
@@ -24107,6 +24155,10 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
         });
     }
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
+    // Линк към картинка на самостоятелен ред се маскира преди urlRegex (вж. nmImagePreviewHtml):
+    // иначе адресът става котва, а снимката - котва в котва.
+    const imgCardSlots = [];
+    escapedText = maskImageCardLines(escapedText, imgCardSlots, false);
     if (isForModal || oneTapLinksEnabled) {
         escapedText = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     } else {
@@ -24155,7 +24207,7 @@ function processNoteContent(text, isForModal = false, skipLineBlocks = false, li
     const listMeasureEl = listIndentMeasureEl !== undefined ? listIndentMeasureEl : (isForModal ? getNoteListMeasureEl() : null);
     const processedLines = skipLineBlocks ? lines : wrapNoteLineBlocks(lines, listMeasureEl);
     // Линковете се връщат най-накрая, върху сглобения низ: дотук всеки беше един знак.
-    return insertMdHrLines(insertLinkSlots(processedLines.join('<br>'), mdLinkSlots));
+    return insertImageCards(insertMdHrLines(insertLinkSlots(processedLines.join('<br>'), mdLinkSlots)), imgCardSlots);
 }
 
 function renderNoteContent(text) {
@@ -24172,10 +24224,12 @@ function renderNoteContent(text) {
     const escapedText = escapeHtml(textWithoutCode);
     // Then, find URLs in the *escaped* text and wrap them in <a> tags.
     const urlRegex = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%?=~_|])/ig;
-    let html = escapedText.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    const imgCardSlots = [];
+    const escapedForCards = maskImageCardLines(escapedText, imgCardSlots, false);
+    let html = escapedForCards.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
     html = insertCodeBlocks(html, codeBlocks);
 
-    return html;
+    return insertImageCards(html, imgCardSlots);
 }
 
 // Next mdClear marker (default --) at or after 'from', skipping the dashes of a Markdown table

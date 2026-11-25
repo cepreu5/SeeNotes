@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cx-notes-b3.87';
+const CACHE_NAME = 'cx-notes-b3.88';
 const OFFLINE_PAGE = 'index.html';
 // Демо режимът (index.html?demo=1) не минава през кеша: данните му живеят само в IndexedDB
 // (NotesDB-demo) и нищо не се записва тук. Fetch handler-ът пропуска cross-origin заявки,
@@ -121,6 +121,45 @@ function swLog(...args) {
   }
 }
 
+// Чакащите споделяния се пазят по едно на споделяне, всяко под ключ със своя sid.
+// Така ново споделяне не трие предишното, което приложението още не е взело (иначе снимка,
+// споделена преди приложението да се отвори, изчезва при следващо споделяне).
+const SHARE_PAYLOAD_PREFIX = 'share-payload-';
+const SHARE_FILE_PREFIX = 'shared-file-';
+const SHARE_PAYLOAD_MAX_AGE_MS = 10 * 60 * 1000;
+
+async function removeStaleShares(cache) {
+  try {
+    const keys = await cache.keys();
+    const liveSids = {};
+    for (const key of keys) {
+      const name = (new URL(key.url).pathname.split('/').pop() || '');
+      if (!name.startsWith(SHARE_PAYLOAD_PREFIX)) continue;
+      try {
+        const res = await cache.match(key);
+        const payload = res ? await res.json() : null;
+        if (!payload || !payload.ts || (Date.now() - payload.ts) > SHARE_PAYLOAD_MAX_AGE_MS) {
+          await cache.delete(key);
+        } else {
+          liveSids[payload.sid] = 1;
+        }
+      } catch (e) {
+        await cache.delete(key);
+      }
+    }
+    // Файл без чакащо споделяне е боклук (взет, изтекъл или от стария формат).
+    for (const key of keys) {
+      const name = (new URL(key.url).pathname.split('/').pop() || '');
+      if (!name.startsWith(SHARE_FILE_PREFIX)) continue;
+      const rest = name.slice(SHARE_FILE_PREFIX.length);
+      const sid = rest.slice(0, rest.lastIndexOf('-'));
+      if (!sid || !liveSids[sid]) await cache.delete(key);
+    }
+  } catch (e) {
+    swLog('[SW] Share cleanup failed:', e && e.message);
+  }
+}
+
 self.addEventListener('install', (event) => {
   swLog('[SW] Install event triggered.');
   // Start caching assets without blocking the page load
@@ -203,24 +242,31 @@ self.addEventListener('fetch', (event) => {
           const sid = 'sh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
 
           const cache = await caches.open('share-target-image');
-          const staleKeys = await cache.keys();
-          await Promise.all(staleKeys.map(k => cache.delete(k)));
+          // Ново споделяне НЕ трие предишното, което още не е взето — махат се само изтеклите.
+          await removeStaleShares(cache);
 
           const files = [];
           for (let i = 0; i < imageFiles.length; i++) {
             const f = imageFiles[i];
-            const key = 'shared-file-' + i;
+            const key = SHARE_FILE_PREFIX + sid + '-' + i;
             const name = f.name || ('shared_' + Date.now() + '_' + i);
+            const type = f.type || 'application/octet-stream';
             const headers = new Headers({
-              'Content-Type': f.type || 'application/octet-stream',
+              'Content-Type': type,
               'X-Filename': encodeURIComponent(name)
             });
-            await cache.put(key, new Response(f, { headers }));
-            files.push({ key: key, name: name, type: f.type || 'application/octet-stream' });
+            // Файл, който не се събере в кеша, не бива да отменя цялото споделяне:
+            // записваме грешката и продължаваме, за да стигне поне текстът/линкът.
+            try {
+              await cache.put(key, new Response(f, { headers }));
+              files.push({ key: key, name: name, type: type, size: f.size });
+            } catch (fileErr) {
+              swLog('[SW] Share file not stored:', name, fileErr && fileErr.message);
+            }
           }
 
           const payload = { sid: sid, title: title, text: text, url: sharedUrl, files: files, ts: Date.now() };
-          await cache.put('share-payload', new Response(JSON.stringify(payload), {
+          await cache.put(SHARE_PAYLOAD_PREFIX + sid, new Response(JSON.stringify(payload), {
             headers: { 'Content-Type': 'application/json' }
           }));
           swLog('[SW] Share stored:', sid, files.length, 'file(s)');
