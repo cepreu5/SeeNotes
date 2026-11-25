@@ -16039,6 +16039,9 @@ function renderNoteWindow(options, noteElement = null, win = activeNoteWindow, f
         }
 
         footerToolbar.appendChild(editBtn);
+        // Катинарчето застава на мястото си и в режим преглед (b5.58): след лупата и преди молива,
+        // който в редакция е дискетата. Дотук то се създава преди тези бутони и оставаше най-ляво.
+        if (typeof ensureModalLockButton === 'function') ensureModalLockButton(modalBody, true);
     }
 
     observeModalFooterDateVisibility(footerToolbar);
@@ -33853,7 +33856,12 @@ function ensureModalLockButton(modalBodyElem, hasNote) {
             toggleModalNoteLockPending();
         });
     }
-    toolbar.appendChild(btn);
+    // Мястото е винаги преди последния бутон в лентата: в редакция това е дискетата, в преглед —
+    // моливът. Преди b5.58 бутонът се слагаше най-отзад и в преглед (където лентата се пълни след
+    // него) излизаше най-ляво, до датата. insertBefore на вече добавен възел го мести, не го удвоява.
+    const lastBtn = toolbar.querySelector('#note-save-btn, #note-edit-btn, .nw-note-save-btn, .nw-note-edit-btn');
+    if (lastBtn) toolbar.insertBefore(btn, lastBtn);
+    else toolbar.appendChild(btn);
     syncModalNoteLockBtn(btn);
 }
 

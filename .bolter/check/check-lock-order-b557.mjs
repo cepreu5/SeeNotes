@@ -1,4 +1,5 @@
-// b5.57: катинарчето се мести между лупата (Search) и дискетата (Save) в footer-а на бележката.
+// b5.57 / b5.58: катинарчето седи в footer-а на бележката преди последния бутон — в редакция това е
+// дискетата (b5.57), в режим преглед моливът (b5.58, там преди беше най-ляво до датата).
 //
 // Проверки (в режим на редактиране, където се виждат лупата и дискетата):
 //   1) видимите бутони във footer-а са Move, Calendar, Attach, Preview, Search, Lock, Save;
@@ -8,7 +9,9 @@
 //   5) същото и при съществуваща бележка;
 //   6) същото и в изскачащ прозорец на бележка (note window);
 //   7) в заглавния ред няма второ катинарче;
-//   8) без грешки в конзолата.
+//   8) режим преглед (както собственикът отваря заключена бележка): редът е Move, Calendar, Duplicate,
+//      Search, Lock, Edit и катинарчето е между лупата и молива, не най-ляво;
+//   9) без грешки в конзолата.
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -110,6 +113,7 @@ const readFooter = async () => page.evaluate(() => {
         search: rect('note-search-btn'),
         lock: rect('note-lock-btn'),
         save: rect('note-save-btn'),
+        edit: rect('note-edit-btn'),
         headerLock: !!document.querySelector('[data-mwid="lock-modal-btn"]')
     };
 });
@@ -150,6 +154,34 @@ if (existing.found) checkOrder('съществуваща бележка', existi
 const inWin = await readFooter();
 check('бележката се показва в прозорец и footer-ът е същият',
     inWin.found === true && inWin.inWindow === true, `found=${inWin.found} inWindow=${inWin.inWindow}`);
+
+// 4: режим преглед — точно състоянието, в което собственикът вижда заключена бележка (без клик на
+// молива). Страницата се презарежда, за да няма отворен редактор от предишните случаи. Тук няма
+// дискета, затова катинарчето трябва да е между лупата и молива, а не най-ляво до датата.
+await page.reload({ waitUntil: 'domcontentloaded' });
+await page.waitForFunction(() => typeof window.showModal === 'function', null, { timeout: 20000 });
+await page.evaluate(async (n) => {
+    window.allNotesData = window.allNotesData || [];
+    window.allNotesData.push(n);
+    window.showModal(n);
+    await new Promise(r => setTimeout(r, 700));
+}, { id: 951, gdid: 'order-951', boardid: 'all', status: 0, date: Date.now(), datemod: Date.now(), raw: 'nmenc:v1:AAAA:BBBB:CCCC', title: 'Ключ', pass: true, attachments: [] });
+await page.waitForTimeout(500);
+const preview = await readFooter();
+check('преглед: footer-ът е намерен', preview.found === true);
+if (preview.found) {
+    const pids = preview.ids.map(id => String(id).replace(/^nw-/, ''));
+    check('преглед: редът е Move, Calendar, Duplicate, Search, Lock, Edit',
+        JSON.stringify(pids) === JSON.stringify(['note-move-btn', 'note-calendar-btn', 'note-duplicate-btn', 'note-search-btn', 'note-lock-btn', 'note-edit-btn']),
+        pids.join(' | '));
+    const li = pids.indexOf('note-lock-btn');
+    check('преглед: катинарчето е точно след лупата и точно преди молива',
+        li > 0 && pids[li - 1] === 'note-search-btn' && pids[li + 1] === 'note-edit-btn',
+        pids.slice(Math.max(0, li - 1), li + 2).join(' > '));
+    check('преглед: по геометрия лупа < катинар < молив',
+        !!preview.search && !!preview.lock && !!preview.edit && preview.search.x < preview.lock.x && preview.lock.x < preview.edit.x,
+        `search ${preview.search && preview.search.x} / lock ${preview.lock && preview.lock.x} / edit ${preview.edit && preview.edit.x}`);
+}
 
 check('без грешки в конзолата', errors.length === 0, errors.slice(0, 3).join(' / '));
 
