@@ -14,7 +14,6 @@ if (!chromium) { console.error('playwright не се намира'); process.exi
 
 const URL = process.env.PAGE || 'http://127.0.0.1:8099/nomn/index.html';
 const LOCKED_PATH = 'M7 11V7a5 5 0 0 1 10 0v4';
-const UNLOCKED_PATH = 'M7 11V7a5 5 0 0 1 9.9-1';
 let pass = 0, fail = 0;
 const check = (name, ok, extra) => {
     if (ok) { pass++; console.log('ok   ' + name); }
@@ -74,6 +73,7 @@ await page.evaluate(() => {
             shown: btn.dataset.nmEncLockShown || '',
             path: svg && svg.querySelector('path') ? svg.querySelector('path').getAttribute('d') : '',
             hasRect: !!(svg && svg.querySelector('rect')),
+            slash: !!(svg && svg.querySelector('line')),
             svgCount: btn.querySelectorAll('svg').length,
             title: btn.title || '',
             bg: getComputedStyle(btn).backgroundColor,
@@ -107,8 +107,8 @@ const step1 = await page.evaluate(async () => {
     await window.__openLocked(910001, 'Тайно тяло');
     return { needs: activeNoteWindow.body.dataset.nmEncNeedsPassword || '', btn: window.__lockBtnState() };
 });
-check('1 заключена бележка в преглед: катинарчето е заключено',
-    step1.btn.shown === 'locked' && step1.btn.path === LOCKED_PATH && step1.btn.hasRect, step1.btn);
+check('1 заключена бележка в преглед: катинарчето е заключено (без черта)',
+    step1.btn.shown === 'locked' && step1.btn.path === LOCKED_PATH && step1.btn.hasRect && step1.btn.slash === false, step1.btn);
 
 const step2 = await page.evaluate(async () => {
     document.getElementById('note-lock-btn').click();
@@ -124,9 +124,9 @@ const step3 = await page.evaluate(async () => {
     await new Promise(r => setTimeout(r, 800));
     return { btn: window.__lockBtnState(), titleField: !!document.getElementById('note-edit-title-textarea') };
 });
-check('3 в режим редакция катинарчето е отключено',
-    step3.btn.shown === 'unlocked' && step3.btn.path === UNLOCKED_PATH && step3.btn.editing === true, step3.btn);
-check('4 картинката е отключено катинарче, а надписът казва „Заключи“',
+check('3 в режим редакция катинарчето е отключено (задраскано)',
+    step3.btn.shown === 'unlocked' && step3.btn.path === LOCKED_PATH && step3.btn.slash === true && step3.btn.editing === true, step3.btn);
+check('4 картинката е задраскано катинарче, а надписът казва „Заключи“',
     step3.btn.svgCount === 1 && /Заключи/.test(step3.btn.title), step3.btn);
 
 const step4 = await page.evaluate(async () => {
@@ -185,8 +185,8 @@ const step7 = await page.evaluate(async () => {
 });
 check('9 в редакция на заключена бележка катинарчето е отключено, а Запис я оставя отключена',
     step7.inPreview === 'locked' && step7.inEdit === 'unlocked' && step7.pass === false, step7);
-check('10 след Запис катинарчето в преглед е отключено',
-    step7.after.shown === 'unlocked' && step7.after.path === UNLOCKED_PATH, step7.after);
+check('10 след Запис катинарчето в преглед е отключено (задраскано)',
+    step7.after.shown === 'unlocked' && step7.after.path === LOCKED_PATH && step7.after.slash === true, step7.after);
 check('11 фонът на катинарчето не се сменя', step7.after.bg === step7.after.saveBg, [step7.after.bg, step7.after.saveBg]);
 
 // --- Д. отключена бележка: пак отключено катинарче, а натискането заключва
