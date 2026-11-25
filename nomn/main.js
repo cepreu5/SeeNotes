@@ -628,6 +628,9 @@ const noteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
 const clockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 15" /></svg>`;
 const lockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
 const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2.4" stroke="currentColor" fill="none"><circle class="pin-dot" cx="12" cy="12" r="7"></circle></svg>`;
+// Отключено катинарче (b5.63): същата каса, но скобата е отворена надясно. Решение на собственика
+// (25.11.2026): състоянието на катинарчето във footer-а се вижда по картинката, не по фон.
+const unlockIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>`;
 
 /* ---------------------------------------------------------------------------------------------
    Криптиране на заключените бележки (b5.53).
@@ -33570,6 +33573,10 @@ function saveEditedNote(forceClose = false) {
             // footer-а) — pass:false, за да не остане бележка с шифротекст и pass:false.
             if (!isNewNote) noteObj.pass = isEncLockedSave;
             else if (isEncLockedSave) noteObj.pass = true;
+            // b5.63: намерението от катинарчето живее само до записа. След него състоянието е в самата
+            // бележка; иначе „заключена“ остава за постоянно и катинарчето в редакция не се отваря.
+            delete modalBodyElem.dataset.nmEncPending;
+            delete modalBodyElem.dataset.nmEncPendingKey;
             noteObj.color = newColor;
             noteObj.text_span = finalFormat;
             noteObj.title_span = finalTitleFormat;
@@ -33806,11 +33813,25 @@ function nmEncModalLockTarget() {
     const noteObj = nmEncModalNoteObj();
     return !!(noteObj && noteObj.pass === true);
 }
+// Какво показва катинарчето във footer-а (b5.63). Решение на собственика (25.11.2026): картинката
+// е отключено или заключено катинарче, не фон. Показва се състоянието, което бележката ще има
+// СЛЕД Запис: в режим редакция заключена бележка се записва отключена (saveEditedNote вдига
+// pass на false, освен ако катинарчето изрично не е натиснато), затова там то е отключено.
+function nmEncModalLockShown() {
+    const modalBodyElem = document.getElementById('modal-body');
+    if (!modalBodyElem) return false;
+    const pending = nmEncPendingLockState(modalBodyElem);
+    if (pending === 'lock') return true;
+    if (pending === 'unlock') return false;
+    if (document.getElementById('note-edit-textarea')) return false;
+    return nmEncModalLockTarget();
+}
 function syncModalNoteLockBtn(btn) {
     const el = btn || document.getElementById('note-lock-btn');
     if (!el) return;
-    const locked = nmEncModalLockTarget();
-    el.classList.toggle('nw-lock-on', locked);
+    const locked = nmEncModalLockShown();
+    el.innerHTML = locked ? lockIconSvg : unlockIconSvg;
+    el.dataset.nmEncLockShown = locked ? 'locked' : 'unlocked';
     el.title = locked ? (_('unlockNoteTooltip') || 'Отключи бележката') : (_('lockNoteTooltip') || 'Заключи бележката');
 }
 // Поле за заглавие в отворения модал (b5.56). Решение на собственика (25.11.2026): при натискане на
@@ -33840,7 +33861,10 @@ async function toggleModalNoteLockPending() {
         await nmEncRevealModalNote(modalBodyElem);
         return;
     }
-    const wantLock = !nmEncModalLockTarget();
+    // b5.63: натискането сменя показаното състояние — отключено катинарче заключва, заключено
+    // отключва. В режим редакция то показва какво ще стане със Запис, значи там натискането
+    // заключва (преди натискането в редакция само отключваше, колкото и Запис).
+    const wantLock = !nmEncModalLockShown();
     // Режим преглед (без редактор): няма какво да се записва през saveEditedNote, затова бележката
     // се заключва или отключва направо в записа.
     const hasEditor = !!document.getElementById('note-edit-textarea');

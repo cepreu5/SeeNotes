@@ -186,13 +186,16 @@ const locked = await page.evaluate(async () => {
     leaks: stored.indexOf('Съдържание, което') !== -1,
     title: stored.split('|')[0],
     cardText: card ? card.textContent : '',
-    btnOn: btn.classList.contains('nw-lock-on')
+    // b5.63: състоянието се вижда по картинката (отключено/заключено катинарче), не по фон.
+    // Бутонът се чете наново, защото след записа модалът се строи отново.
+    btnOn: (() => { const el = document.getElementById('note-lock-btn'); return el ? el.dataset.nmEncLockShown === 'locked' : null; })(),
+    btnIcon: (() => { const el = document.getElementById('note-lock-btn'); const p = el && el.querySelector('svg path'); return p ? p.getAttribute('d') : ''; })()
   };
 });
 check('катинарчето заключва бележката', locked.pass === true);
 check('записът в паметта/БД е шифротекст', locked.hasMarker && !locked.leaks);
 check('картата на борда не показва шифротекст', !/nmenc:1:/.test(locked.cardText) && !/Съдържание, което/.test(locked.cardText), locked.cardText.slice(0, 60));
-check('бутонът показва заключено състояние', locked.btnOn === true);
+check('бутонът показва заключено катинарче (b5.63)', locked.btnOn === true && locked.btnIcon === 'M7 11V7a5 5 0 0 1 10 0v4', locked);
 
 // 6: отваряне на заключена бележка (b5.56: тялото излиза с катинарчето)
 const reopened = await page.evaluate(async () => {
