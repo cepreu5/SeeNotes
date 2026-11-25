@@ -94,6 +94,7 @@
     "lockPassResetBtn": "Reset",
     "lockPassNew": "New password for locked notes (remembered until the app is closed):",
     "lockPassChanged": "The password has been changed and is remembered until the app is closed.",
+    "lockPassCleared": "The password is no longer remembered. Opening a locked note will ask for it again.",
     "noteWillLock": "Type a title and tap Save — the note will be locked.",
     "noteLockedOpenFirst": "Tap the padlock to see the text of a locked note.",
     "arhLoadDone": "Loaded {boards} boards and {notes} notes from the archive.",

@@ -673,7 +673,15 @@ document.addEventListener('click', async (e) => {
     if (!target) return;
     e.preventDefault();
     const newPass = await showPrompt(_('lockPassNew') || 'Нова парола за заключените бележки (помни се до затваряне на приложението):');
-    if (!newPass) return; // отказ или празно поле: нищо не се променя
+    if (!newPass) {
+        // Отказ или празно поле (решение на собственика, 25.11.2026): запазената парола се маха заедно
+        // с изведените ключове. Преди това Отказ не променяше нищо и старата парола оставаше в сила,
+        // значи нулирането не можеше да се отмени наистина.
+        nmEncSetStoredPassword('');
+        nmEncKeyCache.clear();
+        showToast(_('lockPassCleared') || 'Паролата не се помни. При отваряне на заключена бележка ще се пита отново.', 4000);
+        return;
+    }
     nmEncSetStoredPassword(newPass);
     nmEncKeyCache.clear();
     showToast(_('lockPassChanged') || 'Паролата е сменена и се помни до затваряне на приложението.', 4000);
