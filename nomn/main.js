@@ -7394,12 +7394,42 @@ function showSyncChoiceModal(noteSummary) {
         popup.classList.add('show');
     });
 }
+/**
+ * b5.72: отделно поле за питането за парола. Създава се наново при всяко отваряне и се маха при
+ * затваряне, за да няма браузърът спомен за него — иначе Chrome предлага последните въведени
+ * текстове отдолу (собственикът, 25 Nov 2026: „да получава свое отделно поле, създадено наново
+ * при всяко отваряне, за да няма какво да предлага браузърът“). Произволното name е нужно, защото
+ * Chrome помни автопопълването по name/id, а не по самия елемент.
+ * @param {HTMLInputElement} sharedInput - Общото поле, което застава на мястото на новото.
+ * @returns {HTMLInputElement} Новото поле, вече сложено в реда.
+ */
+function makeFreshPromptInput(sharedInput) {
+    const fresh = document.createElement('input');
+    fresh.id = 'folderIdInput';
+    fresh.type = 'password';
+    fresh.setAttribute('autocomplete', 'new-password');
+    fresh.setAttribute('name', 'nm-pass-' + Math.random().toString(36).slice(2, 10));
+    fresh.setAttribute('spellcheck', 'false');
+    fresh.setAttribute('autocorrect', 'off');
+    fresh.setAttribute('autocapitalize', 'off');
+    if (sharedInput && sharedInput.parentNode) {
+        sharedInput.parentNode.replaceChild(fresh, sharedInput);
+    }
+    return fresh;
+}
+
 function showPrompt(message, defaultValue = '', isPassword = false) {
     return new Promise(resolve => {
         const popup = document.getElementById('folderIdPromptPopup');
         const messagePara = popup.querySelector('p');
         const okButton = document.getElementById('submitFolderIdBtn');
-        const folderIdInput = document.getElementById('folderIdInput');
+        // b5.72: при питането за парола полето е СВОЕ, ново — общото поле служеше и за име на
+        // папка, и за парола, затова браузърът пазеше историята му и я показваше отдолу.
+        const sharedInput = document.getElementById('folderIdInput');
+        let folderIdInput = sharedInput;
+        if (isPassword) {
+            folderIdInput = makeFreshPromptInput(sharedInput);
+        }
         // b5.65: поле за парола. Собственикът, 25 Nov 2026: „тук да не се показват отдолу
         // последните въведени текстове/парола — полето да е тип password“. Затова полето
         // става type=password, а autocomplete=new-password казва на Chrome да не предлага
@@ -7471,6 +7501,12 @@ function showPrompt(message, defaultValue = '', isPassword = false) {
             okButton.removeEventListener('click', onOk);
             noButton.removeEventListener('click', onCancel);
             folderIdInput.removeEventListener('keydown', onKeyDown);
+            // b5.72: новото поле се маха и общото се връща на мястото му, за да работят
+            // попъпите за папка както досега.
+            if (folderIdInput !== sharedInput) {
+                if (folderIdInput.parentNode) folderIdInput.parentNode.replaceChild(sharedInput, folderIdInput);
+                folderIdInput = sharedInput;
+            }
             noButton.style.display = 'none';
             // b5.22: връщаме „Отказ“ след „Потвърди“, за да не се мести в другите попъпи.
             okButton.parentNode.appendChild(noButton);

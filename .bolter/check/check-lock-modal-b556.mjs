@@ -59,6 +59,7 @@ const initScript = (password) => {
         setInterval(() => {
             const popup = document.getElementById('folderIdPromptPopup');
             if (!popup || !popup.classList.contains('show')) return;
+            const input = document.getElementById('folderIdInput'); // b5.72: полето се пресъздава при всяко отваряне, затова се търси наново
             if (input && ok && !input.value) {
                 window.__nmPromptCount++;
                 input.value = window.__nmTestPassword;
