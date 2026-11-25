@@ -150,8 +150,9 @@ check('D. отстъп няма, ако няма застъпване', d1.baseH
 
 // H. Обратният случай: иконата е сложена ТОЧНО върху бутон на бележката - трябва да се вдигне и да го подмине.
 const h1 = await page.evaluate(async () => {
-    // Застъпването се проверява при разпъната бележка - там редът с бутоните е на екрана.
-    if (!document.body.classList.contains('modal-note-expanded')) {
+    // b5.69: разпънатата бележка минава НАД иконата, значи тогава няма застъпване за подминаване.
+    // Затова застъпването се проверява при СВИТА (обикновена) бележка.
+    if (document.body.classList.contains('modal-note-expanded')) {
         document.getElementById('modal-expand-btn')?.click();
         await new Promise(r => setTimeout(r, 600));
     }

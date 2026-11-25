@@ -12113,6 +12113,11 @@ function applyExpandedModalSize(modalContentBox, isExpanded) {
 // Основното място се смята, като от мереното се свали вече приложеният отстъп (translate). По-рано мереното
 // се връщаше с число, а иконата има transition: all .3s - значи меренето при преход хващаше междинна
 // стойност и всеки клик местеше иконата с няколко пиксела.
+// b5.69 (собственик, 25.11.2026): „мести се с две стъпки - веднъж заради лентата и може би веднъж заради
+// бутоните на бележката и отива много над лентата“. Причината беше същата анимация: докато иконата пътуваше
+// над лентата, меренето я хващаше още върху плочките ѝ, даваше отстъп, а след прехода го махаше. Затова
+// в style.css местенето вече не се анимира (bottom и translate сменят мястото веднага) - меренето вижда
+// само окончателното място и втора стъпка няма.
 const EXPANDED_FAB_LIFT_CLASS = 'modal-note-expanded-fab-lift';
 /** Въздухът между иконата и бутона, който тя подминава. */
 const FAB_AVOID_GAP = 8;
@@ -12183,13 +12188,16 @@ function fabAvoidLift(base, rects) {
 /**
  * Отстъпът на иконата на асистента се смята наново при всяка промяна (разпъване, свиване, лента, завъртане,
  * скрол, клик) - но иконата се мести САМО когато основното ѝ място закрива бутон.
+ * Докато бележката е разпъната на цял екран, тя минава НАД иконата (body.modal-note-expanded в style.css,
+ * b5.69), значи хартията я закрива цялата - няма какво да се подминава и иконата не се мести.
  */
 function syncExpandedFabLift() {
     if (!document.body) return;
     const fab = document.getElementById('kb-fab');
     let lift = 0;
+    const noteOnTop = document.body.classList.contains('modal-note-expanded');
     // Скрита икона (hideAssistant) няма какво да закрива.
-    if (fab && getComputedStyle(fab).display !== 'none' && fab.getBoundingClientRect().width > 0) {
+    if (!noteOnTop && fab && getComputedStyle(fab).display !== 'none' && fab.getBoundingClientRect().width > 0) {
         const base = fabBaseRect(fab);
         lift = fabAvoidLift(base, fabProtectedRects());
         // Иконата не се вдига извън екрана: вдигането спира, когато горният ѝ ръб стигне до ръба на екрана.
