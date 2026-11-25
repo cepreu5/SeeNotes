@@ -676,7 +676,7 @@ document.addEventListener('click', async (e) => {
     const target = e.target && e.target.closest ? e.target.closest('#lock-pass-reset-btn') : null;
     if (!target) return;
     e.preventDefault();
-    const newPass = await showPrompt(_('lockPassNew') || 'Нова парола за заключените бележки (помни се до затваряне на приложението):');
+    const newPass = await showPrompt(_('lockPassNew') || 'Нова парола за заключените бележки (помни се до затваряне на приложението):', '', true);
     if (!newPass) {
         // Отказ или празно поле (решение на собственика, 25.11.2026): запазената парола се маха заедно
         // с изведените ключове. Преди това Отказ не променяше нищо и старата парола оставаше в сила,
@@ -751,7 +751,7 @@ async function nmEncKeyForSalt(saltB64, askMessage, forcePrompt) {
         nmEncKeyCache.set(saltB64, key);
         return key;
     }
-    const password = await showPrompt(askMessage || (_('passAsk') || 'Парола за заключените бележки:'));
+    const password = await showPrompt(askMessage || (_('passAsk') || 'Парола за заключените бележки:'), '', true);
     if (!password) return null;
     // b5.56: попитаната парола се помни в променливата за сесията. Решение на собственика
     // (25.11.2026): не се пита при всяко заключване, а само първия път.
@@ -7394,12 +7394,51 @@ function showSyncChoiceModal(noteSummary) {
         popup.classList.add('show');
     });
 }
-function showPrompt(message, defaultValue = '') {
+function showPrompt(message, defaultValue = '', isPassword = false) {
     return new Promise(resolve => {
         const popup = document.getElementById('folderIdPromptPopup');
         const messagePara = popup.querySelector('p');
         const okButton = document.getElementById('submitFolderIdBtn');
         const folderIdInput = document.getElementById('folderIdInput');
+        // b5.65: поле за парола. Собственикът, 25 Nov 2026: „тук да не се показват отдолу
+        // последните въведени текстове/парола — полето да е тип password“. Затова полето
+        // става type=password, а autocomplete=new-password казва на Chrome да не предлага
+        // запазени пароли и предишни въведени текстове; при затваряне се връща текст.
+        folderIdInput.type = isPassword ? 'password' : 'text';
+        folderIdInput.autocomplete = isPassword ? 'new-password' : 'off';
+        folderIdInput.spellcheck = !isPassword;
+        folderIdInput.setAttribute('autocorrect', 'off');
+        folderIdInput.setAttribute('autocapitalize', 'off');
+        // b5.66: око до полето. Собственикът: „сега паролата не се вижда като пишеш“ — затова
+        // маскираното поле има бутон, който показва написаното, без да пуска подсказките на Chrome.
+        const eyeBtn = document.getElementById('prompt-eye-btn');
+        const eyeOff = eyeBtn ? eyeBtn.querySelector('.prompt-eye-off') : null;
+        const eyeOn = eyeBtn ? eyeBtn.querySelector('.prompt-eye-on') : null;
+        const setEye = (shown) => {
+            folderIdInput.type = (isPassword && !shown) ? 'password' : 'text';
+            if (!eyeBtn) return;
+            if (eyeOff) eyeOff.hidden = !!shown;
+            if (eyeOn) eyeOn.hidden = !shown;
+            const label = shown
+                ? ((typeof _ === 'function' && _('lockEyeHide')) || 'Скрий паролата')
+                : ((typeof _ === 'function' && _('lockEyeShow')) || 'Покажи паролата');
+            eyeBtn.title = label;
+            eyeBtn.setAttribute('aria-label', label);
+            eyeBtn.setAttribute('aria-pressed', shown ? 'true' : 'false');
+        };
+        if (eyeBtn) {
+            eyeBtn.hidden = !isPassword;
+            setEye(false);
+        }
+        const onEyeClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setEye(folderIdInput.type === 'password');
+            folderIdInput.focus();
+            const end = folderIdInput.value.length;
+            try { folderIdInput.setSelectionRange(end, end); } catch (err) { }
+        };
+        if (eyeBtn) eyeBtn.addEventListener('click', onEyeClick);
         let noButton = document.getElementById('prompt-no-btn');
         if (!noButton) {
             noButton = document.createElement('button');
@@ -7428,6 +7467,15 @@ function showPrompt(message, defaultValue = '') {
             okButton.parentNode.appendChild(noButton);
             noButton.style.marginLeft = '10px';
             noButton.style.marginRight = '';
+            // b5.65: полето се връща на текст, за да не остане парола и в попъпите за папки.
+            folderIdInput.type = 'text';
+            folderIdInput.autocomplete = 'off';
+            folderIdInput.spellcheck = true;
+            // b5.66: окото се крие и се откача, за да не работи в следващия попъп.
+            if (eyeBtn) {
+                eyeBtn.removeEventListener('click', onEyeClick);
+                eyeBtn.hidden = true;
+            }
             okButton.addEventListener('click', handleSubmitFolderId);
         };
         const onOk = () => {

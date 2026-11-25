@@ -2926,6 +2926,47 @@ code {
     background-color: #357ae8;
 }
 
+/* Око до полето за парола (b5.66). Собственикът: „полето да е тип password“ (без подсказки),
+   после „сега паролата не се вижда като пишеш“ — затова маскираното поле има бутон, който
+   показва написаното, без да връща подсказките на Chrome. */
+.folder-id-prompt-popup .prompt-input-row {
+    position: relative;
+    width: 100%;
+}
+
+.folder-id-prompt-popup #folderIdInput {
+    box-sizing: border-box;
+    width: calc(100% - 20px);
+    padding-right: 44px;
+}
+
+.folder-id-prompt-popup #prompt-eye-btn {
+    position: absolute;
+    right: 14px;
+    top: 0;
+    bottom: 20px;
+    width: 38px;
+    height: auto;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.folder-id-prompt-popup #prompt-eye-btn[hidden] {
+    display: none;
+}
+
+.folder-id-prompt-popup #prompt-eye-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
 
 
 
@@ -4807,8 +4848,33 @@ body.selection-locked .note.active-selection-note .note-content {
 }
 
 #delete-folder-wrapper,
-#arh-db-wrapper {
+#arh-db-wrapper,
+#lock-pass-wrapper {
     padding-right: var(--settings-btn-inset);
+}
+
+/* „Парола за бележките“ (b5.65): собственикът поиска етикетът да е на един ред, а „Нулиране“
+   да застане вдясно като другите бутони. Етикетът беше с inline flex-basis 122px и се чупеше
+   на три реда, а бутонът стоеше по средата. Сега етикетът не се чупи, заема само колкото му
+   трябва, а бутонът го избутва до дясната колона (margin-left:auto) — същата, в която са
+   „Изтрий“ и „Зареждане от архив“. */
+#lock-pass-label {
+    flex: 0 0 auto;
+    font-size: 15px;
+    margin-right: 0;
+    white-space: nowrap;
+}
+
+#lock-pass-reset-btn {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    height: 38px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    white-space: nowrap;
 }
 
 /* Под 360px редът на архива не се побира: бутонът минава на втори ред и пак остава
@@ -4820,7 +4886,8 @@ body.selection-locked .note.active-selection-note .note-content {
     }
 
     #delete-folder-wrapper,
-    #arh-db-wrapper {
+    #arh-db-wrapper,
+    #lock-pass-wrapper {
         flex-wrap: wrap;
         row-gap: 6px;
     }
