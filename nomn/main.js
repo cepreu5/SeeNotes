@@ -31402,11 +31402,22 @@ document.addEventListener('beforeinput', (e) => {
     refreshNoteEditBackdrops(ctx);
 });
 
+// The editor field the caret was last in. A press on a toolbar button takes the focus away from the
+// textarea before its handler runs, and the hidden note textarea (#note-edit-textarea) keeps a caret
+// of its own - the end of the note while its table fields are open. So a press falls back to the
+// field that had the caret, not to the hidden textarea (a paste then landed under the table, b5.68).
+let lastNoteEditField = null;
+document.addEventListener('focusin', (event) => {
+    const el = event.target;
+    if (isNoteEditBodyField(el) || el?.id === 'note-edit-title-textarea') lastNoteEditField = el;
+}, true);
+
 function getActiveModalEditor() {
     const activeElement = document.activeElement;
     if (isNoteEditBodyField(activeElement) || activeElement?.id === 'note-edit-title-textarea') {
         return activeElement;
     }
+    if (lastNoteEditField && lastNoteEditField.isConnected) return lastNoteEditField;
     return document.getElementById('note-edit-textarea') || document.getElementById('note-edit-title-textarea');
 }
 
