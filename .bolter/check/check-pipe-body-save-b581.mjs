@@ -1,8 +1,7 @@
-// b5.80: бележка със заглавие преди '|'. Записът (postEditNoteState) пази text_span спрямо
-// ЦЯЛОТО тяло след чертата, а бордът и модалът показват тялото с изрязани интервали след чертата.
-// Затова: смъква се САМО този интервал (leadWs), не заглавието; Редактиране не смъква нищо,
-// значи Запис без промяна връща същите граници.
-// Run: node .bolter/check/check-pipe-body-save-b580.mjs
+// b5.81: бележка със заглавие преди '|'. Записът пази text_span в координати на текста пред
+// чертата (заглавие + тяло), затова бордът и модалът смъкват изрязаното, Редактиране смъква
+// същото за полетата, а Запис го ВРЪЩА обратно — Запис без промяна не бива да мести форматите.
+// Run: node .bolter/check/check-pipe-body-save-b581.mjs
 import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,10 +53,10 @@ const board = await page.evaluate(async () => {
     const b = (Array.isArray(boardsData) && boardsData[0]) ? boardsData[0] : { gdid: null };
     const host = document.getElementById('notes-container');
     const notes = [
-        // „Това | е bold текст": тялото е " е bold текст", bold е на 3..7
-        { gdid: 'p-space', id: 920001, txt: 'Това | е bold текст', span: JSON.stringify({ start: 3, end: 7, type: 1 }) },
-        // без интервал след чертата
-        { gdid: 'p-tight', id: 920002, txt: 'Заглавие|дебел текст и още', span: JSON.stringify({ start: 0, end: 5, type: 1 }) },
+        // „Това | е bold текст": заглавие 5 знака + черта, bold е на 3..7 в тялото → 9..13 в записа
+        { gdid: 'p-space', id: 920001, txt: 'Това | е bold текст', span: JSON.stringify({ start: 9, end: 13, type: 1 }) },
+        // без интервал след чертата: 8 знака заглавие + черта → 9..14
+        { gdid: 'p-tight', id: 920002, txt: 'Заглавие|дебел текст и още', span: JSON.stringify({ start: 9, end: 14, type: 1 }) },
         // без '|' — първият ред е заглавие, границите са спрямо целия текст
         { gdid: 'p-plain', id: 920003, txt: 'Първи ред\nдебел текст и още', span: JSON.stringify({ start: 10, end: 15, type: 1 }) }
     ];
@@ -100,7 +99,7 @@ const roundtrip = await page.evaluate(async () => {
     const obj = {
         alarm_type: -1, boardid: b.gdid, calendarDate: 0, color: 0, date: Date.now(), datemod: Date.now(),
         eventId: 0, gdid: 'rt-space', id: 920101, notetxt: 'Това | е bold текст',
-        numord: 920101, sellist: 0, status: 0, text_span: JSON.stringify({ start: 3, end: 7, type: 1 }),
+        numord: 920101, sellist: 0, status: 0, text_span: JSON.stringify({ start: 9, end: 13, type: 1 }),
         title_span: '', timer: 0, timer_type: -1, timer_val: 1, type: 0, version: 244
     };
     allNotesData.push(obj);
@@ -155,7 +154,7 @@ check('редактор: тялото е „ е bold текст"', roundtrip.edi
 check('редактор: границите не се местят (3..7)', pf && pf.start === 3 && pf.end === 7, roundtrip.editor.formatParsed);
 const af = roundtrip.after && roundtrip.after.span;
 const afParsed = af ? JSON.parse('[' + af.replace(/\|$/, '').split(/[|\n]/).filter(Boolean).join(',') + ']')[0] : null;
-check('Запис без промяна: границите остават 3..7', afParsed && afParsed.start === 3 && afParsed.end === 7, af);
+check('Запис без промяна: границите остават 9..13', afParsed && afParsed.start === 9 && afParsed.end === 13, af);
 check('Запис без промяна: текстът остава същият', roundtrip.after && roundtrip.after.txt === roundtrip.start.txt, roundtrip.after);
 check('след Запис бордът пак показва болд „bold"', roundtrip.afterBoard.boldText === 'bold', roundtrip.afterBoard);
 
