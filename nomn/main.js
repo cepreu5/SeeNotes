@@ -23026,7 +23026,7 @@ function restoreLinkMarkers(text, formats, maskedLinks) {
 // собственика 26 Nov 2026: „границите се коригират с дължината на текста преди | плюс 1 заради самата
 // черта“). Затова при показване ВСЯКА граница се смъква с изрязаното заглавие: показаното тяло е
 // изрязано и от интервала след чертата, значи смъкването е (дължината на заглавието + този интервал),
-// което при един интервал е точно дължината пред '|' плюс 1 (b5.77). В полето за редактиране тялото е
+// което при един интервал е точно дължината пред '|' (b5.78: минус 1, защото записът брои и чертата). В полето за редактиране тялото е
 // изрязано само с чертата, значи там смъкването е само дължината на заглавието.
 // Дотук картата и модалът приемаха форматите за тяло-относителни и bold падаше върху друга дума.
 function nmParseFormats(formatString) {
@@ -23079,9 +23079,9 @@ function getFormattedNoteHtmlBase(rawContent, formatString = null, titleFormatSt
         const leadWs = rawBodyFull.length - rawBodyFull.replace(/^\s+/, '').length;
         const rawBody = rawBodyFull.slice(leadWs);
         // Границите са спрямо текста преди чертата: смъкват се с изрязаното заглавие и интервала
-        // след чертата (b5.77, картата показва същото изрязано тяло, за да съвпадат координатите).
+        // след чертата, минус 1 (b5.78: записът брои и самата черта; картата показва същото изрязано тяло).
         if (formatString) {
-            formatString = nmShiftFormatsToBody(formatString, pipeIndex + leadWs, rawBody.length);
+            formatString = nmShiftFormatsToBody(formatString, pipeIndex + leadWs - 1, rawBody.length);
         }
         const titleStripped = stripLinkMarkersForDisplay(rawContent.substring(0, pipeIndex), titleFormatString);
         const bodyStripped = stripLinkMarkersForDisplay(rawBody, formatString);
@@ -26245,9 +26245,9 @@ async function createNoteElement(noteContent) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
             // Колко текст е изрязан пред показаното тяло: заглавието и интервала след чертата. Толкова
-            // се смъкват и границите на форматите, защото те сочат текста преди чертата (b5.77).
+            // се смъкват и границите на форматите, защото те сочат текста преди чертата, минус 1 (b5.78).
             const afterPipe = fileContent.substring(pipeIndex + 1);
-            pipeBodyStart = pipeIndex + (afterPipe.length - afterPipe.replace(/^\s+/, '').length);
+            pipeBodyStart = pipeIndex + (afterPipe.length - afterPipe.replace(/^\s+/, '').length) - 1;
             isPipeBodyContent = true;
         } else if (isType1Note) {
             const titleLine = titleLineFor(fileContent);
@@ -30241,10 +30241,10 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             titleText = bodyText.substring(0, pipeIdx);
             bodyText = bodyText.substring(pipeIdx + 1);
             // Границите в записа сочат текста преди чертата, а полето показва тялото без заглавието
-            // и без чертата — значи се смъкват с дължината на заглавието (b5.77). Иначе bold стои
+            // и без чертата — значи се смъкват с дължината на заглавието минус 1 (b5.78). Иначе bold стои
             // на друга дума още в Редактиране и записът затвърждава грешното място.
             if (currentBodyFormats.length) {
-                const shifted = nmShiftFormatsToBody(stringifyFormatsArray(currentBodyFormats), pipeIdx, bodyText.length);
+                const shifted = nmShiftFormatsToBody(stringifyFormatsArray(currentBodyFormats), pipeIdx - 1, bodyText.length);
                 currentBodyFormats = parseFormatsString(shifted);
             }
         }
