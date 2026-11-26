@@ -23022,28 +23022,46 @@ function restoreLinkMarkers(text, formats, maskedLinks) {
 }
 // --- end link markers ---
 
-// Чертите в ТЯЛОТО на бележка, която вече има заглавие преди '|', не делят нищо повече: картата е
-// взела заглавието, а getFormattedNoteHtml би счел първата черта в тялото за втори разделител и би
-// приложил форматите към частта след нея (b5.75, доклад на собственика: bold падаше върху грешна
-// дума). Затова тук такива черти се обръщат в нов ред ОЩЕ ПРЕДИ форматирането — дължината не се
-// променя, значи позициите в text_span остават вярни. Чертите в таблица, код и {{...}} не се пипат.
-function nmBodyPipesToNewlines(text) {
-    if (!text || !text.includes('|')) return text;
-    const tables = (typeof parseAllMarkdownTables === 'function') ? parseAllMarkdownTables(text) : [];
-    let maskedText = text.replace(/\{\{([\s\S]*?)\}\}/g, m => m.replace(/[^\r\n]/g, ' '));
-    maskedText = maskedText.replace(/```([\s\S]*?)```/g, m => m.replace(/[^\r\n]/g, ' '));
-    maskedText = maskedText.replace(/`([^`\r\n]+)`/g, m => ' '.repeat(m.length));
-    let out = '';
-    let currentLine = 0;
-    for (let i = 0; i < text.length; i++) {
-        if (maskedText[i] === '\n') currentLine++;
-        if (maskedText[i] === '|' && !tables.some(t => currentLine >= t.startIndex && currentLine <= t.endIndex)) {
-            out += '\n';
-        } else {
-            out += text[i];
-        }
+// Границите на форматите в text_span са спрямо ЦЕЛИЯ текст на бележката, а чертата '|' дели заглавие
+// от тяло — значи заглавието се изрязва от тялото и ВСЯКА граница трябва да се смъкне с дължината на
+// изрязаното (b5.76, указание на собственика 26 Nov 2026: „всички граници трябва да се коригират с
+// дължината на преместения като заглавие текст“). Дотук картата приемаше форматите за тяло-относителни
+// и bold падаше върху друга част от текста.
+// Запис, който приложението е правило през полето за заглавие, пази форматите тяло-относителни
+// (вж. postEditNoteState: title_span се пише отделно) — там няма какво да се смъква.
+function nmParseFormats(formatString) {
+    if (!formatString) return [];
+    const body = formatString.endsWith('|') ? formatString.slice(0, -1) : formatString;
+    return body.split(/[|\n]/).map(f => {
+        try { return JSON.parse(f); } catch (e) { return null; }
+    }).filter(f => f && f.start !== undefined && f.end !== undefined);
+}
+
+// Форматите са в координати на целия текст, когато някоя граница излиза извън тялото: запис, който
+// приложението е направило, държи форматите тяло-относителни (вж. postEditNoteState), значи те винаги
+// се събират в тялото. Така смъкване се прави само там, където тяло-относителното четене е невъзможно.
+function nmFormatsAreWholeText(formatString, bodyLen) {
+    const formats = nmParseFormats(formatString);
+    if (!formats.length) return false;
+    return formats.some(f => Number(f.start) < 0 || Number(f.end) > bodyLen);
+}
+
+// Смъква всички граници с bodyStart (мястото на тялото в целия текст). Формат, останал изцяло в
+// заглавието, отпада; граница извън тялото се отрязва до края му.
+function nmShiftFormatsToBody(formatString, bodyStart, bodyLen) {
+    if (!formatString || !(bodyStart > 0)) return formatString;
+    const hasTrailingPipe = formatString.endsWith('|');
+    const formats = nmParseFormats(formatString);
+    if (!formats.length) return formatString;
+    const out = [];
+    for (const f of formats) {
+        const start = Math.max(0, Math.min(bodyLen, Number(f.start) - bodyStart));
+        const end = Math.max(0, Math.min(bodyLen, Number(f.end) - bodyStart));
+        if (end <= start) continue;
+        out.push(JSON.stringify({ ...f, start, end }));
     }
-    return out;
+    if (!out.length) return '';
+    return out.join(hasTrailingPipe ? '|' : '\n') + (hasTrailingPipe ? '|' : '');
 }
 
 /**
@@ -23051,16 +23069,29 @@ function nmBodyPipesToNewlines(text) {
  * Използва се напълно еднакво както в модала за преглед, така и на картичките в борда.
  * Маркерите {#L<n>#} не се показват (само режимът на редакция ги вижда).
  */
-function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false, listIndentMeasureEl = undefined) {
-    return renderNoteCheckboxes(getFormattedNoteHtmlBase(rawContent, formatString, titleFormatString, isForModal, listIndentMeasureEl));
+function getFormattedNoteHtml(rawContent, formatString = null, titleFormatString = null, isForModal = false, listIndentMeasureEl = undefined, opts = undefined) {
+    return renderNoteCheckboxes(getFormattedNoteHtmlBase(rawContent, formatString, titleFormatString, isForModal, listIndentMeasureEl, opts));
 }
 
-function getFormattedNoteHtmlBase(rawContent, formatString = null, titleFormatString = null, isForModal = false, listIndentMeasureEl = undefined) {
+// opts.noTitleSplit: съдържанието вече е ТЯЛОТО на бележка със заглавие — черта в него не дели нищо
+// повече (b5.76).
+function getFormattedNoteHtmlBase(rawContent, formatString = null, titleFormatString = null, isForModal = false, listIndentMeasureEl = undefined, opts = undefined) {
     if (!rawContent) return '';
     const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(rawContent) : rawContent.indexOf('|');
-    if (pipeIndex !== -1) {
+    const noTitleSplit = !!(opts && opts.noTitleSplit);
+    if (pipeIndex !== -1 && !noTitleSplit) {
+        // Тялото е откъсът след чертата без интервалите пред него — същият откъс, който картата
+        // показва, за да съвпадат координатите на форматите в двата изгледа.
+        const rawBodyFull = rawContent.substring(pipeIndex + 1);
+        const leadWs = rawBodyFull.length - rawBodyFull.replace(/^\s+/, '').length;
+        const rawBody = rawBodyFull.slice(leadWs);
+        // Форматите са спрямо целия текст: преди да паднат върху тялото, всички граници се смъкват
+        // с изрязаното заглавие (b5.76).
+        if (formatString && nmFormatsAreWholeText(formatString, rawBody.length)) {
+            formatString = nmShiftFormatsToBody(formatString, pipeIndex + 1 + leadWs, rawBody.length);
+        }
         const titleStripped = stripLinkMarkersForDisplay(rawContent.substring(0, pipeIndex), titleFormatString);
-        const bodyStripped = stripLinkMarkersForDisplay(rawContent.substring(pipeIndex + 1), formatString);
+        const bodyStripped = stripLinkMarkersForDisplay(rawBody, formatString);
         const titlePart = titleStripped.text;
         const bodyPart = bodyStripped.text;
         titleFormatString = titleStripped.formatString;
@@ -26202,6 +26233,7 @@ async function createNoteElement(noteContent) {
     // форматите на тялото се сериализират отделно), затова офсетът на заглавието НЕ се изважда.
     // Без '|' (първият ред се показва като заглавие) форматите са спрямо целия текст и офсетът важи.
     let isPipeBodyContent = false;
+    let pipeBodyStart = -1;
     let isBorderlessTableNote = false;
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
@@ -26219,7 +26251,10 @@ async function createNoteElement(noteContent) {
         } else if (pipeIndex !== -1) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
-            // text_span е тяло-относителен при '|' — offset не се прилага в renderPreviewContent.
+            // Мястото на тялото в целия текст (заглавието + '|' + интервалите преди тялото) — с него
+            // се смъкват границите на форматите, които са в координати на целия текст (b5.76).
+            const afterPipe = fileContent.substring(pipeIndex + 1);
+            pipeBodyStart = pipeIndex + 1 + (afterPipe.length - afterPipe.replace(/^\s+/, '').length);
             isPipeBodyContent = true;
         } else if (isType1Note) {
             const titleLine = titleLineFor(fileContent);
@@ -26557,10 +26592,16 @@ async function createNoteElement(noteContent) {
         if (readyFormatSource === null && offset > 0 && formatSource && !isPipeBodyContent) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
-        // Тялото след разделителя '|' вече е самостоятелно — чертите в него се показват като нов ред,
-        // а не като втори разделител, иначе форматите падат върху частта след тях (b5.75).
-        const contentForFormat = isPipeBodyContent ? nmBodyPipesToNewlines(contentForPreview) : contentForPreview;
-        contentEl.innerHTML = getFormattedNoteHtml(contentForFormat, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
+        // Бележка със заглавие преди '|': заглавието е изрязано от тялото, значи всички граници на
+        // форматите се смъкват с дължината му (b5.76).
+        if (isPipeBodyContent && readyFormatSource === null && formatSource && pipeBodyStart > 0) {
+            const bodyLen = String(contentForPreview || '').length;
+            if (nmFormatsAreWholeText(formatSource, bodyLen)) {
+                formatSource = nmShiftFormatsToBody(formatSource, pipeBodyStart, bodyLen);
+            }
+        }
+        // Тялото след разделителя '|' е самостоятелно: черта в него не дели нищо повече (b5.76).
+        contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl, isPipeBodyContent ? { noTitleSplit: true } : undefined);
         hydrateInlineImages(contentEl); // вградените картинки (type=8) влизат в рамките си
         setNoteCheckboxSource(contentEl, rawOffset !== -1 ? rawOffset : null, rawOffset + String(contentForPreview || '').length);
     };
