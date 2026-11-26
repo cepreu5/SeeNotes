@@ -23079,10 +23079,10 @@ function getFormattedNoteHtmlBase(rawContent, formatString = null, titleFormatSt
         const rawBodyFull = rawContent.substring(pipeIndex + 1);
         const leadWs = rawBodyFull.length - rawBodyFull.replace(/^\s+/, '').length;
         const rawBody = rawBodyFull.slice(leadWs);
-        // Границите са спрямо текста преди чертата: смъкват се с изрязаното заглавие и интервала
-        // след чертата (b5.77, картата показва същото изрязано тяло, за да съвпадат координатите).
+        // Границите са спрямо ЦЯЛОТО тяло (postEditNoteState сериализира форматите на тялото
+        // отделно), а тук тялото е изрязано с интервала след чертата — смъква се само той (b5.80).
         if (formatString) {
-            formatString = nmShiftFormatsToBody(formatString, pipeIndex + leadWs + 1, rawBody.length);
+            formatString = nmShiftFormatsToBody(formatString, leadWs, rawBody.length);
         }
         const titleStripped = stripLinkMarkersForDisplay(rawContent.substring(0, pipeIndex), titleFormatString);
         const bodyStripped = stripLinkMarkersForDisplay(rawBody, formatString);
@@ -26223,11 +26223,12 @@ async function createNoteElement(noteContent) {
         displayContent = cut.text;
         previewBodyFormatSource = nmShiftFormatsAfterRemoval(textSpan, cut.removeStart, cut.removeLen);
     };
-    // При явен разделител '|' записът пази text_span в координати на текста ПРЕДИ чертата (b5.77, вж.
-    // postEditNoteState), затова тук не се ползва офсетът от fileContent, а смъкването с изрязаното
-    // заглавие (pipeBodyStart). Без '|' (първият ред се показва като заглавие) офсетът важи.
+    // При явен разделител '|' записът пази text_span в координати на ТЯЛОТО (вж. postEditNoteState:
+    // форматите на тялото се сериализират отделно), затова офсетът на заглавието не се изважда, а се
+    // смъква само интервалът, който показването изрязва пред тялото (pipeBodyLeadWs, b5.80).
+    // Без '|' (първият ред се показва като заглавие) форматите са спрямо целия текст и офсетът важи.
     let isPipeBodyContent = false;
-    let pipeBodyStart = -1;
+    let pipeBodyLeadWs = 0;
     let isBorderlessTableNote = false;
     if (isHiddenNote) {
         const pipeIndex = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(fileContent) : fileContent.indexOf('|');
@@ -26245,10 +26246,10 @@ async function createNoteElement(noteContent) {
         } else if (pipeIndex !== -1) {
             noteTitle = fileContent.substring(0, pipeIndex).trim();
             displayContent = fileContent.substring(pipeIndex + 1).trim();
-            // Колко текст е изрязан пред показаното тяло: заглавието и интервала след чертата. Толкова
-            // се смъкват и границите на форматите, защото те сочат текста преди чертата (b5.77).
+            // Показваното тяло е изрязано отпред с интервалите след чертата, а записът пази границите
+            // спрямо цялото тяло — значи се смъква само този интервал (b5.80).
             const afterPipe = fileContent.substring(pipeIndex + 1);
-            pipeBodyStart = pipeIndex + (afterPipe.length - afterPipe.replace(/^\s+/, '').length) + 1;
+            pipeBodyLeadWs = afterPipe.length - afterPipe.replace(/^\s+/, '').length;
             isPipeBodyContent = true;
         } else if (isType1Note) {
             const titleLine = titleLineFor(fileContent);
@@ -26586,12 +26587,11 @@ async function createNoteElement(noteContent) {
         if (readyFormatSource === null && offset > 0 && formatSource && !isPipeBodyContent) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
-        // Бележка със заглавие преди '|': заглавието е изрязано от тялото, значи всички граници на
-        // форматите се смъкват с изрязаното (b5.77). Без изключение: записът пази координати на
-        // текста преди чертата.
-        if (isPipeBodyContent && readyFormatSource === null && formatSource && pipeBodyStart > 0) {
+        // Бележка със заглавие преди '|': записът пази границите спрямо ЦЯЛОТО тяло, а показваното
+        // тяло е изрязано с интервалите след чертата — смъква се само този интервал (b5.80).
+        if (isPipeBodyContent && readyFormatSource === null && formatSource && pipeBodyLeadWs > 0) {
             const bodyLen = String(contentForPreview || '').length;
-            formatSource = nmShiftFormatsToBody(formatSource, pipeBodyStart, bodyLen);
+            formatSource = nmShiftFormatsToBody(formatSource, pipeBodyLeadWs, bodyLen);
         }
         // Тялото след разделителя '|' е самостоятелно: черта в него не дели нищо повече (b5.76).
         contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl, isPipeBodyContent ? { noTitleSplit: true } : undefined);
@@ -30241,13 +30241,9 @@ function enableNoteEditing(modalBodyElem, charIndex = -1) {
             const pipeIdx = typeof window.getPipeIndex === 'function' ? window.getPipeIndex(bodyText) : bodyText.indexOf('|');
             titleText = bodyText.substring(0, pipeIdx);
             bodyText = bodyText.substring(pipeIdx + 1);
-            // Границите в записа сочат текста преди чертата, а полето показва тялото без заглавието
-            // и без чертата — значи се смъкват с дължината на заглавието (b5.77). Иначе bold стои
-            // на друга дума още в Редактиране и записът затвърждава грешното място.
-            if (currentBodyFormats.length) {
-                const shifted = nmShiftFormatsToBody(stringifyFormatsArray(currentBodyFormats), pipeIdx + 1, bodyText.length);
-                currentBodyFormats = parseFormatsString(shifted);
-            }
+            // Границите в записа са спрямо цялото тяло, а полето показва точно това тяло (с
+            // интервала след чертата) — значи не се смъкват. Всяко смъкване тук размества bold още
+            // в Редактиране и записът без промяна затвърждава грешното място (b5.80).
         }
         let titleCharIdx = -1;
         let bodyCharIdx = -1;
