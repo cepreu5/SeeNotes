@@ -23022,6 +23022,30 @@ function restoreLinkMarkers(text, formats, maskedLinks) {
 }
 // --- end link markers ---
 
+// Чертите в ТЯЛОТО на бележка, която вече има заглавие преди '|', не делят нищо повече: картата е
+// взела заглавието, а getFormattedNoteHtml би счел първата черта в тялото за втори разделител и би
+// приложил форматите към частта след нея (b5.75, доклад на собственика: bold падаше върху грешна
+// дума). Затова тук такива черти се обръщат в нов ред ОЩЕ ПРЕДИ форматирането — дължината не се
+// променя, значи позициите в text_span остават вярни. Чертите в таблица, код и {{...}} не се пипат.
+function nmBodyPipesToNewlines(text) {
+    if (!text || !text.includes('|')) return text;
+    const tables = (typeof parseAllMarkdownTables === 'function') ? parseAllMarkdownTables(text) : [];
+    let maskedText = text.replace(/\{\{([\s\S]*?)\}\}/g, m => m.replace(/[^\r\n]/g, ' '));
+    maskedText = maskedText.replace(/```([\s\S]*?)```/g, m => m.replace(/[^\r\n]/g, ' '));
+    maskedText = maskedText.replace(/`([^`\r\n]+)`/g, m => ' '.repeat(m.length));
+    let out = '';
+    let currentLine = 0;
+    for (let i = 0; i < text.length; i++) {
+        if (maskedText[i] === '\n') currentLine++;
+        if (maskedText[i] === '|' && !tables.some(t => currentLine >= t.startIndex && currentLine <= t.endIndex)) {
+            out += '\n';
+        } else {
+            out += text[i];
+        }
+    }
+    return out;
+}
+
 /**
  * Унифицирана функция за форматиране и рендиране на съдържанието на бележка.
  * Използва се напълно еднакво както в модала за преглед, така и на картичките в борда.
@@ -26533,7 +26557,10 @@ async function createNoteElement(noteContent) {
         if (readyFormatSource === null && offset > 0 && formatSource && !isPipeBodyContent) {
             formatSource = adjustFormatStringOffset(formatSource, offset);
         }
-        contentEl.innerHTML = getFormattedNoteHtml(contentForPreview, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
+        // Тялото след разделителя '|' вече е самостоятелно — чертите в него се показват като нов ред,
+        // а не като втори разделител, иначе форматите падат върху частта след тях (b5.75).
+        const contentForFormat = isPipeBodyContent ? nmBodyPipesToNewlines(contentForPreview) : contentForPreview;
+        contentEl.innerHTML = getFormattedNoteHtml(contentForFormat, formatSource, titleFormatSource, isForModal, noteListMeasureEl);
         hydrateInlineImages(contentEl); // вградените картинки (type=8) влизат в рамките си
         setNoteCheckboxSource(contentEl, rawOffset !== -1 ? rawOffset : null, rawOffset + String(contentForPreview || '').length);
     };
